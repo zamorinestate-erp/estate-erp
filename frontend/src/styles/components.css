@@ -1,0 +1,164 @@
+/* =========================================================================
+   ZAMORIN CAFE ERP — COMPONENT LIBRARY (Part S of the guideline)
+   Built once, reused everywhere. No screen should redefine its own card,
+   button, or badge style — everything below is the single source.
+   ========================================================================= */
+
+/* ---- Glass surfaces ---- */
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(160%);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--glass-shadow);
+}
+.glass-dark {
+  background: var(--glass-bg-dark);
+  backdrop-filter: blur(var(--glass-blur)) saturate(160%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(160%);
+  border: 1px solid var(--glass-border-dark);
+  border-radius: var(--radius-card);
+  box-shadow: var(--glass-shadow-dark);
+}
+
+/* ---- KPI card ---- */
+.kpi-card { padding: 18px; }
+.kpi-label { font-size: 12.5px; color: var(--text-on-glass-muted); font-weight: 500; letter-spacing: 0.3px; text-transform: uppercase; }
+.kpi-value { font-size: 30px; font-weight: 700; color: var(--text-on-glass); font-family: var(--font-display); margin: 4px 0; }
+.kpi-trend-up { color: var(--color-accent-mint-bright); font-size: 12.5px; font-weight: 600; }
+.kpi-trend-down { color: #FF9E8F; font-size: 12.5px; font-weight: 600; }
+.kpi-card.clickable { cursor: pointer; transition: transform var(--motion-fast) var(--ease-out); }
+.kpi-card.clickable:hover { transform: translateY(-2px); }
+
+/* ---- Pills / badges (Part I.5 — colour never used alone) ---- */
+.pill {
+  border-radius: var(--radius-pill);
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.pill-mint  { background: rgba(2,195,154,0.22);  color: #eafff8; border: 1px solid rgba(2,195,154,0.45); }
+.pill-amber { background: rgba(255,190,90,0.22); color: #fff3e0; border: 1px solid rgba(255,190,90,0.45); }
+.pill-coral { background: rgba(255,110,90,0.22); color: #fff0ee; border: 1px solid rgba(255,110,90,0.45); }
+.pill-dark  { background: rgba(255,255,255,0.16); color: var(--text-on-light); border: 1px solid rgba(255,255,255,0.4); }
+
+/* ---- Buttons ---- */
+.btn {
+  font-family: var(--font-body);
+  font-weight: 600;
+  border: none;
+  border-radius: var(--radius-control);
+  padding: 12px 20px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: transform var(--motion-fast) var(--ease-out), box-shadow var(--motion-fast) var(--ease-out), opacity var(--motion-fast) var(--ease-out);
+}
+.btn:active { transform: scale(0.97); }
+.btn-primary {
+  background: linear-gradient(135deg, var(--color-accent-mint), #05A88A);
+  color: #072620;
+  box-shadow: 0 6px 18px rgba(2,195,154,0.35);
+}
+.btn-primary:hover { box-shadow: 0 8px 22px rgba(2,195,154,0.45); }
+.btn-ghost {
+  background: rgba(255,255,255,0.14);
+  border: 1px solid rgba(255,255,255,0.35);
+  color: #fff;
+}
+.btn-ghost:hover { background: rgba(255,255,255,0.22); }
+.btn-ghost.selected { background: rgba(2,195,154,0.3); border-color: rgba(2,195,154,0.55); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-block { width: 100%; }
+
+/* ---- Avatar ---- */
+.avatar {
+  width: 40px; height: 40px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--color-accent-violet), var(--color-accent-mint));
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-weight: 700; font-size: 14px;
+  border: 2px solid rgba(255,255,255,0.4);
+  flex-shrink: 0;
+}
+
+/* ---- Toggle switch ---- */
+.toggle {
+  width: 38px; height: 20px; border-radius: 999px; position: relative; cursor: pointer;
+  background: rgba(255,255,255,0.25);
+  transition: background var(--motion-fast) var(--ease-out);
+  border: none;
+  flex-shrink: 0;
+}
+.toggle.on { background: var(--color-accent-mint); }
+.toggle .knob {
+  width: 16px; height: 16px; border-radius: 50%; background: #fff;
+  position: absolute; top: 2px; left: 2px;
+  transition: left var(--motion-fast) var(--ease-out);
+}
+.toggle.on .knob { left: 20px; }
+
+/* ---- Table (glass) ---- */
+.glass-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.glass-table th {
+  text-align: left; padding: 10px 14px; font-weight: 600;
+  color: var(--text-on-glass-muted); font-size: 11.5px; letter-spacing: 0.4px; text-transform: uppercase;
+  border-bottom: 1px solid rgba(255,255,255,0.18);
+  position: sticky; top: 0;
+}
+.glass-table td { padding: 12px 14px; color: var(--text-on-glass); border-bottom: 1px solid rgba(255,255,255,0.08); }
+.glass-table tr:nth-child(even) td { background: rgba(255,255,255,0.03); }
+
+/* ---- Empty state (Part N.1 — never a blank box) ---- */
+.empty-state {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 48px 24px; text-align: center; color: var(--text-on-glass-muted); gap: 10px;
+}
+.empty-state-title { color: var(--text-on-glass); font-weight: 600; font-size: 15px; }
+
+/* ---- Skeleton loading state (Part H.4 / Part I.5) ---- */
+.skeleton {
+  background: linear-gradient(90deg, rgba(255,255,255,0.08) 25%, rgba(255,255,255,0.18) 37%, rgba(255,255,255,0.08) 63%);
+  background-size: 400% 100%;
+  animation: skeleton-shimmer 1.4s ease infinite;
+  border-radius: 10px;
+}
+@keyframes skeleton-shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
+/* ---- "Not available" state (Part K.2 — never a raw error/blank page) ---- */
+.not-available {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  height: 60vh; text-align: center; color: var(--text-on-glass); gap: 14px;
+}
+
+/* ---- Page transition (Part H.3 / Part J.1) ---- */
+.page-enter { animation: page-fade var(--motion-nav) var(--ease-out); }
+@keyframes page-fade {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ---- Toast ---- */
+#toast-root { position: fixed; bottom: 24px; right: 24px; z-index: 999; display: flex; flex-direction: column; gap: 10px; }
+.toast {
+  padding: 14px 18px; border-radius: 14px; color: #fff; font-size: 13.5px; font-weight: 500;
+  min-width: 260px;
+  animation: toast-in 200ms var(--ease-out);
+}
+@keyframes toast-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ---- Confirm dialog (Part J.2 — always names the specific record) ---- */
+.dialog-overlay {
+  position: fixed; inset: 0; background: rgba(5,15,20,0.55);
+  display: flex; align-items: center; justify-content: center; z-index: 1000;
+}
+.dialog-box { width: 420px; padding: 26px; color: var(--text-on-glass); }
+.dialog-box h3 { margin: 0 0 10px; font-size: 17px; }
+.dialog-box p { margin: 0 0 20px; font-size: 13.5px; color: var(--text-on-glass-muted); line-height: 1.5; }
+.dialog-actions { display: flex; gap: 10px; justify-content: flex-end; }
