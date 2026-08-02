@@ -4,7 +4,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 require('dotenv').config();
-const mongoose = require('mongoose');
+const { connectDatabase } = require('./config/database');
 const app = express();
 const PORT = Number(process.env.PORT) || 4000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
@@ -20,11 +20,10 @@ app.get('/api/v1/readiness', (req, res) => { const ready = mongoose.connection.r
 const MONGODB_URI = process.env.MONGODB_URI || '';
 async function startServer() {
       if (!MONGODB_URI) throw new Error('MONGODB_URI is required.');
-        await mongoose.connect(MONGODB_URI);
+        await connectDatabase(MONGODB_URI);
           app.listen(PORT, () => console.log(`Zamorin Cafe ERP API running on port ${PORT} in ${NODE_ENV} mode.`));
           }
           startServer().catch((error) => {
               console.error('Backend startup failed:', error.message);
                 process.exitCode = 1;
                 });
-                
