@@ -7,6 +7,7 @@ const cookieParser = require('cookie-parser');
 require('dotenv').config();
 const { connectDatabase } = require('./config/database');
 const { requestContext } = require('./middleware/requestContext');
+const { notFound } = require('./middleware/notFound');
 const app = express();
 const PORT = Number(process.env.PORT) || 4000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
@@ -21,6 +22,7 @@ const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 300, standardHea
 app.use('/api/', apiLimiter);
 app.get('/api/v1/health', (req, res) => res.status(200).json({ status: 'ok', service: 'zamorin-cafe-erp-api' }));
 app.get('/api/v1/readiness', (req, res) => { const ready = mongoose.connection.readyState === 1; res.status(ready ? 200 : 503).json({ status: ready ? 'ready' : 'not_ready', database: ready ? 'connected' : 'disconnected' }); });
+app.use(notFound);
 const MONGODB_URI = process.env.MONGODB_URI || '';
 async function startServer() {
       if (!MONGODB_URI) throw new Error('MONGODB_URI is required.');
