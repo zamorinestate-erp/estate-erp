@@ -700,6 +700,34 @@ async function revokeSession({
     details,
   });
 }
+async function revokeAllUserSessions({
+  organisationId,
+  userId,
+  revokedBy,
+  reason = 'LOGOUT_ALL',
+  details = 'User signed out from all devices.',
+}) {
+  const sessions = await Session.find({
+    organisationId:
+      normalizeIdentifier(organisationId),
+    userId: normalizeIdentifier(userId),
+    status: 'ACTIVE',
+  }).select(
+    '+accessTokenHash +refreshTokenHash +previousRefreshTokenHashes'
+  );
+
+  await Promise.all(
+    sessions.map((session) =>
+      session.revoke({
+        revokedBy,
+        reason,
+        details,
+      })
+    )
+  );
+
+  return sessions.length;
+}
 
 module.exports = {
   MFA_REQUIRED_ROLES,
@@ -711,4 +739,5 @@ module.exports = {
   rotateRefreshToken,
   verifyAccessToken,
   revokeSession,
+  revokeAllUserSessions,
 };
