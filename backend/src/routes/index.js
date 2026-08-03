@@ -14,19 +14,42 @@ const userRoutes =
 const auditRoutes =
   require('./auditRoutes');
 
+const notificationRoutes =
+  require('./notificationRoutes');
+
 const router = express.Router();
 
 router.use('/auth', authRoutes);
-router.use('/cafes', cafeRoutes);
-router.use('/users', userRoutes);
-router.use('/audit-events', auditRoutes);
+
+router.use(
+  '/cafes',
+  cafeRoutes
+);
+
+router.use(
+  '/users',
+  userRoutes
+);
+
+router.use(
+  '/audit-events',
+  auditRoutes
+);
+
+router.use(
+  '/notifications',
+  notificationRoutes
+);
 
 router.get('/', (req, res) => {
   return res.status(200).json({
     success: true,
+
     message:
       'Zamorin Cafe ERP API is running.',
+
     version: 'v1',
+
     correlationId:
       req.correlationId || null,
   });
