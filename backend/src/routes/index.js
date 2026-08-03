@@ -8,10 +8,14 @@ const authRoutes =
 const cafeRoutes =
   require('./cafeRoutes');
 
+const userRoutes =
+  require('./userRoutes');
+
 const router = express.Router();
 
 router.use('/auth', authRoutes);
 router.use('/cafes', cafeRoutes);
+router.use('/users', userRoutes);
 
 router.get('/', (req, res) => {
   return res.status(200).json({
