@@ -227,6 +227,7 @@ function createAccessToken({
       sv: sessionVersion,
       usv: user.sessionVersion,
       pv: user.permissionsVersion,
+      type: 'access',
     },
     secret,
     {
@@ -645,6 +646,20 @@ async function verifyAccessToken(accessToken) {
       audience: 'zamorin-cafe-erp',
     }
   );
+
+  if (
+    payload.type !== 'access' ||
+    typeof payload.sid !== 'string' ||
+    !payload.sid.trim() ||
+    typeof payload.sub !== 'string' ||
+    !payload.sub.trim() ||
+    typeof payload.org !== 'string' ||
+    !payload.org.trim()
+  ) {
+    throw new Error(
+      'The access token is invalid.'
+    );
+  }
 
   const session = await Session.findOne({
     sessionId: payload.sid,

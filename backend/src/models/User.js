@@ -304,6 +304,7 @@ userSchema.methods.toJSON = function safeUserJSON() {
   delete user.passwordHash;
   delete user.passwordHistoryHashes;
   delete user.mfaSecretEncrypted;
+  delete user.pendingMfaSecretEncrypted;
   delete user.recoveryCodeHashes;
 
   return user;
