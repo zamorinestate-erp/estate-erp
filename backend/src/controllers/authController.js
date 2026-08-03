@@ -3,6 +3,8 @@
 const {
   authenticatePassword,
   createSession,
+  rotateRefreshToken,
+  revokeSession,
 } = require('../services/authService');
 
 const {
@@ -209,6 +211,40 @@ function getLoginInput(request) {
     email,
     password,
   } = request.body || {};
+  function getRefreshInput(request) {
+  const sessionId =
+    request.cookies?.[SESSION_ID_COOKIE] ||
+    request.body?.sessionId;
+
+  const refreshToken =
+    request.cookies?.[REFRESH_TOKEN_COOKIE] ||
+    request.body?.refreshToken;
+
+  const deviceId =
+    request.get('x-device-id') ||
+    request.body?.deviceId;
+
+  if (
+    typeof sessionId !== 'string' ||
+    !sessionId.trim() ||
+    typeof refreshToken !== 'string' ||
+    !refreshToken ||
+    typeof deviceId !== 'string' ||
+    !deviceId.trim()
+  ) {
+    throw new ApiError(
+      401,
+      'REFRESH_SESSION_REQUIRED',
+      'Session ID, refresh token and device ID are required.'
+    );
+  }
+
+  return {
+    sessionId: sessionId.trim(),
+    refreshToken,
+    deviceId: deviceId.trim(),
+  };
+}
 
   if (
     typeof organisationId !== 'string' ||
@@ -340,8 +376,51 @@ const login = asyncHandler(
     });
   }
 );
+const refreshSession = asyncHandler(
+  async (request, response) => {
+    const refreshInput =
+      getRefreshInput(request);
+
+    let sessionData;
+
+    try {
+      sessionData =
+        await rotateRefreshToken(
+          refreshInput
+        );
+    } catch (error) {
+      clearAuthenticationCookies(
+        response
+      );
+
+      throw new ApiError(
+        401,
+        'INVALID_REFRESH_SESSION',
+        error.message ||
+          'The refresh session is invalid or expired.'
+      );
+    }
+
+    setAuthenticationCookies(
+      response,
+      sessionData
+    );
+
+    return response.status(200).json({
+      success: true,
+      message:
+        'Session refreshed successfully.',
+      data: {
+        session: sessionData.session,
+      },
+      correlationId:
+        request.correlationId || null,
+    });
+  }
+);
 
 module.exports = {
   login,
+  refreshSession,
   clearAuthenticationCookies,
 };
