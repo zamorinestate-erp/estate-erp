@@ -6,6 +6,7 @@ const {
   rotateRefreshToken,
   revokeSession,
   revokeAllUserSessions,
+  listUserSessions,
 } = require('../services/authService');
 
 const {
@@ -465,11 +466,33 @@ const logoutAll = asyncHandler(
     });
   }
 );
+const getSessions = asyncHandler(
+  async (request, response) => {
+    const sessions =
+      await listUserSessions({
+        organisationId:
+          request.auth.organisationId,
+        userId: request.auth.userId,
+      });
+
+    return response.status(200).json({
+      success: true,
+      data: {
+        sessions,
+        currentSessionId:
+          request.auth.sessionId,
+      },
+      correlationId:
+        request.correlationId || null,
+    });
+  }
+);
 
 module.exports = {
   login,
   refreshSession,
   logout,
   logoutAll,
+  getSessions,
   clearAuthenticationCookies,
 };
