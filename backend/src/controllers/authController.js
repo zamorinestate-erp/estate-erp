@@ -418,9 +418,29 @@ const refreshSession = asyncHandler(
     });
   }
 );
+const logout = asyncHandler(
+  async (request, response) => {
+    await revokeSession({
+      sessionId: request.auth.sessionId,
+      revokedBy: request.auth.userId,
+      reason: 'USER_LOGOUT',
+      details: 'User signed out.',
+    });
+
+    clearAuthenticationCookies(response);
+
+    return response.status(200).json({
+      success: true,
+      message: 'Logout successful.',
+      correlationId:
+        request.correlationId || null,
+    });
+  }
+);
 
 module.exports = {
   login,
   refreshSession,
+  logout,
   clearAuthenticationCookies,
 };
