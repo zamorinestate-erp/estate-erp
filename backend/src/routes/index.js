@@ -48,6 +48,13 @@ router.use(
   '/attendance',
   attendanceRoutes
 );
+router.use(
+  '/cash-transactions',
+  cashRoutes
+);
+
+const cashRoutes =
+  require('./cashRoutes');
 
 router.get('/', (req, res) => {
   return res.status(200).json({
