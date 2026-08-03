@@ -1,8 +1,10 @@
 'use strict';
 
 const express = require('express');
+const authRoutes = require('./authRoutes');
 
 const router = express.Router();
+router.use('/auth', authRoutes);
 
 router.get('/', (req, res) => {
   return res.status(200).json({
