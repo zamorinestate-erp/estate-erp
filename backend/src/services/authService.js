@@ -728,6 +728,19 @@ async function revokeAllUserSessions({
 
   return sessions.length;
 }
+async function listUserSessions({
+  organisationId,
+  userId,
+}) {
+  return Session.find({
+    organisationId:
+      normalizeIdentifier(organisationId),
+    userId: normalizeIdentifier(userId),
+  }).sort({
+    lastActivityAt: -1,
+    issuedAt: -1,
+  });
+}
 
 module.exports = {
   MFA_REQUIRED_ROLES,
@@ -740,4 +753,5 @@ module.exports = {
   verifyAccessToken,
   revokeSession,
   revokeAllUserSessions,
+  listUserSessions,
 };
