@@ -4,7 +4,9 @@
   "description": "",
   "main": "src/server.js",
   "scripts": {
-    "start": "node src/server.js"
+    "start": "node src/server.js",
+    "seed": "node src/scripts/seedInitialData.js",
+    "check": "node --check src/server.js"
   },
   "keywords": [],
   "author": "",
