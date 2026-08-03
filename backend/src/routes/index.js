@@ -11,11 +11,15 @@ const cafeRoutes =
 const userRoutes =
   require('./userRoutes');
 
+const auditRoutes =
+  require('./auditRoutes');
+
 const router = express.Router();
 
 router.use('/auth', authRoutes);
 router.use('/cafes', cafeRoutes);
 router.use('/users', userRoutes);
+router.use('/audit-events', auditRoutes);
 
 router.get('/', (req, res) => {
   return res.status(200).json({
