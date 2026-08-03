@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 
 const express = require('express');
 
@@ -19,6 +19,12 @@ const notificationRoutes =
 
 const attendanceRoutes =
   require('./attendanceRoutes');
+
+const cashRoutes =
+  require('./cashRoutes');
+
+const expenseRoutes =
+  require('./expenseRoutes');
 
 const router = express.Router();
 
@@ -48,13 +54,16 @@ router.use(
   '/attendance',
   attendanceRoutes
 );
+
 router.use(
   '/cash-transactions',
   cashRoutes
 );
 
-const cashRoutes =
-  require('./cashRoutes');
+router.use(
+  '/expenses',
+  expenseRoutes
+);
 
 router.get('/', (req, res) => {
   return res.status(200).json({
