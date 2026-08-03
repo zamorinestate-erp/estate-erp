@@ -741,6 +741,33 @@ async function listUserSessions({
     issuedAt: -1,
   });
 }
+async function revokeUserSession({
+  organisationId,
+  userId,
+  sessionId,
+  revokedBy,
+}) {
+  const session = await Session.findOne({
+    organisationId:
+      normalizeIdentifier(organisationId),
+    userId: normalizeIdentifier(userId),
+    sessionId: normalizeIdentifier(sessionId),
+  }).select(
+    '+accessTokenHash +refreshTokenHash +previousRefreshTokenHashes'
+  );
+
+  if (!session) {
+    return null;
+  }
+
+  return session.revoke({
+    revokedBy:
+      normalizeIdentifier(revokedBy),
+    reason: 'USER_LOGOUT',
+    details:
+      'User revoked an active session.',
+  });
+}
 
 module.exports = {
   MFA_REQUIRED_ROLES,
@@ -754,4 +781,5 @@ module.exports = {
   revokeSession,
   revokeAllUserSessions,
   listUserSessions,
+  revokeUserSession,
 };

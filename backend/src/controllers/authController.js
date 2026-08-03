@@ -7,6 +7,7 @@ const {
   revokeSession,
   revokeAllUserSessions,
   listUserSessions,
+  revokeUserSession,
 } = require('../services/authService');
 
 const {
@@ -487,6 +488,76 @@ const getSessions = asyncHandler(
     });
   }
 );
+const getCurrentUser = asyncHandler(
+  async (request, response) => {
+    return response.status(200).json({
+      success: true,
+      data: {
+        user:
+          request.authenticatedUser.toJSON(),
+        authentication: request.auth,
+      },
+      correlationId:
+        request.correlationId || null,
+    });
+  }
+);
+
+const revokeSessionById = asyncHandler(
+  async (request, response) => {
+    const sessionId =
+      typeof request.params.sessionId ===
+      'string'
+        ? request.params.sessionId.trim()
+        : '';
+
+    if (!sessionId) {
+      throw new ApiError(
+        400,
+        'SESSION_ID_REQUIRED',
+        'A session ID is required.'
+      );
+    }
+
+    const revokedSession =
+      await revokeUserSession({
+        organisationId:
+          request.auth.organisationId,
+        userId: request.auth.userId,
+        sessionId,
+        revokedBy: request.auth.userId,
+      });
+
+    if (!revokedSession) {
+      throw new ApiError(
+        404,
+        'SESSION_NOT_FOUND',
+        'The session was not found.'
+      );
+    }
+
+    if (
+      revokedSession.sessionId ===
+      request.auth.sessionId
+    ) {
+      clearAuthenticationCookies(
+        response
+      );
+    }
+
+    return response.status(200).json({
+      success: true,
+      message:
+        'Session revoked successfully.',
+      data: {
+        sessionId:
+          revokedSession.sessionId,
+      },
+      correlationId:
+        request.correlationId || null,
+    });
+  }
+);
 
 module.exports = {
   login,
@@ -494,5 +565,7 @@ module.exports = {
   logout,
   logoutAll,
   getSessions,
+  getCurrentUser,
+  revokeSessionById,
   clearAuthenticationCookies,
 };
