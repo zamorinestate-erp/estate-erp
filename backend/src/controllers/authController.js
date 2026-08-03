@@ -5,6 +5,7 @@ const {
   createSession,
   rotateRefreshToken,
   revokeSession,
+  revokeAllUserSessions,
 } = require('../services/authService');
 
 const {
@@ -437,10 +438,38 @@ const logout = asyncHandler(
     });
   }
 );
+const logoutAll = asyncHandler(
+  async (request, response) => {
+    const revokedSessionCount =
+      await revokeAllUserSessions({
+        organisationId:
+          request.auth.organisationId,
+        userId: request.auth.userId,
+        revokedBy: request.auth.userId,
+        reason: 'LOGOUT_ALL',
+        details:
+          'User signed out from all devices.',
+      });
+
+    clearAuthenticationCookies(response);
+
+    return response.status(200).json({
+      success: true,
+      message:
+        'All active sessions were logged out successfully.',
+      data: {
+        revokedSessionCount,
+      },
+      correlationId:
+        request.correlationId || null,
+    });
+  }
+);
 
 module.exports = {
   login,
   refreshSession,
   logout,
+  logoutAll,
   clearAuthenticationCookies,
 };
