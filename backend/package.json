@@ -3,11 +3,12 @@
   "version": "1.0.0",
   "description": "",
   "main": "src/server.js",
-  "scripts": {
-    "start": "node src/server.js",
-    "seed": "node src/scripts/seedInitialData.js",
-    "check": "node --check src/server.js"
-  },
+ "scripts": {
+  "start": "node src/server.js",
+  "seed": "node src/scripts/seedInitialData.js",
+  "check": "node src/scripts/checkAllJavaScript.js",
+  "check:server": "node --check src/server.js"
+},
   "keywords": [],
   "author": "",
   "license": "ISC",
