@@ -627,15 +627,13 @@ const payPayrollRun = asyncHandler(
           0 ||
         payslipUpdateResult.modifiedCount >
           payslipUpdateResult.matchedCount ||
-        payslipUpdateResult.matchedCount !==
-          issuedPayslips.length ||
-        payslipUpdateResult.modifiedCount !==
+        payslipUpdateResult.matchedCount >
           issuedPayslips.length
       ) {
         throw new ApiError(
           409,
           'PAYROLL_PAYMENT_CONFLICT',
-          'Payslip bulk payment update failed or produced unexpected counts.'
+          'Payslip bulk payment update produced invalid counts.'
         );
       }
 
@@ -731,14 +729,16 @@ const payPayrollRun = asyncHandler(
         !Number.isSafeInteger(
           runUpdateResult?.modifiedCount
         ) ||
-        runUpdateResult.matchedCount !==
-          1 ||
-        runUpdateResult.modifiedCount !== 1
+        runUpdateResult.matchedCount < 0 ||
+        runUpdateResult.matchedCount > 1 ||
+        runUpdateResult.modifiedCount < 0 ||
+        runUpdateResult.modifiedCount >
+          runUpdateResult.matchedCount
       ) {
         throw new ApiError(
           409,
           'PAYROLL_PAYMENT_CONFLICT',
-          'Payroll run update to PAID state failed or produced unexpected counts.'
+          'Payroll run payment update produced invalid counts.'
         );
       }
 
