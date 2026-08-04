@@ -12,7 +12,14 @@ const {
   ApiError,
 } = require('../utils/ApiError');
 
-const STAFF_VISIBLE_PAYSLIP_STATUSES = [
+const PAYSLIP_SELF_SERVICE_ROLES = [
+  'MASTER',
+  'OWNER',
+  'CAFE_ADMIN',
+  'STAFF',
+];
+
+const SELF_SERVICE_VISIBLE_PAYSLIP_STATUSES = [
   'ISSUED',
   'PAID',
 ];
@@ -44,16 +51,18 @@ function parsePositiveInteger(
   );
 }
 
-function ensureStaffSelfServiceAccess(
+function ensurePayrollSelfServiceAccess(
   request
 ) {
   if (
-    request.auth.role !== 'STAFF'
+    !PAYSLIP_SELF_SERVICE_ROLES.includes(
+      request.auth.role
+    )
   ) {
     throw new ApiError(
       403,
-      'STAFF_SELF_SERVICE_REQUIRED',
-      'This endpoint is available only to authenticated Staff users.'
+      'PAYSLIP_SELF_SERVICE_FORBIDDEN',
+      'This endpoint is available only to authenticated company employees.'
     );
   }
 }
@@ -89,20 +98,20 @@ function getVisibleStatus(request) {
 
   if (
     status &&
-    !STAFF_VISIBLE_PAYSLIP_STATUSES
+    !SELF_SERVICE_VISIBLE_PAYSLIP_STATUSES
       .includes(status)
   ) {
     throw new ApiError(
       400,
       'INVALID_PAYSLIP_STATUS',
-      'Staff may filter payslips only by ISSUED or PAID status.'
+      'Employees may filter their payslips only by ISSUED or PAID status.'
     );
   }
 
   return status;
 }
 
-function buildStaffPayslipFilter(
+function buildMyPayslipFilter(
   request
 ) {
   const periodKey =
@@ -120,7 +129,7 @@ function buildStaffPayslipFilter(
 
     status: status || {
       $in:
-        STAFF_VISIBLE_PAYSLIP_STATUSES,
+        SELF_SERVICE_VISIBLE_PAYSLIP_STATUSES,
     },
   };
 
@@ -134,7 +143,7 @@ function buildStaffPayslipFilter(
 
 const listMyPayslips = asyncHandler(
   async (request, response) => {
-    ensureStaffSelfServiceAccess(
+    ensurePayrollSelfServiceAccess(
       request
     );
 
@@ -153,7 +162,7 @@ const listMyPayslips = asyncHandler(
       );
 
     const filter =
-      buildStaffPayslipFilter(
+      buildMyPayslipFilter(
         request
       );
 
@@ -204,7 +213,7 @@ const listMyPayslips = asyncHandler(
 
 const getMyPayslip = asyncHandler(
   async (request, response) => {
-    ensureStaffSelfServiceAccess(
+    ensurePayrollSelfServiceAccess(
       request
     );
 
@@ -237,7 +246,7 @@ const getMyPayslip = asyncHandler(
 
         status: {
           $in:
-            STAFF_VISIBLE_PAYSLIP_STATUSES,
+            SELF_SERVICE_VISIBLE_PAYSLIP_STATUSES,
         },
       });
 

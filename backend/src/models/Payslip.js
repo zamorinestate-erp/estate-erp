@@ -195,7 +195,7 @@ const payslipSchema =
         immutable: true,
         trim: true,
         uppercase: true,
-        match: /^ST-\d{4,}$/,
+        match: /^(MU|OW|AD|ST)-\d{4,}$/,
         index: true,
       },
 
