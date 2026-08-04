@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 
 const express = require('express');
 
@@ -29,9 +29,15 @@ const expenseRoutes =
 const reportRoutes =
   require('./reportRoutes');
 
+const payrollRoutes =
+  require('./payrollRoutes');
+
 const router = express.Router();
 
-router.use('/auth', authRoutes);
+router.use(
+  '/auth',
+  authRoutes
+);
 
 router.use(
   '/cafes',
@@ -73,15 +79,28 @@ router.use(
   reportRoutes
 );
 
-router.get('/', (req, res) => {
-  return res.status(200).json({
-    success: true,
-    message:
-      'Zamorin Cafe ERP API is running.',
-    version: 'v1',
-    correlationId:
-      req.correlationId || null,
-  });
-});
+router.use(
+  '/payroll',
+  payrollRoutes
+);
+
+router.get(
+  '/',
+  (request, response) => {
+    return response
+      .status(200)
+      .json({
+        success: true,
+
+        message:
+          'Zamorin Cafe ERP API is running.',
+
+        version: 'v1',
+
+        correlationId:
+          request.correlationId || null,
+      });
+  }
+);
 
 module.exports = router;
