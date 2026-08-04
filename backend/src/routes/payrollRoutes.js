@@ -31,6 +31,11 @@ const {
   calculatePayrollRun,
 } = require('../controllers/payrollCalculationController');
 
+const {
+  submitPayrollRun,
+  approvePayrollRun,
+} = require('../controllers/payrollApprovalController');
+
 const router = express.Router();
 
 router.use(authenticate);
@@ -73,6 +78,16 @@ router.patch(
 router.post(
   '/runs/:payrollRunId/calculate',
   calculatePayrollRun
+);
+
+router.post(
+  '/runs/:payrollRunId/submit',
+  submitPayrollRun
+);
+
+router.post(
+  '/runs/:payrollRunId/approve',
+  approvePayrollRun
 );
 
 router.get(
