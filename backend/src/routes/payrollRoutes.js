@@ -17,6 +17,11 @@ const {
   listPayrollRunPayslips,
 } = require('../controllers/payrollManagementController');
 
+const {
+  createPayrollRun,
+  createPayrollRunPayslip,
+} = require('../controllers/payrollWriteController');
+
 const router = express.Router();
 
 router.use(authenticate);
@@ -36,9 +41,19 @@ router.get(
   listPayrollRuns
 );
 
+router.post(
+  '/runs',
+  createPayrollRun
+);
+
 router.get(
   '/runs/:payrollRunId/payslips',
   listPayrollRunPayslips
+);
+
+router.post(
+  '/runs/:payrollRunId/payslips',
+  createPayrollRunPayslip
 );
 
 router.get(
