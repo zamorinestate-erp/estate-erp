@@ -7,6 +7,9 @@ import { renderShell } from "./router.js";
 import { renderRoleSwitcher, wireRoleSwitcher, showToast, updateBellBadge } from "./components.js";
 import { undeliveredPopups } from "./notifications.js";
 import { enqueuePopup } from "./popup.js";
+import {
+  registerServiceWorker,
+} from "./updateManager.js";
 
 function mountRoleSwitcher() {
   let host = document.getElementById("role-switcher-host");
@@ -39,9 +42,16 @@ function labelFor(role) {
 }
 
 function boot() {
-  document.documentElement.setAttribute("data-font-size", state.settings.fontSize);
+  document.documentElement.setAttribute(
+    "data-font-size",
+    state.settings.fontSize
+  );
+
   renderShell();
   mountRoleSwitcher();
-}
 
+  registerServiceWorker().catch(() => {
+    // PWA support must never prevent the app from loading.
+  });
+}
 document.addEventListener("DOMContentLoaded", boot);
