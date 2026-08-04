@@ -27,6 +27,10 @@ const {
   updateDraftPayrollRunPayslip,
 } = require('../controllers/payrollDraftController');
 
+const {
+  calculatePayrollRun,
+} = require('../controllers/payrollCalculationController');
+
 const router = express.Router();
 
 router.use(authenticate);
@@ -64,6 +68,11 @@ router.post(
 router.patch(
   '/runs/:payrollRunId/payslips/:payslipId',
   updateDraftPayrollRunPayslip
+);
+
+router.post(
+  '/runs/:payrollRunId/calculate',
+  calculatePayrollRun
 );
 
 router.get(
