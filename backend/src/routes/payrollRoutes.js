@@ -40,6 +40,10 @@ const {
   issuePayrollRunPayslips,
 } = require('../controllers/payrollIssuanceController');
 
+const {
+  payPayrollRun,
+} = require('../controllers/payrollPaymentController');
+
 const router = express.Router();
 
 router.use(authenticate);
@@ -97,6 +101,11 @@ router.post(
 router.post(
   '/runs/:payrollRunId/issue-payslips',
   issuePayrollRunPayslips
+);
+
+router.post(
+  '/runs/:payrollRunId/pay',
+  payPayrollRun
 );
 
 router.get(
