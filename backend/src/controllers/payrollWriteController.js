@@ -840,6 +840,230 @@ const createPayrollRunPayslip =
             request.auth.userId,
         });
 
+      const payrollRunAfterCreate =
+        await PayrollRun.findOne({
+          organisationId:
+            request.auth.organisationId,
+          payrollRunId,
+          cafeId:
+            payrollRun.cafeId,
+        });
+
+      if (
+        payrollRunAfterCreate &&
+        payrollRunAfterCreate.status ===
+          'VOIDED'
+      ) {
+        const racedVoidResult =
+          await Payslip.updateOne(
+            {
+              organisationId:
+                request.auth.organisationId,
+              payrollRunId,
+              payslipId,
+              cafeId:
+                payrollRun.cafeId,
+              status: {
+                $ne: 'VOIDED',
+              },
+            },
+            {
+              $set: {
+                status: 'VOIDED',
+                voidedAt:
+                  payrollRunAfterCreate.voidedAt,
+                voidedBy:
+                  payrollRunAfterCreate.voidedBy,
+                voidReason:
+                  payrollRunAfterCreate.voidReason,
+                updatedBy:
+                  request.auth.userId,
+              },
+            }
+          );
+
+        if (
+          !racedVoidResult ||
+          !Number.isSafeInteger(
+            racedVoidResult.matchedCount
+          ) ||
+          !Number.isSafeInteger(
+            racedVoidResult.modifiedCount
+          ) ||
+          racedVoidResult.matchedCount < 0 ||
+          racedVoidResult.modifiedCount < 0 ||
+          racedVoidResult.modifiedCount >
+            racedVoidResult.matchedCount ||
+          racedVoidResult.matchedCount > 1
+        ) {
+          throw new ApiError(
+            409,
+            'PAYSLIP_VOID_RACE_CONFLICT',
+            'The concurrently voided payslip could not be verified.'
+          );
+        }
+
+        const finalPayslip =
+          await Payslip.findOne({
+            organisationId:
+              request.auth.organisationId,
+            payrollRunId,
+            payslipId,
+            cafeId:
+              payrollRun.cafeId,
+          });
+
+        if (
+          !finalPayslip ||
+          finalPayslip.status !== 'VOIDED' ||
+          !finalPayslip.voidedAt ||
+          finalPayslip.voidedBy !==
+            payrollRunAfterCreate.voidedBy ||
+          finalPayslip.voidReason !==
+            payrollRunAfterCreate.voidReason ||
+          new Date(
+            finalPayslip.voidedAt
+          ).getTime() !==
+            new Date(
+              payrollRunAfterCreate.voidedAt
+            ).getTime()
+        ) {
+          throw new ApiError(
+            409,
+            'PAYSLIP_VOID_RACE_CONFLICT',
+            'The concurrently voided payslip failed authoritative verification.'
+          );
+        }
+
+        await recordRequestAudit({
+          request,
+          module: 'PAYROLL',
+          action:
+            'VOID_RACED_PAYSLIP_CREATION',
+          entityType: 'PAYSLIP',
+          entityId: payslipId,
+          cafeId:
+            payrollRun.cafeId,
+          before: {
+            status: 'DRAFT',
+          },
+          after: {
+            status: 'VOIDED',
+            voidedAt:
+              finalPayslip.voidedAt,
+            voidedBy:
+              finalPayslip.voidedBy,
+            voidReason:
+              finalPayslip.voidReason,
+          },
+          reason:
+            payrollRunAfterCreate.voidReason,
+          riskClassification: 'HIGH',
+          metadata: {
+            payrollRunStatus: 'VOIDED',
+            concurrentLifecycleRace: true,
+            newlyVoided:
+              racedVoidResult.modifiedCount === 1,
+          },
+        });
+
+        throw new ApiError(
+          409,
+          'PAYROLL_RUN_NOT_EDITABLE',
+          'The payroll run was voided while the payslip was being created. The payslip was securely voided.'
+        );
+      }
+
+      if (
+        !payrollRunAfterCreate ||
+        payrollRunAfterCreate.status !==
+          'DRAFT'
+      ) {
+        const racedStatus =
+          payrollRunAfterCreate
+            ? payrollRunAfterCreate.status
+            : 'MISSING';
+
+        const rollbackResult =
+          await Payslip.deleteOne({
+            organisationId:
+              request.auth.organisationId,
+            payrollRunId,
+            payslipId,
+            cafeId:
+              payrollRun.cafeId,
+            status: 'DRAFT',
+            createdBy:
+              request.auth.userId,
+          });
+
+        if (
+          !rollbackResult ||
+          !Number.isSafeInteger(
+            rollbackResult.deletedCount
+          ) ||
+          rollbackResult.deletedCount < 0 ||
+          rollbackResult.deletedCount > 1
+        ) {
+          throw new ApiError(
+            409,
+            'PAYSLIP_CREATION_ROLLBACK_CONFLICT',
+            'The raced payslip rollback produced invalid results.'
+          );
+        }
+
+        const remainingPayslip =
+          await Payslip.findOne({
+            organisationId:
+              request.auth.organisationId,
+            payrollRunId,
+            payslipId,
+            cafeId:
+              payrollRun.cafeId,
+          });
+
+        if (remainingPayslip) {
+          throw new ApiError(
+            409,
+            'PAYSLIP_CREATION_ROLLBACK_CONFLICT',
+            'The raced payslip remained after authoritative rollback verification.'
+          );
+        }
+
+        await recordRequestAudit({
+          request,
+          module: 'PAYROLL',
+          action:
+            'ROLLBACK_RACED_PAYSLIP_CREATION',
+          entityType: 'PAYSLIP',
+          entityId: payslipId,
+          cafeId:
+            payrollRun.cafeId,
+          before: {
+            status: 'DRAFT',
+          },
+          after: {
+            deleted: true,
+          },
+          reason:
+            'Payroll run left DRAFT status during payslip creation.',
+          riskClassification: 'HIGH',
+          metadata: {
+            payrollRunStatus:
+              racedStatus,
+            concurrentLifecycleRace: true,
+            rollbackDeleted:
+              rollbackResult.deletedCount === 1,
+          },
+        });
+
+        throw new ApiError(
+          409,
+          'PAYROLL_RUN_NOT_EDITABLE',
+          'The payroll run changed while the payslip was being created. The draft payslip was rolled back.'
+        );
+      }
+
       await recordRequestAudit({
         request,
         module: 'PAYROLL',

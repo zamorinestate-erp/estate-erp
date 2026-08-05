@@ -44,6 +44,10 @@ const {
   payPayrollRun,
 } = require('../controllers/payrollPaymentController');
 
+const {
+  voidPayrollRun,
+} = require('../controllers/payrollVoidController');
+
 const router = express.Router();
 
 router.use(authenticate);
@@ -106,6 +110,11 @@ router.post(
 router.post(
   '/runs/:payrollRunId/pay',
   payPayrollRun
+);
+
+router.post(
+  '/runs/:payrollRunId/void',
+  voidPayrollRun
 );
 
 router.get(
