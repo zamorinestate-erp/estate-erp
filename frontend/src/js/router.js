@@ -33,6 +33,7 @@ import { renderPerformance } from "./pages/cafePerformance.js";
 import { renderStaffAttendance, wireStaffAttendance } from "./pages/staffAttendance.js";
 import { renderStaffLeave, wireStaffLeave } from "./pages/staffLeave.js";
 import { renderStaffPayslips, wireStaffPayslips } from "./pages/staffPayslips.js";
+import { renderPayrollManagement, wirePayrollManagement } from "./pages/payrollManagement.js";
 import { renderAnnouncements, wireAnnouncements } from "./pages/announcements.js";
 import { renderNotAvailable, renderNotBuiltYet } from "./pages/notAvailable.js";
 
@@ -212,6 +213,11 @@ function renderPage() {
     case "staff-leave":
       content.innerHTML = renderStaffLeave();
       wireStaffLeave(content);
+      break;
+
+    case "payroll":
+      content.innerHTML = renderPayrollManagement();
+      wirePayrollManagement(content);
       break;
 
     case "staff-payslips":
