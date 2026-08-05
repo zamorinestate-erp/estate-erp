@@ -12,9 +12,14 @@ import {
   skeleton,
 } from "../components.js";
 
+import {
+  openPayrollPayslips,
+} from "./payrollPayslips.js";
+
 let activeRequest = null;
 let selectedStatus = "";
 let mutationInProgress = false;
+let loadedPayrollRuns = [];
 
 const STATUS_LABELS = {
   DRAFT: "Draft",
@@ -165,6 +170,14 @@ function renderCafeOptions(cafes) {
 function actionButtons(run) {
   const id = escapeHtml(run.payrollRunId);
   const buttons = [];
+
+  buttons.push([
+    "payslips",
+    run.status === "DRAFT"
+      ? "Manage payslips"
+      : "View payslips",
+    "btn-ghost",
+  ]);
 
   if (run.status === "DRAFT") {
     buttons.push([
@@ -545,10 +558,39 @@ function bindRunActions(root) {
     .querySelectorAll("[data-payroll-action]")
     .forEach((button) => {
       button.addEventListener("click", () => {
+        const payrollRunId =
+          button.dataset.payrollRun;
+        const action =
+          button.dataset.payrollAction;
+
+        if (action === "payslips") {
+          const payrollRun =
+            loadedPayrollRuns.find(
+              (run) =>
+                run.payrollRunId ===
+                payrollRunId
+            );
+
+          if (!payrollRun) {
+            showToast(
+              "The selected payroll run is no longer available.",
+              "coral"
+            );
+            return;
+          }
+
+          openPayrollPayslips({
+            payrollRun,
+            onChanged: () =>
+              loadPayrollRuns(root),
+          });
+          return;
+        }
+
         requestPayrollAction(
           root,
-          button.dataset.payrollRun,
-          button.dataset.payrollAction
+          payrollRunId,
+          action
         );
       });
     });
@@ -595,6 +637,7 @@ async function loadPayrollRuns(root) {
     const runs =
       payload?.data?.payrollRuns || [];
 
+    loadedPayrollRuns = runs;
     content.innerHTML = renderRuns(runs);
     bindRunActions(content);
   } catch (error) {
