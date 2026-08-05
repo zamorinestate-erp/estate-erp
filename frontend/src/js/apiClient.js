@@ -83,8 +83,12 @@ async function performRequest(
   {
     method = "GET",
     signal,
+    body,
   } = {}
 ) {
+  const hasJsonBody =
+    body !== undefined;
+
   return fetch(
     `${API_BASE_URL}${normalizeApiPath(path)}`,
     {
@@ -93,7 +97,16 @@ async function performRequest(
       cache: "no-store",
       headers: {
         Accept: "application/json",
+        ...(hasJsonBody
+          ? {
+              "Content-Type":
+                "application/json",
+            }
+          : {}),
       },
+      body: hasJsonBody
+        ? JSON.stringify(body)
+        : undefined,
       signal,
     }
   );
@@ -118,16 +131,20 @@ async function refreshAuthenticatedSession() {
   }
 }
 
-export async function apiGet(
+async function requestJson(
+  method,
   path,
   {
     signal,
+    body,
   } = {}
 ) {
   let response = await performRequest(
     path,
     {
+      method,
       signal,
+      body,
     }
   );
 
@@ -137,7 +154,9 @@ export async function apiGet(
     response = await performRequest(
       path,
       {
+        method,
         signal,
+        body,
       }
     );
   }
@@ -153,4 +172,53 @@ export async function apiGet(
   }
 
   return payload;
+}
+
+export function apiGet(
+  path,
+  {
+    signal,
+  } = {}
+) {
+  return requestJson(
+    "GET",
+    path,
+    {
+      signal,
+    }
+  );
+}
+
+export function apiPost(
+  path,
+  {
+    signal,
+    body,
+  } = {}
+) {
+  return requestJson(
+    "POST",
+    path,
+    {
+      signal,
+      body,
+    }
+  );
+}
+
+export function apiPatch(
+  path,
+  {
+    signal,
+    body,
+  } = {}
+) {
+  return requestJson(
+    "PATCH",
+    path,
+    {
+      signal,
+      body,
+    }
+  );
 }
