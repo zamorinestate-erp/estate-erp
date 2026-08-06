@@ -159,24 +159,194 @@ const DEFAULT_PERMISSION_RULES = [
   },
 ];
 
+const PRIMARY_MASTER_DESIGNATION_REASON =
+  'Initial Primary Master designation during secure bootstrap.';
+
+function assertPrimaryMasterCandidate({
+  user,
+  organisationId,
+}) {
+  if (!user) {
+    throw new Error(
+      'A Primary Master candidate is required.'
+    );
+  }
+
+  if (
+    user.organisationId !== organisationId
+  ) {
+    throw new Error(
+      'The Primary Master candidate belongs to a different organisation.'
+    );
+  }
+
+  if (user.role !== 'MASTER') {
+    throw new Error(
+      'The Primary Master candidate must have the MASTER role.'
+    );
+  }
+
+  if (user.accountStatus !== 'ACTIVE') {
+    throw new Error(
+      'The Primary Master candidate must have an ACTIVE account.'
+    );
+  }
+
+  if (
+    user.primaryCafeId ||
+    (user.assignedCafeIds || []).length > 0
+  ) {
+    throw new Error(
+      'The Primary Master candidate cannot be restricted to café assignments.'
+    );
+  }
+}
+
 async function seedMasterUser({
   organisationId,
   masterName,
   masterEmail,
   masterPassword,
 }) {
-  const existingMaster =
-    await User.findOne({
+  const existingMasters =
+    await User.find({
       organisationId,
       role: 'MASTER',
+      accountStatus: {
+        $ne: 'ARCHIVED',
+      },
+    }).sort({
+      createdAt: 1,
+      userId: 1,
     });
 
-  if (existingMaster) {
-    console.log(
-      `MASTER already exists: ${existingMaster.userId}`
+  const existingPrimaryMasters =
+    existingMasters.filter(
+      (user) => user.isPrimaryMaster
     );
 
-    return existingMaster;
+  if (
+    existingPrimaryMasters.length > 1
+  ) {
+    throw new Error(
+      'Multiple Primary Master accounts exist for this organisation.'
+    );
+  }
+
+  if (
+    existingPrimaryMasters.length === 1
+  ) {
+    const primaryMaster =
+      existingPrimaryMasters[0];
+
+    if (
+      existingMasters.some(
+        (user) =>
+          user.userId !==
+          primaryMaster.userId
+      )
+    ) {
+      throw new Error(
+        'Additional active MASTER accounts exist alongside the Primary Master.'
+      );
+    }
+
+    assertPrimaryMasterCandidate({
+      user: primaryMaster,
+      organisationId,
+    });
+
+    await primaryMaster.validate();
+
+    console.log(
+      `Primary MASTER already exists: ${primaryMaster.userId}`
+    );
+
+    return primaryMaster;
+  }
+
+  if (existingMasters.length > 1) {
+    throw new Error(
+      'Multiple MASTER accounts exist and no Primary Master can be selected automatically.'
+    );
+  }
+
+  if (existingMasters.length === 1) {
+    const legacyMaster =
+      existingMasters[0];
+
+    assertPrimaryMasterCandidate({
+      user: legacyMaster,
+      organisationId,
+    });
+
+    const designatedAt = new Date();
+
+    const designationResult =
+      await User.collection.updateOne(
+        {
+          _id: legacyMaster._id,
+          organisationId,
+          role: 'MASTER',
+          accountStatus: 'ACTIVE',
+          isPrimaryMaster: {
+            $ne: true,
+          },
+        },
+        {
+          $set: {
+            isPrimaryMaster: true,
+            primaryMasterDesignatedAt:
+              designatedAt,
+            primaryMasterDesignatedBy:
+              legacyMaster.userId,
+            primaryMasterDesignationReason:
+              PRIMARY_MASTER_DESIGNATION_REASON,
+            updatedBy:
+              legacyMaster.userId,
+          },
+          $push: {
+            roleHistory: {
+              toRole: 'MASTER',
+              changedAt:
+                designatedAt,
+              changedBy:
+                legacyMaster.userId,
+              reason:
+                PRIMARY_MASTER_DESIGNATION_REASON,
+              correlationId: null,
+              sessionId: null,
+            },
+          },
+        }
+      );
+
+    if (
+      designationResult.matchedCount !== 1 ||
+      designationResult.modifiedCount !== 1
+    ) {
+      throw new Error(
+        'The existing MASTER could not be designated as Primary Master.'
+      );
+    }
+
+    const primaryMaster =
+      await User.findById(
+        legacyMaster._id
+      );
+
+    assertPrimaryMasterCandidate({
+      user: primaryMaster,
+      organisationId,
+    });
+
+    await primaryMaster.validate();
+
+    console.log(
+      `Designated existing MASTER as Primary Master: ${primaryMaster.userId}`
+    );
+
+    return primaryMaster;
   }
 
   const duplicateEmail =
@@ -203,6 +373,8 @@ async function seedMasterUser({
       masterPassword
     );
 
+  const designatedAt = new Date();
+
   const masterUser =
     await User.create({
       userId,
@@ -215,6 +387,27 @@ async function seedMasterUser({
       accountStatus: 'ACTIVE',
       primaryCafeId: null,
       assignedCafeIds: [],
+      isPrimaryMaster: true,
+      primaryMasterDesignatedAt:
+        designatedAt,
+      primaryMasterDesignatedBy:
+        userId,
+      primaryMasterDesignationReason:
+        PRIMARY_MASTER_DESIGNATION_REASON,
+      roleHistory: [
+        {
+          toRole: 'MASTER',
+          changedAt:
+            designatedAt,
+          changedBy:
+            userId,
+          reason:
+            PRIMARY_MASTER_DESIGNATION_REASON,
+          correlationId: null,
+          sessionId: null,
+        },
+      ],
+      cafeAssignmentHistory: [],
       passwordHash,
       mustChangePassword: true,
       passwordChangedAt: new Date(),
@@ -227,7 +420,7 @@ async function seedMasterUser({
     });
 
   console.log(
-    `Created MASTER user: ${masterUser.userId}`
+    `Created Primary MASTER user: ${masterUser.userId}`
   );
 
   return masterUser;
@@ -376,4 +569,14 @@ async function runSeed() {
   }
 }
 
-runSeed();
+if (require.main === module) {
+  runSeed();
+}
+
+module.exports = {
+  PRIMARY_MASTER_DESIGNATION_REASON,
+  assertPrimaryMasterCandidate,
+  seedMasterUser,
+  seedPermissionRules,
+  runSeed,
+};

@@ -4,6 +4,7 @@
   "description": "",
   "main": "src/server.js",
  "scripts": {
+  "test": "node --test",
   "start": "node src/server.js",
   "seed": "node src/scripts/seedInitialData.js",
   "check": "node src/scripts/checkAllJavaScript.js",

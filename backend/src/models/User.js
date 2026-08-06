@@ -13,6 +13,125 @@ const ACCOUNT_STATUSES = [
   'ARCHIVED',
 ];
 
+const roleHistoryEntrySchema = new mongoose.Schema(
+  {
+    fromRole: {
+      type: String,
+      enum: USER_ROLES,
+      default: undefined,
+    },
+
+    toRole: {
+      type: String,
+      required: true,
+      enum: USER_ROLES,
+    },
+
+    changedAt: {
+      type: Date,
+      required: true,
+      default: Date.now,
+    },
+
+    changedBy: {
+      type: String,
+      required: true,
+      trim: true,
+      uppercase: true,
+    },
+
+    reason: {
+      type: String,
+      required: true,
+      trim: true,
+      maxlength: 2000,
+    },
+
+    correlationId: {
+      type: String,
+      trim: true,
+      maxlength: 150,
+      default: null,
+    },
+
+    sessionId: {
+      type: String,
+      trim: true,
+      maxlength: 200,
+      default: null,
+    },
+  },
+  {
+    _id: false,
+  }
+);
+
+const cafeAssignmentHistoryEntrySchema =
+  new mongoose.Schema(
+    {
+      previousAssignedCafeIds: {
+        type: [String],
+        default: [],
+      },
+
+      assignedCafeIds: {
+        type: [String],
+        default: [],
+      },
+
+      previousPrimaryCafeId: {
+        type: String,
+        trim: true,
+        uppercase: true,
+        default: null,
+      },
+
+      primaryCafeId: {
+        type: String,
+        trim: true,
+        uppercase: true,
+        default: null,
+      },
+
+      changedAt: {
+        type: Date,
+        required: true,
+        default: Date.now,
+      },
+
+      changedBy: {
+        type: String,
+        required: true,
+        trim: true,
+        uppercase: true,
+      },
+
+      reason: {
+        type: String,
+        required: true,
+        trim: true,
+        maxlength: 2000,
+      },
+
+      correlationId: {
+        type: String,
+        trim: true,
+        maxlength: 150,
+        default: null,
+      },
+
+      sessionId: {
+        type: String,
+        trim: true,
+        maxlength: 200,
+        default: null,
+      },
+    },
+    {
+      _id: false,
+    }
+  );
+
 const userSchema = new mongoose.Schema(
   {
     userId: {
@@ -93,6 +212,45 @@ const userSchema = new mongoose.Schema(
         uppercase: true,
       },
     ],
+
+    isPrimaryMaster: {
+      type: Boolean,
+      required: true,
+      default: false,
+      immutable: true,
+      index: true,
+    },
+
+    primaryMasterDesignatedAt: {
+      type: Date,
+      immutable: true,
+      default: null,
+      required() {
+        return this.isPrimaryMaster;
+      },
+    },
+
+    primaryMasterDesignatedBy: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      immutable: true,
+      default: null,
+      required() {
+        return this.isPrimaryMaster;
+      },
+    },
+
+    primaryMasterDesignationReason: {
+      type: String,
+      trim: true,
+      maxlength: 2000,
+      immutable: true,
+      default: null,
+      required() {
+        return this.isPrimaryMaster;
+      },
+    },
 
     passwordHash: {
       type: String,
@@ -177,6 +335,16 @@ const userSchema = new mongoose.Schema(
       default: 0,
     },
 
+    roleHistory: {
+      type: [roleHistoryEntrySchema],
+      default: [],
+    },
+
+    cafeAssignmentHistory: {
+      type: [cafeAssignmentHistoryEntrySchema],
+      default: [],
+    },
+
     preferredLanguage: {
       type: String,
       trim: true,
@@ -250,6 +418,20 @@ userSchema.index(
   { name: 'organisation_cafe_status' }
 );
 
+userSchema.index(
+  {
+    organisationId: 1,
+    isPrimaryMaster: 1,
+  },
+  {
+    unique: true,
+    name: 'organisation_primary_master_unique',
+    partialFilterExpression: {
+      isPrimaryMaster: true,
+    },
+  }
+);
+
 userSchema.pre('validate', function normalizeUserFields() {
   if (this.email) {
     this.email = this.email.trim().toLowerCase();
@@ -275,6 +457,110 @@ userSchema.pre('validate', function normalizeUserFields() {
           .map((cafeId) => cafeId.trim().toUpperCase())
       ),
     ];
+  }
+
+  if (this.primaryMasterDesignatedBy) {
+    this.primaryMasterDesignatedBy =
+      this.primaryMasterDesignatedBy
+        .trim()
+        .toUpperCase();
+  }
+
+  if (Array.isArray(this.roleHistory)) {
+    this.roleHistory.forEach((entry) => {
+      if (entry.changedBy) {
+        entry.changedBy =
+          entry.changedBy
+            .trim()
+            .toUpperCase();
+      }
+    });
+  }
+
+  if (
+    Array.isArray(
+      this.cafeAssignmentHistory
+    )
+  ) {
+    this.cafeAssignmentHistory.forEach(
+      (entry) => {
+        entry.previousAssignedCafeIds = [
+          ...new Set(
+            (
+              entry.previousAssignedCafeIds ||
+              []
+            )
+              .filter(Boolean)
+              .map((cafeId) =>
+                cafeId
+                  .trim()
+                  .toUpperCase()
+              )
+          ),
+        ];
+
+        entry.assignedCafeIds = [
+          ...new Set(
+            (entry.assignedCafeIds || [])
+              .filter(Boolean)
+              .map((cafeId) =>
+                cafeId
+                  .trim()
+                  .toUpperCase()
+              )
+          ),
+        ];
+
+        if (entry.changedBy) {
+          entry.changedBy =
+            entry.changedBy
+              .trim()
+              .toUpperCase();
+        }
+      }
+    );
+  }
+
+  if (this.isPrimaryMaster) {
+    if (this.role !== 'MASTER') {
+      this.invalidate(
+        'role',
+        'The Primary Master must retain the MASTER role.'
+      );
+    }
+
+    if (this.accountStatus !== 'ACTIVE') {
+      this.invalidate(
+        'accountStatus',
+        'The Primary Master account must remain active.'
+      );
+    }
+
+    if (this.primaryCafeId) {
+      this.invalidate(
+        'primaryCafeId',
+        'The Primary Master cannot be restricted to a primary café.'
+      );
+    }
+
+    if (
+      Array.isArray(this.assignedCafeIds) &&
+      this.assignedCafeIds.length > 0
+    ) {
+      this.invalidate(
+        'assignedCafeIds',
+        'The Primary Master cannot be restricted to assigned cafés.'
+      );
+    }
+  } else if (
+    this.primaryMasterDesignatedAt ||
+    this.primaryMasterDesignatedBy ||
+    this.primaryMasterDesignationReason
+  ) {
+    this.invalidate(
+      'isPrimaryMaster',
+      'Primary Master designation metadata requires isPrimaryMaster to be true.'
+    );
   }
 });
 
