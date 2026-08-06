@@ -126,4 +126,4 @@
 ### Exact Stage 2 Starting Point
 - **Baseline Branch**: `main`
 - **Starting Commit**: Final Stage 1 correction commit
-- **Next Task**: Stage 2 (Café Master, Multi-Café Scoping & Operational Governance)
+- **Next Task**: Stage 2 — Employee Search and Full Employee Profile
