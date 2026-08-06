@@ -2,6 +2,12 @@
 
 const mongoose = require('mongoose');
 
+const {
+  buildEmployeeSearchTerms,
+  normalizeOptionalText,
+  normalizePreviousNames,
+} = require('../services/employeeReadService');
+
 const USER_ROLES = ['MASTER', 'OWNER', 'CAFE_ADMIN', 'STAFF'];
 
 const ACCOUNT_STATUSES = [
@@ -12,6 +18,84 @@ const ACCOUNT_STATUSES = [
   'DISABLED',
   'ARCHIVED',
 ];
+
+const addressSchema = new mongoose.Schema(
+  {
+    line1: {
+      type: String,
+      trim: true,
+      maxlength: 200,
+      default: '',
+    },
+
+    line2: {
+      type: String,
+      trim: true,
+      maxlength: 200,
+      default: '',
+    },
+
+    city: {
+      type: String,
+      trim: true,
+      maxlength: 120,
+      default: '',
+    },
+
+    state: {
+      type: String,
+      trim: true,
+      maxlength: 120,
+      default: '',
+    },
+
+    postalCode: {
+      type: String,
+      trim: true,
+      maxlength: 20,
+      default: '',
+    },
+
+    country: {
+      type: String,
+      trim: true,
+      maxlength: 120,
+      default: '',
+    },
+  },
+  {
+    _id: false,
+  }
+);
+
+const emergencyContactSchema =
+  new mongoose.Schema(
+    {
+      name: {
+        type: String,
+        trim: true,
+        maxlength: 120,
+        default: '',
+      },
+
+      relationship: {
+        type: String,
+        trim: true,
+        maxlength: 80,
+        default: '',
+      },
+
+      phone: {
+        type: String,
+        trim: true,
+        maxlength: 20,
+        default: '',
+      },
+    },
+    {
+      _id: false,
+    }
+  );
 
 const roleHistoryEntrySchema = new mongoose.Schema(
   {
@@ -165,6 +249,61 @@ const userSchema = new mongoose.Schema(
       trim: true,
       maxlength: 120,
       default: '',
+    },
+
+    previousNames: [
+      {
+        type: String,
+        trim: true,
+        maxlength: 120,
+      },
+    ],
+
+    employeeSearchTerms: {
+      type: [
+        {
+          type: String,
+          maxlength: 120,
+        },
+      ],
+      select: false,
+      default: [],
+    },
+
+    joiningDate: {
+      type: Date,
+      default: null,
+    },
+
+    employmentType: {
+      type: String,
+      trim: true,
+      maxlength: 80,
+      default: '',
+    },
+
+    department: {
+      type: String,
+      trim: true,
+      maxlength: 120,
+      default: '',
+    },
+
+    designation: {
+      type: String,
+      trim: true,
+      maxlength: 120,
+      default: '',
+    },
+
+    address: {
+      type: addressSchema,
+      default: null,
+    },
+
+    emergencyContact: {
+      type: emergencyContactSchema,
+      default: null,
     },
 
     email: {
@@ -421,6 +560,18 @@ userSchema.index(
 userSchema.index(
   {
     organisationId: 1,
+    employeeSearchTerms: 1,
+    accountStatus: 1,
+  },
+  {
+    name:
+      'organisation_employee_search_status',
+  }
+);
+
+userSchema.index(
+  {
+    organisationId: 1,
     isPrimaryMaster: 1,
   },
   {
@@ -444,6 +595,72 @@ userSchema.pre('validate', function normalizeUserFields() {
   if (this.organisationId) {
     this.organisationId = this.organisationId.trim().toUpperCase();
   }
+
+  this.name =
+    normalizeOptionalText(this.name);
+
+  this.preferredName =
+    normalizeOptionalText(
+      this.preferredName
+    );
+
+  this.previousNames =
+    normalizePreviousNames(
+      this.previousNames
+    );
+
+  this.employmentType =
+    normalizeOptionalText(
+      this.employmentType
+    );
+
+  this.department =
+    normalizeOptionalText(
+      this.department
+    );
+
+  this.designation =
+    normalizeOptionalText(
+      this.designation
+    );
+
+  if (this.address) {
+    for (const field of [
+      'line1',
+      'line2',
+      'city',
+      'state',
+      'postalCode',
+      'country',
+    ]) {
+      this.address[field] =
+        normalizeOptionalText(
+          this.address[field]
+        );
+    }
+  }
+
+  if (this.emergencyContact) {
+    for (const field of [
+      'name',
+      'relationship',
+      'phone',
+    ]) {
+      this.emergencyContact[field] =
+        normalizeOptionalText(
+          this.emergencyContact[field]
+        );
+    }
+  }
+
+  this.employeeSearchTerms =
+    buildEmployeeSearchTerms({
+      name: this.name,
+      preferredName:
+        this.preferredName,
+      previousNames:
+        this.previousNames,
+    });
 
   if (this.primaryCafeId) {
     this.primaryCafeId = this.primaryCafeId.trim().toUpperCase();
@@ -592,6 +809,7 @@ userSchema.methods.toJSON = function safeUserJSON() {
   delete user.mfaSecretEncrypted;
   delete user.pendingMfaSecretEncrypted;
   delete user.recoveryCodeHashes;
+  delete user.employeeSearchTerms;
 
   return user;
 };
