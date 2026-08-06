@@ -25,6 +25,23 @@ const {
   ApiError,
 } = require('../utils/ApiError');
 
+const {
+  normalizeIdentifier: govNormId,
+  normalizeCafeIds: govNormCafes,
+  loadActor,
+  loadTarget,
+  assertNotPrimaryMasterTarget,
+  assertMayActOnMasterTarget,
+  rejectProtectedFields,
+  assertStatusIsNotNoOp,
+  assertCafeChangeIsNotNoOp,
+  validateCafeIds,
+  buildCafeAssignmentHistoryEntry,
+  buildUserSnapshot,
+  revokeTargetSessions,
+  auditGovernanceSuccess,
+} = require('../services/userGovernanceService');
+
 const ROLE_PREFIXES = {
   MASTER: 'MU',
   OWNER: 'OW',
@@ -433,6 +450,12 @@ const createUser = asyncHandler(
     const passwordHash =
       await hashPassword(password);
 
+    const reason =
+      typeof request.body?.reason ===
+        'string'
+        ? request.body.reason.trim()
+        : '';
+
     const user = await User.create({
       userId,
       organisationId:
@@ -467,6 +490,29 @@ const createUser = asyncHandler(
         request.auth.userId,
     });
 
+    // Audit user creation (no secrets)
+    try {
+      await auditGovernanceSuccess({
+        request,
+        action: 'USER_CREATED',
+        target: user,
+        before: null,
+        after: {
+          userId: user.userId,
+          role: user.role,
+          accountStatus: user.accountStatus,
+          email: user.email,
+          name: user.name,
+          primaryCafeId: user.primaryCafeId,
+          assignedCafeIds: user.assignedCafeIds,
+        },
+        reason: reason || 'User created.',
+        riskClassification: 'MEDIUM',
+      });
+    } catch (_err) {
+      // Non-fatal
+    }
+
     return response.status(201).json({
       success: true,
       message:
@@ -484,10 +530,16 @@ const updateUser = asyncHandler(
   async (request, response) => {
     requireMaster(request);
 
+    // ── Reject protected fields first ──
+    rejectProtectedFields(request.body);
+
     const userId =
-      normalizeIdentifier(
+      govNormId(
         request.params.userId
       );
+
+    // Load actor freshly for governance checks
+    const actorDocument = await loadActor(request);
 
     const user = await User.findOne({
       organisationId:
@@ -506,12 +558,20 @@ const updateUser = asyncHandler(
       );
     }
 
+    // Primary Master protection — no admin updates to PM
+    assertNotPrimaryMasterTarget(user, 'profile cannot be administratively modified');
+
+    // Secondary Master cannot modify another Master
+    assertMayActOnMasterTarget(actorDocument, user);
+
     const allowedTextFields = [
       'name',
       'preferredName',
       'phone',
       'preferredLanguage',
     ];
+
+    const beforeSnapshot = buildUserSnapshot(user);
 
     allowedTextFields.forEach(
       (field) => {
@@ -563,33 +623,36 @@ const updateUser = asyncHandler(
       user.email = email;
     }
 
+    // ── Café assignment governance ──
     if (
       request.body?.assignedCafeIds !==
         undefined ||
       request.body?.primaryCafeId !==
         undefined
     ) {
-      const assignedCafeIds =
+      const newAssignedCafeIds =
         request.body.assignedCafeIds !==
         undefined
-          ? normalizeCafeIds(
+          ? govNormCafes(
               request.body.assignedCafeIds
             )
-          : user.assignedCafeIds;
+          : govNormCafes(user.assignedCafeIds);
 
-      const primaryCafeId =
+      const newPrimaryCafeId =
         request.body.primaryCafeId !==
         undefined
-          ? normalizeIdentifier(
+          ? govNormId(
               request.body.primaryCafeId
             ) || null
           : user.primaryCafeId;
+
+      // Primary Master café restriction is already blocked by assertNotPrimaryMasterTarget above
 
       if (
         ['CAFE_ADMIN', 'STAFF'].includes(
           user.role
         ) &&
-        assignedCafeIds.length === 0
+        newAssignedCafeIds.length === 0
       ) {
         throw new ApiError(
           400,
@@ -601,24 +664,90 @@ const updateUser = asyncHandler(
       await validateCafeAssignments({
         organisationId:
           request.auth.organisationId,
-        assignedCafeIds,
-        primaryCafeId,
+        assignedCafeIds: newAssignedCafeIds,
+        primaryCafeId: newPrimaryCafeId,
       });
 
-      user.assignedCafeIds =
-        assignedCafeIds;
+      // No-op detection
+      const previousPrimary = user.primaryCafeId;
+      const previousAssigned = govNormCafes(user.assignedCafeIds);
 
-      user.primaryCafeId =
-        primaryCafeId;
+      const normalizedPrev = [...previousAssigned].sort();
+      const normalizedNew = [...newAssignedCafeIds].sort();
+      const sameAssigned =
+        normalizedPrev.length === normalizedNew.length &&
+        normalizedPrev.every((id, i) => id === normalizedNew[i]);
+      const samePrimary =
+        (previousPrimary || null) === (newPrimaryCafeId || null);
 
-      user.sessionVersion += 1;
-      user.permissionsVersion += 1;
+      const cafeChanged = !sameAssigned || !samePrimary;
+
+      if (cafeChanged) {
+        const reason =
+          typeof request.body?.reason === 'string'
+            ? request.body.reason.trim()
+            : '';
+
+        // Append café assignment history
+        const historyEntry = buildCafeAssignmentHistoryEntry({
+          previousPrimaryCafeId: previousPrimary,
+          previousAssignedCafeIds: previousAssigned,
+          currentPrimaryCafeId: newPrimaryCafeId,
+          currentAssignedCafeIds: newAssignedCafeIds,
+          request,
+          reason: reason || 'Café assignment updated.',
+        });
+
+        user.cafeAssignmentHistory.push(historyEntry);
+        user.assignedCafeIds = newAssignedCafeIds;
+        user.primaryCafeId = newPrimaryCafeId;
+        user.sessionVersion += 1;
+        user.permissionsVersion += 1;
+      }
     }
 
     user.updatedBy =
       request.auth.userId;
 
     await user.save();
+
+    const afterSnapshot = buildUserSnapshot(user);
+
+    // Session revocation when café assignments changed
+    const cafeVersionChanged =
+      afterSnapshot.sessionVersion > beforeSnapshot.sessionVersion;
+
+    let revokedCount = 0;
+
+    if (cafeVersionChanged) {
+      try {
+        revokedCount = await revokeTargetSessions({
+          request,
+          target: user,
+          reason: 'CAFE_ASSIGNMENT_CHANGED',
+        });
+      } catch (_err) {
+        // Non-fatal
+      }
+
+      try {
+        await auditGovernanceSuccess({
+          request,
+          action: 'USER_CAFE_ASSIGNMENT_CHANGED',
+          target: user,
+          before: beforeSnapshot,
+          after: afterSnapshot,
+          reason:
+            typeof request.body?.reason === 'string'
+              ? request.body.reason.trim()
+              : 'Café assignment updated.',
+          riskClassification: 'HIGH',
+          metadata: { revokedSessionCount: revokedCount },
+        });
+      } catch (_err) {
+        // Non-fatal
+      }
+    }
 
     return response.status(200).json({
       success: true,
@@ -660,6 +789,9 @@ const changeUserStatus = asyncHandler(
       );
     }
 
+    // Load actor freshly for governance checks
+    const actorDocument = await loadActor(request);
+
     const user = await User.findOne({
       organisationId:
         request.auth.organisationId,
@@ -677,6 +809,16 @@ const changeUserStatus = asyncHandler(
       );
     }
 
+    // Primary Master protection — PM must always remain ACTIVE
+    assertNotPrimaryMasterTarget(
+      user,
+      'status cannot be changed — Primary Master must remain ACTIVE'
+    );
+
+    // Secondary Master cannot deactivate/suspend another Master
+    assertMayActOnMasterTarget(actorDocument, user);
+
+    // Self-deactivation protection
     if (
       user.userId ===
         request.auth.userId &&
@@ -689,31 +831,73 @@ const changeUserStatus = asyncHandler(
       );
     }
 
+    // No-op detection
+    assertStatusIsNotNoOp(user.accountStatus, accountStatus);
+
+    const beforeSnapshot = buildUserSnapshot(user);
+    const accessRemoved = accountStatus !== 'ACTIVE';
+
     user.accountStatus =
       accountStatus;
 
     user.lockedUntil = null;
     user.failedLoginAttempts = 0;
-    user.sessionVersion += 1;
+
+    if (accessRemoved) {
+      user.sessionVersion += 1;
+    }
+
     user.updatedBy =
       request.auth.userId;
 
     await user.save();
 
-    if (accountStatus !== 'ACTIVE') {
-      await revokeAllUserSessions({
-        organisationId:
-          request.auth.organisationId,
-        userId: user.userId,
-        revokedBy:
-          request.auth.userId,
-        reason:
-          accountStatus === 'LOCKED'
-            ? 'ACCOUNT_LOCKED'
-            : 'ACCOUNT_SUSPENDED',
-        details:
-          `User account status changed to ${accountStatus}.`,
+    const afterSnapshot = buildUserSnapshot(user);
+
+    let revokedCount = 0;
+
+    if (accessRemoved) {
+      try {
+        revokedCount = await revokeAllUserSessions({
+          organisationId:
+            request.auth.organisationId,
+          userId: user.userId,
+          revokedBy:
+            request.auth.userId,
+          reason:
+            accountStatus === 'LOCKED'
+              ? 'ACCOUNT_LOCKED'
+              : 'ACCOUNT_SUSPENDED',
+          details:
+            `User account status changed to ${accountStatus}.`,
+        });
+      } catch (_err) {
+        // Non-fatal
+      }
+    }
+
+    const reason =
+      typeof request.body?.reason === 'string'
+        ? request.body.reason.trim()
+        : `Status changed to ${accountStatus}.`;
+
+    try {
+      await auditGovernanceSuccess({
+        request,
+        action: 'USER_STATUS_CHANGED',
+        target: user,
+        before: beforeSnapshot,
+        after: afterSnapshot,
+        reason,
+        riskClassification: 'HIGH',
+        metadata: {
+          fromStatus: beforeSnapshot.accountStatus,
+          toStatus: accountStatus,
+          revokedSessionCount: revokedCount,
+        },
       });
+    } catch (_err) {
+      // Non-fatal
     }
 
     return response.status(200).json({
@@ -762,6 +946,9 @@ const archiveUser = asyncHandler(
       );
     }
 
+    // Load actor freshly for governance checks
+    const actorDocument = await loadActor(request);
+
     const user = await User.findOne({
       organisationId:
         request.auth.organisationId,
@@ -779,6 +966,17 @@ const archiveUser = asyncHandler(
       );
     }
 
+    // Primary Master protection
+    assertNotPrimaryMasterTarget(
+      user,
+      'Primary Master cannot be archived'
+    );
+
+    // Secondary Master cannot archive another Master
+    assertMayActOnMasterTarget(actorDocument, user);
+
+    const beforeSnapshot = buildUserSnapshot(user);
+
     user.accountStatus = 'ARCHIVED';
     user.archivedAt = new Date();
     user.archivedBy =
@@ -790,16 +988,39 @@ const archiveUser = asyncHandler(
 
     await user.save();
 
-    await revokeAllUserSessions({
-      organisationId:
-        request.auth.organisationId,
-      userId: user.userId,
-      revokedBy:
-        request.auth.userId,
-      reason: 'ACCOUNT_SUSPENDED',
-      details:
-        'The user account was archived.',
-    });
+    const afterSnapshot = buildUserSnapshot(user);
+
+    let revokedCount = 0;
+
+    try {
+      revokedCount = await revokeAllUserSessions({
+        organisationId:
+          request.auth.organisationId,
+        userId: user.userId,
+        revokedBy:
+          request.auth.userId,
+        reason: 'ADMIN_REVOKED',
+        details:
+          'The user account was archived.',
+      });
+    } catch (_err) {
+      // Non-fatal
+    }
+
+    try {
+      await auditGovernanceSuccess({
+        request,
+        action: 'USER_ARCHIVED',
+        target: user,
+        before: beforeSnapshot,
+        after: afterSnapshot,
+        reason,
+        riskClassification: 'HIGH',
+        metadata: { revokedSessionCount: revokedCount },
+      });
+    } catch (_err) {
+      // Non-fatal
+    }
 
     return response.status(200).json({
       success: true,

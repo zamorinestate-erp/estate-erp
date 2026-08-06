@@ -21,6 +21,11 @@ const {
   archiveUser,
 } = require('../controllers/userController');
 
+const {
+  previewRoleChange,
+  executeRoleChange,
+} = require('../controllers/roleGovernanceController');
+
 const router = express.Router();
 
 const authorizeUserAdministration =
@@ -43,6 +48,11 @@ const userAdministrationGuards = [
   requireReason,
 ];
 
+const userPreviewGuards = [
+  authorizeUserAdministration,
+  requireStepUpAuthentication,
+];
+
 router.use(authenticate);
 
 router
@@ -53,13 +63,23 @@ router
     createUser
   );
 
-router
-  .route('/:userId')
-  .get(getUser)
-  .patch(
-    ...userAdministrationGuards,
-    updateUser
-  );
+router.post(
+  '/:userId/role-impact',
+  ...userPreviewGuards,
+  previewRoleChange
+);
+
+router.post(
+  '/:userId/role/preview',
+  ...userPreviewGuards,
+  previewRoleChange
+);
+
+router.patch(
+  '/:userId/role',
+  ...userAdministrationGuards,
+  executeRoleChange
+);
 
 router.patch(
   '/:userId/status',
@@ -72,5 +92,13 @@ router.post(
   ...userAdministrationGuards,
   archiveUser
 );
+
+router
+  .route('/:userId')
+  .get(getUser)
+  .patch(
+    ...userAdministrationGuards,
+    updateUser
+  );
 
 module.exports = router;
