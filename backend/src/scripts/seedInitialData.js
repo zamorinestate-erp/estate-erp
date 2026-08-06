@@ -1,12 +1,17 @@
 'use strict';
 
-require('dotenv').config();
-
-const mongoose = require('mongoose');
+require('dotenv').config({
+  quiet: true,
+});
 
 const {
   connectDatabase,
+  disconnectDatabase,
 } = require('../config/database');
+
+const {
+  loadEnvironment,
+} = require('../config/environment');
 
 const {
   User,
@@ -208,22 +213,14 @@ async function seedMasterUser({
   masterEmail,
   masterPassword,
 }) {
-  const existingMasters =
+  const existingPrimaryMasters =
     await User.find({
       organisationId,
-      role: 'MASTER',
-      accountStatus: {
-        $ne: 'ARCHIVED',
-      },
+      isPrimaryMaster: true,
     }).sort({
       createdAt: 1,
       userId: 1,
     });
-
-  const existingPrimaryMasters =
-    existingMasters.filter(
-      (user) => user.isPrimaryMaster
-    );
 
   if (
     existingPrimaryMasters.length > 1
@@ -239,18 +236,6 @@ async function seedMasterUser({
     const primaryMaster =
       existingPrimaryMasters[0];
 
-    if (
-      existingMasters.some(
-        (user) =>
-          user.userId !==
-          primaryMaster.userId
-      )
-    ) {
-      throw new Error(
-        'Additional active MASTER accounts exist alongside the Primary Master.'
-      );
-    }
-
     assertPrimaryMasterCandidate({
       user: primaryMaster,
       organisationId,
@@ -264,6 +249,18 @@ async function seedMasterUser({
 
     return primaryMaster;
   }
+
+  const existingMasters =
+    await User.find({
+      organisationId,
+      role: 'MASTER',
+      accountStatus: {
+        $ne: 'ARCHIVED',
+      },
+    }).sort({
+      createdAt: 1,
+      userId: 1,
+    });
 
   if (existingMasters.length > 1) {
     throw new Error(
@@ -351,6 +348,7 @@ async function seedMasterUser({
 
   const duplicateEmail =
     await User.findOne({
+      organisationId,
       email: masterEmail,
     });
 
@@ -515,6 +513,9 @@ async function seedPermissionRules({
 
 async function runSeed() {
   try {
+    const environment =
+      loadEnvironment();
+
     const organisationId =
       normalizeIdentifier(
         requireEnvironmentValue(
@@ -539,7 +540,16 @@ async function runSeed() {
         'INITIAL_MASTER_PASSWORD'
       );
 
-    await connectDatabase();
+    await connectDatabase({
+      uri: environment.mongodbUri,
+      serverSelectionTimeoutMs:
+        environment
+          .mongodbServerSelectionTimeoutMs,
+      maxPoolSize:
+        environment.mongodbMaxPoolSize,
+      minPoolSize:
+        environment.mongodbMinPoolSize,
+    });
 
     const masterUser =
       await seedMasterUser({
@@ -565,7 +575,7 @@ async function runSeed() {
 
     process.exitCode = 1;
   } finally {
-    await mongoose.disconnect();
+    await disconnectDatabase();
   }
 }
 

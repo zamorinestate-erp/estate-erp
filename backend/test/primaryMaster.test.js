@@ -202,8 +202,11 @@ test('bootstrap preserves one valid existing Primary Master without database wri
   const primaryMaster = makePrimaryMaster();
   const originalFind = User.find;
 
-  User.find = () => ({
-    sort: async () => [primaryMaster],
+  User.find = (filter) => ({
+    sort: async () =>
+      filter.isPrimaryMaster === true
+        ? [primaryMaster]
+        : [],
   });
 
   try {
@@ -220,6 +223,103 @@ test('bootstrap preserves one valid existing Primary Master without database wri
   }
 });
 
+test('bootstrap permits additional non-primary MASTER accounts when a valid Primary Master exists', async () => {
+  const primaryMaster = makePrimaryMaster();
+  const additionalMaster = makeRegularMaster();
+  const originalFind = User.find;
+  let primaryQueryCount = 0;
+
+  User.find = (filter) => ({
+    sort: async () => {
+      if (filter.isPrimaryMaster === true) {
+        primaryQueryCount += 1;
+        return [primaryMaster];
+      }
+
+      return [primaryMaster, additionalMaster];
+    },
+  });
+
+  try {
+    const result = await seedMasterUser({
+      organisationId: 'ORG-TEST',
+      masterName: 'Ignored',
+      masterEmail: 'ignored@example.com',
+      masterPassword: 'IgnoredPassword123!',
+    });
+
+    assert.equal(result, primaryMaster);
+    assert.equal(primaryQueryCount, 1);
+  } finally {
+    User.find = originalFind;
+  }
+});
+
+test('bootstrap keeps duplicate MASTER email lookup scoped to the organisation', async () => {
+  const originalFind = User.find;
+  const originalFindOne = User.findOne;
+  let duplicateEmailFilter = null;
+
+  User.find = () => ({
+    sort: async () => [],
+  });
+
+  User.findOne = async (filter) => {
+    duplicateEmailFilter = filter;
+    return {
+      userId: 'OW-0999',
+    };
+  };
+
+  try {
+    await assert.rejects(
+      seedMasterUser({
+        organisationId: 'ORG-TEST',
+        masterName: 'New Primary Master',
+        masterEmail: 'shared@example.com',
+        masterPassword: 'IgnoredPassword123!',
+      }),
+      /MASTER email is already used/
+    );
+
+    assert.deepEqual(duplicateEmailFilter, {
+      organisationId: 'ORG-TEST',
+      email: 'shared@example.com',
+    });
+  } finally {
+    User.find = originalFind;
+    User.findOne = originalFindOne;
+  }
+});
+test('bootstrap rejects an archived Primary Master instead of creating a replacement', async () => {
+  const archivedPrimaryMaster =
+    makePrimaryMaster({
+      accountStatus: 'ARCHIVED',
+    });
+  const originalFind = User.find;
+
+  User.find = (filter) => ({
+    sort: async () =>
+      filter.isPrimaryMaster === true
+        ? [archivedPrimaryMaster]
+        : [],
+  });
+
+  try {
+    await assert.rejects(
+      seedMasterUser({
+        organisationId: 'ORG-TEST',
+        masterName: 'Ignored',
+        masterEmail: 'ignored@example.com',
+        masterPassword: 'IgnoredPassword123!',
+      }),
+      /must have an ACTIVE account/
+    );
+  } finally {
+    User.find = originalFind;
+  }
+});
+
 test('bootstrap rejects ambiguous multiple MASTER accounts', async () => {
   const first = makeRegularMaster();
   const second = makeRegularMaster({
@@ -228,8 +328,11 @@ test('bootstrap rejects ambiguous multiple MASTER accounts', async () => {
   });
   const originalFind = User.find;
 
-  User.find = () => ({
-    sort: async () => [first, second],
+  User.find = (filter) => ({
+    sort: async () =>
+      filter.isPrimaryMaster === true
+        ? []
+        : [first, second],
   });
 
   try {
@@ -258,8 +361,11 @@ test('bootstrap safely designates one eligible legacy MASTER', async () => {
   const originalUpdateOne = User.collection.updateOne;
   let updateArguments = null;
 
-  User.find = () => ({
-    sort: async () => [legacyMaster],
+  User.find = (filter) => ({
+    sort: async () =>
+      filter.isPrimaryMaster === true
+        ? []
+        : [legacyMaster],
   });
   User.findById = async () => designatedMaster;
   User.collection.updateOne = async (...args) => {
