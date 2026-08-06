@@ -1,9 +1,7 @@
 'use strict';
 
 const { User } = require('../models/User');
-const {
-  verifyAccessToken,
-} = require('../services/authService');
+const authService = require('../services/authService');
 
 const ACCESS_TOKEN_COOKIE =
   'zamorin_access_token';
@@ -69,7 +67,7 @@ async function authenticate(
     const {
       payload,
       session,
-    } = await verifyAccessToken(accessToken);
+    } = await authService.verifyAccessToken(accessToken);
 
     const user = await User.findOne({
       organisationId: payload.org,
