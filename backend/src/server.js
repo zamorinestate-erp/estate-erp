@@ -1,39 +1,328 @@
 'use strict';
+
+require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const cookieParser = require('cookie-parser');
-require('dotenv').config();
-const { connectDatabase } = require('./config/database');
-const { requestContext } = require('./middleware/requestContext');
-const { notFound } = require('./middleware/notFound');
-const { errorHandler } = require('./middleware/errorHandler');
+
+const {
+  connectDatabase,
+  disconnectDatabase,
+  getDatabaseState,
+} = require('./config/database');
+
+const {
+  loadEnvironment,
+} = require('./config/environment');
+
+const {
+  requestContext,
+} = require('./middleware/requestContext');
+
+const {
+  notFound,
+} = require('./middleware/notFound');
+
+const {
+  errorHandler,
+} = require('./middleware/errorHandler');
+
 const apiRouter = require('./routes');
-const app = express();
-const PORT = Number(process.env.PORT) || 4000;
-const NODE_ENV = process.env.NODE_ENV || 'development';
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || '').split(',').map((origin) => origin.trim()).filter(Boolean);
-app.disable('x-powered-by');
-app.use(requestContext);
-app.use(cookieParser());
-app.use(helmet());
-app.use(express.json({ limit: '1mb' }));
-app.use(cors({ origin: allowedOrigins.length ? allowedOrigins : false, credentials: true }));
-const apiLimiter = rateLimit({ windowMs: 15 * 60 * 1000, limit: 300, standardHeaders: 'draft-8', legacyHeaders: false });
-app.use('/api/', apiLimiter);
-app.get('/api/v1/health', (req, res) => res.status(200).json({ status: 'ok', service: 'zamorin-cafe-erp-api' }));
-app.get('/api/v1/readiness', (req, res) => { const ready = mongoose.connection.readyState === 1; res.status(ready ? 200 : 503).json({ status: ready ? 'ready' : 'not_ready', database: ready ? 'connected' : 'disconnected' }); });
-app.use('/api/v1', apiRouter);
-app.use(notFound);
-app.use(errorHandler);
-const MONGODB_URI = process.env.MONGODB_URI || '';
+
+const SERVICE_NAME =
+  'zamorin-cafe-erp-api';
+
+function createCorsOptions(environment) {
+  const allowedOrigins =
+    new Set(environment.allowedOrigins);
+
+  return {
+    credentials: true,
+
+    origin(origin, callback) {
+      if (
+        !origin ||
+        allowedOrigins.has(origin)
+      ) {
+        callback(null, true);
+        return;
+      }
+
+      const error = new Error(
+        'The request origin is not allowed.'
+      );
+
+      error.statusCode = 403;
+      error.code = 'CORS_ORIGIN_DENIED';
+
+      callback(error);
+    },
+
+    optionsSuccessStatus: 204,
+  };
+}
+
+function createApp(environment) {
+  const app = express();
+
+  app.disable('x-powered-by');
+
+  if (environment.production) {
+    app.set('trust proxy', 1);
+  }
+
+  app.use(requestContext);
+  app.use(cookieParser());
+  app.use(helmet());
+  app.use(
+    express.json({
+      limit: '1mb',
+    })
+  );
+  app.use(
+    cors(
+      createCorsOptions(environment)
+    )
+  );
+
+  const apiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 300,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+  });
+
+  app.get(
+    '/api/v1/health',
+    (request, response) =>
+      response.status(200).json({
+        success: true,
+        status: 'ok',
+        service: SERVICE_NAME,
+        timestamp:
+          new Date().toISOString(),
+        correlationId:
+          request.correlationId || null,
+      })
+  );
+
+  app.get(
+    '/api/v1/readiness',
+    (request, response) => {
+      const database =
+        getDatabaseState();
+
+      const ready =
+        database.readyState === 1;
+
+      return response
+        .status(ready ? 200 : 503)
+        .json({
+          success: ready,
+          status: ready
+            ? 'ready'
+            : 'not_ready',
+          service: SERVICE_NAME,
+          database: database.status,
+          timestamp:
+            new Date().toISOString(),
+          correlationId:
+            request.correlationId || null,
+        });
+    }
+  );
+
+  app.use('/api/', apiLimiter);
+  app.use('/api/v1', apiRouter);
+  app.use(notFound);
+  app.use(errorHandler);
+
+  return app;
+}
+
+async function listen(
+  app,
+  {
+    host,
+    port,
+  }
+) {
+  return new Promise(
+    (resolve, reject) => {
+      const server = app.listen(
+        port,
+        host,
+        () => resolve(server)
+      );
+
+      server.once('error', reject);
+    }
+  );
+}
+
 async function startServer() {
-      if (!MONGODB_URI) throw new Error('MONGODB_URI is required.');
-        await connectDatabase(MONGODB_URI);
-          app.listen(PORT, () => console.log(`Zamorin Cafe ERP API running on port ${PORT} in ${NODE_ENV} mode.`));
+  const environment =
+    loadEnvironment();
+
+  await connectDatabase({
+    uri: environment.mongodbUri,
+    serverSelectionTimeoutMs:
+      environment
+        .mongodbServerSelectionTimeoutMs,
+    maxPoolSize:
+      environment.mongodbMaxPoolSize,
+    minPoolSize:
+      environment.mongodbMinPoolSize,
+  });
+
+  const app =
+    createApp(environment);
+
+  const server =
+    await listen(app, {
+      host: environment.host,
+      port: environment.port,
+    });
+
+  console.log(
+    `Zamorin Cafe ERP API running on ${environment.host}:${environment.port} in ${environment.nodeEnvironment} mode.`
+  );
+
+  return {
+    app,
+    server,
+    environment,
+  };
+}
+
+function closeHttpServer(
+  server,
+  timeoutMs = 10000
+) {
+  if (!server) {
+    return Promise.resolve();
+  }
+
+  return new Promise(
+    (resolve, reject) => {
+      const forceCloseTimer =
+        setTimeout(() => {
+          if (
+            typeof server
+              .closeAllConnections ===
+            'function'
+          ) {
+            server
+              .closeAllConnections();
           }
-          startServer().catch((error) => {
-              console.error('Backend startup failed:', error.message);
-                process.exitCode = 1;
-                });
+        }, timeoutMs);
+
+      forceCloseTimer.unref();
+
+      server.close((error) => {
+        clearTimeout(
+          forceCloseTimer
+        );
+
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        resolve();
+      });
+    }
+  );
+}
+
+function registerShutdownHandlers(
+  server
+) {
+  let shutdownPromise = null;
+
+  const shutdown = (signal) => {
+    if (shutdownPromise) {
+      return shutdownPromise;
+    }
+
+    shutdownPromise = (async () => {
+      console.log(
+        `${signal} received; shutting down safely.`
+      );
+
+      await closeHttpServer(server);
+      await disconnectDatabase();
+
+      console.log(
+        'Zamorin Cafe ERP API stopped.'
+      );
+    })();
+
+    return shutdownPromise;
+  };
+
+  for (const signal of [
+    'SIGTERM',
+    'SIGINT',
+  ]) {
+    process.once(signal, () => {
+      shutdown(signal)
+        .then(() => {
+          process.exitCode = 0;
+        })
+        .catch((error) => {
+          console.error(
+            'Backend shutdown failed:',
+            error.message
+          );
+
+          process.exitCode = 1;
+        });
+    });
+  }
+
+  return shutdown;
+}
+
+async function runMain() {
+  try {
+    const {
+      server,
+    } = await startServer();
+
+    registerShutdownHandlers(
+      server
+    );
+  } catch (error) {
+    try {
+      await disconnectDatabase();
+    } catch (disconnectError) {
+      console.error(
+        'Database cleanup failed:',
+        disconnectError.message
+      );
+    }
+
+    console.error(
+      'Backend startup failed:',
+      error.message
+    );
+
+    process.exitCode = 1;
+  }
+}
+
+if (require.main === module) {
+  runMain();
+}
+
+module.exports = {
+  createApp,
+  createCorsOptions,
+  closeHttpServer,
+  registerShutdownHandlers,
+  startServer,
+};

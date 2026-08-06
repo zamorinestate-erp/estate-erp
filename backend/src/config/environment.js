@@ -1,0 +1,232 @@
+'use strict';
+
+const VALID_NODE_ENVIRONMENTS = new Set([
+  'development',
+  'test',
+  'production',
+]);
+
+function requireConfiguredValue(name, value) {
+  const normalized =
+    typeof value === 'string'
+      ? value.trim()
+      : '';
+
+  if (!normalized) {
+    throw new Error(`${name} is required.`);
+  }
+
+  const placeholderMarkers = [
+    'USERNAME',
+    'PASSWORD',
+    'CLUSTER.mongodb.net',
+    'replace-with',
+    'changeme',
+    'change-me',
+    'placeholder',
+  ];
+
+  if (
+    placeholderMarkers.some((marker) =>
+      normalized
+        .toLowerCase()
+        .includes(marker.toLowerCase())
+    )
+  ) {
+    throw new Error(
+      `${name} contains a placeholder value.`
+    );
+  }
+
+  return normalized;
+}
+
+function parsePositiveInteger(
+  name,
+  value,
+  fallback
+) {
+  const candidate =
+    value === undefined || value === ''
+      ? fallback
+      : Number.parseInt(value, 10);
+
+  if (
+    !Number.isInteger(candidate) ||
+    candidate < 1
+  ) {
+    throw new Error(
+      `${name} must be a positive integer.`
+    );
+  }
+
+  return candidate;
+}
+
+function parseNonNegativeInteger(
+  name,
+  value,
+  fallback
+) {
+  const candidate =
+    value === undefined || value === ''
+      ? fallback
+      : Number.parseInt(value, 10);
+
+  if (
+    !Number.isInteger(candidate) ||
+    candidate < 0
+  ) {
+    throw new Error(
+      `${name} must be a non-negative integer.`
+    );
+  }
+
+  return candidate;
+}
+
+function parseAllowedOrigins(
+  value,
+  production
+) {
+  const origins = String(value || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  if (production && origins.length === 0) {
+    throw new Error(
+      'ALLOWED_ORIGINS is required in production.'
+    );
+  }
+
+  if (origins.includes('*')) {
+    throw new Error(
+      'ALLOWED_ORIGINS must not contain a wildcard.'
+    );
+  }
+
+  const normalized = origins.map(
+    (origin) => {
+      let parsed;
+
+      try {
+        parsed = new URL(origin);
+      } catch {
+        throw new Error(
+          'ALLOWED_ORIGINS contains an invalid URL.'
+        );
+      }
+
+      if (
+        !['http:', 'https:'].includes(
+          parsed.protocol
+        )
+      ) {
+        throw new Error(
+          'ALLOWED_ORIGINS supports only HTTP and HTTPS origins.'
+        );
+      }
+
+      return parsed.origin;
+    }
+  );
+
+  return [...new Set(normalized)];
+}
+
+function loadEnvironment(
+  source = process.env
+) {
+  const nodeEnvironment = String(
+    source.NODE_ENV || 'development'
+  )
+    .trim()
+    .toLowerCase();
+
+  if (
+    !VALID_NODE_ENVIRONMENTS.has(
+      nodeEnvironment
+    )
+  ) {
+    throw new Error(
+      'NODE_ENV must be development, test or production.'
+    );
+  }
+
+  const production =
+    nodeEnvironment === 'production';
+
+  const mongodbUri =
+    requireConfiguredValue(
+      'MONGODB_URI',
+      source.MONGODB_URI
+    );
+
+  const jwtAccessSecret =
+    requireConfiguredValue(
+      'JWT_ACCESS_SECRET',
+      source.JWT_ACCESS_SECRET
+    );
+
+  const mfaEncryptionKey =
+    requireConfiguredValue(
+      'MFA_ENCRYPTION_KEY',
+      source.MFA_ENCRYPTION_KEY
+    );
+
+  if (jwtAccessSecret.length < 32) {
+    throw new Error(
+      'JWT_ACCESS_SECRET must contain at least 32 characters.'
+    );
+  }
+
+  if (mfaEncryptionKey.length < 32) {
+    throw new Error(
+      'MFA_ENCRYPTION_KEY must contain at least 32 characters.'
+    );
+  }
+
+  return Object.freeze({
+    nodeEnvironment,
+    production,
+    host:
+      String(source.HOST || '0.0.0.0')
+        .trim() || '0.0.0.0',
+    port: parsePositiveInteger(
+      'PORT',
+      source.PORT,
+      4000
+    ),
+    mongodbUri,
+    mongodbServerSelectionTimeoutMs:
+      parsePositiveInteger(
+        'MONGODB_SERVER_SELECTION_TIMEOUT_MS',
+        source.MONGODB_SERVER_SELECTION_TIMEOUT_MS,
+        10000
+      ),
+    mongodbMaxPoolSize:
+      parsePositiveInteger(
+        'MONGODB_MAX_POOL_SIZE',
+        source.MONGODB_MAX_POOL_SIZE,
+        10
+      ),
+    mongodbMinPoolSize:
+      parseNonNegativeInteger(
+        'MONGODB_MIN_POOL_SIZE',
+        source.MONGODB_MIN_POOL_SIZE,
+        0
+      ),
+    allowedOrigins: parseAllowedOrigins(
+      source.ALLOWED_ORIGINS,
+      production
+    ),
+    jwtAccessSecret,
+    mfaEncryptionKey,
+  });
+}
+
+module.exports = {
+  loadEnvironment,
+  parseAllowedOrigins,
+};
