@@ -75,6 +75,10 @@ const DEFAULT_PERMISSION_RULES = [
     effect: 'ALLOW',
     scope: 'ORGANISATION',
     requiresMfa: true,
+    requiresStepUpAuthentication: true,
+    requiresReason: true,
+    requiresAuditEvent: true,
+    requiresReauthentication: false,
     description:
       'MASTER may manage organisation users.',
   },
@@ -447,6 +451,52 @@ async function seedPermissionRules({
       });
 
     if (existingRule) {
+      const desiredSecurityPolicy = {
+        requiresMfa:
+          Boolean(rule.requiresMfa),
+        requiresStepUpAuthentication:
+          Boolean(
+            rule
+              .requiresStepUpAuthentication
+          ),
+        requiresReason:
+          Boolean(rule.requiresReason),
+        requiresAuditEvent:
+          rule.requiresAuditEvent !== false,
+        requiresReauthentication:
+          Boolean(
+            rule.requiresReauthentication
+          ),
+      };
+
+      let securityPolicyChanged = false;
+
+      for (
+        const [field, value] of
+        Object.entries(
+          desiredSecurityPolicy
+        )
+      ) {
+        if (existingRule[field] !== value) {
+          existingRule[field] = value;
+          securityPolicyChanged = true;
+        }
+      }
+
+      if (securityPolicyChanged) {
+        existingRule.updatedBy =
+          masterUserId;
+
+        existingRule.policyVersion =
+          Number.isInteger(
+            existingRule.policyVersion
+          )
+            ? existingRule.policyVersion + 1
+            : 1;
+
+        await existingRule.save();
+      }
+
       existingCount += 1;
       continue;
     }
@@ -481,11 +531,18 @@ async function seedPermissionRules({
       requiresMfa:
         rule.requiresMfa,
       requiresStepUpAuthentication:
-        false,
-      requiresReason: false,
-      requiresAuditEvent: true,
+        Boolean(
+          rule
+            .requiresStepUpAuthentication
+        ),
+      requiresReason:
+        Boolean(rule.requiresReason),
+      requiresAuditEvent:
+        rule.requiresAuditEvent !== false,
       requiresReauthentication:
-        false,
+        Boolean(
+          rule.requiresReauthentication
+        ),
       isDelegable: false,
       isActive: true,
       effectiveFrom: new Date(),
@@ -584,6 +641,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  DEFAULT_PERMISSION_RULES,
   PRIMARY_MASTER_DESIGNATION_REASON,
   assertPrimaryMasterCandidate,
   seedMasterUser,
