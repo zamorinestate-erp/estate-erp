@@ -69,6 +69,23 @@ const listApprovals = asyncHandler(async (request, response) => {
   });
 });
 
+/**
+ * Entity types whose approval decisions are absolutely restricted to MASTER.
+ * These workflows have their own canonical controllers (expenseController,
+ * attendanceController, etc.) that enforce MASTER-only decisions.
+ * Allowing OWNER or CAFE_ADMIN to decide a generic Approval record tagged
+ * with these types would create an audit-trail pollution risk.
+ */
+const PROTECTED_ENTITY_TYPES = new Set([
+  'EXPENSE',
+  'OVERTIME',
+  'OVERTIME_DECISION',
+  'PAYROLL',
+  'PAYROLL_RUN',
+  'PERSONAL_LEDGER',
+  'USER_ADMINISTRATION',
+]);
+
 const decideApproval = asyncHandler(async (request, response) => {
   const approvalId = normalizeId(request.params.approvalId);
   const { decision, reason } = request.body; // APPROVED or REJECTED
@@ -85,6 +102,21 @@ const decideApproval = asyncHandler(async (request, response) => {
 
   if (!approval) {
     throw new ApiError(404, 'NOT_FOUND', 'Approval request not found.');
+  }
+
+  // Security: block non-MASTER roles from deciding approvals that belong to
+  // MASTER-only protected workflows. These must be decided through their
+  // canonical controller endpoints, not the generic approval route.
+  if (
+    PROTECTED_ENTITY_TYPES.has(approval.entityType) &&
+    request.auth.role !== 'MASTER'
+  ) {
+    throw new ApiError(
+      403,
+      'PROTECTED_ENTITY_TYPE',
+      `Approvals of type ${approval.entityType} must be decided through the ` +
+      `canonical workflow endpoint by MASTER only. Use the appropriate module route.`
+    );
   }
 
   if (approval.status !== 'PENDING') {
