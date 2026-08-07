@@ -71,6 +71,21 @@ const assetRoutes =
 const departmentOrderRoutes =
   require('./departmentOrderRoutes');
 
+const revenueShareRoutes =
+  require('./revenueShareRoutes');
+
+const dashboardRoutes =
+  require('./dashboardRoutes');
+
+const fileRoutes =
+  require('./fileRoutes');
+
+const trashRoutes =
+  require('./trashRoutes');
+
+const searchRoutes =
+  require('./searchRoutes');
+
 const router = express.Router();
 
 router.use(
@@ -186,6 +201,31 @@ router.use(
 router.use(
   '/department-orders',
   departmentOrderRoutes
+);
+
+router.use(
+  '/revenue-share',
+  revenueShareRoutes
+);
+
+router.use(
+  '/dashboard',
+  dashboardRoutes
+);
+
+router.use(
+  '/files',
+  fileRoutes
+);
+
+router.use(
+  '/trash',
+  trashRoutes
+);
+
+router.use(
+  '/search',
+  searchRoutes
 );
 
 router.get(
