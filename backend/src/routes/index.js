@@ -56,6 +56,12 @@ const billRoutes =
 const customerRoutes =
   require('./customerRoutes');
 
+const taskRoutes =
+  require('./taskRoutes');
+
+const approvalRoutes =
+  require('./approvalRoutes');
+
 const router = express.Router();
 
 router.use(
@@ -146,6 +152,16 @@ router.use(
 router.use(
   '/customers',
   customerRoutes
+);
+
+router.use(
+  '/tasks',
+  taskRoutes
+);
+
+router.use(
+  '/approvals',
+  approvalRoutes
 );
 
 router.get(
