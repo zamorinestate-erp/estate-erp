@@ -41,6 +41,12 @@ const personalLedgerRoutes =
 const inventoryRoutes =
   require('./inventoryRoutes');
 
+const vendorRoutes =
+  require('./vendorRoutes');
+
+const procurementRoutes =
+  require('./procurementRoutes');
+
 const router = express.Router();
 
 router.use(
@@ -106,6 +112,16 @@ router.use(
 router.use(
   '/inventory',
   inventoryRoutes
+);
+
+router.use(
+  '/vendors',
+  vendorRoutes
+);
+
+router.use(
+  '/procurement',
+  procurementRoutes
 );
 
 router.get(
