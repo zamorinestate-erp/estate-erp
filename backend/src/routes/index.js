@@ -53,6 +53,9 @@ const menuRoutes =
 const billRoutes =
   require('./billRoutes');
 
+const customerRoutes =
+  require('./customerRoutes');
+
 const router = express.Router();
 
 router.use(
@@ -138,6 +141,11 @@ router.use(
 router.use(
   '/bills',
   billRoutes
+);
+
+router.use(
+  '/customers',
+  customerRoutes
 );
 
 router.get(
