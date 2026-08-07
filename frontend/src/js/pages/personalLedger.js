@@ -1,11 +1,23 @@
-// PAGE: Personal Ledger (Master-only, Section 22.9 / Part G.20)
-import { showToast, confirmAction } from "../components.js";
-
-let entries = [
-  { date: "18 Jul", category: "Personal transfer", amount: 12000, note: "To personal savings" },
-  { date: "12 Jul", category: "Reimbursement", amount: -3200, note: "Business cash used for personal errand" },
-  { date: "02 Jul", category: "Personal spend", amount: 5400, note: "Family expense, restricted withdrawal linked" },
-];
+// =============================================================================
+// PAGE: Personal Ledger
+//
+// ABSOLUTE RESTRICTION: MASTER ONLY
+// (backend/src/middleware/authorize.js → ABSOLUTE_ROLE_RESTRICTIONS.PERSONAL_LEDGER)
+//
+// This module is completely undiscoverable to Owner, Cafe Admin and Staff:
+//   - Not listed in their navigation.
+//   - Not reachable through Global Search.
+//   - Not referenced in notification text.
+//   - API routes return 403/404 to non-Master roles (enforced by backend).
+//
+// CURRENT STATE (Stage 8, Batch 1):
+// The demo sample entries and demo add-entry action have been removed.
+// The backend model and API (POST /personal-ledger, GET /personal-ledger,
+// correction/reversal endpoints) will be built in Batch 2.
+// Until then this page renders an honest empty state.
+//
+// Do NOT re-add local sample entries or a fake add-entry button.
+// =============================================================================
 
 export function renderLedger() {
   return `
@@ -15,36 +27,30 @@ export function renderLedger() {
           <div style="color:#fff; font-size:22px; font-weight:700;" class="font-display">Personal Ledger</div>
           <div class="muted-white" style="font-size:13.5px;">Visible only to you. Never shared with Owner, Cafe Admin, or Staff.</div>
         </div>
-        <button class="btn btn-primary" id="add-entry-btn">+ New entry</button>
+        <button class="btn btn-primary" id="add-entry-btn" disabled title="Backend integration in progress">+ New entry</button>
       </div>
 
-      <div class="glass" style="padding:22px;">
-        <table class="glass-table" id="ledger-table">
-          <thead><tr><th>Date</th><th>Category</th><th>Note</th><th style="text-align:right;">Amount</th></tr></thead>
-          <tbody>${entries.map(rowHtml).join("")}</tbody>
-        </table>
+      <div class="glass" style="padding:32px; text-align:center; color:var(--color-text-muted);">
+        <div style="font-size:36px; margin-bottom:12px;">🔐</div>
+        <div style="font-size:16px; font-weight:600; color:#fff; margin-bottom:8px;">Personal Ledger</div>
+        <div style="font-size:13.5px; max-width:400px; margin:0 auto; line-height:1.6;">
+          Backend integration is in progress (Stage 8, Batch 2).<br>
+          Your private ledger entries will appear here once the
+          authenticated API is connected.
+        </div>
       </div>
     </div>
   `;
 }
 
-function rowHtml(e) {
-  const color = e.amount < 0 ? "#FF9E8F" : "var(--color-accent-mint-bright)";
-  const sign = e.amount < 0 ? "-" : "+";
-  return `<tr><td>${e.date}</td><td>${e.category}</td><td class="muted-white">${e.note}</td><td style="text-align:right; color:${color}; font-weight:600;">${sign}₹${Math.abs(e.amount).toLocaleString("en-IN")}</td></tr>`;
-}
-
 export function wireLedger(root) {
-  root.querySelector("#add-entry-btn").addEventListener("click", () => {
-    confirmAction({
-      title: "Add a Personal Ledger entry",
-      description: "In the full build this opens a form (category, amount, payee, notes, attachment). This demo adds a sample entry so you can see it land in the ledger.",
-      confirmLabel: "Add sample entry",
-      onConfirm: () => {
-        entries = [{ date: "Today", category: "Personal spend", amount: 1500, note: "Added from demo" }, ...entries];
-        root.querySelector("#ledger-table tbody").innerHTML = entries.map(rowHtml).join("");
-        showToast("Entry added to Personal Ledger", "mint");
-      },
+  // Add-entry button is disabled until Batch 2 (backend API) is complete.
+  // Do not add any local/demo entry logic here.
+  const btn = root.querySelector("#add-entry-btn");
+  if (btn) {
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      // No-op: button is disabled. This listener is a safety guard only.
     });
-  });
+  }
 }

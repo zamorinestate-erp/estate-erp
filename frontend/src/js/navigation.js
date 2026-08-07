@@ -53,9 +53,11 @@ export const NAVIGATION = {
       { id: "payroll", label: "Payroll & Payslips", icon: "payslip", route: "payroll" },
       { id: "my-payslips", label: "My Payslips", icon: "payslip", route: "staff-payslips" },
       { id: "reports", label: "Reports", icon: "reports", route: "reports" },
-      { id: "own-ledger", label: "Personal Ledger", icon: "ledger", route: "ledger" },
       { id: "settings", label: "Settings & Preferences", icon: "settings", route: "settings" },
     ],
+    // Personal Ledger is MASTER-ONLY (ABSOLUTE_ROLE_RESTRICTIONS.PERSONAL_LEDGER).
+    // It must never appear in Owner navigation, global search, notifications, or
+    // any other surface discoverable by Owner, Cafe Admin or Staff.
     footnote: "A separate portal — never Master's platform-admin screens.",
   },
 

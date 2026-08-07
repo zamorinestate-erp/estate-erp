@@ -37,11 +37,14 @@ import { renderPayrollManagement, wirePayrollManagement } from "./pages/payrollM
 import { renderAnnouncements, wireAnnouncements } from "./pages/announcements.js";
 import { renderNotAvailable, renderNotBuiltYet } from "./pages/notAvailable.js";
 
+// ROLE_LABELS: display-safe generic labels used only for topbar scope chip
+// until /auth/me bootstrap provides the real user's display name.
+// "Ravi" and "Priya" were demo sample names — removed in Stage 8 Batch 1.
 const ROLE_LABELS = {
   [ROLES.MASTER]: "Master",
   [ROLES.OWNER]: "Owner",
-  [ROLES.CAFE_ADMIN]: "Ravi",
-  [ROLES.STAFF]: "Priya",
+  [ROLES.CAFE_ADMIN]: "Cafe Admin",
+  [ROLES.STAFF]: "Staff",
 };
 
 export function navigate(route) {
