@@ -47,6 +47,12 @@ const vendorRoutes =
 const procurementRoutes =
   require('./procurementRoutes');
 
+const menuRoutes =
+  require('./menuRoutes');
+
+const billRoutes =
+  require('./billRoutes');
+
 const router = express.Router();
 
 router.use(
@@ -122,6 +128,16 @@ router.use(
 router.use(
   '/procurement',
   procurementRoutes
+);
+
+router.use(
+  '/menu',
+  menuRoutes
+);
+
+router.use(
+  '/bills',
+  billRoutes
 );
 
 router.get(
