@@ -17,6 +17,10 @@ const {
 } = require('../models/Bill');
 
 const {
+  CashTransaction,
+} = require('../models/CashTransaction');
+
+const {
   MenuItem,
 } = require('../models/MenuItem');
 
@@ -246,6 +250,38 @@ const createBill = asyncHandler(async (request, response) => {
   });
 
   await bill.save();
+
+  // If paid in CASH and completed, automatically record in Cash Book
+  if (shouldComplete && payMethod === 'CASH') {
+    try {
+      const ctSeqId = await SequenceCounter.generateId({
+        organisationId: request.auth.organisationId,
+        sequenceKey: `CASH_TX_${datePart}`,
+        prefix: `CT-${datePart}`,
+        minimumDigits: 4,
+      });
+
+      const cashTx = new CashTransaction({
+        cashTransactionId: ctSeqId,
+        organisationId: request.auth.organisationId,
+        cafeId,
+        businessDate,
+        transactionType: 'CASH_IN',
+        direction: 'INWARD',
+        amountPaisa: totalPaisa,
+        paymentMethod: 'CASH',
+        status: 'POSTED',
+        description: `POS Sale Receipt #${seqId}`,
+        sourceModule: 'POS_BILLING',
+        sourceRecordId: seqId,
+        performedByUserId: request.auth.userId,
+      });
+
+      await cashTx.save();
+    } catch (err) {
+      console.error('Failed to auto-post cash transaction for bill', seqId, err);
+    }
+  }
 
   await recordRequestAudit({
     request,
