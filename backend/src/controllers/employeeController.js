@@ -1,0 +1,305 @@
+'use strict';
+
+const { User } = require('../models/User');
+const {
+  asyncHandler,
+} = require('../utils/asyncHandler');
+const {
+  ApiError,
+} = require('../utils/ApiError');
+const {
+  buildEmployeeSearchQueryTerm,
+  buildEmployeeScopeFilter,
+  buildEmployeeSearchResult,
+} = require('../services/employeeReadService');
+
+const DEFAULT_EMPLOYEE_SEARCH_LIMIT = 25;
+const MAX_EMPLOYEE_SEARCH_LIMIT = 100;
+const MAX_EMPLOYEE_SEARCH_PAGE = 100000;
+const MAX_EMPLOYEE_SEARCH_INPUT_LENGTH = 120;
+const MAX_EMPLOYEE_NAME_QUERY_LENGTH = 32;
+
+const EMPLOYEE_SEARCH_PROJECTION = [
+  'userId',
+  'name',
+  'preferredName',
+  'role',
+  'accountStatus',
+  'isPrimaryMaster',
+  'primaryCafeId',
+  'assignedCafeIds',
+  'joiningDate',
+  'department',
+  'designation',
+].join(' ');
+
+const PERMANENT_EMPLOYEE_ID_PATTERN =
+  /^[A-Z]{2,10}-\d{4,}$/;
+
+function readSingleQueryValue(value, fieldName) {
+  if (Array.isArray(value)) {
+    throw new ApiError(
+      400,
+      'INVALID_SEARCH_QUERY',
+      `${fieldName} must be provided only once.`
+    );
+  }
+
+  return typeof value === 'string'
+    ? value.trim()
+    : '';
+}
+
+function parseStrictPositiveInteger(
+  value,
+  {
+    fieldName,
+    fallback,
+    maximum,
+  }
+) {
+  if (
+    value === undefined ||
+    value === null ||
+    value === ''
+  ) {
+    return fallback;
+  }
+
+  const text = readSingleQueryValue(
+    value,
+    fieldName
+  );
+
+  if (!/^\d+$/.test(text)) {
+    throw new ApiError(
+      400,
+      'INVALID_PAGINATION',
+      `${fieldName} must be a positive integer.`
+    );
+  }
+
+  const parsedValue =
+    Number.parseInt(text, 10);
+
+  if (
+    !Number.isSafeInteger(parsedValue) ||
+    parsedValue < 1 ||
+    parsedValue > maximum
+  ) {
+    throw new ApiError(
+      400,
+      'INVALID_PAGINATION',
+      `${fieldName} must be between 1 and ${maximum}.`
+    );
+  }
+
+  return parsedValue;
+}
+
+function buildEmployeeSearchRequest(query = {}) {
+  const rawQuery = readSingleQueryValue(
+    query.q,
+    'q'
+  );
+
+  if (!rawQuery) {
+    throw new ApiError(
+      400,
+      'EMPLOYEE_SEARCH_QUERY_REQUIRED',
+      'An employee search query is required.'
+    );
+  }
+
+  if (
+    rawQuery.length >
+    MAX_EMPLOYEE_SEARCH_INPUT_LENGTH
+  ) {
+    throw new ApiError(
+      400,
+      'EMPLOYEE_SEARCH_QUERY_TOO_LONG',
+      `The employee search query must not exceed ${MAX_EMPLOYEE_SEARCH_INPUT_LENGTH} characters.`
+    );
+  }
+
+  const normalizedIdentifier =
+    rawQuery.toUpperCase();
+
+  let mode;
+  let normalizedQuery;
+
+  if (
+    PERMANENT_EMPLOYEE_ID_PATTERN.test(
+      normalizedIdentifier
+    )
+  ) {
+    mode = 'EXACT_ID';
+    normalizedQuery =
+      normalizedIdentifier;
+  } else {
+    mode = 'NAME';
+    normalizedQuery =
+      buildEmployeeSearchQueryTerm(
+        rawQuery
+      );
+
+    if (!normalizedQuery) {
+      throw new ApiError(
+        400,
+        'EMPLOYEE_SEARCH_QUERY_TOO_SHORT',
+        'Name searches require at least two searchable characters.'
+      );
+    }
+
+    if (
+      normalizedQuery.length >
+      MAX_EMPLOYEE_NAME_QUERY_LENGTH
+    ) {
+      throw new ApiError(
+        400,
+        'EMPLOYEE_SEARCH_QUERY_TOO_LONG',
+        `Name searches must not exceed ${MAX_EMPLOYEE_NAME_QUERY_LENGTH} normalized characters.`
+      );
+    }
+  }
+
+  const page =
+    parseStrictPositiveInteger(
+      query.page,
+      {
+        fieldName: 'page',
+        fallback: 1,
+        maximum:
+          MAX_EMPLOYEE_SEARCH_PAGE,
+      }
+    );
+
+  const limit =
+    parseStrictPositiveInteger(
+      query.limit,
+      {
+        fieldName: 'limit',
+        fallback:
+          DEFAULT_EMPLOYEE_SEARCH_LIMIT,
+        maximum:
+          MAX_EMPLOYEE_SEARCH_LIMIT,
+      }
+    );
+
+  return {
+    mode,
+    normalizedQuery,
+    page,
+    limit,
+  };
+}
+
+function buildEmployeeSearchFilter(
+  auth,
+  searchRequest
+) {
+  const filter =
+    buildEmployeeScopeFilter(auth);
+
+  if (
+    searchRequest.mode ===
+    'EXACT_ID'
+  ) {
+    filter.userId =
+      searchRequest.normalizedQuery;
+  } else {
+    filter.employeeSearchTerms =
+      searchRequest.normalizedQuery;
+  }
+
+  return filter;
+}
+
+const searchEmployees = asyncHandler(
+  async (request, response) => {
+    const searchRequest =
+      buildEmployeeSearchRequest(
+        request.query
+      );
+
+    const filter =
+      buildEmployeeSearchFilter(
+        request.auth,
+        searchRequest
+      );
+
+    const skip =
+      (searchRequest.page - 1) *
+      searchRequest.limit;
+
+    const [
+      employeeRows,
+      total,
+    ] = await Promise.all([
+      User.find(filter)
+        .select(
+          EMPLOYEE_SEARCH_PROJECTION
+        )
+        .sort({
+          name: 1,
+          userId: 1,
+        })
+        .skip(skip)
+        .limit(
+          searchRequest.limit
+        )
+        .lean(),
+
+      User.countDocuments(filter),
+    ]);
+
+    const employees =
+      employeeRows.map(
+        buildEmployeeSearchResult
+      );
+
+    return response
+      .status(200)
+      .json({
+        success: true,
+        data: {
+          employees,
+          search: {
+            mode:
+              searchRequest.mode,
+            normalizedQuery:
+              searchRequest
+                .normalizedQuery,
+          },
+          pagination: {
+            page:
+              searchRequest.page,
+            limit:
+              searchRequest.limit,
+            total,
+            totalPages:
+              Math.ceil(
+                total /
+                searchRequest.limit
+              ),
+          },
+        },
+        correlationId:
+          request.correlationId ||
+          null,
+      });
+  }
+);
+
+module.exports = {
+  DEFAULT_EMPLOYEE_SEARCH_LIMIT,
+  MAX_EMPLOYEE_SEARCH_LIMIT,
+  MAX_EMPLOYEE_SEARCH_PAGE,
+  MAX_EMPLOYEE_SEARCH_INPUT_LENGTH,
+  MAX_EMPLOYEE_NAME_QUERY_LENGTH,
+  EMPLOYEE_SEARCH_PROJECTION,
+  PERMANENT_EMPLOYEE_ID_PATTERN,
+  buildEmployeeSearchRequest,
+  buildEmployeeSearchFilter,
+  searchEmployees,
+};

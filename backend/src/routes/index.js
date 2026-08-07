@@ -11,6 +11,9 @@ const cafeRoutes =
 const userRoutes =
   require('./userRoutes');
 
+const employeeRoutes =
+  require('./employeeRoutes');
+
 const auditRoutes =
   require('./auditRoutes');
 
@@ -47,6 +50,11 @@ router.use(
 router.use(
   '/users',
   userRoutes
+);
+
+router.use(
+  '/employees',
+  employeeRoutes
 );
 
 router.use(
