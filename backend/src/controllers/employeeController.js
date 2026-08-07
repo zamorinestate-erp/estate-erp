@@ -11,7 +11,11 @@ const {
   buildEmployeeSearchQueryTerm,
   buildEmployeeScopeFilter,
   buildEmployeeSearchResult,
+  buildEmployeeProfile,
 } = require('../services/employeeReadService');
+const {
+  recordRequestAudit,
+} = require('../services/auditService');
 
 const DEFAULT_EMPLOYEE_SEARCH_LIMIT = 25;
 const MAX_EMPLOYEE_SEARCH_LIMIT = 100;
@@ -291,6 +295,131 @@ const searchEmployees = asyncHandler(
   }
 );
 
+/**
+ * EMPLOYEE FULL PROFILE — shared fetch logic.
+ *
+ * buildEmployeeScopeFilter already enforces:
+ *   - organisation isolation
+ *   - CAFE_ADMIN assigned-café intersection
+ *   - STAFF self-only
+ * assertEmployeeProfileAccess (inside buildEmployeeProfile) performs
+ * a second verification on the found record for defence-in-depth.
+ *
+ * Returns 404 for not-found AND for out-of-scope records to prevent
+ * existence probing.
+ */
+async function fetchProfileForActor(auth, targetUserId) {
+  const filter = buildEmployeeScopeFilter(
+    auth,
+    { targetUserId }
+  );
+
+  const employee = await User.findOne(filter).lean();
+
+  if (!employee) {
+    throw new ApiError(
+      404,
+      'EMPLOYEE_NOT_FOUND',
+      'The employee was not found.'
+    );
+  }
+
+  // buildEmployeeProfile calls assertEmployeeProfileAccess internally,
+  // which performs cross-organisation check and role-specific guards.
+  return buildEmployeeProfile(employee, auth);
+}
+
+/**
+ * GET /api/v1/employees/me
+ * Returns the authenticated user's own full employee profile.
+ * All four roles may call this endpoint.
+ */
+const getSelfProfile = asyncHandler(
+  async (request, response) => {
+    const targetUserId =
+      request.auth.userId;
+
+    const profile =
+      await fetchProfileForActor(
+        request.auth,
+        targetUserId
+      );
+
+    return response
+      .status(200)
+      .json({
+        success: true,
+        data: { profile },
+        correlationId:
+          request.correlationId || null,
+      });
+  }
+);
+
+/**
+ * GET /api/v1/employees/:userId
+ * Returns an employee's full profile, role-serialized.
+ * MASTER  — full authorised profile.
+ * OWNER   — read-only; private contact/bank/gov excluded.
+ * CAFE_ADMIN — active assigned-café employees only.
+ * STAFF   — own profile only (self-access enforced in scope filter).
+ *
+ * Sensitive reveals (MASTER accessing another employee's full profile)
+ * are audit-recorded with riskClassification MEDIUM.
+ */
+const getEmployeeProfile = asyncHandler(
+  async (request, response) => {
+    const rawTargetUserId =
+      typeof request.params.userId === 'string'
+        ? request.params.userId.trim().toUpperCase()
+        : '';
+
+    if (!rawTargetUserId) {
+      throw new ApiError(
+        400,
+        'EMPLOYEE_ID_REQUIRED',
+        'A valid employee user ID is required.'
+      );
+    }
+
+    const profile =
+      await fetchProfileForActor(
+        request.auth,
+        rawTargetUserId
+      );
+
+    // Record sensitive reveal audit when a privileged actor reads
+    // another employee's full profile. Self-reads are lower risk.
+    const isSelfRead =
+      rawTargetUserId === (
+        request.auth.userId || ''
+      ).trim().toUpperCase();
+
+    if (!isSelfRead) {
+      await recordRequestAudit({
+        request,
+        module: 'EMPLOYEES',
+        action: 'READ_FULL_PROFILE',
+        entityType: 'USER',
+        entityId: rawTargetUserId,
+        after: { viewedBy: request.auth.role },
+        result: 'SUCCESS',
+        riskClassification:
+          request.auth.role === 'MASTER' ? 'MEDIUM' : 'LOW',
+      });
+    }
+
+    return response
+      .status(200)
+      .json({
+        success: true,
+        data: { profile },
+        correlationId:
+          request.correlationId || null,
+      });
+  }
+);
+
 module.exports = {
   DEFAULT_EMPLOYEE_SEARCH_LIMIT,
   MAX_EMPLOYEE_SEARCH_LIMIT,
@@ -302,4 +431,6 @@ module.exports = {
   buildEmployeeSearchRequest,
   buildEmployeeSearchFilter,
   searchEmployees,
+  getSelfProfile,
+  getEmployeeProfile,
 };
