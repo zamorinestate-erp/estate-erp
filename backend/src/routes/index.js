@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 
 const express = require('express');
 
@@ -34,6 +34,9 @@ const reportRoutes =
 
 const payrollRoutes =
   require('./payrollRoutes');
+
+const personalLedgerRoutes =
+  require('./personalLedgerRoutes');
 
 const router = express.Router();
 
@@ -90,6 +93,11 @@ router.use(
 router.use(
   '/payroll',
   payrollRoutes
+);
+
+router.use(
+  '/personal-ledger',
+  personalLedgerRoutes
 );
 
 router.get(
