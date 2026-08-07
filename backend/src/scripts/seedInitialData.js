@@ -84,6 +84,19 @@ const DEFAULT_PERMISSION_RULES = [
   },
   {
     role: 'MASTER',
+    permissionCode: 'EMPLOYEE:READ',
+    module: 'EMPLOYEE',
+    resource: 'EMPLOYEE',
+    action: 'READ',
+    effect: 'ALLOW',
+    scope: 'ORGANISATION',
+    requiresMfa: true,
+    requiresAuditEvent: false,
+    description:
+      'MASTER may read organisation employee records.',
+  },
+  {
+    role: 'MASTER',
     permissionCode: 'AUDIT:READ',
     module: 'AUDIT',
     resource: 'AUDIT_EVENT',
@@ -119,6 +132,19 @@ const DEFAULT_PERMISSION_RULES = [
       'OWNER may read organisation user information.',
   },
   {
+    role: 'OWNER',
+    permissionCode: 'EMPLOYEE:READ',
+    module: 'EMPLOYEE',
+    resource: 'EMPLOYEE',
+    action: 'READ',
+    effect: 'ALLOW',
+    scope: 'ORGANISATION',
+    requiresMfa: true,
+    requiresAuditEvent: false,
+    description:
+      'OWNER may read organisation employee records.',
+  },
+  {
     role: 'CAFE_ADMIN',
     permissionCode: 'CAFE:READ',
     module: 'CAFE',
@@ -143,6 +169,19 @@ const DEFAULT_PERMISSION_RULES = [
       'Café Admin may read users in assigned cafés.',
   },
   {
+    role: 'CAFE_ADMIN',
+    permissionCode: 'EMPLOYEE:READ',
+    module: 'EMPLOYEE',
+    resource: 'EMPLOYEE',
+    action: 'READ',
+    effect: 'ALLOW',
+    scope: 'RECORD',
+    requiresMfa: true,
+    requiresAuditEvent: false,
+    description:
+      'Cafe Admin may read active employee records in assigned cafes.',
+  },
+  {
     role: 'STAFF',
     permissionCode: 'USER:READ_SELF',
     module: 'USER',
@@ -153,6 +192,19 @@ const DEFAULT_PERMISSION_RULES = [
     requiresMfa: false,
     description:
       'Staff may read their own user information.',
+  },
+  {
+    role: 'STAFF',
+    permissionCode: 'EMPLOYEE:READ_SELF',
+    module: 'EMPLOYEE',
+    resource: 'EMPLOYEE',
+    action: 'READ',
+    effect: 'ALLOW',
+    scope: 'SELF',
+    requiresMfa: false,
+    requiresAuditEvent: false,
+    description:
+      'Staff may read only their own employee record.',
   },
   {
     role: 'STAFF',
