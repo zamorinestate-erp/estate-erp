@@ -62,6 +62,15 @@ const taskRoutes =
 const approvalRoutes =
   require('./approvalRoutes');
 
+const qualityRoutes =
+  require('./qualityRoutes');
+
+const assetRoutes =
+  require('./assetRoutes');
+
+const departmentOrderRoutes =
+  require('./departmentOrderRoutes');
+
 const router = express.Router();
 
 router.use(
@@ -162,6 +171,21 @@ router.use(
 router.use(
   '/approvals',
   approvalRoutes
+);
+
+router.use(
+  '/quality',
+  qualityRoutes
+);
+
+router.use(
+  '/assets',
+  assetRoutes
+);
+
+router.use(
+  '/department-orders',
+  departmentOrderRoutes
 );
 
 router.get(
