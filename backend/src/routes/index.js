@@ -38,6 +38,9 @@ const payrollRoutes =
 const personalLedgerRoutes =
   require('./personalLedgerRoutes');
 
+const inventoryRoutes =
+  require('./inventoryRoutes');
+
 const router = express.Router();
 
 router.use(
@@ -98,6 +101,11 @@ router.use(
 router.use(
   '/personal-ledger',
   personalLedgerRoutes
+);
+
+router.use(
+  '/inventory',
+  inventoryRoutes
 );
 
 router.get(
