@@ -13,7 +13,8 @@
 | `backend/test/staffLoanAdvanceModel.test.js` | 5 | 5 | 0 | 0 |
 | `backend/test/loanAdvanceService.test.js` | 5 | 5 | 0 | 0 |
 | `backend/test/loanAdvanceSelfServiceApi.test.js` | 4 | 4 | 0 | 0 |
-| Complete backend regression (`node --test`) | 197 | 197 | 0 | 0 |
+| `backend/test/loanAdvanceFrontendContract.test.js` | 3 | 3 | 0 | 0 |
+| Complete backend regression (`node --test`) | 200 | 200 | 0 | 0 |
 
 ## 3. Implemented Foundation
 - Canonical `StaffLoanAdvance` persistence model using INR integer paise and backend-authoritative identity fields.
@@ -37,6 +38,7 @@ Backend:
 - `backend/test/staffLoanAdvanceModel.test.js`
 - `backend/test/loanAdvanceService.test.js`
 - `backend/test/loanAdvanceSelfServiceApi.test.js`
+- `backend/test/loanAdvanceFrontendContract.test.js`
 - `backend/test/employeeReadService.test.js`
 
 Frontend:
