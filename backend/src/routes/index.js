@@ -35,6 +35,9 @@ const reportRoutes =
 const payrollRoutes =
   require('./payrollRoutes');
 
+const loanAdvanceRoutes =
+  require('./loanAdvanceRoutes');
+
 const personalLedgerRoutes =
   require('./personalLedgerRoutes');
 
@@ -141,6 +144,11 @@ router.use(
 router.use(
   '/payroll',
   payrollRoutes
+);
+
+router.use(
+  '/loan-advances',
+  loanAdvanceRoutes
 );
 
 router.use(
