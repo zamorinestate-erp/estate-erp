@@ -33,6 +33,7 @@ import { renderPerformance } from "./pages/cafePerformance.js";
 import { renderStaffAttendance, wireStaffAttendance } from "./pages/staffAttendance.js";
 import { renderStaffLeave, wireStaffLeave } from "./pages/staffLeave.js";
 import { renderStaffPayslips, wireStaffPayslips } from "./pages/staffPayslips.js";
+import { renderStaffLoansAdvances, wireStaffLoansAdvances } from "./pages/staffLoansAdvances.js";
 import { renderPayrollManagement, wirePayrollManagement } from "./pages/payrollManagement.js";
 import { renderAnnouncements, wireAnnouncements } from "./pages/announcements.js";
 import { renderNotAvailable, renderNotBuiltYet } from "./pages/notAvailable.js";
@@ -226,6 +227,11 @@ function renderPage() {
     case "staff-payslips":
       content.innerHTML = renderStaffPayslips();
       wireStaffPayslips(content);
+      break;
+
+    case "staff-loans-advances":
+      content.innerHTML = renderStaffLoansAdvances();
+      wireStaffLoansAdvances(content);
       break;
 
     case "announcements":
