@@ -544,6 +544,11 @@ function buildEmployeeProfile(
   const profile =
     buildBaseEmployeeProfile(value);
 
+  if (auth.userId === value.userId) {
+    profile.availability.loansAndAdvances =
+      'SELF_SERVICE_INTEGRATED';
+  }
+
   if (auth.role === 'MASTER') {
     profile.identity.previousNames =
       copyArray(value.previousNames);

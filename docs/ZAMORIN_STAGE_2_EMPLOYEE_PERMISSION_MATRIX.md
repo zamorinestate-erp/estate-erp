@@ -127,6 +127,7 @@ Legend:
 - `SELF_ONLY` — returned only when the employee is the authenticated actor;
 - `DENIED` — omitted;
 - `NOT_INTEGRATED` — no authoritative source exists yet and no value may be invented.
+- `SELF_SERVICE_INTEGRATED` — an authoritative authenticated self-service source exists for the employee acting on their own record; this does not grant management visibility into another employee's records.
 
 | Profile area | MASTER | OWNER | CAFE_ADMIN | STAFF |
 |---|---|---|---|---|
@@ -149,7 +150,7 @@ Legend:
 | Leave | NOT_INTEGRATED | NOT_INTEGRATED | NOT_INTEGRATED | NOT_INTEGRATED |
 | Shifts | NOT_INTEGRATED | NOT_INTEGRATED | NOT_INTEGRATED | NOT_INTEGRATED |
 | Tasks | NOT_INTEGRATED | NOT_INTEGRATED | NOT_INTEGRATED | NOT_INTEGRATED |
-| Loans and advances | NOT_INTEGRATED | NOT_INTEGRATED | NOT_INTEGRATED | NOT_INTEGRATED |
+| Loans and advances | SELF_SERVICE_INTEGRATED when self; otherwise NOT_INTEGRATED | SELF_SERVICE_INTEGRATED when self; otherwise NOT_INTEGRATED | SELF_SERVICE_INTEGRATED when self; otherwise NOT_INTEGRATED | SELF_SERVICE_INTEGRATED |
 | Documents | NOT_INTEGRATED | NOT_INTEGRATED | NOT_INTEGRATED | NOT_INTEGRATED |
 | Salary summary | Later authorised integration only | DENIED | DENIED | Own-authorised integration only |
 | Bank details | Later sensitive reveal only | DENIED | DENIED | Own-authorised reveal only |

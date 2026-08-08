@@ -321,6 +321,10 @@ test('Owner profile is read-only and excludes private contact and histories', ()
   assert.equal(profile.contact.email, 'priya@example.com');
   assert.equal(profile.contact.phone, '+919999999999');
   assert.equal(
+    profile.availability.loansAndAdvances,
+    'NOT_INTEGRATED'
+  );
+  assert.equal(
     Object.prototype.hasOwnProperty.call(
       profile.contact,
       'address'
@@ -407,6 +411,10 @@ test('Staff profile is self-only and includes authorised own private contact', (
   assert.equal(
     profile.contact.emergencyContact.relationship,
     'Parent'
+  );
+  assert.equal(
+    profile.availability.loansAndAdvances,
+    'SELF_SERVICE_INTEGRATED'
   );
   assertNoSecurityFields(profile);
 

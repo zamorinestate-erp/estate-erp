@@ -164,6 +164,8 @@ archive lifecycle metadata where authorised
 
 Unavailable Stage 2 modules will be omitted or represented through explicit availability metadata; fake records will never be generated.
 
+Loans and advances now expose `SELF_SERVICE_INTEGRATED` availability only when the authenticated employee is viewing their own profile. This metadata does not authorize OWNER, CAFE_ADMIN, MASTER, or STAFF access to another employee's loan or salary-advance records.
+
 ## 8. Role and field visibility
 
 ### Master
