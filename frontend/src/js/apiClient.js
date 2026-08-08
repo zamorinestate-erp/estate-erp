@@ -15,18 +15,58 @@ export const API_BASE_URL = normalizeApiBaseUrl(
   globalThis.ZAMORIN_API_BASE_URL
 );
 
+const DEVICE_ID_STORAGE_KEY = "zamorin-device-id";
+
+let stepUpAuthenticationHandler = null;
+
+export function setStepUpAuthenticationHandler(handler) {
+  if (handler !== null && typeof handler !== "function") {
+    throw new TypeError("Step-up authentication handler must be a function or null.");
+  }
+
+  stepUpAuthenticationHandler = handler;
+}
+
+export function getOrCreateDeviceId() {
+  try {
+    const existing = globalThis.localStorage?.getItem(DEVICE_ID_STORAGE_KEY);
+    if (existing && existing.trim()) return existing.trim();
+  } catch {}
+
+  const cryptoApi = globalThis.crypto;
+  let deviceId;
+
+  if (typeof cryptoApi?.randomUUID === "function") {
+    deviceId = cryptoApi.randomUUID();
+  } else if (typeof cryptoApi?.getRandomValues === "function") {
+    const bytes = new Uint8Array(16);
+    cryptoApi.getRandomValues(bytes);
+    deviceId = Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
+  } else {
+    throw new Error("Secure browser device identification is unavailable.");
+  }
+
+  try {
+    globalThis.localStorage?.setItem(DEVICE_ID_STORAGE_KEY, deviceId);
+  } catch {}
+
+  return deviceId;
+}
+
 export class ApiClientError extends Error {
   constructor({
     status,
     code,
     message,
     correlationId = null,
+    data = null,
   }) {
     super(message);
     this.name = "ApiClientError";
     this.status = status;
     this.code = code;
     this.correlationId = correlationId;
+    this.data = data;
   }
 }
 
@@ -75,6 +115,7 @@ function createApiError(response, payload) {
       "The request could not be completed.",
     correlationId:
       payload?.correlationId || null,
+    data: payload?.data || null,
   });
 }
 
@@ -84,6 +125,7 @@ async function performRequest(
     method = "GET",
     signal,
     body,
+    headers = {},
   } = {}
 ) {
   const hasJsonBody =
@@ -103,6 +145,7 @@ async function performRequest(
                 "application/json",
             }
           : {}),
+        ...headers,
       },
       body: hasJsonBody
         ? JSON.stringify(body)
@@ -117,6 +160,9 @@ async function refreshAuthenticatedSession() {
     "/auth/refresh",
     {
       method: "POST",
+      headers: {
+        "x-device-id": getOrCreateDeviceId(),
+      },
     }
   );
 
@@ -131,12 +177,23 @@ async function refreshAuthenticatedSession() {
   }
 }
 
+const NON_REFRESHABLE_AUTH_PATHS = new Set([
+  "/auth/login",
+  "/auth/refresh",
+  "/auth/mfa/setup",
+  "/auth/mfa/confirm",
+  "/auth/mfa/verify",
+  "/auth/password/change",
+  "/auth/step-up",
+]);
+
 async function requestJson(
   method,
   path,
   {
     signal,
     body,
+    allowStepUpRetry = true,
   } = {}
 ) {
   let response = await performRequest(
@@ -148,7 +205,10 @@ async function requestJson(
     }
   );
 
-  if (response.status === 401) {
+  if (
+    response.status === 401 &&
+    !NON_REFRESHABLE_AUTH_PATHS.has(path)
+  ) {
     await refreshAuthenticatedSession();
 
     response = await performRequest(
@@ -163,6 +223,23 @@ async function requestJson(
 
   const payload =
     await readResponsePayload(response);
+
+  if (
+    !response.ok &&
+    response.status === 403 &&
+    payload?.error?.code === "STEP_UP_AUTHENTICATION_REQUIRED" &&
+    allowStepUpRetry &&
+    path !== "/auth/step-up" &&
+    typeof stepUpAuthenticationHandler === "function"
+  ) {
+    await stepUpAuthenticationHandler();
+
+    return requestJson(method, path, {
+      signal,
+      body,
+      allowStepUpRetry: false,
+    });
+  }
 
   if (!response.ok) {
     throw createApiError(
@@ -215,6 +292,23 @@ export function apiPatch(
 ) {
   return requestJson(
     "PATCH",
+    path,
+    {
+      signal,
+      body,
+    }
+  );
+}
+
+export function apiDelete(
+  path,
+  {
+    signal,
+    body,
+  } = {}
+) {
+  return requestJson(
+    "DELETE",
     path,
     {
       signal,

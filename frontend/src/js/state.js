@@ -11,7 +11,13 @@ import { ROLES } from "./navigation.js";
 const listeners = new Set();
 
 export const state = {
-  role: ROLES.MASTER,
+  auth: {
+    authenticated: false,
+    loading: true,
+    user: null,
+    error: null,
+  },
+  role: null, // Derived from backend authenticated identity (/auth/me)
   route: "dashboard",
   attendance: {
     status: "not_checked_in", // not_checked_in | checked_in | checked_out

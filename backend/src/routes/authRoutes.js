@@ -10,6 +10,8 @@ const {
   mfaVerify,
   getMfaStatus,
   regenerateRecoveryCodes,
+  changePassword,
+  stepUpAuthentication,
   refreshSession,
   logout,
   logoutAll,
@@ -20,6 +22,7 @@ const {
 
 const {
   authenticate,
+  requireMfa,
 } = require('../middleware/authenticate');
 
 const router = express.Router();
@@ -64,6 +67,20 @@ router.get(
   '/me',
   authenticate,
   getCurrentUser
+);
+
+router.post(
+  '/step-up',
+  authenticate,
+  requireMfa,
+  mfaRateLimiter,
+  stepUpAuthentication
+);
+
+router.post(
+  '/password/change',
+  authenticate,
+  changePassword
 );
 
 router.post(

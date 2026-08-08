@@ -7,7 +7,7 @@
 
 import { NAVIGATION, ROLES } from "./navigation.js";
 import { icon } from "./icons.js";
-import { state, setState } from "./state.js";
+import { state } from "./state.js";
 import { navigate } from "./router.js";
 import { forRole, unreadCount, markRead, markAllRead } from "./notifications.js";
 
@@ -170,36 +170,6 @@ export function kpiCard({ label, value, trend, trendType = "up", onClick }) {
       <div class="${trendClass}">${arrow} ${trend}</div>
     </div>
   `;
-}
-
-/* -------------------------------------------------------------------------
-   Role / dev switcher — this is Part S.12's "act as" tool. It is explicitly
-   labelled as development-only per the spec, and must be removed before a
-   real login module is attached.
-   ------------------------------------------------------------------------- */
-export function renderRoleSwitcher() {
-  const roles = [
-    { key: ROLES.MASTER, label: "Master" },
-    { key: ROLES.OWNER, label: "Owner" },
-    { key: ROLES.CAFE_ADMIN, label: "Cafe Admin" },
-    { key: ROLES.STAFF, label: "Staff" },
-  ];
-  return `
-    <div class="glass" style="position:fixed; top:16px; left:50%; transform:translateX(-50%); z-index:900; padding:10px 12px; display:flex; gap:8px; align-items:center;">
-      <span style="font-size:11px; font-weight:700; color:var(--text-on-light); letter-spacing:0.5px; padding-left:6px;">DEV — ACT AS:</span>
-      ${roles
-        .map(
-          (r) => `<button class="btn btn-ghost ${state.role === r.key ? "selected" : ""}" style="padding:8px 14px; font-size:12.5px; color:var(--text-on-light); border-color:rgba(22,35,42,0.25);" data-role="${r.key}">${r.label}</button>`
-        )
-        .join("")}
-    </div>
-  `;
-}
-
-export function wireRoleSwitcher(root, onSwitch) {
-  root.querySelectorAll("[data-role]").forEach((btn) => {
-    btn.addEventListener("click", () => onSwitch(btn.dataset.role));
-  });
 }
 
 /* -------------------------------------------------------------------------

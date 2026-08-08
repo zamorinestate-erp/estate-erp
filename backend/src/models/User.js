@@ -435,10 +435,23 @@ const userSchema = new mongoose.Schema(
       default: null,
     },
 
+    pendingMfaSecretEncrypted: {
+      type: String,
+      select: false,
+      default: null,
+    },
+
     recoveryCodeHashes: {
       type: [String],
       select: false,
       default: [],
+    },
+
+    lastMfaCounter: {
+      type: Number,
+      min: 0,
+      select: false,
+      default: null,
     },
 
     failedLoginAttempts: {

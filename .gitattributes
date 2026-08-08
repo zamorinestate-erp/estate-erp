@@ -1,0 +1,16 @@
+# Zamorin Cafe ERP canonical repository line-ending policy
+* text=auto eol=lf
+
+# Binary assets must never be line-ending transformed
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.zip binary

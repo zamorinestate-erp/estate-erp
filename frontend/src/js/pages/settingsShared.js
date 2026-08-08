@@ -14,6 +14,7 @@ import { state, setSettings } from "../state.js";
 import { ROLES } from "../navigation.js";
 import { navigate } from "../router.js";
 import { showToast } from "../components.js";
+import { loadSessionManagement } from "../sessionManagement.js";
 
 const LANGUAGES = [
   { code: "en", label: "English" },
@@ -88,18 +89,13 @@ export function renderSettingsShared() {
         </div>
       </div>
 
-      <div class="glass" style="padding:20px; ${isMaster ? "margin-bottom:16px;" : ""}">
-        <div style="color:#fff; font-weight:600; font-size:13.5px; margin-bottom:12px;">Security &amp; Devices</div>
-        <div class="flex justify-between items-center" style="margin-bottom:10px;">
-          <div class="muted-white" style="font-size:12.5px;">Password last changed</div>
-          <div style="color:#fff; font-size:12.5px;">42 days ago</div>
-        </div>
-        <div class="flex justify-between items-center" style="margin-bottom:10px;">
-          <div class="muted-white" style="font-size:12.5px;">Active sessions</div>
-          <div style="color:#fff; font-size:12.5px;">1 device</div>
-        </div>
-        <button class="btn btn-ghost" style="margin-top:6px; color:#fff;" id="change-password-btn">Change Password</button>
+      <div class="glass" style="padding:20px;">
+        <div style="color:#fff; font-weight:600; font-size:13.5px; margin-bottom:8px;">Security &amp; Devices</div>
+        <div class="muted-white" style="font-size:12px; margin-bottom:12px;">Password and authenticated-device controls are enforced by the secure authentication service.</div>
+        <button class="btn btn-ghost" style="color:#fff;" id="change-password-btn">Change Password</button>
       </div>
+
+      <div id="session-management-root" style="${isMaster ? "margin-bottom:16px;" : ""}"></div>
 
       ${isMaster ? masterAdminSection() : ""}
     </div>
@@ -143,7 +139,13 @@ export function wireSettingsShared(root) {
   if (notifCard) notifCard.addEventListener("click", () => showToast("Notification Master opens in the next build pass", "amber"));
 
   const pwBtn = root.querySelector("#change-password-btn");
-  if (pwBtn) pwBtn.addEventListener("click", () => showToast("Password change flow opens once authentication is attached", "amber"));
+  if (pwBtn) {
+    pwBtn.addEventListener("click", () => {
+      document.dispatchEvent(new CustomEvent("zamorin:change-password"));
+    });
+  }
+
+  loadSessionManagement(root.querySelector("#session-management-root"));
 
   const adminCard = root.querySelector("#open-admin-card");
   if (adminCard) adminCard.addEventListener("click", () => navigate("admin"));

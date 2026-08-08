@@ -11,6 +11,7 @@ const {
   revokeUserSession,
   MFA_REQUIRED_ROLES,
   verifyPassword,
+  hashPassword,
 } = require('../services/authService');
 
 const {
@@ -21,6 +22,7 @@ const {
   generateOtpauthUri,
   generateRecoveryCodes,
   hashRecoveryCode,
+  generateMfaToken,
   verifyMfaToken,
 } = require('../services/mfaService');
 
@@ -31,6 +33,8 @@ const {
 const {
   ApiError,
 } = require('../utils/ApiError');
+
+const auditService = require('../services/auditService');
 
 const {
   ACCESS_TOKEN_COOKIE,
@@ -338,8 +342,16 @@ const login = asyncHandler(
       requiresMfa,
       mfaSetupRequired,
       mustChangePassword,
-      mfaToken,
     } = authenticationResult;
+
+    const mfaToken = requiresMfa
+      ? generateMfaToken({
+          user,
+          purpose: mfaSetupRequired
+            ? "mfa_setup"
+            : "mfa_challenge",
+        })
+      : null;
 
     if (requiresMfa) {
       return response.status(403).json({
@@ -487,7 +499,7 @@ const mfaConfirm = asyncHandler(
       userId: payload.sub,
       accountStatus: 'ACTIVE',
       archivedAt: null,
-    }).select('+pendingMfaSecretEncrypted +mfaSecretEncrypted +recoveryCodeHashes');
+    }).select('+pendingMfaSecretEncrypted +mfaSecretEncrypted +recoveryCodeHashes +lastMfaCounter');
 
     if (!user || !user.pendingMfaSecretEncrypted) {
       throw new ApiError(
@@ -598,7 +610,7 @@ const mfaVerify = asyncHandler(
       userId: payload.sub,
       accountStatus: 'ACTIVE',
       archivedAt: null,
-    }).select('+mfaSecretEncrypted +recoveryCodeHashes');
+    }).select('+mfaSecretEncrypted +recoveryCodeHashes +lastMfaCounter');
 
     if (!user || !user.mfaEnabled || !user.mfaSecretEncrypted) {
       throw new ApiError(
@@ -680,6 +692,267 @@ const mfaVerify = asyncHandler(
   }
 );
 
+const stepUpAuthentication = asyncHandler(
+  async (request, response) => {
+    const code =
+      typeof request.body?.code === 'string'
+        ? request.body.code.trim()
+        : '';
+
+    const recoveryCode =
+      typeof request.body?.recoveryCode === 'string'
+        ? request.body.recoveryCode.trim()
+        : '';
+
+    if (!code && !recoveryCode) {
+      throw new ApiError(
+        400,
+        'STEP_UP_FIELDS_REQUIRED',
+        'A TOTP code or recovery code is required.'
+      );
+    }
+
+    const user = await User.findOne({
+      organisationId: request.auth.organisationId,
+      userId: request.auth.userId,
+      accountStatus: 'ACTIVE',
+      archivedAt: null,
+    }).select('+mfaSecretEncrypted +recoveryCodeHashes +lastMfaCounter');
+
+    if (!user || !user.mfaEnabled || !user.mfaSecretEncrypted) {
+      throw new ApiError(
+        400,
+        'MFA_NOT_ENABLED',
+        'MFA is not enabled for this user.'
+      );
+    }
+
+    if (code) {
+      const manualEntrySecret = decryptMfaSecret(
+        user.mfaSecretEncrypted
+      );
+
+      const { valid, counter } = verifyTotpCode(
+        manualEntrySecret,
+        code,
+        Date.now(),
+        1
+      );
+
+      if (!valid) {
+        throw new ApiError(
+          400,
+          'INVALID_MFA_CODE',
+          'The MFA verification code is invalid or expired.'
+        );
+      }
+
+      if (
+        user.lastMfaCounter &&
+        counter <= user.lastMfaCounter
+      ) {
+        throw new ApiError(
+          400,
+          'MFA_CODE_REUSED',
+          'This MFA code has already been used.'
+        );
+      }
+
+      user.lastMfaCounter = counter;
+    } else {
+      const hashedInput = hashRecoveryCode(recoveryCode);
+      const matchIndex =
+        (user.recoveryCodeHashes || []).indexOf(hashedInput);
+
+      if (matchIndex === -1) {
+        throw new ApiError(
+          400,
+          'INVALID_RECOVERY_CODE',
+          'The recovery code is invalid or has already been used.'
+        );
+      }
+
+      user.recoveryCodeHashes.splice(matchIndex, 1);
+    }
+
+    await user.save();
+
+    const session = request.authenticatedSession;
+
+    if (!session || typeof session.markStepUpVerified !== 'function') {
+      throw new ApiError(
+        401,
+        'SESSION_UNAVAILABLE',
+        'The authenticated session is unavailable.'
+      );
+    }
+
+    await session.markStepUpVerified();
+
+    try {
+      await auditService.recordRequestAudit({
+        request,
+        module: 'AUTHENTICATION',
+        action: 'STEP_UP_VERIFIED',
+        entityType: 'SESSION',
+        entityId: request.auth.sessionId,
+        reason: 'Fresh MFA verification completed for a protected action.',
+        result: 'SUCCESS',
+        riskClassification: 'HIGH',
+        metadata: {
+          verificationMethod: code ? 'TOTP' : 'RECOVERY_CODE',
+        },
+      });
+    } catch (_error) {
+      // Audit failure must not mask a completed step-up verification.
+    }
+
+    return response.status(200).json({
+      success: true,
+      message: 'Recent authentication verified successfully.',
+      data: {
+        stepUpVerifiedAt: session.stepUpVerifiedAt,
+      },
+      correlationId: request.correlationId || null,
+    });
+  }
+);
+
+const changePassword = asyncHandler(
+  async (request, response) => {
+    const currentPassword =
+      typeof request.body?.currentPassword === 'string'
+        ? request.body.currentPassword
+        : '';
+
+    const newPassword =
+      typeof request.body?.newPassword === 'string'
+        ? request.body.newPassword
+        : '';
+
+    if (!currentPassword || !newPassword) {
+      throw new ApiError(
+        400,
+        'PASSWORD_CHANGE_FIELDS_REQUIRED',
+        'Current password and new password are required.'
+      );
+    }
+
+    const user = await User.findOne({
+      organisationId: request.auth.organisationId,
+      userId: request.auth.userId,
+      accountStatus: 'ACTIVE',
+      archivedAt: null,
+    }).select('+passwordHash');
+
+    if (!user) {
+      throw new ApiError(
+        404,
+        'USER_UNAVAILABLE',
+        'The user account is unavailable.'
+      );
+    }
+
+    const currentMatches = await verifyPassword(
+      currentPassword,
+      user.passwordHash
+    );
+
+    if (!currentMatches) {
+      throw new ApiError(
+        401,
+        'INVALID_CURRENT_PASSWORD',
+        'The current password is incorrect.'
+      );
+    }
+
+    const reusesCurrentPassword = await verifyPassword(
+      newPassword,
+      user.passwordHash
+    );
+
+    if (reusesCurrentPassword) {
+      throw new ApiError(
+        400,
+        'PASSWORD_REUSE_NOT_ALLOWED',
+        'The new password must be different from the current password.'
+      );
+    }
+
+    let newPasswordHash;
+    try {
+      newPasswordHash = await hashPassword(newPassword);
+    } catch (error) {
+      throw new ApiError(
+        400,
+        'WEAK_PASSWORD',
+        error.message ||
+          'The new password does not meet security requirements.'
+      );
+    }
+
+    const previousMustChangePassword =
+      user.mustChangePassword;
+
+    user.passwordHash = newPasswordHash;
+    user.mustChangePassword = false;
+    user.passwordChangedAt = new Date();
+    user.sessionVersion += 1;
+    user.updatedBy = request.auth.userId;
+
+    await user.save();
+
+    const revokedSessionCount =
+      await revokeAllUserSessions({
+        organisationId:
+          request.auth.organisationId,
+        userId: request.auth.userId,
+        revokedBy: request.auth.userId,
+        reason: 'PASSWORD_CHANGED',
+        details:
+          'Password changed by the authenticated user.',
+      });
+
+    clearAuthenticationCookies(response);
+
+    try {
+      await auditService.recordRequestAudit({
+        request,
+        module: 'AUTHENTICATION',
+        action: 'PASSWORD_CHANGED',
+        entityType: 'USER',
+        entityId: user.userId,
+        before: {
+          mustChangePassword:
+            previousMustChangePassword,
+        },
+        after: {
+          mustChangePassword: false,
+        },
+        reason:
+          'Password changed by authenticated user.',
+        result: 'SUCCESS',
+        riskClassification: 'HIGH',
+        metadata: { revokedSessionCount },
+      });
+    } catch (_error) {
+      // Audit failure must not mask a completed credential change.
+    }
+
+    return response.status(200).json({
+      success: true,
+      message:
+        'Password changed successfully. Please sign in again.',
+      data: {
+        requiresLogin: true,
+        revokedSessionCount,
+      },
+      correlationId:
+        request.correlationId || null,
+    });
+  }
+);
+
 const getMfaStatus = asyncHandler(
   async (request, response) => {
     const user = await User.findOne({
@@ -739,7 +1012,7 @@ const regenerateRecoveryCodes = asyncHandler(
       userId: request.auth.userId,
       accountStatus: 'ACTIVE',
       archivedAt: null,
-    }).select('+passwordHash +mfaSecretEncrypted +recoveryCodeHashes');
+    }).select('+passwordHash +mfaSecretEncrypted +recoveryCodeHashes +lastMfaCounter');
 
     if (!user || !user.mfaEnabled || !user.mfaSecretEncrypted) {
       throw new ApiError(
@@ -899,10 +1172,45 @@ const getSessions = asyncHandler(
         userId: request.auth.userId,
       });
 
+    const safeSessions = sessions.map((sessionDocument) => {
+      const session =
+        typeof sessionDocument?.toObject === "function"
+          ? sessionDocument.toObject()
+          : sessionDocument;
+
+      return {
+        sessionId: session.sessionId,
+        status: session.status,
+        roleSnapshot: session.roleSnapshot,
+        mfaVerified: Boolean(session.mfaVerified),
+        mfaVerifiedAt: session.mfaVerifiedAt || null,
+        stepUpVerifiedAt: session.stepUpVerifiedAt || null,
+        device: {
+          deviceName: session.device?.deviceName || "Unknown device",
+          deviceType: session.device?.deviceType || "OTHER",
+          operatingSystem: session.device?.operatingSystem || "",
+          browser: session.device?.browser || "",
+        },
+        network: {
+          ipAddressMasked: session.network?.ipAddressMasked || null,
+          country: session.network?.country || null,
+          region: session.network?.region || null,
+          city: session.network?.city || null,
+        },
+        issuedAt: session.issuedAt || null,
+        lastActivityAt: session.lastActivityAt || null,
+        refreshTokenExpiresAt: session.refreshTokenExpiresAt || null,
+        absoluteExpiresAt: session.absoluteExpiresAt || null,
+        idleTimeoutMinutes: session.idleTimeoutMinutes,
+        revokedAt: session.revokedAt || null,
+        revocationReason: session.revocationReason || null,
+      };
+    });
+
     return response.status(200).json({
       success: true,
       data: {
-        sessions,
+        sessions: safeSessions,
         currentSessionId:
           request.auth.sessionId,
       },
@@ -913,12 +1221,44 @@ const getSessions = asyncHandler(
 );
 const getCurrentUser = asyncHandler(
   async (request, response) => {
+    const user = request.authenticatedUser;
+    const auth = request.auth;
+
+    const safeUser = {
+      userId: user.userId,
+      organisationId: user.organisationId,
+      name: user.name,
+      preferredName: user.preferredName || null,
+      role: user.role,
+      accountStatus: user.accountStatus,
+      isPrimaryMaster: Boolean(user.isPrimaryMaster),
+      primaryCafeId: user.primaryCafeId || null,
+      assignedCafeIds: Array.isArray(user.assignedCafeIds)
+        ? [...user.assignedCafeIds]
+        : [],
+      preferredLanguage: user.preferredLanguage || 'en',
+      mustChangePassword: Boolean(user.mustChangePassword),
+      mfaEnabled: Boolean(user.mfaEnabled),
+      mfaMethod: user.mfaMethod || 'NONE',
+    };
+
+    const safeAuthentication = {
+      userId: auth.userId,
+      organisationId: auth.organisationId,
+      role: auth.role,
+      assignedCafeIds: Array.isArray(auth.assignedCafeIds)
+        ? [...auth.assignedCafeIds]
+        : [],
+      primaryCafeId: auth.primaryCafeId || null,
+      sessionId: auth.sessionId,
+      mfaVerified: Boolean(auth.mfaVerified),
+    };
+
     return response.status(200).json({
       success: true,
       data: {
-        user:
-          request.authenticatedUser.toJSON(),
-        authentication: request.auth,
+        user: safeUser,
+        authentication: safeAuthentication,
       },
       correlationId:
         request.correlationId || null,
@@ -989,6 +1329,8 @@ module.exports = {
   mfaVerify,
   getMfaStatus,
   regenerateRecoveryCodes,
+  stepUpAuthentication,
+  changePassword,
   refreshSession,
   logout,
   logoutAll,

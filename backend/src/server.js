@@ -65,6 +65,88 @@ function createCorsOptions(environment) {
   };
 }
 
+const CSRF_SAFE_METHODS = new Set([
+  'GET',
+  'HEAD',
+  'OPTIONS',
+]);
+
+const AUTHENTICATION_COOKIE_NAMES = [
+  'zamorin_access_token',
+  'zamorin_refresh_token',
+  'zamorin_session_id',
+];
+
+function sendCsrfOriginError(response, request, code, message) {
+  return response.status(403).json({
+    success: false,
+    error: {
+      code,
+      message,
+    },
+    correlationId:
+      request.correlationId || null,
+  });
+}
+
+function createCsrfOriginProtection(environment) {
+  const allowedOrigins = new Set(
+    environment.allowedOrigins || []
+  );
+
+  return function csrfOriginProtection(request, response, next) {
+    if (CSRF_SAFE_METHODS.has(request.method)) {
+      return next();
+    }
+
+    const hasAuthenticationCookie =
+      AUTHENTICATION_COOKIE_NAMES.some(function hasCookie(name) {
+        return Boolean(
+          request.cookies && request.cookies[name]
+        );
+      });
+
+    if (!hasAuthenticationCookie) {
+      return next();
+    }
+
+    const origin = request.get('origin');
+
+    if (!origin) {
+      return sendCsrfOriginError(
+        response,
+        request,
+        'CSRF_ORIGIN_REQUIRED',
+        'An allowed request origin is required for cookie-authenticated state changes.'
+      );
+    }
+
+    let normalizedOrigin;
+
+    try {
+      normalizedOrigin = new URL(origin).origin;
+    } catch {
+      return sendCsrfOriginError(
+        response,
+        request,
+        'CSRF_ORIGIN_DENIED',
+        'The request origin is not allowed.'
+      );
+    }
+
+    if (!allowedOrigins.has(normalizedOrigin)) {
+      return sendCsrfOriginError(
+        response,
+        request,
+        'CSRF_ORIGIN_DENIED',
+        'The request origin is not allowed.'
+      );
+    }
+
+    return next();
+  };
+}
+
 function createApp(environment) {
   const app = express();
 
@@ -86,6 +168,9 @@ function createApp(environment) {
     cors(
       createCorsOptions(environment)
     )
+  );
+  app.use(
+    createCsrfOriginProtection(environment)
   );
 
   const apiLimiter = rateLimit({

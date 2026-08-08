@@ -6,6 +6,7 @@
 // =============================================================================
 import { state, setSettings } from "../state.js";
 import { showToast } from "../components.js";
+import { loadSessionManagement } from "../sessionManagement.js";
 
 const LANGUAGES = [
   { code: "en", label: "English" },
@@ -66,6 +67,14 @@ export function renderStaffSettings() {
           ${notificationRow("payslip", "Payslip available", s.notifications.payslip)}
         </div>
       </div>
+
+      <div class="glass" style="padding:18px; margin-top:14px;">
+        <div style="color:#fff; font-weight:600; font-size:13.5px; margin-bottom:8px;">Security &amp; Devices</div>
+        <div class="muted-white" style="font-size:12px; margin-bottom:12px;">Change your password or manage authenticated devices.</div>
+        <button class="btn btn-ghost" id="change-password-btn">Change Password</button>
+      </div>
+
+      <div id="session-management-root"></div>
     </div>
   `;
 }
@@ -96,6 +105,15 @@ export function wireStaffSettings(root) {
       rerenderSettingsOnly(root);
     });
   });
+
+  const pwBtn = root.querySelector("#change-password-btn");
+  if (pwBtn) {
+    pwBtn.addEventListener("click", () => {
+      document.dispatchEvent(new CustomEvent("zamorin:change-password"));
+    });
+  }
+
+  loadSessionManagement(root.querySelector("#session-management-root"));
 
   root.querySelectorAll("[data-notif]").forEach((toggle) => {
     toggle.addEventListener("click", () => {
