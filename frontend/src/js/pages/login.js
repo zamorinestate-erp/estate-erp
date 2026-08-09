@@ -23,7 +23,7 @@ function escapeAttribute(value) {
     .replaceAll(">", "&gt;");
 }
 
-export function renderLogin() {
+export function renderLogin({ notice = "" } = {}) {
   const savedEmail = readRememberedValue(REMEMBERED_EMAIL_KEY);
   const savedOrganisation = readRememberedValue(
     REMEMBERED_ORGANISATION_KEY
@@ -31,13 +31,15 @@ export function renderLogin() {
   const remembered = Boolean(savedEmail || savedOrganisation);
 
   return `
-    <div class="login-screen">
+    <div class="login-screen" style="--auth-background:url(https://picsum.photos/seed/zamorin-fallback-01/3840/2160)">
       <div class="login-card glass-dark">
         <div class="login-brand">
-          <img src="src/assets/zamorin-estate-mark.png" alt="" class="login-mark" />
-          <div class="login-wordmark font-display">Zamorin</div>
+          <img src="src/assets/zamorin-logo-horizontal.svg" alt="Zamorin Estate Pvt. Ltd." class="login-brand-logo" />
           <div class="login-sub">Cafe ERP — sign in to continue</div>
         </div>
+        <h1 class="auth-login-title">Login</h1>
+
+        ${notice ? `<div class="login-notice" role="status">${escapeAttribute(notice)}</div>` : ""}
 
         <form id="login-form">
           <label class="login-label" for="login-organisation">Organisation ID</label>
@@ -46,7 +48,7 @@ export function renderLogin() {
             class="text-input"
             type="text"
             autocomplete="organization"
-            placeholder="ORG-001"
+            placeholder="Organisation ID"
             value="${escapeAttribute(savedOrganisation)}"
             ${loginBusy ? "disabled" : ""}
           />
@@ -57,7 +59,7 @@ export function renderLogin() {
             class="text-input"
             type="email"
             autocomplete="username"
-            placeholder="you@example.com"
+            placeholder="Email ID"
             value="${escapeAttribute(savedEmail)}"
             ${loginBusy ? "disabled" : ""}
           />
@@ -91,8 +93,14 @@ export function renderLogin() {
                 ${remembered ? "checked" : ""}
                 ${loginBusy ? "disabled" : ""}
               />
-              Remember organisation and email
+              Remember me
             </label>
+            <button
+              type="button"
+              id="login-forgot-password"
+              class="login-forgot-link"
+              ${loginBusy ? "disabled" : ""}
+            >Forgot password?</button>
           </div>
 
           <button
@@ -101,17 +109,17 @@ export function renderLogin() {
             class="btn btn-primary"
             style="width:100%; justify-content:center;"
             ${loginBusy ? "disabled" : ""}
-          >${loginBusy ? "Signing in..." : "Sign In"}</button>
+          >${loginBusy ? "Signing in..." : "Login"}</button>
         </form>
       </div>
     </div>
   `;
 }
 
-export function wireLogin(root, { onSubmit } = {}) {
+export function wireLogin(root, { onSubmit, onForgotPassword } = {}) {
   const rerender = () => {
     root.innerHTML = renderLogin();
-    wireLogin(root, { onSubmit });
+    wireLogin(root, { onSubmit, onForgotPassword });
   };
 
   const form = root.querySelector("#login-form");
@@ -179,6 +187,10 @@ export function wireLogin(root, { onSubmit } = {}) {
     });
   }
 
+  root.querySelector("#login-forgot-password")?.addEventListener("click", () => {
+    if (typeof onForgotPassword === "function") onForgotPassword({ organisationId: root.querySelector("#login-organisation")?.value.trim() || "", email: root.querySelector("#login-email")?.value.trim().toLowerCase() || "" });
+  });
+
   const toggleButton =
     root.querySelector("#toggle-password-btn");
 
@@ -229,11 +241,10 @@ export function renderMfaChallenge({
   const safeBackLabel = escapeAttribute(backLabel);
 
   return `
-    <div class="login-screen">
+    <div class="login-screen" style="--auth-background:url(https://picsum.photos/seed/zamorin-fallback-01/3840/2160)">
       <div class="login-card glass-dark">
         <div class="login-brand">
-          <img src="src/assets/zamorin-estate-mark.png" alt="" class="login-mark" />
-          <div class="login-wordmark font-display">Zamorin</div>
+          <img src="src/assets/zamorin-logo-horizontal.svg" alt="Zamorin Estate Pvt. Ltd." class="login-brand-logo" />
           <div class="login-sub">${safeSubtitle}</div>
         </div>
         <form id="mfa-challenge-form">
@@ -322,11 +333,10 @@ export function renderMfaSetup({
   const safeSecret = escapeAttribute(manualEntrySecret);
 
   return `
-    <div class="login-screen">
+    <div class="login-screen" style="--auth-background:url(https://picsum.photos/seed/zamorin-fallback-01/3840/2160)">
       <div class="login-card glass-dark">
         <div class="login-brand">
-          <img src="src/assets/zamorin-estate-mark.png" alt="" class="login-mark" />
-          <div class="login-wordmark font-display">Zamorin</div>
+          <img src="src/assets/zamorin-logo-horizontal.svg" alt="Zamorin Estate Pvt. Ltd." class="login-brand-logo" />
           <div class="login-sub">Cafe ERP — secure authentication setup</div>
         </div>
 
@@ -465,11 +475,10 @@ export function renderRecoveryCodes(recoveryCodes = []) {
     .join("");
 
   return `
-    <div class="login-screen">
+    <div class="login-screen" style="--auth-background:url(https://picsum.photos/seed/zamorin-fallback-01/3840/2160)">
       <div class="login-card glass-dark">
         <div class="login-brand">
-          <img src="src/assets/zamorin-estate-mark.png" alt="" class="login-mark" />
-          <div class="login-wordmark font-display">Zamorin</div>
+          <img src="src/assets/zamorin-logo-horizontal.svg" alt="Zamorin Estate Pvt. Ltd." class="login-brand-logo" />
           <div class="login-sub">Cafe ERP — MFA recovery</div>
         </div>
 
@@ -555,11 +564,10 @@ export function renderPasswordChange({
   backLabel = "Back to sign in",
 } = {}) {
   return `
-    <div class="login-screen">
+    <div class="login-screen" style="--auth-background:url(https://picsum.photos/seed/zamorin-fallback-01/3840/2160)">
       <div class="login-card glass-dark">
         <div class="login-brand">
-          <img src="src/assets/zamorin-estate-mark.png" alt="" class="login-mark" />
-          <div class="login-wordmark font-display">Zamorin</div>
+          <img src="src/assets/zamorin-logo-horizontal.svg" alt="Zamorin Estate Pvt. Ltd." class="login-brand-logo" />
           <div class="login-sub">Cafe ERP — account security</div>
         </div>
 
@@ -676,4 +684,234 @@ export function wirePasswordChange(root, { onSubmit, onBack, renderOptions = {} 
 export function resetPasswordChangeUi() {
   passwordChangeError = "";
   passwordChangeBusy = false;
+}
+
+let passwordResetRequestError = "";
+let passwordResetRequestBusy = false;
+
+export function renderPasswordResetRequest({ organisationId = "", email = "" } = {}) {
+  return `
+    <div class="login-screen" style="--auth-background:url(https://picsum.photos/seed/zamorin-fallback-01/3840/2160)">
+      <div class="login-card glass-dark">
+        <div class="login-brand">
+          <img src="src/assets/zamorin-logo-horizontal.svg" alt="Zamorin Estate Pvt. Ltd." class="login-brand-logo" />
+          <div class="login-sub">Cafe ERP - account recovery</div>
+        </div>
+        <h1 class="auth-login-title">Forgot password</h1>
+        <div class="muted-white" style="font-size:12.5px;line-height:1.5;margin-bottom:18px;">Enter your organisation ID and account email. If the account is eligible, a 6-digit verification code will be sent.</div>
+        <form id="password-reset-request-form">
+          <label class="login-label" for="password-reset-organisation">Organisation ID</label>
+          <input id="password-reset-organisation" class="text-input" type="text" autocomplete="organization" placeholder="Organisation ID" value="${escapeAttribute(organisationId)}" style="margin-bottom:14px;" ${passwordResetRequestBusy ? "disabled" : ""} />
+          <label class="login-label" for="password-reset-email">Email</label>
+          <input id="password-reset-email" class="text-input" type="email" autocomplete="username" placeholder="Email ID" value="${escapeAttribute(email)}" ${passwordResetRequestBusy ? "disabled" : ""} />
+          ${passwordResetRequestError ? `<div class="login-error">${escapeAttribute(passwordResetRequestError)}</div>` : ""}
+          <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:18px;" ${passwordResetRequestBusy ? "disabled" : ""}>${passwordResetRequestBusy ? "Requesting code..." : "Send verification code"}</button>
+          <button id="password-reset-request-back" type="button" class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:10px;" ${passwordResetRequestBusy ? "disabled" : ""}>Back to sign in</button>
+        </form>
+      </div>
+    </div>
+  `;
+}
+
+export function wirePasswordResetRequest(root, { organisationId = "", email = "", onSubmit, onBack } = {}) {
+  const rerender = () => {
+    root.innerHTML = renderPasswordResetRequest({ organisationId, email });
+    wirePasswordResetRequest(root, { organisationId, email, onSubmit, onBack });
+  };
+
+  root.querySelector("#password-reset-request-back")?.addEventListener("click", () => {
+    resetPasswordResetRequestUi();
+    if (typeof onBack === "function") onBack();
+  });
+
+  root.querySelector("#password-reset-request-form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    organisationId = root.querySelector("#password-reset-organisation")?.value.trim() || "";
+    email = root.querySelector("#password-reset-email")?.value.trim().toLowerCase() || "";
+
+    if (!organisationId || !email) {
+      passwordResetRequestError = "Enter your organisation ID and email.";
+      rerender();
+      return;
+    }
+
+    if (typeof onSubmit !== "function") {
+      passwordResetRequestError = "Password recovery service is unavailable.";
+      rerender();
+      return;
+    }
+
+    passwordResetRequestBusy = true;
+    passwordResetRequestError = "";
+    rerender();
+
+    try {
+      await onSubmit({ organisationId, email });
+    } catch (error) {
+      passwordResetRequestBusy = false;
+      passwordResetRequestError = error?.message || "Password recovery could not be started. Please try again.";
+      rerender();
+    }
+  });
+}
+
+export function resetPasswordResetRequestUi() {
+  passwordResetRequestError = "";
+  passwordResetRequestBusy = false;
+}
+
+let passwordResetVerifyError = "";
+let passwordResetVerifyBusy = false;
+
+export function renderPasswordResetVerify({ email = "" } = {}) {
+  return `
+    <div class="login-screen" style="--auth-background:url(https://picsum.photos/seed/zamorin-fallback-01/3840/2160)">
+      <div class="login-card glass-dark">
+        <div class="login-brand">
+          <img src="src/assets/zamorin-logo-horizontal.svg" alt="Zamorin Estate Pvt. Ltd." class="login-brand-logo" />
+          <div class="login-sub">Cafe ERP - account recovery</div>
+        </div>
+        <h1 class="auth-login-title">Verify code</h1>
+        <div class="muted-white" style="font-size:12.5px;line-height:1.5;margin-bottom:18px;">Enter the 6-digit verification code for ${escapeAttribute(email)}. The code is time limited and can be used only for this recovery attempt.</div>
+        <form id="password-reset-verify-form">
+          <label class="login-label" for="password-reset-code">Verification code</label>
+          <input id="password-reset-code" class="text-input" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="6-digit code" ${passwordResetVerifyBusy ? "disabled" : ""} />
+          ${passwordResetVerifyError ? `<div class="login-error">${escapeAttribute(passwordResetVerifyError)}</div>` : ""}
+          <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:18px;" ${passwordResetVerifyBusy ? "disabled" : ""}>${passwordResetVerifyBusy ? "Verifying..." : "Verify code"}</button>
+          <button id="password-reset-verify-back" type="button" class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:10px;" ${passwordResetVerifyBusy ? "disabled" : ""}>Back</button>
+        </form>
+      </div>
+    </div>
+  `;
+}
+
+export function wirePasswordResetVerify(root, { email = "", onSubmit, onBack } = {}) {
+  const rerender = () => {
+    root.innerHTML = renderPasswordResetVerify({ email });
+    wirePasswordResetVerify(root, { email, onSubmit, onBack });
+  };
+
+  root.querySelector("#password-reset-verify-back")?.addEventListener("click", () => {
+    resetPasswordResetVerifyUi();
+    if (typeof onBack === "function") onBack();
+  });
+
+  root.querySelector("#password-reset-verify-form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const code = root.querySelector("#password-reset-code")?.value.trim() || "";
+
+    if (!/^[0-9]{6}$/.test(code)) {
+      passwordResetVerifyError = "Enter the 6-digit verification code.";
+      rerender();
+      return;
+    }
+
+    if (typeof onSubmit !== "function") {
+      passwordResetVerifyError = "Password recovery verification is unavailable.";
+      rerender();
+      return;
+    }
+
+    passwordResetVerifyBusy = true;
+    passwordResetVerifyError = "";
+    rerender();
+
+    try {
+      await onSubmit({ code });
+    } catch (error) {
+      passwordResetVerifyBusy = false;
+      passwordResetVerifyError = error?.message || "The verification code could not be verified. Please try again.";
+      rerender();
+    }
+  });
+}
+
+export function resetPasswordResetVerifyUi() {
+  passwordResetVerifyError = "";
+  passwordResetVerifyBusy = false;
+}
+
+let passwordResetFinalError = "";
+let passwordResetFinalBusy = false;
+
+export function renderPasswordResetFinal() {
+  const disabled = passwordResetFinalBusy ? " disabled" : "";
+  const errorMarkup = passwordResetFinalError
+    ? `<div class="login-error">${escapeAttribute(passwordResetFinalError)}</div>`
+    : "";
+
+  return `
+    <div class="login-screen" style="--auth-background:url(https://picsum.photos/seed/zamorin-fallback-01/3840/2160)">
+      <div class="login-card glass-dark">
+        <div class="login-brand">
+          <img src="src/assets/zamorin-logo-horizontal.svg" alt="Zamorin Estate Pvt. Ltd." class="login-brand-logo" />
+          <div class="login-sub">Cafe ERP - account recovery</div>
+        </div>
+        <h1 class="auth-login-title">Create new password</h1>
+        <div class="muted-white" style="font-size:12.5px;line-height:1.5;margin-bottom:18px;">Use at least 12 characters with uppercase, lowercase, number and special character.</div>
+        <form id="password-reset-final-form">
+          <label class="login-label" for="password-reset-new-password">New password</label>
+          <input id="password-reset-new-password" class="text-input" type="password" autocomplete="new-password" minlength="12" maxlength="128" placeholder="New password"${disabled} />
+          <label class="login-label" for="password-reset-confirm-password" style="display:block;margin-top:14px;">Confirm new password</label>
+          <input id="password-reset-confirm-password" class="text-input" type="password" autocomplete="new-password" minlength="12" maxlength="128" placeholder="Confirm new password"${disabled} />
+          ${errorMarkup}
+          <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:18px;"${disabled}>${passwordResetFinalBusy ? "Resetting password..." : "Reset password"}</button>
+          <button id="password-reset-final-cancel" type="button" class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:10px;"${disabled}>Cancel recovery</button>
+        </form>
+      </div>
+    </div>
+  `;
+}
+
+export function wirePasswordResetFinal(root, { onSubmit, onCancel } = {}) {
+  const rerender = () => {
+    root.innerHTML = renderPasswordResetFinal();
+    wirePasswordResetFinal(root, { onSubmit, onCancel });
+  };
+
+  root.querySelector("#password-reset-final-cancel")?.addEventListener("click", () => {
+    resetPasswordResetFinalUi();
+    if (typeof onCancel === "function") onCancel();
+  });
+
+  root.querySelector("#password-reset-final-form")?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const newPassword = root.querySelector("#password-reset-new-password")?.value || "";
+    const confirmPassword = root.querySelector("#password-reset-confirm-password")?.value || "";
+
+    if (newPassword.length < 12 || newPassword.length > 128 || !/[a-z]/.test(newPassword) || !/[A-Z]/.test(newPassword) || !/[0-9]/.test(newPassword) || !/[^A-Za-z0-9]/.test(newPassword)) {
+      passwordResetFinalError = "Password must be 12-128 characters and include uppercase, lowercase, number and special character.";
+      rerender();
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      passwordResetFinalError = "New password and confirmation do not match.";
+      rerender();
+      return;
+    }
+
+    if (typeof onSubmit !== "function") {
+      passwordResetFinalError = "Password reset service is unavailable.";
+      rerender();
+      return;
+    }
+
+    passwordResetFinalBusy = true;
+    passwordResetFinalError = "";
+    rerender();
+
+    try {
+      await onSubmit({ newPassword });
+    } catch (error) {
+      passwordResetFinalBusy = false;
+      passwordResetFinalError = error?.message || "Password could not be reset. Please try again.";
+      rerender();
+    }
+  });
+}
+
+export function resetPasswordResetFinalUi() {
+  passwordResetFinalError = "";
+  passwordResetFinalBusy = false;
 }

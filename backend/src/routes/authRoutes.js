@@ -5,6 +5,9 @@ const rateLimit = require('express-rate-limit');
 
 const {
   login,
+  requestPasswordReset,
+  verifyPasswordResetCode,
+  resetPassword,
   mfaSetup,
   mfaConfirm,
   mfaVerify,
@@ -41,7 +44,24 @@ const mfaRateLimiter = rateLimit({
   },
 });
 
+const passwordResetRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: {
+      code: 'TOO_MANY_REQUESTS',
+      message: 'Too many password reset requests. Please try again later.',
+    },
+  },
+});
+
 router.post('/login', login);
+router.post('/password/forgot', passwordResetRateLimiter, requestPasswordReset);
+router.post('/password/reset/verify', passwordResetRateLimiter, verifyPasswordResetCode);
+router.post('/password/reset', passwordResetRateLimiter, resetPassword);
 router.post('/refresh', refreshSession);
 
 // Unauthenticated MFA setup, confirmation, and verification routes

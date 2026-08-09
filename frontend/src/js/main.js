@@ -30,7 +30,22 @@ import {
   renderPasswordChange,
   wirePasswordChange,
   resetPasswordChangeUi,
+  renderPasswordResetRequest,
+  wirePasswordResetRequest,
+  resetPasswordResetRequestUi,
+  renderPasswordResetVerify,
+  wirePasswordResetVerify,
+  resetPasswordResetVerifyUi,
+  renderPasswordResetFinal,
+  wirePasswordResetFinal,
+  resetPasswordResetFinalUi,
 } from "./pages/login.js";
+
+function prepareAuthScreen(appEl) {
+  appEl.classList.add("auth-screen");
+  appEl.classList.remove("shell-minimal");
+  delete appEl.dataset.shellRole;
+}
 
 function renderLoadingScreen() {
   const appEl = document.getElementById("app");
@@ -47,6 +62,7 @@ function renderLoadingScreen() {
 function renderPasswordChangeScreen() {
   const appEl = document.getElementById("app");
   if (!appEl) return;
+  prepareAuthScreen(appEl);
 
   resetPasswordChangeUi();
   appEl.innerHTML = renderPasswordChange();
@@ -71,6 +87,7 @@ function renderPasswordChangeScreen() {
 function renderRecoveryCodesScreen(recoveryCodes) {
   const appEl = document.getElementById("app");
   if (!appEl) return;
+  prepareAuthScreen(appEl);
 
   resetRecoveryCodesUi();
   appEl.innerHTML = renderRecoveryCodes(recoveryCodes);
@@ -89,6 +106,7 @@ function renderMfaSetupScreen({
 }) {
   const appEl = document.getElementById("app");
   if (!appEl) return;
+  prepareAuthScreen(appEl);
 
   resetMfaSetupUi();
   appEl.innerHTML = renderMfaSetup({ manualEntrySecret });
@@ -123,6 +141,7 @@ function renderMfaSetupScreen({
 function renderMfaChallengeScreen(mfaChallengeToken) {
   const appEl = document.getElementById("app");
   if (!appEl) return;
+  prepareAuthScreen(appEl);
 
   resetMfaUi();
   appEl.innerHTML = renderMfaChallenge();
@@ -238,14 +257,67 @@ function performVoluntaryPasswordChange() {
 
 document.addEventListener("zamorin:change-password", performVoluntaryPasswordChange);
 
-function renderUnauthenticatedScreen() {
+function renderPasswordResetRequestScreen({ organisationId = "", email = "" } = {}) {
   const appEl = document.getElementById("app");
   if (!appEl) return;
+  prepareAuthScreen(appEl);
+  resetPasswordResetRequestUi();
+  appEl.innerHTML = renderPasswordResetRequest({ organisationId, email });
+  wirePasswordResetRequest(appEl, {
+    organisationId,
+    email,
+    onBack: () => renderUnauthenticatedScreen(),
+    onSubmit: async ({ organisationId: nextOrganisationId, email: nextEmail }) => {
+      await apiPost("/auth/password/forgot", { body: { organisationId: nextOrganisationId, email: nextEmail } });
+      renderPasswordResetVerifyScreen({ organisationId: nextOrganisationId, email: nextEmail });
+    },
+  });
+}
+
+function renderPasswordResetVerifyScreen({ organisationId, email }) {
+  const appEl = document.getElementById("app");
+  if (!appEl) return;
+  prepareAuthScreen(appEl);
+  resetPasswordResetVerifyUi();
+  appEl.innerHTML = renderPasswordResetVerify({ email });
+  wirePasswordResetVerify(appEl, {
+    email,
+    onBack: () => renderPasswordResetRequestScreen({ organisationId, email }),
+    onSubmit: async ({ code }) => {
+      const result = await apiPost("/auth/password/reset/verify", { body: { organisationId, email, code } });
+      const challengeId = result?.data?.challengeId;
+      const resetToken = result?.data?.resetToken;
+      if (!challengeId || !resetToken) throw new Error("Password reset verification credentials were not returned by the server.");
+      renderPasswordResetFinalScreen({ organisationId, challengeId, resetToken });
+    },
+  });
+}
+
+function renderPasswordResetFinalScreen({ organisationId, challengeId, resetToken }) {
+  const appEl = document.getElementById("app");
+  if (!appEl) return;
+  prepareAuthScreen(appEl);
+  resetPasswordResetFinalUi();
+  appEl.innerHTML = renderPasswordResetFinal();
+  wirePasswordResetFinal(appEl, {
+    onCancel: () => renderUnauthenticatedScreen(),
+    onSubmit: async ({ newPassword }) => {
+      await apiPost("/auth/password/reset", { body: { organisationId, challengeId, resetToken, newPassword } });
+      renderUnauthenticatedScreen({ notice: "Password reset successfully. Please sign in." });
+    },
+  });
+}
+
+function renderUnauthenticatedScreen({ notice = "" } = {}) {
+  const appEl = document.getElementById("app");
+  if (!appEl) return;
+  prepareAuthScreen(appEl);
 
   resetLoginUi();
-  appEl.innerHTML = renderLogin();
+  appEl.innerHTML = renderLogin({ notice });
 
   wireLogin(appEl, {
+    onForgotPassword: ({ organisationId, email }) => renderPasswordResetRequestScreen({ organisationId, email }),
     onSubmit: async ({ organisationId, email, password }) => {
       try {
         await apiPost("/auth/login", {

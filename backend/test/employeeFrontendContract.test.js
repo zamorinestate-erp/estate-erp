@@ -2,12 +2,13 @@
 
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const path = require('node:path');
 const test = require('node:test');
 
-const nav = fs.readFileSync('frontend/src/js/navigation.js', 'utf8');
-const router = fs.readFileSync('frontend/src/js/router.js', 'utf8');
-const employees = fs.readFileSync('frontend/src/js/pages/employees.js', 'utf8');
-const profilePath = 'frontend/src/js/pages/employeeProfile.js';
+const nav = fs.readFileSync(path.join(__dirname, '../../frontend/src/js/navigation.js'), 'utf8');
+const router = fs.readFileSync(path.join(__dirname, '../../frontend/src/js/router.js'), 'utf8');
+const employees = fs.readFileSync(path.join(__dirname, '../../frontend/src/js/pages/employees.js'), 'utf8');
+const profilePath = path.join(__dirname, '../../frontend/src/js/pages/employeeProfile.js');
 
 test('Stage 2 navigation exposes directory to MASTER and OWNER and My Profile to all roles', () => {
   assert.equal(nav.split('route: "employees"').length - 1, 2);

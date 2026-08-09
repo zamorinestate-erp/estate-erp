@@ -1,6 +1,9 @@
 'use strict';
 
 const { User } = require('../models/User');
+const { PasswordResetChallenge } = require('../models/PasswordResetChallenge');
+const passwordResetService = require('../services/passwordResetService');
+const passwordResetDeliveryService = require('../services/passwordResetDeliveryService');
 const {
   authenticatePassword,
   createSession,
@@ -407,6 +410,79 @@ const login = asyncHandler(
       correlationId:
         request.correlationId || null,
     });
+  }
+);
+
+const requestPasswordReset = asyncHandler(
+  async (request, response) => {
+    const organisationId = typeof request.body?.organisationId === 'string' ? request.body.organisationId.trim().toUpperCase() : '';
+    const email = typeof request.body?.email === 'string' ? request.body.email.trim().toLowerCase() : '';
+    if (!organisationId || !email) throw new ApiError(400, 'PASSWORD_RESET_FIELDS_REQUIRED', 'Organisation ID and email are required.');
+    if (!passwordResetDeliveryService.isPasswordResetDeliveryAvailable()) throw new ApiError(503, 'PASSWORD_RESET_DELIVERY_UNAVAILABLE', 'Password reset delivery is not configured.');
+    const message = 'If the account is eligible, a password reset code has been sent.';
+    const user = await User.findOne({ organisationId, email });
+    if (!passwordResetService.isResetEligibleUser(user)) return response.status(202).json({ success: true, message, correlationId: request.correlationId || null });
+    const reset = await passwordResetService.createPasswordResetChallenge(user);
+    if (!reset) return response.status(202).json({ success: true, message, correlationId: request.correlationId || null });
+    const delivery = await passwordResetDeliveryService.deliverPasswordResetCode({ recipientEmail: user.email, code: reset.code, challengeId: reset.challenge.challengeId });
+    if (!delivery.delivered) {
+      reset.challenge.status = 'EXPIRED';
+      reset.challenge.invalidatedAt = new Date();
+      await reset.challenge.save();
+      throw new ApiError(503, 'PASSWORD_RESET_DELIVERY_UNAVAILABLE', 'Password reset delivery is unavailable.');
+    }
+    return response.status(202).json({ success: true, message, correlationId: request.correlationId || null });
+  }
+);
+
+const verifyPasswordResetCode = asyncHandler(
+  async (request, response) => {
+    const organisationId = typeof request.body?.organisationId === 'string' ? request.body.organisationId.trim().toUpperCase() : '';
+    const email = typeof request.body?.email === 'string' ? request.body.email.trim().toLowerCase() : '';
+    const code = typeof request.body?.code === 'string' ? request.body.code.trim() : '';
+    if (!organisationId || !email || !/^\d{6}$/.test(code)) throw new ApiError(400, 'PASSWORD_RESET_CODE_INVALID', 'The password reset code is invalid or expired.');
+    const user = await User.findOne({ organisationId, email });
+    if (!passwordResetService.isResetEligibleUser(user)) throw new ApiError(400, 'PASSWORD_RESET_CODE_INVALID', 'The password reset code is invalid or expired.');
+    const challenge = await PasswordResetChallenge.findOne({ organisationId, userId: user.userId, status: 'PENDING' }).sort({ createdAt: -1 });
+    if (!challenge) throw new ApiError(400, 'PASSWORD_RESET_CODE_INVALID', 'The password reset code is invalid or expired.');
+    const verified = await passwordResetService.verifyPasswordResetCode({ challengeId: challenge.challengeId, code });
+    if (!verified) throw new ApiError(400, 'PASSWORD_RESET_CODE_INVALID', 'The password reset code is invalid or expired.');
+    return response.status(200).json({ success: true, message: 'Password reset code verified.', data: { challengeId: verified.challenge.challengeId, resetToken: verified.resetToken }, correlationId: request.correlationId || null });
+  }
+);
+
+const resetPassword = asyncHandler(
+  async (request, response) => {
+    const organisationId = typeof request.body?.organisationId === 'string' ? request.body.organisationId.trim().toUpperCase() : '';
+    const challengeId = typeof request.body?.challengeId === 'string' ? request.body.challengeId.trim().toUpperCase() : '';
+    const resetToken = typeof request.body?.resetToken === 'string' ? request.body.resetToken : '';
+    const newPassword = typeof request.body?.newPassword === 'string' ? request.body.newPassword : '';
+    if (!organisationId || !challengeId || !resetToken || !newPassword) throw new ApiError(400, 'PASSWORD_RESET_FIELDS_REQUIRED', 'Organisation ID, reset challenge, reset token and new password are required.');
+    const challenge = await PasswordResetChallenge.findOne({ organisationId, challengeId }).select('+resetTokenHash');
+    if (!challenge || !passwordResetService.verifyPasswordResetToken(challenge, resetToken)) throw new ApiError(400, 'PASSWORD_RESET_INVALID', 'The password reset request is invalid or expired.');
+    const user = await User.findOne({ organisationId, userId: challenge.userId }).select('+passwordHash');
+    const now = new Date();
+    if (!passwordResetService.isResetEligibleUser(user, now)) throw new ApiError(400, 'PASSWORD_RESET_INVALID', 'The password reset request is invalid or expired.');
+    if (await verifyPassword(newPassword, user.passwordHash)) throw new ApiError(400, 'PASSWORD_REUSE_NOT_ALLOWED', 'The new password must be different from the current password.');
+    let newPasswordHash;
+    try { newPasswordHash = await hashPassword(newPassword); } catch (error) { throw new ApiError(400, 'WEAK_PASSWORD', error.message || 'The new password does not meet security requirements.'); }
+    const consumed = await PasswordResetChallenge.findOneAndUpdate({ organisationId, challengeId, status: 'VERIFIED' }, { $set: { status: 'CONSUMED', consumedAt: now } }, { new: true });
+    if (!consumed) throw new ApiError(400, 'PASSWORD_RESET_INVALID', 'The password reset request is invalid or expired.');
+    const temporaryLock = user.accountStatus === 'LOCKED' && user.lockedUntil instanceof Date && user.lockedUntil > now;
+    user.passwordHash = newPasswordHash;
+    user.mustChangePassword = false;
+    user.passwordChangedAt = now;
+    user.lastPasswordResetAt = now;
+    user.failedLoginAttempts = 0;
+    user.lockedUntil = null;
+    if (temporaryLock) user.accountStatus = 'ACTIVE';
+    user.sessionVersion += 1;
+    user.updatedBy = 'SYSTEM';
+    await user.save();
+    const revokedSessionCount = await revokeAllUserSessions({ organisationId, userId: user.userId, revokedBy: 'SYSTEM', reason: 'PASSWORD_RESET', details: 'Sessions revoked after password reset.' });
+    await PasswordResetChallenge.updateMany({ organisationId, userId: user.userId, challengeId: { $ne: challengeId }, status: { $in: ['PENDING','VERIFIED'] } }, { $set: { status: 'EXPIRED', invalidatedAt: now } });
+    try { await auditService.recordAuditEvent({ organisationId, actorUserId: 'SYSTEM', actorRole: 'SYSTEM', module: 'AUTHENTICATION', action: 'PASSWORD_RESET', entityType: 'USER', entityId: user.userId, reason: 'Password reset completed through verified recovery flow.', result: 'SUCCESS', riskClassification: 'HIGH', correlationId: request.correlationId || null, requestMethod: request.method, requestPath: request.originalUrl || request.url, ipAddress: request.ip || null, userAgent: request.get?.('user-agent') || null, metadata: { revokedSessionCount } }); } catch (_error) {}
+    return response.status(200).json({ success: true, message: 'Password reset successfully. Please sign in.', data: { requiresLogin: true, revokedSessionCount }, correlationId: request.correlationId || null });
   }
 );
 
@@ -1324,6 +1400,9 @@ const revokeSessionById = asyncHandler(
 
 module.exports = {
   login,
+  requestPasswordReset,
+  verifyPasswordResetCode,
+  resetPassword,
   mfaSetup,
   mfaConfirm,
   mfaVerify,

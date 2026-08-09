@@ -67,6 +67,7 @@ export function navigate(route) {
 export function renderShell() {
   const isStaffShell = state.role === ROLES.STAFF;
   const app = document.getElementById("app");
+  app.classList.remove("auth-screen");
   app.classList.toggle("shell-minimal", isStaffShell);
 
   if (isStaffShell) {
