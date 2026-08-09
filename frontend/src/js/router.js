@@ -24,6 +24,7 @@ import { renderExpenses, wireExpenses } from "./pages/expenses.js";
 import { renderFinance } from "./pages/financeAccounts.js";
 import { renderLedger, wireLedger } from "./pages/personalLedger.js";
 import { renderEmployees, wireEmployees } from "./pages/employees.js";
+import { renderEmployeeProfile, wireEmployeeProfile } from "./pages/employeeProfile.js";
 import { renderAttendance } from "./pages/attendanceShifts.js";
 import { renderReports, wireReports } from "./pages/reportsAnalytics.js";
 import { renderAdmin, wireAdmin } from "./pages/administration.js";
@@ -174,6 +175,11 @@ function renderPage() {
     case "employees":
       content.innerHTML = renderEmployees();
       wireEmployees(content);
+      break;
+
+    case "employee-profile":
+      content.innerHTML = renderEmployeeProfile();
+      wireEmployeeProfile(content);
       break;
 
     case "attendance":
