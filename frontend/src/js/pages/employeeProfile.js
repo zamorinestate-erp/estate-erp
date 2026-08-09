@@ -10,12 +10,71 @@ const row = (label, value) => `<div style="padding:8px 0;border-bottom:1px solid
 const loading = () => `<div class="flex-col gap-md">${skeleton("100px")}${skeleton("170px")}${skeleton("120px")}</div>`;
 
 function view(p) {
-  const i=p.identity||{}, e=p.employment||{}, c=p.contact||{}, a=p.availability||{};
+  const i = p.identity || {};
+  const e = p.employment || {};
+  const c = p.contact || {};
+  const a = p.availability || {};
+  const h = p.history || null;
+  const lifecycle = p.lifecycle || null;
+  const hasOwn = (object, key) =>
+    Object.prototype.hasOwnProperty.call(object, key);
+  const address = c.address
+    ? [
+        c.address.line1,
+        c.address.line2,
+        c.address.city,
+        c.address.state,
+        c.address.postalCode,
+        c.address.country,
+      ]
+        .filter(Boolean)
+        .join(", ")
+    : "";
+  const emergencyContact = c.emergencyContact
+    ? [
+        c.emergencyContact.name,
+        c.emergencyContact.relationship,
+        c.emergencyContact.phone,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : "";
+  const privateRows = [
+    hasOwn(i, "previousNames")
+      ? row("Previous names", list(i.previousNames))
+      : "",
+    hasOwn(c, "address") ? row("Address", show(address)) : "",
+    hasOwn(c, "emergencyContact")
+      ? row("Emergency contact", show(emergencyContact))
+      : "",
+  ].join("");
+  const roleHistory = h?.roleHistory || [];
+  const cafeAssignmentHistory = h?.cafeAssignmentHistory || [];
+  const historyRows = [
+    ...roleHistory.map((entry) =>
+      row(
+        "Role change",
+       `${show(entry.fromRole)} → ${show(entry.toRole)} · ${show(entry.changedAt)} · ${show(entry.changedBy)} · ${show(entry.reason)}`
+      )
+    ),
+    ...cafeAssignmentHistory.map((entry) =>
+      row(
+        "Cafe assignment",
+       `${list(entry.previousAssignedCafeIds)} → ${list(entry.assignedCafeIds)} · ${show(entry.previousPrimaryCafeId)} → ${show(entry.primaryCafeId)} · ${show(entry.changedAt)} · ${show(entry.changedBy)} · ${show(entry.reason)}`
+      )
+    ),
+  ].join("");
+  const lifecycleRows = lifecycle
+    ? `${row("Archived at", show(lifecycle.archivedAt))}${row("Archived by", show(lifecycle.archivedBy))}${row("Archive reason", show(lifecycle.archiveReason))}`
+    : "";
+
   return `<div class="flex-col gap-md">
     <div class="glass" style="padding:20px"><div style="color:#fff;font-size:20px;font-weight:700">${show(i.preferredName||i.name)}</div><div class="muted-white" style="font-size:12px;margin-top:4px">${show(i.userId)} · ${show(i.role)} · ${show(i.accountStatus)}</div></div>
-    <div class="glass" style="padding:20px"><div style="color:#fff;font-weight:700">Employment</div>${row("Legal name",show(i.name))}${row("Employment type",show(e.employmentType))}${row("Department",show(e.department))}${row("Designation",show(e.designation))}${row("Primary cafe",show(e.primaryCafeId))}${row("Assigned cafes",list(e.assignedCafeIds))}</div>
-    <div class="glass" style="padding:20px"><div style="color:#fff;font-weight:700">Contact</div>${row("Email",show(c.email))}${row("Phone",show(c.phone))}</div>
-    <div class="glass" style="padding:20px"><div style="color:#fff;font-weight:700">Integrated services</div>${Object.entries(a).map(([k,v])=>row(k.replace(/([A-Z])/g," $1"),show(v))).join("")}</div>
+    <div class="glass" style="padding:20px"><div style="color:#fff;font-weight:700">Employment</div>${row("Legal name", show(i.name))}${row("Employment type", show(e.employmentType))}${row("Department",show(e.department))}${row("Designation",show(e.designation))}${row("Primary cafe", show(e.primaryCafeId))}${row("Assigned cafes",list(e.assignedCafeIds))}</div>
+    <div class="glass" style="padding:20px"><div style="color:#fff;font-weight:700">Contact</div>${row("Email",show(c.email))}${row("Phone",show(c.phone))}${privateRows}</div>
+    ${h ? `<div class="glass" style="padding:20px"><div style="color:#fff;font-weight:700">Employment history</div>${historyRows || row("History", "—")}</div>` : ""}
+    ${lifecycle ? `<div class="glass" style="padding:20px"><div style="color:#fff;font-weight:700">Lifecycle</div>${lifecycleRows}</div>` : ""}
+    <div class="glass" style="padding:20px"><div style="color:#fff;font-weight:700">Integrated services</div>${Object.entries(a).map(([k,v]) => row(k.replace(/([A-Z])/g," $1"),show(v))).join("")}</div>
   </div>`;
 }
 

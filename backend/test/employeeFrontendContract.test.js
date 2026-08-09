@@ -30,3 +30,15 @@ test('Employees frontend is API-backed and contains no hard-coded employee datas
   assert.ok(!employees.includes('const EMPLOYEES ='));
   assert.ok(profile.includes('/employees/me'));
 });
+
+test('Stage 2 frontend renders every optional profile section supplied by the backend', () => {
+  const profile = fs.readFileSync(profilePath, 'utf8');
+  for (const source of [employees, profile]) {
+    assert.ok(source.includes('previousNames'));
+    assert.ok(source.includes('address'));
+    assert.ok(source.includes('emergencyContact'));
+    assert.ok(source.includes('roleHistory'));
+    assert.ok(source.includes('cafeAssignmentHistory'));
+    assert.ok(source.includes('lifecycle'));
+  }
+});

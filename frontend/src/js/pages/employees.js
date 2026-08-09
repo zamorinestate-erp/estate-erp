@@ -48,6 +48,65 @@ function profileMarkup(profile) {
       <div class="muted-white" style="font-size:10.5px;">${esc(label)}</div>
       <div style="color:#fff;font-size:13px;margin-top:2px;">${value}</div>
     </div>`;
+  const hasOwn = (object, key) =>
+    Object.prototype.hasOwnProperty.call(object, key);
+  const privateRows = [
+    hasOwn(identity, "previousNames")
+      ? row("Previous names", showList(identity.previousNames))
+      : "",
+    hasOwn(contact, "address")
+      ? row(
+          "Address",
+          show(
+            [
+              contact.address?.line1,
+              contact.address?.line2,
+              contact.address?.city,
+              contact.address?.state,
+              contact.address?.postalCode,
+              contact.address?.country,
+            ]
+              .filter(Boolean)
+              .join(", ")
+          )
+        )
+      : "",
+    hasOwn(contact, "emergencyContact")
+      ? row(
+          "Emergency contact",
+          show(
+            [
+              contact.emergencyContact?.name,
+              contact.emergencyContact?.relationship,
+              contact.emergencyContact?.phone,
+            ]
+              .filter(Boolean)
+              .join(" · ")
+          )
+        )
+      : "",
+  ].join("");
+  const historyMarkup = profile.history
+    ? `<div style="margin-top:14px;"><div style="color:#fff;font-weight:700;margin-bottom:4px;">Employment history</div>${(profile.history.roleHistory || [])
+        .map((entry) =>
+          row(
+            "Role change",
+            `${show(entry.fromRole)} → ${show(entry.toRole)} · ${show(entry.changedAt)} · ${show(entry.changedBy)} · ${show(entry.reason)}`
+          )
+        )
+        .join("")}${(profile.history.cafeAssignmentHistory || [])
+        .map((entry) =>
+          row(
+            "Cafe assignment",
+            `${showList(entry.previousAssignedCafeIds)} → ${showList(entry.assignedCafeIds)} · ${show(entry.previousPrimaryCafeId)} → ${show(entry.primaryCafeId)} · ${show(entry.changedAt)} · ${show(entry.changedBy)} · ${show(entry.reason)}`
+          )
+        )
+        .join("")}</div>`
+    : "";
+  const lifecycleMarkup = profile.lifecycle
+    ? `<div style="margin-top:14px;"><div style="color:#fff;font-weight:700;margin-bottom:4px;">Lifecycle</div>${row("Archived at", show(profile.lifecycle.archivedAt))}${row("Archived by", show(profile.lifecycle.archivedBy))}${row("Archive reason", show(profile.lifecycle.archiveReason))}</div>`
+    : "";
+
 
   return `
     <div class="glass" style="padding:20px;margin-top:16px;">
@@ -72,6 +131,9 @@ function profileMarkup(profile) {
           ${row("Phone", show(contact.phone))}
         </div>
       </div>
+      ${privateRows ? `<div style="margin-top:14px;"><div style="color:#fff;font-weight:700;margin-bottom:4px;">Authorised private profile</div>${privateRows}</div>` : ""}
+      ${historyMarkup}
+      ${lifecycleMarkup}
       <div style="margin-top:14px;">
         <div style="color:#fff;font-weight:700;margin-bottom:4px;">Integrated services</div>
         ${Object.entries(availability)
