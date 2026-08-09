@@ -21,7 +21,7 @@ const notificationRoutes =
   require('./notificationRoutes');
 
 const attendanceRoutes =
-  require('./attendanceRoutes');
+  require('../modules/attendance/attendanceRoutes');
 
 const cashRoutes =
   require('./cashRoutes');

@@ -3,23 +3,23 @@
 const {
   Attendance,
   ATTENDANCE_STATUSES,
-} = require('../models/Attendance');
+} = require('./Attendance');
 
 const {
   Cafe,
-} = require('../models/Cafe');
+} = require('../../models/Cafe');
 
 const {
   SequenceCounter,
-} = require('../models/SequenceCounter');
+} = require('../../models/SequenceCounter');
 
 const {
   asyncHandler,
-} = require('../utils/asyncHandler');
+} = require('../../utils/asyncHandler');
 
 const {
   ApiError,
-} = require('../utils/ApiError');
+} = require('../../utils/ApiError');
 
 function normalizeIdentifier(value) {
   return typeof value === 'string'

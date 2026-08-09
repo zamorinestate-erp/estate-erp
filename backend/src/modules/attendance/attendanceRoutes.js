@@ -4,14 +4,14 @@ const express = require('express');
 
 const {
   authenticate,
-} = require('../middleware/authenticate');
+} = require('../../middleware/authenticate');
 
 const {
   listAttendance,
   getTodayAttendance,
   checkIn,
   checkOut,
-} = require('../controllers/attendanceController');
+} = require('./attendanceController');
 
 const router = express.Router();
 

@@ -1,6 +1,6 @@
 'use strict';
 
-const { Attendance } = require('../models/Attendance');
+const { Attendance } = require('../modules/attendance/Attendance');
 const { CashTransaction } = require('../models/CashTransaction');
 const { Expense } = require('../models/Expense');
 const { Cafe } = require('../models/Cafe');

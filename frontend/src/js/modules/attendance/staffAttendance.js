@@ -9,9 +9,9 @@
 //      single stand-in for "the server clock" in this prototype. No punch
 //      time is ever taken from a raw browser Date object directly.
 // =============================================================================
-import { state, setState } from "../state.js";
-import { showToast, confirmAction } from "../components.js";
-import { serverNowUtc, formatISTTime, formatISTTimeShort, formatISTDate, formatDuration } from "../ist.js";
+import { state, setState } from "../../state.js";
+import { showToast, confirmAction } from "../../components.js";
+import { serverNowUtc, formatISTTime, formatISTTimeShort, formatISTDate, formatDuration } from "../../ist.js";
 
 const HISTORY = [
   { date: "Mon 20 Jul", in: "9:02 AM IST", out: "5:04 PM IST", status: "On time", duration: "8h 02m" },

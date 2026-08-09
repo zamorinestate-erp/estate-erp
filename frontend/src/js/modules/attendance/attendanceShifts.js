@@ -1,6 +1,6 @@
 // PAGE: Attendance & Shifts (Part G.11)
-import { ROLES } from "../navigation.js";
-import { state } from "../state.js";
+import { ROLES } from "../../navigation.js";
+import { state } from "../../state.js";
 
 const ROSTER = [
   { name: "Priya Nair", mon: "9-5", tue: "9-5", wed: "Off", thu: "1-9", fri: "9-5" },
