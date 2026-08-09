@@ -304,6 +304,115 @@ test('GET /employees/me for OWNER excludes history and lifecycle sections', asyn
 });
 
 // ---------------------------------------------------------------------------
+// 3A. GET /employees/me — STAFF uses dedicated self-read permission
+// ---------------------------------------------------------------------------
+
+test('GET /employees/me returns STAFF self profile with EMPLOYEE:READ_SELF', async (t) => {
+  const user = makeUser({
+    userId: 'ST-0001',
+    role: 'STAFF',
+    isPrimaryMaster: false,
+    primaryMasterDesignatedAt: null,
+    primaryMasterDesignatedBy: null,
+    primaryMasterDesignationReason: null,
+    assignedCafeIds: ['CF-0001'],
+  });
+
+  const session = makeSession({
+    userId: 'ST-0001',
+    roleSnapshot: 'STAFF',
+    mfaVerified: false,
+  });
+
+  const rule = makePermissionRule({
+    role: 'STAFF',
+    permissionCode: 'EMPLOYEE:READ_SELF',
+    scope: 'SELF',
+    requiresMfa: false,
+  });
+
+  t.mock.method(authService, 'verifyAccessToken', async () => ({
+    payload: {
+      sub: 'ST-0001',
+      org: 'ORG-TEST',
+      role: 'STAFF',
+      sv: 0,
+      usv: 1,
+      pv: 1,
+      sid: 'SS-20260806-0001',
+    },
+    session,
+  }));
+
+  t.mock.method(Session, 'findOne', async () => session);
+  t.mock.method(User, 'findOne', () => makeQueryMock(user));
+  t.mock.method(RolePermission, 'findEffectiveRules', async (filter) => {
+    assert.equal(filter.role, 'STAFF');
+    assert.equal(filter.permissionCode, 'EMPLOYEE:READ_SELF');
+    return [rule];
+  });
+  t.mock.method(auditService, 'recordRequestAudit', async () => {});
+
+  const app = createApp({ allowedOrigins: ['*'], production: false });
+  const server = await new Promise((resolve) => {
+    const instance = app.listen(0, () => resolve(instance));
+  });
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+
+  const { status, body } = await request(server, '/api/v1/employees/me', {
+    token: 'mock-token',
+  });
+
+  assert.equal(status, 200, `Expected 200, got ${status}: ${JSON.stringify(body)}`);
+  assert.equal(body.data.profile.identity.userId, 'ST-0001');
+});
+
+// ---------------------------------------------------------------------------
+// 3B. GET /employees/:userId — STAFF may read only their own explicit ID
+// ---------------------------------------------------------------------------
+
+test('GET /employees/:userId returns STAFF own profile with EMPLOYEE:READ_SELF', async (t) => {
+  const user = makeUser({ userId: 'ST-0001', role: 'STAFF', isPrimaryMaster: false, assignedCafeIds: ['CF-0001'] });
+  const session = makeSession({ userId: 'ST-0001', roleSnapshot: 'STAFF', mfaVerified: false });
+  const rule = makePermissionRule({ role: 'STAFF', permissionCode: 'EMPLOYEE:READ_SELF', scope: 'SELF', requiresMfa: false });
+
+  t.mock.method(authService, 'verifyAccessToken', async () => ({ payload: { sub: 'ST-0001', org: 'ORG-TEST', role: 'STAFF', sv: 0, usv: 1, pv: 1, sid: 'SS-20260806-0001' }, session }));
+  t.mock.method(Session, 'findOne', async () => session);
+  t.mock.method(User, 'findOne', () => makeQueryMock(user));
+  t.mock.method(RolePermission, 'findEffectiveRules', async (filter) => {
+    assert.equal(filter.role, 'STAFF');
+    assert.equal(filter.permissionCode, 'EMPLOYEE:READ_SELF');
+    return [rule];
+  });
+  t.mock.method(auditService, 'recordRequestAudit', async () => {});
+
+  const app = createApp({ allowedOrigins: ['*'], production: false });
+  const server = await new Promise((resolve) => { const instance = app.listen(0, () => resolve(instance)); });
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+
+  const { status, body } = await request(server, '/api/v1/employees/ST-0001', { token: 'mock-token' });
+  assert.equal(status, 200, `Expected 200, got ${status}: ${JSON.stringify(body)}`);
+  assert.equal(body.data.profile.identity.userId, 'ST-0001');
+});
+
+test('GET /employees/:userId rejects STAFF access to another employee', async (t) => {
+  const user = makeUser({ userId: 'ST-0001', role: 'STAFF', isPrimaryMaster: false, assignedCafeIds: ['CF-0001'] });
+  const session = makeSession({ userId: 'ST-0001', roleSnapshot: 'STAFF', mfaVerified: false });
+
+  t.mock.method(authService, 'verifyAccessToken', async () => ({ payload: { sub: 'ST-0001', org: 'ORG-TEST', role: 'STAFF', sv: 0, usv: 1, pv: 1, sid: 'SS-20260806-0001' }, session }));
+  t.mock.method(Session, 'findOne', async () => session);
+  t.mock.method(User, 'findOne', () => makeQueryMock(user));
+
+  const app = createApp({ allowedOrigins: ['*'], production: false });
+  const server = await new Promise((resolve) => { const instance = app.listen(0, () => resolve(instance)); });
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+
+  const { status, body } = await request(server, '/api/v1/employees/ST-0002', { token: 'mock-token' });
+  assert.equal(status, 403);
+  assert.equal(body.error.code, 'SELF_ACCESS_ONLY');
+});
+
+// ---------------------------------------------------------------------------
 // 4. GET /employees/:userId — MASTER reads own profile (no audit)
 // ---------------------------------------------------------------------------
 

@@ -20,6 +20,45 @@ const router = express.Router();
 
 router.use(authenticate);
 
+const authorizeEmployeeRead = authorize(
+  'EMPLOYEE:READ',
+  {
+    allowedRoles: [
+      'MASTER',
+      'OWNER',
+      'CAFE_ADMIN',
+    ],
+  }
+);
+
+const authorizeEmployeeSelfRead = authorize(
+  'EMPLOYEE:READ_SELF',
+  {
+    allowedRoles: ['STAFF'],
+    targetUserIdResolver: (request) =>
+      request.params?.userId ||
+      request.auth?.userId,
+    selfOnly: true,
+  }
+);
+
+function authorizeEmployeeProfileRead(
+  request,
+  response,
+  next
+) {
+  const middleware =
+    request.auth?.role === 'STAFF'
+      ? authorizeEmployeeSelfRead
+      : authorizeEmployeeRead;
+
+  return middleware(
+    request,
+    response,
+    next
+  );
+}
+
 // Search — MASTER and OWNER only (organisation-wide directory)
 router.get(
   '/search',
@@ -40,17 +79,7 @@ router.get(
 // the literal string "me" as a :userId parameter.
 router.get(
   '/me',
-  authorize(
-    'EMPLOYEE:READ',
-    {
-      allowedRoles: [
-        'MASTER',
-        'OWNER',
-        'CAFE_ADMIN',
-        'STAFF',
-      ],
-    }
-  ),
+  authorizeEmployeeProfileRead,
   getSelfProfile
 );
 
@@ -58,17 +87,7 @@ router.get(
 // STAFF hits this with their own userId; scope filter enforces self-only.
 router.get(
   '/:userId',
-  authorize(
-    'EMPLOYEE:READ',
-    {
-      allowedRoles: [
-        'MASTER',
-        'OWNER',
-        'CAFE_ADMIN',
-        'STAFF',
-      ],
-    }
-  ),
+  authorizeEmployeeProfileRead,
   getEmployeeProfile
 );
 
