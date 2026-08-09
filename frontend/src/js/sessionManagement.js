@@ -1,6 +1,7 @@
 // Canonical authenticated session-management UI shared by all roles.
 import { apiDelete, apiGet, apiPost } from "./apiClient.js";
 import { showToast } from "./components.js";
+import { clearPublicAppCaches } from "./updateManager.js";
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -99,6 +100,7 @@ export function wireSessionManagement(root) {
       try {
         if (isCurrent) {
           await apiPost("/auth/logout");
+          await clearPublicAppCaches();
           window.location.reload();
           return;
         }
@@ -119,6 +121,7 @@ export function wireSessionManagement(root) {
 
     try {
       await apiPost("/auth/logout-all");
+      await clearPublicAppCaches();
       window.location.reload();
     } catch (error) {
       button.disabled = false;
