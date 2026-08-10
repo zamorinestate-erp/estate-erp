@@ -6,3 +6,5 @@ dist/
 coverage/
 *.log
 !.env.example
+.local-private-storage/
+.local-evidence-storage/

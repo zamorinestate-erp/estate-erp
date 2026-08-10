@@ -1,21 +1,28 @@
 // =============================================================================
-// PAGE: Cafe Admin Command Centre (Part D of the guideline)
-// Deliberately smaller than Master's — no cafe selector, no cross-cafe data,
-// anywhere, in any widget.
+// PAGE: Cafe Admin Command Centre — API-wired version
+// Scoped strictly to the authenticated admin's assigned cafes.
+// Nothing from other cafes ever appears here.
 // =============================================================================
-import { kpiCard } from "../components.js";
+import { kpiCard, skeleton } from "../components.js";
+import { apiGet } from "../apiClient.js";
+import { state } from "../state.js";
+
+function fmtInr(paisa) {
+  const r = Math.round(paisa / 100);
+  if (r >= 100000) return "₹" + (r / 100000).toFixed(2) + "L";
+  if (r >= 1000)   return "₹" + (r / 1000).toFixed(1) + "K";
+  return "₹" + r.toLocaleString("en-IN");
+}
 
 export function renderAdminDashboard() {
+  const name = state.auth?.user?.name || "Admin";
   return `
     <div class="page-enter">
-      <div style="color:#fff; font-size:22px; font-weight:700; margin-bottom:4px;" class="font-display">Good morning, Ravi</div>
-      <div class="muted-white" style="font-size:13.5px; margin-bottom:18px;">Dawn Roast — Koramangala, only. Nothing from other cafes shows here.</div>
+      <div style="color:#fff; font-size:22px; font-weight:700; margin-bottom:4px;" class="font-display">Good morning, ${name}</div>
+      <div class="muted-white" id="admin-dash-subtitle" style="font-size:13.5px; margin-bottom:18px;">Loading your café metrics…</div>
 
-      <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:16px; margin-bottom:18px;">
-        ${kpiCard({ label: "Today's sales", value: "₹28,400", trend: "5.1% vs yesterday", trendType: "up" })}
-        ${kpiCard({ label: "Cash session", value: "Open", trend: "Since 8:02 AM", trendType: "up" })}
-        ${kpiCard({ label: "Low stock items", value: "3", trend: "Milk, oat milk, cups", trendType: "down" })}
-        ${kpiCard({ label: "Attendance today", value: "9 / 10", trend: "1 late arrival", trendType: "down" })}
+      <div id="admin-kpi-grid" style="display:grid; grid-template-columns: repeat(4, 1fr); gap:16px; margin-bottom:18px;">
+        ${skeleton("90px")}${skeleton("90px")}${skeleton("90px")}${skeleton("90px")}
       </div>
 
       <div style="display:grid; grid-template-columns: 1.5fr 1fr; gap:16px;">
@@ -34,14 +41,45 @@ export function renderAdminDashboard() {
           </svg>
         </div>
         <div class="glass" style="padding:22px;">
-          <div style="color:#fff; font-weight:600; font-size:15px; margin-bottom:14px;">Manager logbook — today</div>
-          <div class="flex-col gap-md">
-            <div style="font-size:12.5px;"><span style="color:#fff; font-weight:600;">7:58 AM</span><br/><span class="muted-white">Opening checklist completed, milk delivery short by 2 crates</span></div>
-            <div style="font-size:12.5px;"><span style="color:#fff; font-weight:600;">11:20 AM</span><br/><span class="muted-white">Espresso machine 2 serviced, back online</span></div>
-            <div style="font-size:12.5px;"><span style="color:#fff; font-weight:600;">1:05 PM</span><br/><span class="muted-white">Priya covering Anjali's shift 2-6 PM, swap approved</span></div>
-          </div>
+          <div style="color:#fff; font-weight:600; font-size:15px; margin-bottom:14px;">Live alerts</div>
+          <div id="admin-attention-feed">${skeleton("180px")}</div>
         </div>
       </div>
     </div>
   `;
+}
+
+export async function hydrateAdminDashboard(root) {
+  try {
+    const res = await apiGet("/dashboard");
+    const m = res?.data?.metrics || {};
+
+    const grid = root.querySelector("#admin-kpi-grid");
+    if (grid) {
+      grid.innerHTML = `
+        ${kpiCard({ label: "Today's sales",     value: fmtInr(m.totalSalesPaisa || 0),       trend: `${m.totalBillsCount || 0} bills`,            trendType: "up" })}
+        ${kpiCard({ label: "Low stock items",   value: String(m.lowStockCount || 0),           trend: m.lowStockCount > 0 ? "need restock" : "OK", trendType: m.lowStockCount > 0 ? "down" : "up" })}
+        ${kpiCard({ label: "Pending approvals", value: String(m.pendingApprovalsCount || 0),   trend: "awaiting action",                            trendType: m.pendingApprovalsCount > 0 ? "down" : "up" })}
+        ${kpiCard({ label: "Open tasks",        value: String(m.pendingTasksCount || 0),        trend: "in progress",                               trendType: "neutral" })}
+      `;
+    }
+
+    const subtitle = root.querySelector("#admin-dash-subtitle");
+    if (subtitle) {
+      const cafe = state.auth?.user?.primaryCafeId || "your café";
+      subtitle.textContent = `${cafe} · Live metrics for ${res?.data?.businessDate || "today"}`;
+    }
+
+    const feed = root.querySelector("#admin-attention-feed");
+    if (feed) {
+      const items = [];
+      if (m.lowStockCount > 0) items.push(`<div style="font-size:12.5px; margin-bottom:10px;"><span style="color:#fff; font-weight:600;">${m.lowStockCount} low-stock item${m.lowStockCount > 1 ? "s" : ""}</span><br/><span class="muted-white">Check inventory and raise a purchase order</span></div>`);
+      if (m.pendingApprovalsCount > 0) items.push(`<div style="font-size:12.5px; margin-bottom:10px;"><span style="color:#fff; font-weight:600;">${m.pendingApprovalsCount} pending approval${m.pendingApprovalsCount > 1 ? "s" : ""}</span><br/><span class="muted-white">Review and action from Tasks &amp; Approvals</span></div>`);
+      if (items.length === 0) items.push(`<div class="muted-white" style="font-size:13px;">All clear — no alerts right now.</div>`);
+      feed.innerHTML = items.join("");
+    }
+  } catch (err) {
+    const grid = root.querySelector("#admin-kpi-grid");
+    if (grid) grid.innerHTML = `<div class="glass" style="grid-column:1/-1; padding:16px; color:rgba(255,255,255,0.6); font-size:13px;">Could not load metrics — ${err.message || "network error"}.</div>`;
+  }
 }

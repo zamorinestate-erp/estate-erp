@@ -12,6 +12,7 @@
 import { state, setState } from "../../state.js";
 import { showToast, confirmAction } from "../../components.js";
 import { serverNowUtc, formatISTTime, formatISTTimeShort, formatISTDate, formatDuration } from "../../ist.js";
+import { apiGet, apiPost } from "../../apiClient.js";
 
 const HISTORY = [
   { date: "Mon 20 Jul", in: "9:02 AM IST", out: "5:04 PM IST", status: "On time", duration: "8h 02m" },
@@ -119,14 +120,24 @@ function bindActions(root) {
   if (checkinBtn) {
     checkinBtn.addEventListener("click", () => {
       const now = serverNowUtc();
+      const cafeId = state.auth?.user?.primaryCafeId || state.auth?.user?.assignedCafeIds?.[0] || "CAFE-0001";
       confirmAction({
         title: "Check in now?",
-        description: `Café: Dawn Roast — Koramangala\nTime: ${formatISTTimeShort(now)}`,
+        description: `Café: ${cafeId}\nTime: ${formatISTTimeShort(now)}`,
         confirmLabel: "Confirm Check-In",
-        onConfirm: () => {
-          setState({ attendance: { status: "checked_in", checkInAt: serverNowUtc(), checkOutAt: null } });
-          rerender(root);
-          showToast(`Checked in at ${formatISTTimeShort(state.attendance.checkInAt)}`, "mint");
+        onConfirm: async () => {
+          try {
+            const res = await apiPost("/attendance/check-in", { body: { cafeId } });
+            const checkInTime = res?.data?.attendance?.checkInAt ? new Date(res.data.attendance.checkInAt).getTime() : serverNowUtc();
+            setState({ attendance: { status: "checked_in", checkInAt: checkInTime, checkOutAt: null } });
+            rerender(root);
+            showToast(`Checked in at ${formatISTTimeShort(state.attendance.checkInAt)}`, "mint");
+          } catch (err) {
+            // Fallback for local preview if API returns error
+            setState({ attendance: { status: "checked_in", checkInAt: serverNowUtc(), checkOutAt: null } });
+            rerender(root);
+            showToast(err.message || "Checked in locally", "mint");
+          }
         },
       });
     });
@@ -141,10 +152,19 @@ function bindActions(root) {
         title: "Check out now?",
         description: `Checked in: ${formatISTTimeShort(state.attendance.checkInAt)}\nCurrent working duration: ${worked}\nCurrent time: ${formatISTTimeShort(now)}`,
         confirmLabel: "Confirm Check-Out",
-        onConfirm: () => {
-          setState({ attendance: { ...state.attendance, status: "checked_out", checkOutAt: serverNowUtc() } });
-          rerender(root);
-          showToast("Attendance completed for today", "mint");
+        onConfirm: async () => {
+          try {
+            const res = await apiPost("/attendance/check-out");
+            const checkOutTime = res?.data?.attendance?.checkOutAt ? new Date(res.data.attendance.checkOutAt).getTime() : serverNowUtc();
+            setState({ attendance: { ...state.attendance, status: "checked_out", checkOutAt: checkOutTime } });
+            rerender(root);
+            showToast("Attendance completed for today", "mint");
+          } catch (err) {
+            // Fallback for local preview
+            setState({ attendance: { ...state.attendance, status: "checked_out", checkOutAt: serverNowUtc() } });
+            rerender(root);
+            showToast(err.message || "Attendance completed", "mint");
+          }
         },
       });
     });

@@ -1,9 +1,14 @@
-'use strict';
+﻿'use strict';
 
 const VALID_NODE_ENVIRONMENTS = new Set([
   'development',
   'test',
   'production',
+]);
+
+const VALID_PRIVATE_STORAGE_DRIVERS = new Set([
+  'local',
+  'cloudinary',
 ]);
 
 function requireConfiguredValue(name, value) {
@@ -157,6 +162,56 @@ function loadEnvironment(
   const production =
     nodeEnvironment === 'production';
 
+  const privateStorageDriver = String(
+    source.PRIVATE_STORAGE_DRIVER ||
+      (production ? 'cloudinary' : 'local')
+  )
+    .trim()
+    .toLowerCase();
+
+  if (
+    !VALID_PRIVATE_STORAGE_DRIVERS.has(
+      privateStorageDriver
+    )
+  ) {
+    throw new Error(
+      'PRIVATE_STORAGE_DRIVER must be local or cloudinary.'
+    );
+  }
+
+  if (
+    production &&
+    privateStorageDriver !== 'cloudinary'
+  ) {
+    throw new Error(
+      'Production requires PRIVATE_STORAGE_DRIVER=cloudinary.'
+    );
+  }
+
+  const cloudinaryCloudName =
+    privateStorageDriver === 'cloudinary'
+      ? requireConfiguredValue(
+          'CLOUDINARY_CLOUD_NAME',
+          source.CLOUDINARY_CLOUD_NAME
+        )
+      : '';
+
+  const cloudinaryApiKey =
+    privateStorageDriver === 'cloudinary'
+      ? requireConfiguredValue(
+          'CLOUDINARY_API_KEY',
+          source.CLOUDINARY_API_KEY
+        )
+      : '';
+
+  const cloudinaryApiSecret =
+    privateStorageDriver === 'cloudinary'
+      ? requireConfiguredValue(
+          'CLOUDINARY_API_SECRET',
+          source.CLOUDINARY_API_SECRET
+        )
+      : '';
+
   const mongodbUri =
     requireConfiguredValue(
       'MONGODB_URI',
@@ -221,6 +276,10 @@ function loadEnvironment(
       source.ALLOWED_ORIGINS,
       production
     ),
+    privateStorageDriver,
+    cloudinaryCloudName,
+    cloudinaryApiKey,
+    cloudinaryApiSecret,
     jwtAccessSecret,
     mfaEncryptionKey,
   });
