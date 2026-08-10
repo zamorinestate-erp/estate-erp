@@ -38,7 +38,7 @@ const previewRoleChange = asyncHandler(async (request, response) => {
   const target = await loadTarget(request, targetUserId);
 
   // Cannot preview a change to the Primary Master
-  assertNotPrimaryMasterTarget(target, 'role cannot be changed');
+  await assertNotPrimaryMasterTarget(target, 'role cannot be changed', { request, actorDocument });
 
   const proposedRole = normalizeIdentifier(
     request.body?.proposedRole || request.body?.role || ''
@@ -127,7 +127,7 @@ const executeRoleChange = asyncHandler(async (request, response) => {
   const target = await loadTarget(request, targetUserId);
 
   // 5. Primary Master protection — cannot change Primary Master's role
-  assertNotPrimaryMasterTarget(target, 'role cannot be changed');
+  await assertNotPrimaryMasterTarget(target, 'role cannot be changed', { request, actorDocument });
 
   // 6. No-op check
   assertRoleIsNotNoOp(target.role, proposedRole);

@@ -391,6 +391,18 @@ const userSchema = new mongoose.Schema(
       },
     },
 
+    primaryMasterProtectionSuspension: {
+      type: Boolean,
+      default: false,
+    },
+
+    statusReason: {
+      type: String,
+      trim: true,
+      maxlength: 1000,
+      default: null,
+    },
+
     passwordHash: {
       type: String,
       required: true,

@@ -32,6 +32,7 @@ const {
   loadTarget,
   assertNotPrimaryMasterTarget,
   assertMayActOnMasterTarget,
+  assertMayRestoreAccount,
   rejectProtectedFields,
   assertStatusIsNotNoOp,
   assertCafeChangeIsNotNoOp,
@@ -559,7 +560,7 @@ const updateUser = asyncHandler(
     }
 
     // Primary Master protection — no admin updates to PM
-    assertNotPrimaryMasterTarget(user, 'profile cannot be administratively modified');
+    await assertNotPrimaryMasterTarget(user, 'profile cannot be administratively modified', { request, actorDocument });
 
     // Secondary Master cannot modify another Master
     assertMayActOnMasterTarget(actorDocument, user);
@@ -810,13 +811,17 @@ const changeUserStatus = asyncHandler(
     }
 
     // Primary Master protection — PM must always remain ACTIVE
-    assertNotPrimaryMasterTarget(
+    await assertNotPrimaryMasterTarget(
       user,
-      'status cannot be changed — Primary Master must remain ACTIVE'
+      'status cannot be changed — Primary Master must remain ACTIVE',
+      { request, actorDocument }
     );
 
     // Secondary Master cannot deactivate/suspend another Master
     assertMayActOnMasterTarget(actorDocument, user);
+
+    // Check restoration authority for accounts suspended due to Primary Master security events
+    assertMayRestoreAccount(actorDocument, user);
 
     // Self-deactivation protection
     if (
@@ -842,6 +847,10 @@ const changeUserStatus = asyncHandler(
 
     user.lockedUntil = null;
     user.failedLoginAttempts = 0;
+    if (accountStatus === 'ACTIVE') {
+      user.primaryMasterProtectionSuspension = false;
+      user.statusReason = null;
+    }
 
     if (accessRemoved) {
       user.sessionVersion += 1;
@@ -967,9 +976,10 @@ const archiveUser = asyncHandler(
     }
 
     // Primary Master protection
-    assertNotPrimaryMasterTarget(
+    await assertNotPrimaryMasterTarget(
       user,
-      'Primary Master cannot be archived'
+      'Primary Master cannot be archived',
+      { request, actorDocument }
     );
 
     // Secondary Master cannot archive another Master

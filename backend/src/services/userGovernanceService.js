@@ -90,16 +90,159 @@ function actorIsPrimaryMaster(actorDocument) {
 // ─── Primary Master protection ───────────────────────────────────────────────
 
 /**
- * Throw PRIMARY_MASTER_PROTECTED when the target is the Primary Master and
- * the operation is not permitted.
+ * Countermeasure triggered when a secondary Master attempts an unauthorized
+ * governance action against the Primary Master.
+ *
+ * Requirements:
+ * 1. DO NOT modify the Primary Master.
+ * 2. Suspend the attacking MASTER.
+ * 3. Increment/revoke attacker session access (sessionVersion & permissionsVersion).
+ * 4. Revoke all active attacker sessions.
+ * 5. Record a CRITICAL audit event.
+ * 6. Send CRITICAL security notifications to other Masters and Owners.
+ * 7. Throw PRIMARY_MASTER_ATTACK_SUSPENDED (403).
  */
-function assertNotPrimaryMasterTarget(target, operationDescription) {
-  if (target.isPrimaryMaster) {
+async function handlePrimaryMasterAttack({ request, actorDocument, target, operationDescription }) {
+  if (!target.isPrimaryMaster || actorDocument.isPrimaryMaster) {
+    return;
+  }
+
+  // 1. Suspend attacking MASTER
+  actorDocument.accountStatus = 'SUSPENDED';
+  actorDocument.statusReason = `PRIMARY_MASTER_PROTECTION_TRIGGERED: Attempted illegal action (${operationDescription}) on Primary Master`;
+  actorDocument.primaryMasterProtectionSuspension = true;
+  actorDocument.sessionVersion = (actorDocument.sessionVersion || 1) + 1;
+  actorDocument.permissionsVersion = (actorDocument.permissionsVersion || 1) + 1;
+  await actorDocument.save();
+
+  // 2. Revoke all active attacker sessions
+  try {
+    if (request && request.auth) {
+      await revokeAllUserSessions({
+        organisationId: request.auth.organisationId,
+        userId: actorDocument.userId,
+        revokedBy: 'SYSTEM_SECURITY_COUNTERMEASURE',
+        reason: 'PRIMARY_MASTER_ATTACK_SUSPENSION',
+        details: `Session revoked automatically because actor attempted illegal action on Primary Master: ${operationDescription}`,
+      });
+    }
+  } catch (_err) {}
+
+  // 3. Record CRITICAL audit event
+  try {
+    if (request) {
+      await auditService.recordRequestAudit({
+        request,
+        module: 'USER_GOVERNANCE',
+        action: 'PRIMARY_MASTER_ATTACK_BLOCKED_AND_ACTOR_SUSPENDED',
+        entityType: 'USER',
+        entityId: actorDocument.userId,
+        reason: operationDescription,
+        result: 'SECURITY_COUNTERMEASURE',
+        riskClassification: 'CRITICAL',
+        metadata: {
+          attackingUserId: actorDocument.userId,
+          attackingUserName: actorDocument.name,
+          targetPrimaryMasterUserId: target.userId,
+          operationAttempted: operationDescription,
+        },
+      });
+    }
+  } catch (_err) {}
+
+  // 4. Notify other Masters and Owners
+  try {
+    const { SequenceCounter } = require('../models/SequenceCounter');
+    const { Notification } = require('../models/Notification');
+    const orgId = actorDocument.organisationId || request?.auth?.organisationId;
+
+    if (orgId) {
+      const now = new Date();
+      const datePart = now.toISOString().slice(0, 10).replaceAll('-', '');
+
+      const recipients = await User.find({
+        organisationId: orgId,
+        role: { $in: ['MASTER', 'OWNER'] },
+        userId: { $ne: actorDocument.userId },
+        accountStatus: 'ACTIVE',
+      }).select('userId role');
+
+      for (const recipient of recipients) {
+        const notificationId = await SequenceCounter.generateId({
+          organisationId: orgId,
+          sequenceKey: `NOTIFICATION_${datePart}`,
+          prefix: `NT-${datePart}`,
+          minimumDigits: 4,
+        });
+
+        await Notification.create({
+          notificationId,
+          organisationId: orgId,
+          recipientUserId: recipient.userId,
+          recipientRole: recipient.role,
+          eventType: 'PRIMARY_MASTER_ATTACK_PREVENTED',
+          category: 'SECURITY',
+          priority: 'CRITICAL',
+          title: 'Primary Master Security Violation',
+          message: `${actorDocument.name} (${actorDocument.userId}) attempted to remove the Primary Master and was suspended.`,
+          channels: ['IN_APP', 'TOAST', 'POPUP'],
+          status: 'DELIVERED',
+          readStatus: 'UNREAD',
+          createdBy: 'SYSTEM_SECURITY_COUNTERMEASURE',
+        });
+      }
+    }
+  } catch (_err) {}
+
+  // 5. Throw 403 ApiError
+  throw new ApiError(
+    403,
+    'PRIMARY_MASTER_ATTACK_SUSPENDED',
+    `Critical security violation: ${actorDocument.name} (${actorDocument.userId}) attempted to remove the Primary Master and was suspended.`
+  );
+}
+
+/**
+ * Throw PRIMARY_MASTER_PROTECTED when the target is the Primary Master.
+ * If actorDocument is a non-primary Master, triggers automated suspension countermeasure.
+ */
+function assertNotPrimaryMasterTarget(target, operationDescription, { request = null, actorDocument = null } = {}) {
+  if (target && target.isPrimaryMaster) {
+    if (actorDocument && !actorDocument.isPrimaryMaster) {
+      handlePrimaryMasterAttack({
+        request,
+        actorDocument,
+        target,
+        operationDescription,
+      }).catch((_err) => {});
+    }
+
     throw new ApiError(
       403,
       'PRIMARY_MASTER_PROTECTED',
       `The Primary Master account cannot be modified: ${operationDescription}.`
     );
+  }
+}
+
+/**
+ * Enforce that only the Primary Master may restore an account suspended for attempting
+ * to neutralize the Primary Master.
+ */
+function assertMayRestoreAccount(actorDocument, target) {
+  if (
+    target &&
+    (target.primaryMasterProtectionSuspension === true ||
+      (typeof target.statusReason === 'string' &&
+        target.statusReason.includes('PRIMARY_MASTER_PROTECTION_TRIGGERED')))
+  ) {
+    if (!actorDocument.isPrimaryMaster) {
+      throw new ApiError(
+        403,
+        'PRIMARY_MASTER_AUTHORITY_REQUIRED',
+        'Only the Primary Master can restore an account suspended for attempting to neutralize the Primary Master.'
+      );
+    }
   }
 }
 
@@ -566,6 +709,8 @@ module.exports = {
   loadTarget,
   actorIsPrimaryMaster,
   assertNotPrimaryMasterTarget,
+  handlePrimaryMasterAttack,
+  assertMayRestoreAccount,
   assertPrimaryMasterAuthority,
   assertMayActOnMasterTarget,
   rejectProtectedFields,
