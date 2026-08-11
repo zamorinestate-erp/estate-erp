@@ -255,7 +255,9 @@ function performVoluntaryPasswordChange() {
   });
 }
 
-document.addEventListener("zamorin:change-password", performVoluntaryPasswordChange);
+if (typeof document !== "undefined") {
+  document.addEventListener("zamorin:change-password", performVoluntaryPasswordChange);
+}
 
 function renderPasswordResetRequestScreen({ organisationId = "", email = "" } = {}) {
   const appEl = document.getElementById("app");
@@ -436,4 +438,10 @@ async function boot() {
   });
 }
 
-document.addEventListener("DOMContentLoaded", boot);
+if (typeof document !== "undefined") {
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", boot, { once: true });
+  } else {
+    boot();
+  }
+}
