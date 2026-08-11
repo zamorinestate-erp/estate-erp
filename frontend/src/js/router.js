@@ -38,6 +38,14 @@ import { renderStaffLoansAdvances, wireStaffLoansAdvances } from "./pages/staffL
 import { renderPayrollManagement, wirePayrollManagement } from "./pages/payrollManagement.js";
 import { renderAnnouncements, wireAnnouncements } from "./pages/announcements.js";
 import { renderNotAvailable, renderNotBuiltYet } from "./pages/notAvailable.js";
+import { renderVendors, wireVendors } from "./pages/vendors.js";
+import { renderProcurement, wireProcurement } from "./pages/procurement.js";
+import { renderMenuManagement, wireMenuManagement } from "./pages/menuManagement.js";
+import { renderCustomers, wireCustomers } from "./pages/customers.js";
+import { renderQuality, wireQuality } from "./pages/quality.js";
+import { renderAssets, wireAssets } from "./pages/assets.js";
+import { renderDepartmentOrders, wireDepartmentOrders } from "./pages/departmentOrders.js";
+import { renderTrashBin, wireTrashBin } from "./pages/trashBin.js";
 
 // ROLE_LABELS: display-safe generic labels used only for topbar scope chip
 // until /auth/me bootstrap provides the real user's display name.
@@ -249,6 +257,46 @@ function renderPage() {
     case "notifications":
       content.innerHTML = renderNotificationCentre();
       wireNotificationCentre(content);
+      break;
+
+    case "vendors":
+      content.innerHTML = renderVendors();
+      wireVendors(content);
+      break;
+
+    case "procurement":
+      content.innerHTML = renderProcurement();
+      wireProcurement(content);
+      break;
+
+    case "menu":
+      content.innerHTML = renderMenuManagement();
+      wireMenuManagement(content);
+      break;
+
+    case "customers":
+      content.innerHTML = renderCustomers();
+      wireCustomers(content);
+      break;
+
+    case "quality":
+      content.innerHTML = renderQuality();
+      wireQuality(content);
+      break;
+
+    case "assets":
+      content.innerHTML = renderAssets();
+      wireAssets(content);
+      break;
+
+    case "dept-orders":
+      content.innerHTML = renderDepartmentOrders();
+      wireDepartmentOrders(content);
+      break;
+
+    case "trash":
+      content.innerHTML = renderTrashBin();
+      wireTrashBin(content);
       break;
 
     case "not-built":
