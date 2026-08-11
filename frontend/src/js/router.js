@@ -21,7 +21,7 @@ import { renderSettingsShared, wireSettingsShared } from "./pages/settingsShared
 import { renderPOS, wirePOS } from "./pages/posTill.js";
 import { renderInventory, wireInventory } from "./pages/inventory.js";
 import { renderExpenses, wireExpenses } from "./pages/expenses.js";
-import { renderFinance } from "./pages/financeAccounts.js";
+import { renderFinance, wireFinance } from "./pages/financeAccounts.js";
 import { renderLedger, wireLedger } from "./pages/personalLedger.js";
 import { renderEmployees, wireEmployees } from "./pages/employees.js";
 import { renderEmployeeProfile, wireEmployeeProfile } from "./pages/employeeProfile.js";
@@ -30,7 +30,7 @@ import { renderReports, wireReports } from "./pages/reportsAnalytics.js";
 import { renderAdmin, wireAdmin } from "./pages/administration.js";
 import { renderCashBook, wireCashBook } from "./pages/cashBook.js";
 import { renderTasks, wireTasks } from "./pages/tasksApprovals.js";
-import { renderPerformance } from "./pages/cafePerformance.js";
+import { renderPerformance, wirePerformance } from "./pages/cafePerformance.js";
 import { renderStaffAttendance, wireStaffAttendance } from "./modules/attendance/staffAttendance.js";
 import { renderStaffLeave, wireStaffLeave } from "./pages/staffLeave.js";
 import { renderStaffPayslips, wireStaffPayslips } from "./pages/staffPayslips.js";
@@ -174,6 +174,7 @@ function renderPage() {
 
     case "finance":
       content.innerHTML = renderFinance();
+      wireFinance(content);
       break;
 
     case "ledger":
@@ -222,6 +223,7 @@ function renderPage() {
 
     case "performance":
       content.innerHTML = renderPerformance();
+      wirePerformance(content);
       break;
 
     case "staff-attendance":

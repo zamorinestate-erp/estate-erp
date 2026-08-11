@@ -1,43 +1,77 @@
-// PAGE: Finance & Accounts (Part G.4)
-import { kpiCard } from "../components.js";
+// =============================================================================
+// PAGE: Finance & Accounts — API-wired version
+// Reads P&L metrics from GET /api/v1/dashboard
+// =============================================================================
+import { apiGet } from "../apiClient.js";
+import { kpiCard, skeleton } from "../components.js";
 
-const PNL_ROWS = [
-  ["Gross sales", "₹4,82,000"],
-  ["Discounts & refunds", "-₹9,400"],
-  ["Net revenue", "₹4,72,600"],
-  ["Cost of goods sold", "-₹1,41,780"],
-  ["Salary (day-wise allocation)", "-₹86,200"],
-  ["Rent & utilities (allocated)", "-₹34,500"],
-  ["Other controllable costs", "-₹18,900"],
-  ["Net profit today", "₹1,91,220"],
-];
+function fmtInr(paisa) {
+  const r = Math.round((paisa || 0) / 100);
+  return "₹" + r.toLocaleString("en-IN");
+}
 
 export function renderFinance() {
   return `
     <div class="page-enter">
       <div style="color:#fff; font-size:22px; font-weight:700; margin-bottom:4px;" class="font-display">Finance &amp; Accounts</div>
-      <div class="muted-white" style="font-size:13.5px; margin-bottom:18px;">Day-wise P&amp;L, consolidated across all cafes</div>
+      <div class="muted-white" id="fin-subtitle" style="font-size:13.5px; margin-bottom:18px;">Consolidated financial summary</div>
 
-      <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:16px; margin-bottom:18px;">
-        ${kpiCard({ label: "Net profit today", value: "₹1.91L", trend: "6.4% vs yesterday", trendType: "up" })}
-        ${kpiCard({ label: "Vendor payables due (7d)", value: "₹2.14L", trend: "3 invoices", trendType: "down" })}
-        ${kpiCard({ label: "Cashflow forecast (30d)", value: "₹18.6L", trend: "healthy", trendType: "up" })}
+      <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:16px; margin-bottom:18px;" id="fin-kpi-grid">
+        ${skeleton("80px")}${skeleton("80px")}${skeleton("80px")}
       </div>
 
       <div class="glass" style="padding:22px;">
-        <div style="color:#fff; font-weight:600; font-size:15px; margin-bottom:14px;">Day-wise P&amp;L waterfall — today, all cafes</div>
+        <div style="color:#fff; font-weight:600; font-size:15px; margin-bottom:14px;">Day-wise P&amp;L breakdown</div>
+        <div id="fin-pnl-wrap">${skeleton("200px")}</div>
+      </div>
+    </div>
+  `;
+}
+
+export async function wireFinance(root) {
+  const kpiGrid = root.querySelector("#fin-kpi-grid");
+  const pnlWrap = root.querySelector("#fin-pnl-wrap");
+
+  try {
+    const res = await apiGet("/dashboard");
+    const data = res?.data || {};
+
+    const grossSalesPaisa = data.totalSalesTodayPaisa || 0;
+    const expensePaisa = data.totalExpensesTodayPaisa || 0;
+    const netProfitPaisa = grossSalesPaisa - expensePaisa;
+
+    if (kpiGrid) {
+      kpiGrid.innerHTML = `
+        ${kpiCard({ label: "Net profit today", value: fmtInr(netProfitPaisa), trend: "Live", trendType: netProfitPaisa >= 0 ? "up" : "down" })}
+        ${kpiCard({ label: "Gross sales today", value: fmtInr(grossSalesPaisa), trend: `${data.todayBillCount || 0} bills`, trendType: "up" })}
+        ${kpiCard({ label: "Expenses today", value: fmtInr(expensePaisa), trend: "Logged today", trendType: "neutral" })}
+      `;
+    }
+
+    if (pnlWrap) {
+      const pnlRows = [
+        ["Gross sales", fmtInr(grossSalesPaisa)],
+        ["Expenses logged", `-${fmtInr(expensePaisa)}`],
+        ["Net profit today", fmtInr(netProfitPaisa)],
+      ];
+
+      pnlWrap.innerHTML = `
         <table class="glass-table">
           <tbody>
-            ${PNL_ROWS.map(
+            ${pnlRows.map(
               ([label, val], i) => `
               <tr>
-                <td style="${i === PNL_ROWS.length - 1 ? "font-weight:700;color:var(--color-accent-mint-bright);" : ""}">${label}</td>
-                <td style="text-align:right; ${i === PNL_ROWS.length - 1 ? "font-weight:700;color:var(--color-accent-mint-bright);" : ""}">${val}</td>
+                <td style="${i === pnlRows.length - 1 ? "font-weight:700;color:var(--color-accent-mint-bright);" : ""}">${label}</td>
+                <td style="text-align:right; ${i === pnlRows.length - 1 ? "font-weight:700;color:var(--color-accent-mint-bright);" : ""}">${val}</td>
               </tr>`
             ).join("")}
           </tbody>
         </table>
-      </div>
-    </div>
-  `;
+      `;
+    }
+  } catch (err) {
+    if (pnlWrap) {
+      pnlWrap.innerHTML = `<div class="muted-white" style="padding:16px;">Failed to load financial breakdown — ${err.message || "error"}.</div>`;
+    }
+  }
 }
