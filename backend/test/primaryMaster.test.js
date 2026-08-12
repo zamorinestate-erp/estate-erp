@@ -185,7 +185,7 @@ test('bootstrap candidate validation accepts only an active organisation-wide MA
         user: candidate({ assignedCafeIds: ['CAFE-001'] }),
         organisationId: 'ORG-TEST',
       }),
-    /cannot be restricted to café assignments/
+    /cannot be restricted to caf.* assignments/
   );
 
   assert.throws(

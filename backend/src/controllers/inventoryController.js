@@ -90,7 +90,7 @@ function parsePositiveInteger(value, fallback, maximum) {
  * Enforce café access. MASTER sees all; CAFE_ADMIN only their assigned cafés.
  */
 function assertCafeAccess(request, cafeId) {
-  if (request.auth.role === 'MASTER') return;
+  if (request.auth.role === 'MASTER' || request.auth.role === 'OWNER') return;
   if (!request.auth.assignedCafeIds.includes(cafeId)) {
     throw new ApiError(
       403,

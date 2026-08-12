@@ -46,7 +46,7 @@ router.get(
   '/balance',
   authorize('PERSONAL_LEDGER_READ', {
     absoluteRestriction: 'PERSONAL_LEDGER',
-    allowedRoles: ['MASTER'],
+    allowedRoles: ['MASTER', 'OWNER'],
   }),
   getBalance
 );
@@ -58,7 +58,7 @@ router.get(
   '/',
   authorize('PERSONAL_LEDGER_READ', {
     absoluteRestriction: 'PERSONAL_LEDGER',
-    allowedRoles: ['MASTER'],
+    allowedRoles: ['MASTER', 'OWNER'],
   }),
   listEntries
 );
@@ -69,7 +69,7 @@ router.get(
   '/:ledgerEntryId',
   authorize('PERSONAL_LEDGER_READ', {
     absoluteRestriction: 'PERSONAL_LEDGER',
-    allowedRoles: ['MASTER'],
+    allowedRoles: ['MASTER', 'OWNER'],
   }),
   getEntry
 );
@@ -80,7 +80,7 @@ router.post(
   '/',
   authorize('PERSONAL_LEDGER_WRITE', {
     absoluteRestriction: 'PERSONAL_LEDGER',
-    allowedRoles: ['MASTER'],
+    allowedRoles: ['MASTER', 'OWNER'],
   }),
   createEntry
 );
@@ -91,7 +91,7 @@ router.post(
   '/:ledgerEntryId/reverse',
   authorize('PERSONAL_LEDGER_WRITE', {
     absoluteRestriction: 'PERSONAL_LEDGER',
-    allowedRoles: ['MASTER'],
+    allowedRoles: ['MASTER', 'OWNER'],
     requiresReason: true,
   }),
   requireReason,

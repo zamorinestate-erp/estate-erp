@@ -489,6 +489,7 @@ function describeRolePermissions(role) {
       'Organisation-wide reporting',
       'Café operations oversight',
       'Payroll visibility',
+'Personal Ledger access',
       'No user administration',
       'No expense approval',
     ],

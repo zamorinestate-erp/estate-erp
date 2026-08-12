@@ -21,25 +21,25 @@ router.use(authenticate);
 
 router.get(
   '/',
-  authorize('POS_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN', 'STAFF'] }),
+  authorize('POS_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
   listBills
 );
 
 router.get(
   '/:billId',
-  authorize('POS_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN', 'STAFF'] }),
+  authorize('POS_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
   getBill
 );
 
 router.post(
   '/',
-  authorize('POS_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN', 'STAFF'] }),
+  authorize('POS_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
   createBill
 );
 
 router.post(
   '/:billId/void',
-  authorize('POS_VOID', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
+  authorize('POS_VOID', { allowedRoles: ['MASTER', 'OWNER'] }),
   voidBill
 );
 

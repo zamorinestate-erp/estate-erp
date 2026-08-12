@@ -60,7 +60,7 @@ const listMenuItems = asyncHandler(async (request, response) => {
   if (category && MENU_CATEGORIES.includes(category.toUpperCase())) {
     filter.category = category.toUpperCase();
   }
-  if (status) {
+  if (request.auth.role === 'MASTER' && status) {
     filter.status = normalizeId(status);
   } else if (request.auth.role !== 'MASTER') {
     filter.status = 'ACTIVE';
@@ -95,10 +95,18 @@ const getMenuItem = asyncHandler(async (request, response) => {
     throw new ApiError(400, 'INVALID_ID', 'Valid menuItemId is required.');
   }
 
-  const item = await MenuItem.findOne({
+  const filter = {
     menuItemId,
     organisationId: request.auth.organisationId,
-  }).select('-__v -version -nameLower').lean();
+  };
+
+  if (request.auth.role !== 'MASTER') {
+    filter.status = 'ACTIVE';
+  }
+
+  const item = await MenuItem.findOne(filter)
+    .select('-__v -version -nameLower')
+    .lean();
 
   if (!item) {
     throw new ApiError(404, 'NOT_FOUND', 'Menu item not found.');

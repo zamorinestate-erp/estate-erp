@@ -1,7 +1,7 @@
 // =============================================================================
-// PAGE: Personal Ledger — MASTER ONLY — API-wired version
+// PAGE: Personal Ledger — MASTER + OWNER — API-wired version
 //
-// ABSOLUTE RESTRICTION: MASTER ONLY
+// ABSOLUTE RESTRICTION: MASTER + OWNER
 // (backend/src/middleware/authorize.js → ABSOLUTE_ROLE_RESTRICTIONS.PERSONAL_LEDGER)
 //
 // All data is fetched from GET /api/v1/personal-ledger and
@@ -46,7 +46,7 @@ export function renderLedger() {
       <div class="flex justify-between items-center" style="margin-bottom:18px;">
         <div>
           <div style="color:#fff; font-size:22px; font-weight:700;" class="font-display">Personal Ledger</div>
-          <div class="muted-white" style="font-size:13.5px;">Visible only to you. Never shared with Owner, Cafe Admin, or Staff.</div>
+          <div class="muted-white" style="font-size:13.5px;">Visible only to you. Your Personal Ledger is not shared with other users.</div>
         </div>
         <button class="btn btn-primary" id="add-entry-btn">+ New entry</button>
       </div>
@@ -174,7 +174,7 @@ async function handleReverse(root, ledgerEntryId) {
     onConfirm: async () => {
       try {
         await apiPost(`/personal-ledger/${ledgerEntryId}/reverse`, {
-          body: { reason: "Manual reversal by Master" },
+          body: { reason: "Manual Personal Ledger reversal" },
         });
         showToast("Reversal posted successfully", "mint");
         await Promise.all([loadBalance(root), loadEntries(root)]);

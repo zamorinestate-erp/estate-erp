@@ -20,19 +20,19 @@ router.use(authenticate);
 
 router.get(
   '/',
-  authorize('DEPARTMENT_ORDERS_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN', 'STAFF'] }),
+  authorize('DEPARTMENT_ORDERS_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
   listDepartmentOrders
 );
 
 router.post(
   '/',
-  authorize('DEPARTMENT_ORDERS_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN', 'STAFF'] }),
+  authorize('DEPARTMENT_ORDERS_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
   createDepartmentOrder
 );
 
 router.patch(
   '/:orderId/status',
-  authorize('DEPARTMENT_ORDERS_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN', 'STAFF'] }),
+  authorize('DEPARTMENT_ORDERS_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
   updateOrderStatus
 );
 

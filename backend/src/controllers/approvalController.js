@@ -49,6 +49,10 @@ const listApprovals = asyncHandler(async (request, response) => {
     filter.status = status.toUpperCase();
   }
 
+  if (!['MASTER', 'OWNER'].includes(request.auth.role)) {
+    filter.cafeId = { $in: request.auth.assignedCafeIds };
+  }
+
   const [approvals, total] = await Promise.all([
     Approval.find(filter)
       .select('-__v -version')
@@ -102,6 +106,14 @@ const decideApproval = asyncHandler(async (request, response) => {
 
   if (!approval) {
     throw new ApiError(404, 'NOT_FOUND', 'Approval request not found.');
+  }
+
+  if (request.auth.role === 'CAFE_ADMIN' && (!approval.cafeId || !request.auth.assignedCafeIds.includes(approval.cafeId))) {
+    throw new ApiError(
+      403,
+      'CAFE_ACCESS_DENIED',
+      'You do not have access to decide this approval.'
+    );
   }
 
   // Security: block non-MASTER roles from deciding approvals that belong to

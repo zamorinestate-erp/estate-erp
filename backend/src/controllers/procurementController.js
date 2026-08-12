@@ -76,7 +76,7 @@ function parsePositiveInteger(value, fallback, maximum) {
 }
 
 function assertCafeAccess(request, cafeId) {
-  if (request.auth.role === 'MASTER') return;
+  if (request.auth.role === 'MASTER' || request.auth.role === 'OWNER') return;
   if (!request.auth.assignedCafeIds.includes(cafeId)) {
     throw new ApiError(
       403,
@@ -104,7 +104,7 @@ const listOrders = asyncHandler(async (request, response) => {
     const normCafeId = normalizeId(cafeId);
     assertCafeAccess(request, normCafeId);
     filter.cafeId = normCafeId;
-  } else if (request.auth.role !== 'MASTER') {
+  } else if (!['MASTER', 'OWNER'].includes(request.auth.role)) {
     filter.cafeId = { $in: request.auth.assignedCafeIds };
   }
 
