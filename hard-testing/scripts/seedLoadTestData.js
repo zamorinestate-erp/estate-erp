@@ -1,11 +1,5 @@
-'use strict';
-
-/**
- * SYNTHETIC LOAD-TEST DATA GENERATOR & RESET PROCEDURE
- * 
- * Safety: Requires LOAD_TEST_ENV === 'true' or NODE_ENV === 'test'.
- * Will NEVER execute against production databases without explicit opt-in.
- */
+const path = require('node:path');
+module.paths.push(path.join(__dirname, '../../backend/node_modules'));
 
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
@@ -13,7 +7,6 @@ const bcrypt = require('bcryptjs');
 const { User } = require('../../backend/src/models/User');
 const { Cafe } = require('../../backend/src/models/Cafe');
 const { Session } = require('../../backend/src/models/Session');
-const { AttendanceLog } = require('../../backend/src/models/AttendanceLog');
 
 const ORG_ID = 'LOADTEST_ORG';
 const PASSWORD_PLAIN = 'LoadTestPass123!';
@@ -37,12 +30,12 @@ async function resetLoadTestData() {
   await User.deleteMany({ organisationId: ORG_ID });
   await Cafe.deleteMany({ organisationId: ORG_ID });
   await Session.deleteMany({ organisationId: ORG_ID });
-  await AttendanceLog.deleteMany({ organisationId: ORG_ID });
   console.log(`[RESET] Synthetic load test data reset complete.`);
 }
 
 async function seedLoadTestData() {
   await assertSafetyGuard();
+  await resetLoadTestData();
 
   console.log(`[SEED] Seeding synthetic load test dataset for ${ORG_ID}...`);
 
@@ -57,7 +50,7 @@ async function seedLoadTestData() {
     await Cafe.updateOne(
       { cafeId, organisationId: ORG_ID },
       {
-        $setOnInsert: {
+        $set: {
           cafeId,
           organisationId: ORG_ID,
           name: `Synthetic Cafe #${i}`,
@@ -72,10 +65,10 @@ async function seedLoadTestData() {
 
   // 2. Create 1 Primary Master
   await User.updateOne(
-    { userId: 'MU-LOAD-0001', organisationId: ORG_ID },
+    { userId: 'MU-9001', organisationId: ORG_ID },
     {
-      $setOnInsert: {
-        userId: 'MU-LOAD-0001',
+      $set: {
+        userId: 'MU-9001',
         organisationId: ORG_ID,
         name: 'Primary Master LoadTest',
         email: 'primary.master@loadtest.internal',
@@ -86,6 +79,8 @@ async function seedLoadTestData() {
         primaryMasterDesignatedBy: 'SYSTEM',
         primaryMasterDesignationReason: 'Synthetic Load Test Seed',
         passwordHash,
+        mustChangePassword: false,
+        createdBy: 'SYSTEM',
       },
     },
     { upsert: true }
@@ -93,11 +88,11 @@ async function seedLoadTestData() {
 
   // 3. Create 4 Additional MASTER Users
   for (let i = 2; i <= 5; i++) {
-    const userId = `MU-LOAD-${String(i).padStart(4, '0')}`;
+    const userId = `MU-${String(9000 + i)}`;
     await User.updateOne(
       { userId, organisationId: ORG_ID },
       {
-        $setOnInsert: {
+        $set: {
           userId,
           organisationId: ORG_ID,
           name: `Master LoadTest #${i}`,
@@ -105,6 +100,8 @@ async function seedLoadTestData() {
           role: 'MASTER',
           accountStatus: 'ACTIVE',
           passwordHash,
+          mustChangePassword: false,
+          createdBy: 'SYSTEM',
         },
       },
       { upsert: true }
@@ -113,11 +110,11 @@ async function seedLoadTestData() {
 
   // 4. Create 2 OWNER Users
   for (let i = 1; i <= 2; i++) {
-    const userId = `OW-LOAD-${String(i).padStart(4, '0')}`;
+    const userId = `OW-${String(9000 + i)}`;
     await User.updateOne(
       { userId, organisationId: ORG_ID },
       {
-        $setOnInsert: {
+        $set: {
           userId,
           organisationId: ORG_ID,
           name: `Owner LoadTest #${i}`,
@@ -125,6 +122,8 @@ async function seedLoadTestData() {
           role: 'OWNER',
           accountStatus: 'ACTIVE',
           passwordHash,
+          mustChangePassword: false,
+          createdBy: 'SYSTEM',
         },
       },
       { upsert: true }
@@ -133,13 +132,13 @@ async function seedLoadTestData() {
 
   // 5. Create 50 CAFE_ADMIN Users (5 per Cafe)
   for (let i = 1; i <= 50; i++) {
-    const userId = `CA-LOAD-${String(i).padStart(4, '0')}`;
+    const userId = `AD-${String(9000 + i)}`;
     const assignedCafe = cafeIds[(i - 1) % 10];
 
     await User.updateOne(
       { userId, organisationId: ORG_ID },
       {
-        $setOnInsert: {
+        $set: {
           userId,
           organisationId: ORG_ID,
           name: `Cafe Admin #${i}`,
@@ -149,6 +148,8 @@ async function seedLoadTestData() {
           primaryCafeId: assignedCafe,
           assignedCafeIds: [assignedCafe],
           passwordHash,
+          mustChangePassword: false,
+          createdBy: 'SYSTEM',
         },
       },
       { upsert: true }
@@ -158,14 +159,14 @@ async function seedLoadTestData() {
   // 6. Create 1,000 STAFF Users (100 per Cafe)
   const staffOps = [];
   for (let i = 1; i <= 1000; i++) {
-    const userId = `ST-LOAD-${String(i).padStart(4, '0')}`;
+    const userId = `ST-${String(1000 + i)}`;
     const assignedCafe = cafeIds[(i - 1) % 10];
 
     staffOps.push({
       updateOne: {
         filter: { userId, organisationId: ORG_ID },
         update: {
-          $setOnInsert: {
+          $set: {
             userId,
             organisationId: ORG_ID,
             name: `Staff Member #${i}`,
@@ -174,8 +175,10 @@ async function seedLoadTestData() {
             accountStatus: 'ACTIVE',
             primaryCafeId: assignedCafe,
             assignedCafeIds: [assignedCafe],
-            permanentEmployeeId: `EMP-LOAD-${String(i).padStart(4, '0')}`,
+            permanentEmployeeId: `EMP-${String(1000 + i)}`,
             passwordHash,
+            mustChangePassword: false,
+            createdBy: 'SYSTEM',
           },
         },
         upsert: true,

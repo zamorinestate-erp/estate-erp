@@ -175,7 +175,7 @@ function createApp(environment) {
 
   const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    limit: 300,
+    limit: process.env.RATE_LIMIT_MAX ? Number(process.env.RATE_LIMIT_MAX) : 300,
     standardHeaders: 'draft-8',
     legacyHeaders: false,
   });

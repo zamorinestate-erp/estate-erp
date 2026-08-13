@@ -1,0 +1,38 @@
+{
+  "runId": "HT01-LOGIN-750-MODE-A",
+  "vuCount": 750,
+  "mode": "A",
+  "arrivalWindowMs": 2500,
+  "totalDurationMs": 36231,
+  "rps": 20.7,
+  "totalRequests": 750,
+  "successfulVus": 0,
+  "failedVus": 750,
+  "successRate": 0,
+  "crossUserMixups": 0,
+  "statusCounts": {
+    "0": 673,
+    "401": 77
+  },
+  "latency": {
+    "login": {
+      "p50": 0,
+      "p90": 16955,
+      "p95": 22836,
+      "p99": 35281,
+      "max": 35297
+    },
+    "me": null,
+    "total": {
+      "p50": 14554,
+      "p90": 16955,
+      "p95": 22836,
+      "p99": 35281,
+      "max": 35297
+    }
+  },
+  "memory": {
+    "heapUsedMb": 58.99,
+    "rssMb": 236.59
+  }
+}
