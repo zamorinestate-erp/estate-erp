@@ -60,7 +60,6 @@ const sequenceCounterSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-    optimisticConcurrency: true,
     versionKey: 'version',
     collection: 'sequence_counters',
   }
