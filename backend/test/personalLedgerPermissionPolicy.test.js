@@ -8,7 +8,7 @@ const {
 } = require('../src/scripts/seedInitialData');
 
 test(
-  'Personal Ledger seed permissions are MASTER only',
+  'Personal Ledger seed permissions match MASTER and OWNER rules',
   () => {
     const rules = DEFAULT_PERMISSION_RULES.filter(
       (rule) =>
@@ -16,7 +16,7 @@ test(
         rule.permissionCode === 'PERSONAL_LEDGER_WRITE'
     );
 
-    assert.equal(rules.length, 2);
+    assert.equal(rules.length, 4);
 
     const keys = rules
       .map((rule) => `${rule.role}|${rule.permissionCode}`)
@@ -25,6 +25,8 @@ test(
     assert.deepEqual(keys, [
       'MASTER|PERSONAL_LEDGER_READ',
       'MASTER|PERSONAL_LEDGER_WRITE',
+      'OWNER|PERSONAL_LEDGER_READ',
+      'OWNER|PERSONAL_LEDGER_WRITE',
     ]);
 
     for (const rule of rules) {
@@ -45,7 +47,7 @@ test(
 
     assert.equal(
       rules.some((rule) =>
-        ['OWNER', 'CAFE_ADMIN', 'STAFF'].includes(rule.role)
+        ['CAFE_ADMIN', 'STAFF'].includes(rule.role)
       ),
       false
     );

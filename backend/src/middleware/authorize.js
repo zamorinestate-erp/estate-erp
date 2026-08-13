@@ -5,7 +5,7 @@ const {
 } = require('../models/RolePermission');
 
 const ABSOLUTE_ROLE_RESTRICTIONS = {
-  PERSONAL_LEDGER: ['MASTER'],
+  PERSONAL_LEDGER: ['MASTER', 'OWNER'],
   MASTER_AUDIT: ['MASTER'],
   MASTER_TRASH_BIN: ['MASTER'],
   MASTER_USER_ADMINISTRATION: ['MASTER'],
