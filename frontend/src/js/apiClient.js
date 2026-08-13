@@ -1,6 +1,10 @@
 // Secure authenticated API helpers for the Zamorin Cafe ERP frontend.
 
-const DEFAULT_API_BASE_URL = "/api/v1";
+const DEFAULT_API_BASE_URL =
+  typeof globalThis.location !== "undefined" &&
+  (globalThis.location.hostname === "localhost" || globalThis.location.hostname === "127.0.0.1")
+    ? "http://localhost:4000/api/v1"
+    : "/api/v1";
 
 function normalizeApiBaseUrl(value) {
   const candidate =

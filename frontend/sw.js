@@ -7,7 +7,7 @@
 // assets. Never cache API responses, authenticated business data, POST
 // requests, or cross-origin responses.
 
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.0.1';
 const CACHE_NAME =
   `zamorin-public-shell-v${APP_VERSION}`;
 
