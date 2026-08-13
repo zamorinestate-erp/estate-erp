@@ -481,6 +481,7 @@ function wireModalEvents(container, user, root) {
       if (content) { content.innerHTML = usersTab(); wireAdmin(root); }
     } catch (err) {
       showToast(err.message || "Archival failed", "coral");
+    }
   });
 }
 
