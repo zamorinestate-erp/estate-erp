@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: zamorin-mongodb
+    restart: always
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: zamorin_cafe_erp
+    volumes:
+      - mongo_data:/data/db
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: zamorin-backend-api
+    restart: always
+    ports:
+      - "4000:4000"
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      TZ: Asia/Kolkata
+      MONGODB_URI: mongodb://mongodb:27017/zamorin_cafe_erp
+      DEFAULT_ORGANISATION_ID: ZAMORIN
+      DEFAULT_MASTER_EMAIL: master@example.com
+      DEFAULT_MASTER_PASSWORD: PK@NilaVega_8427!Cedar
+    depends_on:
+      - mongodb
+
+  frontend:
+    image: caddy:2-alpine
+    container_name: zamorin-frontend-ui
+    restart: always
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/usr/share/caddy
+    command: caddy file-server --listen :3000
+
+volumes:
+  mongo_data:
