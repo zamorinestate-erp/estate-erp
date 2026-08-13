@@ -122,7 +122,7 @@ export function renderShell() {
   renderPage();
 }
 
-function renderPage() {
+async function renderPage() {
   const content = document.getElementById("page-content");
   const route = state.route;
   updateBellBadge();
@@ -159,7 +159,7 @@ function renderPage() {
 
     case "pos":
       content.innerHTML = renderPOS();
-      wirePOS(content);
+      await wirePOS(content);
       break;
 
     case "inventory":
@@ -258,7 +258,7 @@ function renderPage() {
 
     case "notifications":
       content.innerHTML = renderNotificationCentre();
-      wireNotificationCentre(content);
+      await wireNotificationCentre(content);
       break;
 
     case "vendors":
