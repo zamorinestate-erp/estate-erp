@@ -130,6 +130,44 @@ const cafeInventoryConfigSchema = new mongoose.Schema(
       default: null,
     },
 
+    // ── Purchase Recommendation Engine (Capability 10) ────────────────────────
+    // Average number of base units consumed per day (rolling calculation).
+    // Used by the deterministic reorder recommendation engine.
+    avgDailyUsageBase: {
+      type: Number,
+      min: 0,
+      default: null,
+    },
+
+    // Supplier lead time in calendar days (used for reorder timing calculation).
+    leadTimeDays: {
+      type: Number,
+      min: 0,
+      max: 365,
+      default: null,
+    },
+
+    // Last recommended order quantity computed by the engine (in baseUnit).
+    // Formula: (avgDailyUsage × (leadTime + reviewCycle)) + safetyStock − currentQty
+    lastRecommendedOrderQtyBase: {
+      type: Number,
+      min: 0,
+      default: null,
+    },
+
+    // Timestamp when the last recommendation was computed.
+    lastRecommendationComputedAt: {
+      type: Date,
+      default: null,
+    },
+
+    // Expiry exposure: total base units of near-expiry stock (within 7 days).
+    nearExpiryQuantityBase: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+
     // ── Storage location ─────────────────────────────────────────────────────
     storageLocation: {
       type: String,

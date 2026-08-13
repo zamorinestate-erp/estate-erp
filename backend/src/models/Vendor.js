@@ -248,6 +248,56 @@ const vendorSchema = new mongoose.Schema(
       default: null,
     },
 
+    // ── Contract & Renewal (Capability 02) ────────────────────────────────────
+    contractExpiryDate: {
+      type: Date,
+      default: null,
+      index: true,
+    },
+
+    // Days before expiry to raise a renewal alert notification.
+    contractRenewalAlertDays: {
+      type: Number,
+      min: 0,
+      max: 365,
+      default: 30,
+    },
+
+    contractNotes: {
+      type: String,
+      trim: true,
+      maxlength: 2000,
+      default: '',
+    },
+
+    // ── Insurance & Claims (Capability 16) ────────────────────────────────────
+    insurancePolicyNumber: {
+      type: String,
+      trim: true,
+      maxlength: 100,
+      default: '',
+    },
+
+    insuranceProvider: {
+      type: String,
+      trim: true,
+      maxlength: 200,
+      default: '',
+    },
+
+    insuranceExpiryDate: {
+      type: Date,
+      default: null,
+      index: true,
+    },
+
+    insuranceRenewalAlertDays: {
+      type: Number,
+      min: 0,
+      max: 365,
+      default: 30,
+    },
+
     // ── Notes ────────────────────────────────────────────────────────────────
     notes: {
       type: String,

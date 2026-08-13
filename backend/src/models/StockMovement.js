@@ -282,6 +282,85 @@ const stockMovementSchema = new mongoose.Schema(
       maxlength: 150,
       default: null,
     },
+
+    // ── Batch & Lot Traceability (Capability 12) ─────────────────────────────
+    // Internal batch identifier assigned at receipt. Enables lot-level lineage.
+    batchId: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      maxlength: 100,
+      default: null,
+      index: true,
+    },
+
+    // Supplier's own batch/lot reference number.
+    supplierBatchNumber: {
+      type: String,
+      trim: true,
+      maxlength: 100,
+      default: null,
+    },
+
+    // Expiry date of this specific lot/batch.
+    expiryDate: {
+      type: Date,
+      default: null,
+      index: true,
+    },
+
+    // Manufacturing date of this batch (optional).
+    manufacturingDate: {
+      type: Date,
+      default: null,
+    },
+
+    // ── Recall & Quarantine (Capability 13) ──────────────────────────────────
+    // Whether this movement's stock is currently under quarantine.
+    isQuarantined: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+
+    quarantinedAt: {
+      type: Date,
+      default: null,
+    },
+
+    quarantineReason: {
+      type: String,
+      trim: true,
+      maxlength: 2000,
+      default: '',
+    },
+
+    quarantinedByUserId: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: null,
+    },
+
+    // Recall notice ID that triggered this quarantine (if any).
+    recallNoticeId: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: null,
+    },
+
+    releasedFromQuarantineAt: {
+      type: Date,
+      default: null,
+    },
+
+    releasedByUserId: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: null,
+    },
   },
   {
     timestamps: true,
@@ -313,6 +392,23 @@ stockMovementSchema.index(
   { unique: true, sparse: true, name: 'org_idempotency' }
 );
 
+// Batch traceability (Capability 12)
+stockMovementSchema.index(
+  { organisationId: 1, batchId: 1 },
+  { sparse: true, name: 'org_batch_id' }
+);
+
+stockMovementSchema.index(
+  { organisationId: 1, cafeId: 1, expiryDate: 1 },
+  { sparse: true, name: 'org_cafe_expiry' }
+);
+
+// Quarantine / recall (Capability 13)
+stockMovementSchema.index(
+  { organisationId: 1, cafeId: 1, isQuarantined: 1 },
+  { name: 'org_cafe_quarantine' }
+);
+
 // ── Normalisation ────────────────────────────────────────────────────────────
 
 stockMovementSchema.pre('validate', function normaliseMovementFields() {
@@ -320,6 +416,7 @@ stockMovementSchema.pre('validate', function normaliseMovementFields() {
     'movementId', 'organisationId', 'cafeId', 'itemId',
     'createdByUserId', 'partnerCafeId', 'correctedMovementId',
     'correctedByMovementId', 'approvedByUserId', 'sourceRecordId',
+    'batchId', 'quarantinedByUserId', 'releasedByUserId', 'recallNoticeId',
   ];
   for (const field of upperFields) {
     if (this[field] && typeof this[field] === 'string') {

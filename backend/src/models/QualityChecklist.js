@@ -99,6 +99,50 @@ const qualityChecklistSchema = new mongoose.Schema(
       maxlength: 2000,
       default: '',
     },
+
+    // ── Compliance Calendar (Capability 03) ───────────────────────────────────
+    // ISO date of the next scheduled inspection for this checklist template.
+    nextDueDate: {
+      type: String,
+      trim: true,
+      match: /^\d{4}-\d{2}-\d{2}$/,
+      default: null,
+      index: true,
+    },
+
+    // Scheduled time of day for the inspection (HH:MM in Asia/Kolkata).
+    scheduledTime: {
+      type: String,
+      trim: true,
+      match: /^\d{2}:\d{2}$/,
+      default: null,
+    },
+
+    // Whether a compliance reminder notification has been dispatched.
+    reminderSentAt: {
+      type: Date,
+      default: null,
+    },
+
+    // Manager sign-off: who verified this inspection result.
+    managerSignOffUserId: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: null,
+    },
+
+    signOffAt: {
+      type: Date,
+      default: null,
+    },
+
+    signOffNotes: {
+      type: String,
+      trim: true,
+      maxlength: 1000,
+      default: '',
+    },
   },
   {
     timestamps: true,
@@ -112,6 +156,12 @@ qualityChecklistSchema.index(
   { name: 'org_cafe_date' }
 );
 
+// Compliance calendar due-date index (Capability 03)
+qualityChecklistSchema.index(
+  { organisationId: 1, cafeId: 1, nextDueDate: 1 },
+  { sparse: true, name: 'org_cafe_due_date' }
+);
+
 qualityChecklistSchema.pre('validate', function normaliseQCFields() {
   const upperFields = ['checklistId', 'organisationId', 'cafeId', 'inspectedByUserId'];
   for (const field of upperFields) {
@@ -121,6 +171,9 @@ qualityChecklistSchema.pre('validate', function normaliseQCFields() {
   }
   if (this.frequency) this.frequency = this.frequency.trim().toUpperCase();
   if (this.overallResult) this.overallResult = this.overallResult.trim().toUpperCase();
+  if (this.managerSignOffUserId && typeof this.managerSignOffUserId === 'string') {
+    this.managerSignOffUserId = this.managerSignOffUserId.trim().toUpperCase();
+  }
 });
 
 const QualityChecklist =
