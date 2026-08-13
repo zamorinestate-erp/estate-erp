@@ -28,18 +28,7 @@ router.get(
   listSupplierPortalOrders
 );
 
-// Capability 17 — Recruitment / ATS
-router.get(
-  '/recruitment/candidates',
-  authorize('EMPLOYEE:READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
-  listCandidates
-);
-
-router.post(
-  '/recruitment/candidates',
-  authorize('EMPLOYEE:WRITE', { allowedRoles: ['MASTER', 'OWNER'] }),
-  createCandidate
-);
+// Capability 17 — Recruitment / ATS (Deactivated per Frozen Scope Policy: Rejected Feature)
 
 // Capability 24 — Workflow Designer
 router.get(
