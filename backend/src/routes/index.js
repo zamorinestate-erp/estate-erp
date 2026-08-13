@@ -92,6 +92,9 @@ const searchRoutes =
 const customFieldRoutes =
   require('./customFieldRoutes');
 
+const expansionModulesRoutes =
+  require('./expansionModulesRoutes');
+
 const router = express.Router();
 
 router.use(
@@ -242,6 +245,11 @@ router.use(
 router.use(
   '/custom-fields',
   customFieldRoutes
+);
+
+router.use(
+  '/',
+  expansionModulesRoutes
 );
 
 router.get(
