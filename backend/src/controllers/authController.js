@@ -466,7 +466,7 @@ const resetPassword = asyncHandler(
     if (await verifyPassword(newPassword, user.passwordHash)) throw new ApiError(400, 'PASSWORD_REUSE_NOT_ALLOWED', 'The new password must be different from the current password.');
     let newPasswordHash;
     try { newPasswordHash = await hashPassword(newPassword); } catch (error) { throw new ApiError(400, 'WEAK_PASSWORD', error.message || 'The new password does not meet security requirements.'); }
-    const consumed = await PasswordResetChallenge.findOneAndUpdate({ organisationId, challengeId, status: 'VERIFIED' }, { $set: { status: 'CONSUMED', consumedAt: now } }, { new: true });
+    const consumed = await PasswordResetChallenge.findOneAndUpdate({ organisationId, challengeId, status: 'VERIFIED' }, { $set: { status: 'CONSUMED', consumedAt: now } }, { returnDocument: 'after' });
     if (!consumed) throw new ApiError(400, 'PASSWORD_RESET_INVALID', 'The password reset request is invalid or expired.');
     const temporaryLock = user.accountStatus === 'LOCKED' && user.lockedUntil instanceof Date && user.lockedUntil > now;
     user.passwordHash = newPasswordHash;

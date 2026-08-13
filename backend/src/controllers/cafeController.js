@@ -288,7 +288,7 @@ const updateCafe = asyncHandler(
         $set: updates,
       },
       {
-        new: true,
+        returnDocument: 'after',
         runValidators: true,
       }
     );
@@ -356,7 +356,7 @@ const changeCafeStatus = asyncHandler(
         },
       },
       {
-        new: true,
+        returnDocument: 'after',
         runValidators: true,
       }
     );

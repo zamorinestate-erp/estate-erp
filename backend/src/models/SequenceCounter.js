@@ -120,7 +120,7 @@ sequenceCounterSchema.statics.getNextNumber =
       prefix.trim().toUpperCase();
 
     const options = {
-      new: true,
+      returnDocument: 'after',
       upsert: true,
       setDefaultsOnInsert: true,
       runValidators: true,
