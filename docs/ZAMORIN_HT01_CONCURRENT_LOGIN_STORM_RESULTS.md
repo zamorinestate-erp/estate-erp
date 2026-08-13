@@ -2,10 +2,10 @@
 
 > **Programme Stage**: HT-01 Concurrent Login, Authentication & Application-Boot Storm Test  
 > **Starting Baseline**: `7e15ec0` (Git Tag: `v1.2.0-ht00-baseline`)  
-> **Final Tested Commit**: `7e15ec0`  
+> **Final Tested Commit**: `3fc32c53be7db365a115d3fba817a6464fdd6555`  
 > **Working Tree**: `CLEAN`  
 > **Regression Suite**: **332 / 332 PASS (100% Pass Rate)**  
-> **Final Classification**: **PASS WITH CAPACITY LIMIT DOCUMENTED**  
+> **Final Classification**: **REMEDIATION REQUIRED (Incident FAIL-HT01-001 Logged)**  
 
 ---
 

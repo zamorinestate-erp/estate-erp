@@ -8,6 +8,7 @@ const mongoose = require('mongoose');
 const { seedLoadTestData } = require('./seedLoadTestData');
 const { createApp } = require('../../backend/src/server');
 const { User } = require('../../backend/src/models/User');
+const authService = require('../../backend/src/services/authService');
 
 async function debugLogin() {
   process.env.NODE_ENV = 'test';
@@ -48,9 +49,22 @@ async function debugLogin() {
     }),
   });
 
-  const body = await res.json();
-  console.log('Login Response Status:', res.status);
-  console.log('Login Response Body:', JSON.stringify(body, null, 2));
+  const cookieHeader = res.headers.getSetCookie 
+    ? res.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ')
+    : res.headers.get('set-cookie') || '';
+
+  console.log('Login Cookie Header:', cookieHeader);
+
+  const meRes = await fetch('http://localhost:4009/api/v1/auth/me', {
+    method: 'GET',
+    headers: {
+      Cookie: cookieHeader,
+    },
+  });
+
+  const meBody = await meRes.json();
+  console.log('Auth/me Response Status:', meRes.status);
+  console.log('Auth/me Response Body:', JSON.stringify(meBody, null, 2));
 
   server.close();
   await mongoose.disconnect();

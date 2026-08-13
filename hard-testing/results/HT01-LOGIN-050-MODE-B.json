@@ -3,41 +3,41 @@
   "vuCount": 50,
   "mode": "B",
   "arrivalWindowMs": 500,
-  "totalDurationMs": 22147,
-  "rps": 6.77,
+  "totalDurationMs": 5103,
+  "rps": 29.39,
   "totalRequests": 150,
   "successfulVus": 0,
   "failedVus": 50,
   "successRate": 0,
   "crossUserMixups": 0,
   "statusCounts": {
-    "401": 50
+    "200": 50
   },
   "latency": {
     "login": {
-      "p50": 21200,
-      "p90": 21717,
-      "p95": 21778,
-      "p99": 21779,
-      "max": 21779
+      "p50": 2494,
+      "p90": 4192,
+      "p95": 4440,
+      "p99": 4567,
+      "max": 4567
     },
     "me": {
-      "p50": 0,
-      "p90": 0,
-      "p95": 0,
-      "p99": 0,
-      "max": 0
+      "p50": 2,
+      "p90": 4,
+      "p95": 8,
+      "p99": 8,
+      "max": 8
     },
     "total": {
-      "p50": 21200,
-      "p90": 21717,
-      "p95": 21778,
-      "p99": 21779,
-      "max": 21779
+      "p50": 2518,
+      "p90": 4226,
+      "p95": 4479,
+      "p99": 4601,
+      "max": 4601
     }
   },
   "memory": {
-    "heapUsedMb": 62.47,
-    "rssMb": 259.98
+    "heapUsedMb": 162.35,
+    "rssMb": 321.86
   }
 }

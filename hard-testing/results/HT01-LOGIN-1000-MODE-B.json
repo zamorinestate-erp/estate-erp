@@ -3,43 +3,43 @@
   "vuCount": 1000,
   "mode": "B",
   "arrivalWindowMs": 3000,
-  "totalDurationMs": 90530,
-  "rps": 33.14,
+  "totalDurationMs": 7707,
+  "rps": 389.26,
   "totalRequests": 3000,
   "successfulVus": 0,
   "failedVus": 1000,
   "successRate": 0,
   "crossUserMixups": 0,
   "statusCounts": {
-    "0": 805,
-    "401": 19,
-    "500": 176
+    "0": 793,
+    "200": 44,
+    "401": 163
   },
   "latency": {
     "login": {
       "p50": 0,
-      "p90": 82163,
-      "p95": 89900,
-      "p99": 89923,
-      "max": 89935
+      "p90": 4958,
+      "p95": 7171,
+      "p99": 7278,
+      "max": 7429
     },
     "me": {
-      "p50": 0,
-      "p90": 0,
-      "p95": 0,
-      "p99": 0,
-      "max": 0
+      "p50": 3,
+      "p90": 4846,
+      "p95": 4846,
+      "p99": 4868,
+      "max": 4868
     },
     "total": {
-      "p50": 25659,
-      "p90": 82163,
-      "p95": 89900,
-      "p99": 89923,
-      "max": 89935
+      "p50": 5779,
+      "p90": 7157,
+      "p95": 7218,
+      "p99": 7296,
+      "max": 7552
     }
   },
   "memory": {
-    "heapUsedMb": 75.3,
-    "rssMb": 270.28
+    "heapUsedMb": 121.59,
+    "rssMb": 287.63
   }
 }

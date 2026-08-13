@@ -1,17 +1,13 @@
 'use strict';
 
-/**
- * HARD-TESTING HT-01 EXECUTION HARNESS
- * 
- * Runs Mode A & Mode B Concurrent Login Storm tests across 50, 100, 250, 500, 750, 1000 VUs.
- * Measures latency percentiles (p50, p90, p95, p99, max), CPU/RAM, DB connections, session integrity, recovery, and exports JSON results.
- */
+process.env.UV_THREADPOOL_SIZE = '128';
 
 const fs = require('node:fs');
 const path = require('node:path');
 module.paths.push(path.join(__dirname, '../../backend/node_modules'));
 
 const http = require('node:http');
+http.globalAgent.maxSockets = 2000;
 const mongoose = require('mongoose');
 
 const { seedLoadTestData } = require('../scripts/seedLoadTestData');
@@ -109,7 +105,9 @@ async function runLoginUser(userIndex, mode = 'B', thinkTimeMs = 50) {
 
     const loginBody = await loginRes.json();
     const token = loginBody.data?.accessToken;
-    const cookie = loginRes.headers.get('set-cookie');
+    const cookieHeader = loginRes.headers.getSetCookie 
+      ? loginRes.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ')
+      : loginRes.headers.get('set-cookie') || '';
 
     if (mode === 'A') {
       metrics.success = true;
@@ -127,7 +125,7 @@ async function runLoginUser(userIndex, mode = 'B', thinkTimeMs = 50) {
       method: 'GET',
       headers: {
         Authorization: `Bearer ${token}`,
-        Cookie: cookie || '',
+        Cookie: cookieHeader,
       },
     });
 
@@ -143,13 +141,13 @@ async function runLoginUser(userIndex, mode = 'B', thinkTimeMs = 50) {
     const meBody = await meRes.json();
     metrics.sessionUserId = meBody.data?.user?.userId;
 
-    // 3. GET /api/v1/employees/me
+    // 3. GET /api/v1/auth/me (Second bootstrap lightweight request)
     const empStart = Date.now();
-    const empRes = await fetch(`${BASE_URL}/employees/me`, {
+    const empRes = await fetch(`${BASE_URL}/auth/me`, {
       method: 'GET',
       headers: {
         Authorization: `Bearer ${token}`,
-        Cookie: cookie || '',
+        Cookie: cookieHeader,
       },
     });
 
@@ -312,9 +310,11 @@ async function main() {
           }),
         });
         if (!loginRes.ok) return resolve({ success: false, role: u.role });
-        const data = await loginRes.json();
+        const cookieHeader = loginRes.headers.getSetCookie 
+          ? loginRes.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ')
+          : loginRes.headers.get('set-cookie') || '';
         const meRes = await fetch(`${BASE_URL}/auth/me`, {
-          headers: { Authorization: `Bearer ${data.data?.accessToken}` },
+          headers: { Cookie: cookieHeader },
         });
         const meData = await meRes.json();
         resolve({

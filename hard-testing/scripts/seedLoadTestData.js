@@ -2,7 +2,7 @@ const path = require('node:path');
 module.paths.push(path.join(__dirname, '../../backend/node_modules'));
 
 const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
+const bcrypt = require('bcrypt');
 
 const { User } = require('../../backend/src/models/User');
 const { Cafe } = require('../../backend/src/models/Cafe');
