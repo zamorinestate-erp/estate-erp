@@ -13,7 +13,7 @@
 |---|---|---|---|---|---|
 | **HT-00** | Baseline Preparation | Baseline Freeze, Observability, Synthetic Seeds & Health Check | N/A | Health/Readiness PASS, 0 Defects | **PASS** |
 | **HT-01** | Concurrent Login Storm | 500+ Staff simultaneous login and bootstrap storm | 500 VUs | Success >= 99.5%, p95 <= 3.0s | **REMEDIATION REQUIRED** |
-| **HT-02** | Shift-Start Attendance Storm | Simultaneous clock-in / attendance submission | 500 VUs | Success >= 99.5%, p95 <= 2.0s | **REMEDIATION REQUIRED** |
+| **HT-02** | Shift-Start Attendance Storm | Simultaneous clock-in / attendance submission | 500 VUs | Success >= 99.5%, p95 <= 2.0s | **BLOCKED** (Production-Like Staging Validation Pending) |
 | **HT-03** | Mixed Workload Stress | POS billing, expense submission, inventory check, self-service | 500+ VUs | Success >= 99.0%, p95 <= 3.0s | NOT STARTED |
 | **HT-04** | Stress & Breakpoint | Ramping load until system breaking point discovery | 1,000+ VUs | Identify maximum throughput limit | NOT STARTED |
 | **HT-05** | Sudden Spike Storm | Instantaneous load jump from 10 to 500 VUs | 500 VUs | Zero unhandled process crashes | NOT STARTED |
