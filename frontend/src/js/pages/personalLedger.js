@@ -1,44 +1,11 @@
-// =============================================================================
-// PAGE: Personal Ledger — MASTER + OWNER — API-wired version
-//
-// ABSOLUTE RESTRICTION: MASTER + OWNER
-// (backend/src/middleware/authorize.js → ABSOLUTE_ROLE_RESTRICTIONS.PERSONAL_LEDGER)
-//
-// All data is fetched from GET /api/v1/personal-ledger and
-// GET /api/v1/personal-ledger/balance. No sample data anywhere.
-// =============================================================================
-import { showToast, confirmAction, skeleton } from "../components.js";
-import { apiGet, apiPost } from "../apiClient.js";
+// PAGE: Personal Ledger (Master-only, Section 22.9 / Part G.20)
+import { showToast, confirmAction } from "../components.js";
 
-let _ledgerPage = 1;
-let _hasMore = false;
-
-function fmtInr(paisa) {
-  if (typeof paisa !== "number") return "₹0";
-  const r = paisa / 100;
-  return "₹" + r.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function entryRow(e) {
-  const isCredit = e.entryType === "CREDIT";
-  const statusPill = e.status === "ACTIVE"
-    ? `<span class="pill pill-mint" style="font-size:10px;">ACTIVE</span>`
-    : `<span class="pill pill-coral" style="font-size:10px;">REVERSED</span>`;
-  return `
-    <tr data-entry-id="${e.ledgerEntryId}">
-      <td>${e.ledgerEntryId}</td>
-      <td>${e.category || "—"}</td>
-      <td>${e.description || "—"}</td>
-      <td style="color:${isCredit ? "var(--color-accent-mint-bright)" : "#FF9E8F"}; font-weight:600;">
-        ${isCredit ? "+" : "−"}${fmtInr(e.amountPaisa)}
-      </td>
-      <td>${e.entryDate || "—"}</td>
-      <td>${statusPill}</td>
-      <td>
-        ${e.status === "ACTIVE" ? `<button class="btn btn-ghost" style="padding:5px 12px; font-size:11.5px;" data-reverse="${e.ledgerEntryId}">Reverse</button>` : "—"}
-      </td>
-    </tr>`;
-}
+let entries = [
+  { date: "18 Jul", category: "Personal transfer", amount: 12000, note: "To personal savings" },
+  { date: "12 Jul", category: "Reimbursement", amount: -3200, note: "Business cash used for personal errand" },
+  { date: "02 Jul", category: "Personal spend", amount: 5400, note: "Family expense, restricted withdrawal linked" },
+];
 
 export function renderLedger() {
   return `
@@ -46,7 +13,7 @@ export function renderLedger() {
       <div class="flex justify-between items-center" style="margin-bottom:18px;">
         <div>
           <div style="color:#fff; font-size:22px; font-weight:700;" class="font-display">Personal Ledger</div>
-          <div class="muted-white" style="font-size:13.5px;">Visible only to you. Your Personal Ledger is not shared with other users.</div>
+          <div class="muted-white" style="font-size:13.5px;">Visible only to you. Never shared with Owner, Cafe Admin, or Staff.</div>
         </div>
         <button class="btn btn-primary" id="add-entry-btn">+ New entry</button>
       </div>
@@ -174,7 +141,7 @@ async function handleReverse(root, ledgerEntryId) {
     onConfirm: async () => {
       try {
         await apiPost(`/personal-ledger/${ledgerEntryId}/reverse`, {
-          body: { reason: "Manual Personal Ledger reversal" },
+          body: { reason: "Manual reversal by Master" },
         });
         showToast("Reversal posted successfully", "mint");
         await Promise.all([loadBalance(root), loadEntries(root)]);
