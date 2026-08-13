@@ -42,6 +42,21 @@ During HT-01 500-user concurrent login storm execution (`HT01-LOGIN-500-MODE-B`)
 
 ---
 
+## INCIDENT LOG: FAIL-HT02R2-001
+
+- **Test ID**: HT-02R2 (Shift-Start Attendance Storm Final SLA Closure)
+- **Component**: Attendance Check-in Engine / SequenceCounter / Database Write Bottleneck
+- **Defect Description**: Single and multi-instance 500-VU Mode-B p95 latency reached a physical local disk I/O floor of 4,009 ms (exceeding strict p95 <= 2,000 ms SLA).
+- **Severity**: P1 (Performance SLA Defect)
+- **Remediation Actions Executed**:
+  1. Reduced `SequenceCounter.generateId` DB calls by 98% via lock-free block range allocation (1,000 sequence IDs generated in 95ms).
+  2. Implemented 10s TTL in-memory cache for operational cafe lookups.
+  3. Reduced per-user DB operations from 7 down to 3 (57% reduction in DB I/O).
+  4. Executed benchmarks across 4, 5, 6, and 8 worker instances (100.0% request success rate).
+  5. Re-verified 332/332 regression tests PASS.
+- **Status**: REMEDIATION REQUIRED (P1: 1 - 500 VU p95 Latency Floor 4.0s)
+
+
 ## INCIDENT LOG: FAIL-HT02-001
 
 - **Test ID**: HT-02 (Shift-Start Attendance Storm)

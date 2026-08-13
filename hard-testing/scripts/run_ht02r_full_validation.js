@@ -90,6 +90,20 @@ async function prewarmSessions(count = 500) {
   return activeSessions;
 }
 
+async function startCluster(instanceCount = 4, basePort = 4200) {
+  const instances = [];
+  const allowedOrigins = Array.from({ length: instanceCount }, (_, i) => `http://127.0.0.1:${basePort + i}`);
+
+  for (let i = 0; i < instanceCount; i++) {
+    const port = basePort + i;
+    const app = createApp({ production: false, test: true, allowedOrigins });
+    const server = http.createServer(app);
+    await new Promise((resolve) => server.listen(port, '127.0.0.1', resolve));
+    instances.push({ port, server, url: `http://127.0.0.1:${port}/api/v1` });
+  }
+  return instances;
+}
+
 async function main() {
   process.env.NODE_ENV = 'test';
   process.env.JWT_ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || 'test-jwt-access-secret-32-chars-min!!';
@@ -99,25 +113,22 @@ async function main() {
   const mongoUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/zamorin_loadtest';
   await mongoose.connect(mongoUri, { maxPoolSize: 100, minPoolSize: 10 });
 
+  const instances = await startCluster(4, 4200);
   await seedLoadTestData();
   const sessions = await prewarmSessions(500);
 
-  const app = createApp({ production: false, test: true, allowedOrigins: [`http://127.0.0.1:${PORT}`] });
-  const server = http.createServer(app);
-  await new Promise((resolve) => server.listen(PORT, '127.0.0.1', resolve));
-
   // SECTION 16: Legitimate Clock-ins followed by Duplicate Clock-ins
   console.log(`\n================================================================================`);
-  console.log(`1. LEGITIMATE CLOCK-IN (500 VUs)`);
+  console.log(`1. LEGITIMATE CLOCK-IN (500 VUs Across 4 Worker Instances)`);
   console.log(`================================================================================`);
   await Attendance.deleteMany({ organisationId: 'LOADTEST_ORG' });
 
-  const inStart = Date.now();
   const inPromises = sessions.map((s, idx) => new Promise((resolve) => {
+    const target = instances[idx % instances.length];
     setTimeout(async () => {
-      const res = await fetch(`${BASE_URL}/attendance/check-in`, {
+      const res = await fetch(`${target.url}/attendance/check-in`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Cookie: s.cookieHeader, Origin: `http://127.0.0.1:${PORT}` },
+        headers: { 'Content-Type': 'application/json', Cookie: s.cookieHeader, Origin: `http://127.0.0.1:${target.port}` },
         body: JSON.stringify({ cafeId: s.cafeId }),
       });
       resolve(res.status);
@@ -132,12 +143,14 @@ async function main() {
   console.log(`\n================================================================================`);
   console.log(`2. DUPLICATE CLOCK-IN STORM (500 VUs Re-submitting)`);
   console.log(`================================================================================`);
-  const dupStart = Date.now();
-  const dupPromises = sessions.map((s) => fetch(`${BASE_URL}/attendance/check-in`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Cookie: s.cookieHeader, Origin: `http://127.0.0.1:${PORT}` },
-    body: JSON.stringify({ cafeId: s.cafeId }),
-  }));
+  const dupPromises = sessions.map((s, idx) => {
+    const target = instances[idx % instances.length];
+    return fetch(`${target.url}/attendance/check-in`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: s.cookieHeader, Origin: `http://127.0.0.1:${target.port}` },
+      body: JSON.stringify({ cafeId: s.cafeId }),
+    });
+  });
 
   const dupResponses = await Promise.all(dupPromises);
   const dupBlocked = dupResponses.filter((r) => r.status === 409).length;
@@ -148,12 +161,12 @@ async function main() {
   console.log(`\n================================================================================`);
   console.log(`3. 500 CONCURRENT CLOCK-OUT STORM`);
   console.log(`================================================================================`);
-  const outStart = Date.now();
   const outPromises = sessions.map((s, idx) => new Promise((resolve) => {
+    const target = instances[idx % instances.length];
     setTimeout(async () => {
-      const res = await fetch(`${BASE_URL}/attendance/check-out`, {
+      const res = await fetch(`${target.url}/attendance/check-out`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Cookie: s.cookieHeader, Origin: `http://127.0.0.1:${PORT}` },
+        headers: { 'Content-Type': 'application/json', Cookie: s.cookieHeader, Origin: `http://127.0.0.1:${target.port}` },
         body: JSON.stringify({ cafeId: s.cafeId }),
       });
       resolve(res.status);
@@ -171,15 +184,15 @@ async function main() {
   console.log(`================================================================================`);
   await Attendance.deleteMany({ organisationId: 'LOADTEST_ORG' });
 
-  const mixStart = Date.now();
   const mixPromises = [];
 
   // 300 Clock-ins
   for (let i = 0; i < 300; i++) {
     const s = sessions[i];
-    mixPromises.push(fetch(`${BASE_URL}/attendance/check-in`, {
+    const target = instances[i % instances.length];
+    mixPromises.push(fetch(`${target.url}/attendance/check-in`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Cookie: s.cookieHeader, Origin: `http://127.0.0.1:${PORT}` },
+      headers: { 'Content-Type': 'application/json', Cookie: s.cookieHeader, Origin: `http://127.0.0.1:${target.port}` },
       body: JSON.stringify({ cafeId: s.cafeId }),
     }).then((r) => ({ type: 'in', ok: r.status === 201 })));
   }
@@ -187,7 +200,8 @@ async function main() {
   // 100 Read Today
   for (let i = 300; i < 400; i++) {
     const s = sessions[i];
-    mixPromises.push(fetch(`${BASE_URL}/attendance/me/today`, {
+    const target = instances[i % instances.length];
+    mixPromises.push(fetch(`${target.url}/attendance/me/today`, {
       headers: { Cookie: s.cookieHeader },
     }).then((r) => ({ type: 'read', ok: r.ok })));
   }
@@ -197,7 +211,9 @@ async function main() {
   const mixReadOk = mixResults.filter((r) => r.type === 'read' && r.ok).length;
   console.log(`[MIXED WORKLOAD RESULT] Clock-in Success: ${mixInOk}/300 | Read Success: ${mixReadOk}/100`);
 
-  server.close();
+  for (const inst of instances) {
+    inst.server.close();
+  }
   await mongoose.disconnect();
 
   console.log(`\n================================================================================`);

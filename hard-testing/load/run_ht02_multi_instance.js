@@ -203,7 +203,7 @@ async function main() {
   const sessions = await prewarmFastSessions(500);
   const clusterResults = [];
 
-  for (const count of [2, 3, 4]) {
+  for (const count of [4, 5, 6, 8]) {
     const { instances } = await startMultiInstanceCluster(count, 4100 + count * 10);
     const result = await runMultiInstanceTest(count, instances, sessions);
     clusterResults.push(result);

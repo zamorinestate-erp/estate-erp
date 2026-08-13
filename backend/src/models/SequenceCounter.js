@@ -160,6 +160,9 @@ sequenceCounterSchema.statics.getNextNumber =
     return counter.currentValue;
   };
 
+const sequenceBlockPools = new Map();
+const pendingBlockPromises = new Map();
+
 sequenceCounterSchema.statics.generateId =
   async function generateId({
     organisationId,
@@ -167,42 +170,89 @@ sequenceCounterSchema.statics.generateId =
     prefix,
     minimumDigits = 4,
     session = null,
+    blockSize = 50,
   }) {
-    const nextNumber = await this.getNextNumber({
-      organisationId,
-      sequenceKey,
-      prefix,
-      minimumDigits,
-      session,
-    });
-
-    const generatedId =
-      `${prefix.trim().toUpperCase()}-` +
-      String(nextNumber).padStart(minimumDigits, '0');
-
-    const updateOptions = {};
-
-    if (session) {
-      updateOptions.session = session;
+    if (!organisationId || !sequenceKey || !prefix) {
+      throw new Error(
+        'organisationId, sequenceKey and prefix are required.'
+      );
     }
 
-    await this.updateOne(
-      {
-        organisationId:
-          organisationId.trim().toUpperCase(),
-        sequenceKey: sequenceKey.trim().toUpperCase(),
-        currentValue: nextNumber,
-      },
-      {
-        $set: {
-          lastGeneratedId: generatedId,
-          lastGeneratedAt: new Date(),
-        },
-      },
-      updateOptions
-    );
+    const normOrg = organisationId.trim().toUpperCase();
+    const normKey = sequenceKey.trim().toUpperCase();
+    const normPrefix = prefix.trim().toUpperCase();
 
-    return generatedId;
+    if (session) {
+      const nextNumber = await this.getNextNumber({
+        organisationId: normOrg,
+        sequenceKey: normKey,
+        prefix: normPrefix,
+        minimumDigits,
+        session,
+      });
+
+      return `${normPrefix}-${String(nextNumber).padStart(minimumDigits, '0')}`;
+    }
+
+    const poolKey = `${normOrg}:${normKey}`;
+
+    while (true) {
+      let pool = sequenceBlockPools.get(poolKey);
+
+      if (pool && pool.current <= pool.end) {
+        const assignedNum = pool.current++;
+        return `${normPrefix}-${String(assignedNum).padStart(minimumDigits, '0')}`;
+      }
+
+      if (pendingBlockPromises.has(poolKey)) {
+        await pendingBlockPromises.get(poolKey);
+        continue;
+      }
+
+      const selfModel = this;
+      const allocPromise = (async () => {
+        const counter = await selfModel.findOneAndUpdate(
+          {
+            organisationId: normOrg,
+            sequenceKey: normKey,
+          },
+          {
+            $inc: {
+              currentValue: blockSize,
+            },
+            $setOnInsert: {
+              organisationId: normOrg,
+              sequenceKey: normKey,
+              prefix: normPrefix,
+              minimumDigits,
+            },
+            $set: {
+              lastGeneratedAt: new Date(),
+            },
+          },
+          {
+            returnDocument: 'after',
+            upsert: true,
+            setDefaultsOnInsert: true,
+            runValidators: true,
+          }
+        );
+
+        const end = counter.currentValue;
+        const start = end - blockSize + 1;
+        const newPool = { current: start, end };
+        sequenceBlockPools.set(poolKey, newPool);
+        return newPool;
+      })();
+
+      pendingBlockPromises.set(poolKey, allocPromise);
+
+      try {
+        await allocPromise;
+      } finally {
+        pendingBlockPromises.delete(poolKey);
+      }
+    }
   };
 
 const SequenceCounter =
