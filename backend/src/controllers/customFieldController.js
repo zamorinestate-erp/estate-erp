@@ -26,7 +26,8 @@ const VALID_KEY_RE = /^[a-z0-9_]{1,64}$/;
 // ── List all active custom field definitions for the authenticated org ─────────
 
 const listCustomFields = asyncHandler(async (request, response) => {
-  const { organisationId } = request.user;
+  const auth = request.auth || request.user || {};
+  const { organisationId } = auth;
 
   const definitions = await CustomFieldDefinition.find({
     organisationId,
@@ -45,7 +46,8 @@ const listCustomFields = asyncHandler(async (request, response) => {
 // ── Get a single custom field definition ──────────────────────────────────────
 
 const getCustomField = asyncHandler(async (request, response) => {
-  const { organisationId } = request.user;
+  const auth = request.auth || request.user || {};
+  const { organisationId } = auth;
   const { key } = request.params;
 
   const definition = await CustomFieldDefinition.findOne({
@@ -71,7 +73,8 @@ const getCustomField = asyncHandler(async (request, response) => {
 // ── Create a new custom field definition ─────────────────────────────────────
 
 const createCustomField = asyncHandler(async (request, response) => {
-  const { organisationId, userId } = request.user;
+  const auth = request.auth || request.user || {};
+  const { organisationId, userId } = auth;
   const {
     key,
     label,
@@ -173,7 +176,8 @@ const createCustomField = asyncHandler(async (request, response) => {
 // ── Update an existing custom field definition ────────────────────────────────
 
 const updateCustomField = asyncHandler(async (request, response) => {
-  const { organisationId, userId } = request.user;
+  const auth = request.auth || request.user || {};
+  const { organisationId, userId } = auth;
   const { key } = request.params;
 
   const definition = await CustomFieldDefinition.findOne({
@@ -228,7 +232,8 @@ const updateCustomField = asyncHandler(async (request, response) => {
 // ── Archive a custom field definition ─────────────────────────────────────────
 
 const archiveCustomField = asyncHandler(async (request, response) => {
-  const { organisationId, userId } = request.user;
+  const auth = request.auth || request.user || {};
+  const { organisationId, userId } = auth;
   const { key } = request.params;
 
   const definition = await CustomFieldDefinition.findOne({

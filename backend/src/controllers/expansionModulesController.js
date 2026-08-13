@@ -19,7 +19,8 @@ const { recordRequestAudit } = require('../services/auditService');
 // ── Capability 06 — Supplier Portal Orders ───────────────────────────────────
 
 const listSupplierPortalOrders = asyncHandler(async (request, response) => {
-  const { organisationId } = request.user;
+  const auth = request.auth || request.user || {};
+  const { organisationId } = auth;
   const { vendorId } = request.query;
 
   const filter = { organisationId };
@@ -40,7 +41,8 @@ const listSupplierPortalOrders = asyncHandler(async (request, response) => {
 // ── Capability 17 — Recruitment (Candidates) ─────────────────────────────────
 
 const listCandidates = asyncHandler(async (request, response) => {
-  const { organisationId } = request.user;
+  const auth = request.auth || request.user || {};
+  const { organisationId } = auth;
 
   const candidates = await Candidate.find({ organisationId })
     .sort({ createdAt: -1 })
@@ -54,7 +56,8 @@ const listCandidates = asyncHandler(async (request, response) => {
 });
 
 const createCandidate = asyncHandler(async (request, response) => {
-  const { organisationId, userId } = request.user;
+  const auth = request.auth || request.user || {};
+  const { organisationId, userId } = auth;
   const { fullName, email, phone, appliedRole, targetCafeId, notes } = request.body;
 
   if (!fullName || !email) {
@@ -104,7 +107,8 @@ const createCandidate = asyncHandler(async (request, response) => {
 // ── Capability 24 — Workflow Definitions ──────────────────────────────────────
 
 const listWorkflows = asyncHandler(async (request, response) => {
-  const { organisationId } = request.user;
+  const auth = request.auth || request.user || {};
+  const { organisationId } = auth;
 
   const workflows = await WorkflowDefinition.find({ organisationId, isActive: true })
     .sort({ createdAt: -1 })
@@ -118,7 +122,8 @@ const listWorkflows = asyncHandler(async (request, response) => {
 });
 
 const createWorkflow = asyncHandler(async (request, response) => {
-  const { organisationId, userId } = request.user;
+  const auth = request.auth || request.user || {};
+  const { organisationId, userId } = auth;
   const { name, triggerEvent, steps } = request.body;
 
   if (!name || !triggerEvent) {
@@ -165,7 +170,8 @@ const createWorkflow = asyncHandler(async (request, response) => {
 // ── Capability 32 — Sustainability Logs ───────────────────────────────────────
 
 const listSustainabilityLogs = asyncHandler(async (request, response) => {
-  const { organisationId } = request.user;
+  const auth = request.auth || request.user || {};
+  const { organisationId } = auth;
 
   const logs = await SustainabilityLog.find({ organisationId })
     .sort({ metricDate: -1 })
@@ -180,7 +186,8 @@ const listSustainabilityLogs = asyncHandler(async (request, response) => {
 });
 
 const recordSustainabilityLog = asyncHandler(async (request, response) => {
-  const { organisationId, userId } = request.user;
+  const auth = request.auth || request.user || {};
+  const { organisationId, userId } = auth;
   const { cafeId, category, metricDate, quantity, unit } = request.body;
 
   if (!cafeId || !category || !metricDate || quantity === undefined || !unit) {
