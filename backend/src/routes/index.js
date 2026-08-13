@@ -89,6 +89,9 @@ const trashRoutes =
 const searchRoutes =
   require('./searchRoutes');
 
+const customFieldRoutes =
+  require('./customFieldRoutes');
+
 const router = express.Router();
 
 router.use(
@@ -234,6 +237,11 @@ router.use(
 router.use(
   '/search',
   searchRoutes
+);
+
+router.use(
+  '/custom-fields',
+  customFieldRoutes
 );
 
 router.get(

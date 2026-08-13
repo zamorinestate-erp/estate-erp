@@ -2,7 +2,7 @@
 import { showToast } from "../components.js";
 import { apiGet, apiPost, apiPatch, ApiClientError } from "../apiClient.js";
 
-const TABS = ["Cafes", "Users", "Branding", "Trash Bin", "Audit Page"];
+const TABS = ["Cafes", "Users", "Custom Fields", "Branding", "Trash Bin", "Audit Page"];
 
 const DEFAULT_USERS = [
   { userId: "MU-0001", name: "Master User", role: "MASTER", accountStatus: "ACTIVE", isPrimaryMaster: true, email: "master@zamorin.cafe" },
@@ -55,6 +55,8 @@ function renderTabContent(tab) {
   switch (tab) {
     case "Users":
       return usersTab();
+    case "Custom Fields":
+      return customFieldsTab();
     case "Cafes":
       return cafesTab();
     case "Branding":
@@ -285,6 +287,56 @@ export function wireAdmin(root) {
     });
   }
 
+  // Refresh custom fields
+  const cfRefreshBtn = root.querySelector("#refresh-custom-fields-btn");
+  if (cfRefreshBtn) {
+    cfRefreshBtn.addEventListener("click", async () => {
+      try {
+        const res = await apiGet("/custom-fields");
+        if (res?.data?.definitions) {
+          liveCustomFields = res.data.definitions;
+          showToast(`Refreshed ${liveCustomFields.length} custom field definitions`, "mint");
+          const content = root.querySelector("#admin-tab-content");
+          if (content) {
+            content.innerHTML = customFieldsTab();
+            wireAdmin(root);
+          }
+        }
+      } catch (err) {
+        showToast(err.message || "Could not fetch custom fields", "amber");
+      }
+    });
+  }
+
+  // Create custom field definition
+  const cfCreateBtn = root.querySelector("#btn-create-cf");
+  if (cfCreateBtn) {
+    cfCreateBtn.addEventListener("click", async () => {
+      const key = root.querySelector("#cf-key")?.value?.trim();
+      const label = root.querySelector("#cf-label")?.value?.trim();
+      const fieldType = root.querySelector("#cf-type")?.value;
+      if (!key || !label) {
+        showToast("Key and Label are required", "amber");
+        return;
+      }
+      try {
+        const res = await apiPost("/custom-fields", {
+          body: { key, label, fieldType },
+        });
+        showToast(`Created custom field '${key}'`, "mint");
+        const listRes = await apiGet("/custom-fields");
+        if (listRes?.data?.definitions) liveCustomFields = listRes.data.definitions;
+        const content = root.querySelector("#admin-tab-content");
+        if (content) {
+          content.innerHTML = customFieldsTab();
+          wireAdmin(root);
+        }
+      } catch (err) {
+        showToast(err.message || "Could not create custom field", "coral");
+      }
+    });
+  }
+
   // Manage governance modal trigger
   root.querySelectorAll("[data-manage-user]").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -429,6 +481,70 @@ function wireModalEvents(container, user, root) {
       if (content) { content.innerHTML = usersTab(); wireAdmin(root); }
     } catch (err) {
       showToast(err.message || "Archival failed", "coral");
-    }
   });
 }
+
+let liveCustomFields = null;
+
+function customFieldsTab() {
+  const fields = liveCustomFields || [
+    { key: "employee_grade", label: "Employee Grade", fieldType: "SELECT", appliesTo: "USER", status: "ACTIVE", isRequired: false },
+    { key: "blood_group", label: "Blood Group", fieldType: "TEXT", appliesTo: "USER", status: "ACTIVE", isRequired: false },
+    { key: "emergency_contact_relation", label: "Emergency Contact Relation", fieldType: "TEXT", appliesTo: "USER", status: "ACTIVE", isRequired: false },
+  ];
+
+  return `
+    <div class="glass" style="padding:22px;">
+      <div class="flex items-center justify-between" style="margin-bottom:14px;">
+        <div>
+          <div style="color:#fff; font-weight:600; font-size:16px;">Custom Field Definitions</div>
+          <div class="muted-white" style="font-size:12px;">Capability 26 — Enterprise Metadata Schema Registry</div>
+        </div>
+        <button class="btn btn-ghost" id="refresh-custom-fields-btn" style="padding:6px 12px; font-size:12px;">Refresh</button>
+      </div>
+
+      <div style="margin-bottom:20px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:14px;">
+        <div style="color:#fff; font-weight:600; font-size:13px; margin-bottom:10px;">Define New Custom Field</div>
+        <div class="grid grid-3 gap-sm" style="margin-bottom:10px;">
+          <input type="text" id="cf-key" placeholder="Key (e.g. staff_grade)" class="form-input" style="font-size:12px;" />
+          <input type="text" id="cf-label" placeholder="Label (e.g. Staff Grade)" class="form-input" style="font-size:12px;" />
+          <select id="cf-type" class="form-input" style="font-size:12px;">
+            <option value="TEXT">TEXT (Short String)</option>
+            <option value="LONG_TEXT">LONG_TEXT (Multiline)</option>
+            <option value="NUMBER">NUMBER (Numeric)</option>
+            <option value="BOOLEAN">BOOLEAN (True/False)</option>
+            <option value="DATE">DATE (ISO YYYY-MM-DD)</option>
+            <option value="SELECT">SELECT (Option List)</option>
+          </select>
+        </div>
+        <button class="btn btn-mint" id="btn-create-cf" style="padding:7px 16px; font-size:12px;">Create Field Definition</button>
+      </div>
+
+      <table class="glass-table">
+        <thead>
+          <tr>
+            <th>Key</th>
+            <th>Label</th>
+            <th>Type</th>
+            <th>Applies To</th>
+            <th>Required</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${fields.map((f) => `
+            <tr>
+              <td class="font-mono text-mint">${f.key}</td>
+              <td style="color:#fff;">${f.label}</td>
+              <td><span class="pill pill-dark">${f.fieldType}</span></td>
+              <td class="muted-white">${f.appliesTo || 'USER'}</td>
+              <td>${f.isRequired ? '<span class="pill pill-coral">Required</span>' : '<span class="muted-white">Optional</span>'}</td>
+              <td><span class="pill ${f.status === 'ACTIVE' ? 'pill-mint' : 'pill-dark'}">${f.status}</span></td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
