@@ -31,13 +31,13 @@ router.get(
 // Capability 17 — Recruitment / ATS
 router.get(
   '/recruitment/candidates',
-  authorize('EMPLOYEES_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  authorize('EMPLOYEE:READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
   listCandidates
 );
 
 router.post(
   '/recruitment/candidates',
-  authorize('EMPLOYEES_WRITE', { allowedRoles: ['MASTER', 'OWNER'] }),
+  authorize('EMPLOYEE:WRITE', { allowedRoles: ['MASTER', 'OWNER'] }),
   createCandidate
 );
 

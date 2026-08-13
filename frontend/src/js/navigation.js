@@ -67,13 +67,12 @@ export const NAVIGATION = {
       { id: "my-payslips", label: "My Payslips", icon: "payslip", route: "staff-payslips" },
       { id: "my-profile", label: "My Profile", icon: "employees", route: "employee-profile" },
       { id: "payroll", label: "Payroll & Payslips", icon: "payslip", route: "payroll" },
-      { id: "ledger", label: "Personal Ledger", icon: "ledger", route: "ledger" },
       { id: "reports", label: "Reports", icon: "reports", route: "reports" },
       { id: "settings", label: "Settings & Preferences", icon: "settings", route: "settings" },
     ],
-    // Personal Ledger is available to MASTER and OWNER (ABSOLUTE_ROLE_RESTRICTIONS.PERSONAL_LEDGER).
-    // It remains denied for Cafe Admin and Staff.
-    footnote: "A separate portal — never Master's platform-admin screens.",
+    // Personal Ledger is MASTER-ONLY (ABSOLUTE_ROLE_RESTRICTIONS.PERSONAL_LEDGER).
+    // It is denied for Owner, Cafe Admin and Staff.
+    footnote: "A separate portal — never Master's platform-admin screens or Personal Ledger.",
   },
 
   [ROLES.CAFE_ADMIN]: {

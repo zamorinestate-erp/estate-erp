@@ -106,11 +106,10 @@ performGlobalSearch(request, response, reject);
 }
 
 test(
-  'Global Search exposes own Personal Ledger to MASTER and OWNER only',
+  'Global Search exposes own Personal Ledger to MASTER only',
   async (t) => {
     for (const allowed of [
       { role: 'MASTER', userId: 'MU-0001' },
-      { role: 'OWNER', userId: 'OW-0001' },
     ]) {
       await t.test(
         `${allowed.role} searches only own Personal Ledger`,
@@ -166,6 +165,10 @@ test(
     }
 
     for (const denied of [
+      {
+        role: 'OWNER',
+        userId: 'OW-0001',
+      },
       {
         role: 'CAFE_ADMIN',
         userId: 'CA-0001',

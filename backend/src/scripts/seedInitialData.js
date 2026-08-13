@@ -134,31 +134,6 @@ const DEFAULT_PERMISSION_RULES = [
   },
   {
     role: 'OWNER',
-    permissionCode: 'PERSONAL_LEDGER_READ',
-    module: 'PERSONAL_LEDGER',
-    resource: 'PERSONAL_LEDGER_ENTRY',
-    action: 'READ',
-    effect: 'ALLOW',
-    scope: 'ORGANISATION',
-    requiresMfa: true,
-    requiresAuditEvent: false,
-    description: 'OWNER may read their own Personal Ledger.',
-  },
-  {
-    role: 'OWNER',
-    permissionCode: 'PERSONAL_LEDGER_WRITE',
-    module: 'PERSONAL_LEDGER',
-    resource: 'PERSONAL_LEDGER_ENTRY',
-    action: 'WRITE',
-    effect: 'ALLOW',
-    scope: 'ORGANISATION',
-    requiresMfa: true,
-    requiresReason: true,
-    requiresAuditEvent: true,
-    description: 'OWNER may write to their own Personal Ledger.',
-  },
-  {
-    role: 'OWNER',
     permissionCode: 'CAFE:READ',
     module: 'CAFE',
     resource: 'CAFE',
@@ -364,6 +339,38 @@ const DEFAULT_PERMISSION_RULES = [
     requiresMfa: false,
     description: 'STAFF may read organisation custom field definitions.',
   },
+  // Quality & Compliance
+  { role: 'MASTER', permissionCode: 'QUALITY_READ', module: 'QUALITY', resource: 'CHECKLIST', action: 'READ', effect: 'ALLOW', scope: 'ORGANISATION', description: 'MASTER may read quality checklists.' },
+  { role: 'OWNER', permissionCode: 'QUALITY_READ', module: 'QUALITY', resource: 'CHECKLIST', action: 'READ', effect: 'ALLOW', scope: 'ORGANISATION', description: 'OWNER may read quality checklists.' },
+  { role: 'CAFE_ADMIN', permissionCode: 'QUALITY_READ', module: 'QUALITY', resource: 'CHECKLIST', action: 'READ', effect: 'ALLOW', scope: 'ASSIGNED_CAFES', description: 'CAFE_ADMIN may read quality checklists.' },
+  { role: 'STAFF', permissionCode: 'QUALITY_READ', module: 'QUALITY', resource: 'CHECKLIST', action: 'READ', effect: 'ALLOW', scope: 'ASSIGNED_CAFES', description: 'STAFF may read quality checklists.' },
+  { role: 'MASTER', permissionCode: 'QUALITY_WRITE', module: 'QUALITY', resource: 'CHECKLIST', action: 'WRITE', effect: 'ALLOW', scope: 'ORGANISATION', description: 'MASTER may submit quality checklists.' },
+  { role: 'CAFE_ADMIN', permissionCode: 'QUALITY_WRITE', module: 'QUALITY', resource: 'CHECKLIST', action: 'WRITE', effect: 'ALLOW', scope: 'ASSIGNED_CAFES', description: 'CAFE_ADMIN may submit quality checklists.' },
+  { role: 'STAFF', permissionCode: 'QUALITY_WRITE', module: 'QUALITY', resource: 'CHECKLIST', action: 'WRITE', effect: 'ALLOW', scope: 'ASSIGNED_CAFES', description: 'STAFF may submit quality checklists.' },
+  // Revenue Share
+  { role: 'MASTER', permissionCode: 'REVENUE_SHARE_READ', module: 'REVENUE_SHARE', resource: 'AGREEMENT', action: 'READ', effect: 'ALLOW', scope: 'ORGANISATION', description: 'MASTER may read revenue share agreements.' },
+  { role: 'OWNER', permissionCode: 'REVENUE_SHARE_READ', module: 'REVENUE_SHARE', resource: 'AGREEMENT', action: 'READ', effect: 'ALLOW', scope: 'ORGANISATION', description: 'OWNER may read revenue share agreements.' },
+  { role: 'MASTER', permissionCode: 'REVENUE_SHARE_WRITE', module: 'REVENUE_SHARE', resource: 'AGREEMENT', action: 'WRITE', effect: 'ALLOW', scope: 'ORGANISATION', description: 'MASTER may create revenue share agreements.' },
+  // Tasks
+  { role: 'MASTER', permissionCode: 'TASKS_READ', module: 'TASKS', resource: 'TASK', action: 'READ', effect: 'ALLOW', scope: 'ORGANISATION', description: 'MASTER may read tasks.' },
+  { role: 'OWNER', permissionCode: 'TASKS_READ', module: 'TASKS', resource: 'TASK', action: 'READ', effect: 'ALLOW', scope: 'ORGANISATION', description: 'OWNER may read tasks.' },
+  { role: 'CAFE_ADMIN', permissionCode: 'TASKS_READ', module: 'TASKS', resource: 'TASK', action: 'READ', effect: 'ALLOW', scope: 'ASSIGNED_CAFES', description: 'CAFE_ADMIN may read tasks.' },
+  { role: 'STAFF', permissionCode: 'TASKS_READ', module: 'TASKS', resource: 'TASK', action: 'READ', effect: 'ALLOW', scope: 'SELF', description: 'STAFF may read own tasks.' },
+  { role: 'MASTER', permissionCode: 'TASKS_WRITE', module: 'TASKS', resource: 'TASK', action: 'WRITE', effect: 'ALLOW', scope: 'ORGANISATION', description: 'MASTER may manage tasks.' },
+  { role: 'OWNER', permissionCode: 'TASKS_WRITE', module: 'TASKS', resource: 'TASK', action: 'WRITE', effect: 'ALLOW', scope: 'ORGANISATION', description: 'OWNER may manage tasks.' },
+  { role: 'CAFE_ADMIN', permissionCode: 'TASKS_WRITE', module: 'TASKS', resource: 'TASK', action: 'WRITE', effect: 'ALLOW', scope: 'ASSIGNED_CAFES', description: 'CAFE_ADMIN may manage tasks.' },
+  { role: 'STAFF', permissionCode: 'TASKS_WRITE', module: 'TASKS', resource: 'TASK', action: 'WRITE', effect: 'ALLOW', scope: 'SELF', description: 'STAFF may update own task status.' },
+  // Trash Bin
+  { role: 'MASTER', permissionCode: 'TRASH_READ', module: 'TRASH', resource: 'TRASH_ITEM', action: 'READ', effect: 'ALLOW', scope: 'ORGANISATION', description: 'MASTER may read trash items.' },
+  { role: 'MASTER', permissionCode: 'TRASH_RESTORE', module: 'TRASH', resource: 'TRASH_ITEM', action: 'RESTORE', effect: 'ALLOW', scope: 'ORGANISATION', description: 'MASTER may restore trash items.' },
+  // Dashboard
+  { role: 'MASTER', permissionCode: 'DASHBOARD_READ', module: 'DASHBOARD', resource: 'DASHBOARD', action: 'READ', effect: 'ALLOW', scope: 'ORGANISATION', description: 'MASTER may read dashboard.' },
+  { role: 'OWNER', permissionCode: 'DASHBOARD_READ', module: 'DASHBOARD', resource: 'DASHBOARD', action: 'READ', effect: 'ALLOW', scope: 'ORGANISATION', description: 'OWNER may read dashboard.' },
+  { role: 'CAFE_ADMIN', permissionCode: 'DASHBOARD_READ', module: 'DASHBOARD', resource: 'DASHBOARD', action: 'READ', effect: 'ALLOW', scope: 'ASSIGNED_CAFES', description: 'CAFE_ADMIN may read dashboard.' },
+  { role: 'STAFF', permissionCode: 'DASHBOARD_READ', module: 'DASHBOARD', resource: 'DASHBOARD', action: 'READ', effect: 'ALLOW', scope: 'SELF', description: 'STAFF may read dashboard.' },
+  // Employee Write
+  { role: 'MASTER', permissionCode: 'EMPLOYEE:WRITE', module: 'EMPLOYEE', resource: 'EMPLOYEE', action: 'WRITE', effect: 'ALLOW', scope: 'ORGANISATION', description: 'MASTER may update employee records.' },
+  { role: 'OWNER', permissionCode: 'EMPLOYEE:WRITE', module: 'EMPLOYEE', resource: 'EMPLOYEE', action: 'WRITE', effect: 'ALLOW', scope: 'ORGANISATION', description: 'OWNER may update employee records.' },
 ];
 
 const PRIMARY_MASTER_DESIGNATION_REASON =
