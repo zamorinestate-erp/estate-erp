@@ -622,7 +622,7 @@ async function seedPermissionRules({
       let ruleChanged = false;
 
       for (const [field, value] of Object.entries(desiredProperties)) {
-        if (existingRule[field] !== value) {
+        if (existingRule[field] !== undefined && existingRule[field] !== value) {
           existingRule[field] = value;
           ruleChanged = true;
         }
