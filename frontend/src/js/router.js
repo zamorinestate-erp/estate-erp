@@ -19,6 +19,7 @@ import { renderStaffHome, wireStaffHome } from "./pages/staffHome.js";
 import { renderStaffSettings, wireStaffSettings } from "./pages/staffSettings.js";
 import { renderSettingsShared, wireSettingsShared } from "./pages/settingsShared.js";
 import { renderPOS, wirePOS } from "./pages/posTill.js";
+import { renderOwnerBills, wireOwnerBills } from "./pages/ownerBills.js";
 import { renderInventory, wireInventory } from "./pages/inventory.js";
 import { renderExpenses, wireExpenses } from "./pages/expenses.js";
 import { renderFinance, wireFinance } from "./pages/financeAccounts.js";
@@ -160,6 +161,11 @@ async function renderPage() {
     case "pos":
       content.innerHTML = renderPOS();
       await wirePOS(content);
+      break;
+
+    case "bills":
+      content.innerHTML = renderOwnerBills();
+      await wireOwnerBills(content);
       break;
 
     case "inventory":

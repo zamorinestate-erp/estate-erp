@@ -28,6 +28,7 @@ export const NAVIGATION = {
     items: [
       { id: "dashboard", label: "Command Centre", icon: "home", route: "dashboard" },
       { id: "pos", label: "POS & Billing", icon: "pos", route: "pos" },
+      { id: "bills", label: "Bills & Receipts", icon: "pos", route: "bills" },
       { id: "finance", label: "Finance & Accounts", icon: "finance", route: "finance" },
       { id: "inventory", label: "Inventory", icon: "inventory", route: "inventory" },
       { id: "expenses", label: "Expenses", icon: "finance", route: "expenses" },
@@ -58,6 +59,7 @@ export const NAVIGATION = {
     items: [
       { id: "dashboard", label: "Overview", icon: "home", route: "dashboard" },
       { id: "approvals", label: "Approvals Waiting on You", icon: "tasks", route: "approvals" },
+      { id: "bills", label: "Bills & Receipts", icon: "pos", route: "bills" },
       { id: "performance", label: "Cafe Performance", icon: "reports", route: "performance" },
       { id: "employees", label: "Employees", icon: "employees", route: "employees" },
       { id: "my-profile", label: "My Profile", icon: "employees", route: "employee-profile" },

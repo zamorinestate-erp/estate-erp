@@ -292,3 +292,55 @@ test('permission seeding creates USER:MANAGE with its sensitive security require
       originalGenerateId;
   }
 });
+
+test('permission seeding reconciles stale scope, effect, action, description and increments policyVersion idempotently', async () => {
+  const originalFindOne = RolePermission.findOne;
+  const originalCreate = RolePermission.create;
+
+  const staleRule = {
+    role: 'MASTER',
+    permissionCode: 'USER:MANAGE',
+    scope: 'SELF', // Stale! Desired: ORGANISATION
+    effect: 'DENY', // Stale! Desired: ALLOW
+    action: 'READ', // Stale! Desired: MANAGE
+    description: 'Old description',
+    policyVersion: 2,
+    saveCount: 0,
+    async save() {
+      this.saveCount += 1;
+      return this;
+    },
+  };
+
+  RolePermission.findOne = async (filter) => {
+    if (filter.permissionCode === 'USER:MANAGE' && filter.role === 'MASTER') {
+      return staleRule;
+    }
+    return makeExistingRule(DEFAULT_PERMISSION_RULES.find((r) => r.permissionCode === filter.permissionCode && r.role === filter.role) || { role: filter.role, permissionCode: filter.permissionCode });
+  };
+
+  try {
+    await seedPermissionRules({
+      organisationId: 'ORG-TEST',
+      masterUserId: 'MU-0001',
+    });
+
+    assert.equal(staleRule.scope, 'ORGANISATION');
+    assert.equal(staleRule.effect, 'ALLOW');
+    assert.equal(staleRule.action, 'MANAGE');
+    assert.equal(staleRule.policyVersion, 3);
+    assert.equal(staleRule.updatedBy, 'MU-0001');
+
+    // Run a second time to verify idempotency (no double mutation if already synced)
+    await seedPermissionRules({
+      organisationId: 'ORG-TEST',
+      masterUserId: 'MU-0001',
+    });
+
+    assert.equal(staleRule.policyVersion, 3); // Unchanged on 2nd run
+  } finally {
+    RolePermission.findOne = originalFindOne;
+    RolePermission.create = originalCreate;
+  }
+});
+

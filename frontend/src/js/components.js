@@ -66,6 +66,10 @@ export function renderTopbar({ scopeChip } = {}) {
   return `
     <div class="flex items-center gap-md">
       ${scopeChip || ""}
+      <div style="position:relative; width:260px;">
+        <input type="text" id="topbar-search-input" placeholder="Search... (Ctrl+K)" class="input-field" style="width:100%; font-size:12px; padding:6px 12px; border-radius:18px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); color:#fff;" />
+        <div id="topbar-search-results" class="glass" style="display:none; position:absolute; top:36px; left:0; width:340px; max-height:360px; overflow-y:auto; padding:12px; z-index:900;"></div>
+      </div>
     </div>
     <div class="flex items-center gap-md" style="position:relative;">
       <div id="notif-bell-wrap" style="position:relative; cursor:pointer;">
@@ -81,7 +85,7 @@ export function renderTopbar({ scopeChip } = {}) {
 }
 
 /* -------------------------------------------------------------------------
-   Notification bell — compact panel + live badge (Part 14 of the spec)
+   Notification bell & Global Search — compact panel + live badge + Ctrl+K
    ------------------------------------------------------------------------- */
 export function updateBellBadge() {
   const badge = document.getElementById("notif-bell-badge");
@@ -118,41 +122,101 @@ function renderBellPanel() {
 export function wireBell(root, docBody) {
   const wrap = root.querySelector("#notif-bell-wrap");
   const panel = root.querySelector("#notif-panel");
-  if (!wrap || !panel) return;
+  const searchInput = root.querySelector("#topbar-search-input");
+  const searchResults = root.querySelector("#topbar-search-results");
 
-  wrap.addEventListener("click", (e) => {
-    e.stopPropagation();
-    const isOpen = panel.style.display === "block";
-    if (isOpen) {
-      panel.style.display = "none";
-      return;
+  // Ctrl+K Global Search shortcut
+  window.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+      e.preventDefault();
+      searchInput?.focus();
     }
-    panel.innerHTML = renderBellPanel();
-    panel.style.display = "block";
-    panel.querySelectorAll("[data-panel-item]").forEach((el) => {
-      el.addEventListener("click", () => {
-        markRead(el.dataset.panelItem);
-        updateBellBadge();
+  });
+
+  if (searchInput && searchResults) {
+    let searchDebounce = null;
+    searchInput.addEventListener("input", () => {
+      clearTimeout(searchDebounce);
+      const query = searchInput.value.trim();
+      if (query.length < 2) {
+        searchResults.style.display = "none";
+        return;
+      }
+
+      searchDebounce = setTimeout(async () => {
+        try {
+          const res = await fetch(`/api/v1/search?q=${encodeURIComponent(query)}`, { credentials: "include" });
+          const payload = await res.json();
+          const results = payload?.data?.results || {};
+
+          let html = "";
+          for (const [groupKey, items] of Object.entries(results)) {
+            if (!items.length) continue;
+            html += `<div style="color:var(--color-accent-mint-bright); font-size:10.5px; font-weight:700; text-transform:uppercase; margin:8px 0 4px 0;">${groupKey.replace(/_/g, " ")}</div>`;
+            items.forEach((item) => {
+              html += `
+                <div style="padding:6px 8px; border-radius:6px; cursor:pointer; background:rgba(255,255,255,0.05); margin-bottom:4px;" data-search-route="${item.route}">
+                  <div style="color:#fff; font-size:12px; font-weight:600;">${item.title}</div>
+                  <div class="muted-white" style="font-size:11px;">${item.subtitle}</div>
+                </div>`;
+            });
+          }
+
+          if (!html) html = `<div class="muted-white" style="font-size:12px; padding:10px 0;">No matching results found.</div>`;
+
+          searchResults.innerHTML = html;
+          searchResults.style.display = "block";
+
+          searchResults.querySelectorAll("[data-search-route]").forEach((el) => {
+            el.addEventListener("click", () => {
+              searchResults.style.display = "none";
+              searchInput.value = "";
+              navigate(el.dataset.searchRoute);
+            });
+          });
+        } catch {
+          searchResults.style.display = "none";
+        }
+      }, 250);
+    });
+  }
+
+  if (wrap && panel) {
+    wrap.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const isOpen = panel.style.display === "block";
+      if (isOpen) {
         panel.style.display = "none";
-        navigate(el.dataset.deeplink);
+        return;
+      }
+      panel.innerHTML = renderBellPanel();
+      panel.style.display = "block";
+      panel.querySelectorAll("[data-panel-item]").forEach((el) => {
+        el.addEventListener("click", () => {
+          markRead(el.dataset.panelItem);
+          updateBellBadge();
+          panel.style.display = "none";
+          navigate(el.dataset.deeplink);
+        });
+      });
+      const markAll = panel.querySelector("[data-mark-all]");
+      if (markAll) markAll.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        markAllRead(state.role);
+        updateBellBadge();
+        panel.innerHTML = renderBellPanel();
+      });
+      const viewAll = panel.querySelector("[data-view-all]");
+      if (viewAll) viewAll.addEventListener("click", () => {
+        panel.style.display = "none";
+        navigate("notifications");
       });
     });
-    const markAll = panel.querySelector("[data-mark-all]");
-    if (markAll) markAll.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      markAllRead(state.role);
-      updateBellBadge();
-      panel.innerHTML = renderBellPanel();
-    });
-    const viewAll = panel.querySelector("[data-view-all]");
-    if (viewAll) viewAll.addEventListener("click", () => {
-      panel.style.display = "none";
-      navigate("notifications");
-    });
-  });
+  }
 
   (docBody || document).addEventListener("click", () => {
     if (panel) panel.style.display = "none";
+    if (searchResults) searchResults.style.display = "none";
   });
 }
 

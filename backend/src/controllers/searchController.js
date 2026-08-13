@@ -52,37 +52,41 @@ const performGlobalSearch = asyncHandler(async (request, response) => {
 
   // 2. Menu Items (MASTER, OWNER and CAFE_ADMIN only)
   if (['MASTER', 'OWNER', 'CAFE_ADMIN'].includes(role)) {
-promises.push(
-    MenuItem.find({ organisationId: orgId, name: regex }).select('menuItemId name category currentPricePaisa').limit(5).lean()
-      .then((res) => ({ type: 'MENU_ITEMS', items: res.map((m) => ({ id: m.menuItemId, title: m.name, subtitle: `${m.category} • ₹${m.currentPricePaisa / 100}`, route: 'pos' })) }))
-  );
-}
-// 3. Inventory Items (MASTER, OWNER and CAFE_ADMIN only)
+    const menuRoute = role === 'MASTER' ? 'menu' : role === 'OWNER' ? 'reports' : 'pos';
+    promises.push(
+      MenuItem.find({ organisationId: orgId, name: regex }).select('menuItemId name category currentPricePaisa').limit(5).lean()
+        .then((res) => ({ type: 'MENU_ITEMS', items: res.map((m) => ({ id: m.menuItemId, title: m.name, subtitle: `${m.category} • ₹${m.currentPricePaisa / 100}`, route: menuRoute })) }))
+    );
+  }
+  // 3. Inventory Items (MASTER, OWNER and CAFE_ADMIN only)
   if (['MASTER', 'OWNER', 'CAFE_ADMIN'].includes(role)) {
-promises.push(
-    GlobalInventoryItem.find({ organisationId: orgId, name: regex }).select('itemId name category baseUnit').limit(5).lean()
-      .then((res) => ({ type: 'INVENTORY_ITEMS', items: res.map((i) => ({ id: i.itemId, title: i.name, subtitle: `${i.category} (${i.baseUnit})`, route: 'inventory' })) }))
-  );
-}
-// 4. Vendors (MASTER and OWNER only)
-if (['MASTER', 'OWNER'].includes(role)) {
+    const invRoute = role === 'OWNER' ? 'finance' : 'inventory';
+    promises.push(
+      GlobalInventoryItem.find({ organisationId: orgId, name: regex }).select('itemId name category baseUnit').limit(5).lean()
+        .then((res) => ({ type: 'INVENTORY_ITEMS', items: res.map((i) => ({ id: i.itemId, title: i.name, subtitle: `${i.category} (${i.baseUnit})`, route: invRoute })) }))
+    );
+  }
+  // 4. Vendors (MASTER and OWNER only)
+  if (['MASTER', 'OWNER'].includes(role)) {
+    const vendorRoute = role === 'MASTER' ? 'vendors' : 'reports';
     promises.push(
       Vendor.find({ organisationId: orgId, name: regex }).select('vendorId name category status').limit(5).lean()
-        .then((res) => ({ type: 'VENDORS', items: res.map((v) => ({ id: v.vendorId, title: v.name, subtitle: `${v.category} (${v.status})`, route: 'inventory' })) }))
+        .then((res) => ({ type: 'VENDORS', items: res.map((v) => ({ id: v.vendorId, title: v.name, subtitle: `${v.category} (${v.status})`, route: vendorRoute })) }))
     );
   }
 
-// 5. Bills / Receipts (MASTER, OWNER and CAFE_ADMIN only)
-if (['MASTER', 'OWNER', 'CAFE_ADMIN'].includes(role)) {
-  const billFilter = { organisationId: orgId, $or: [{ billId: regex }, { tableNumber: regex }, { customerPhone: regex }] };
-  if (role !== 'MASTER' && role !== 'OWNER') billFilter.cafeId = { $in: request.auth.assignedCafeIds };
+  // 5. Bills / Receipts (MASTER, OWNER and CAFE_ADMIN only)
+  if (['MASTER', 'OWNER', 'CAFE_ADMIN'].includes(role)) {
+    const billFilter = { organisationId: orgId, $or: [{ billId: regex }, { tableNumber: regex }, { customerPhone: regex }] };
+    if (role !== 'MASTER' && role !== 'OWNER') billFilter.cafeId = { $in: request.auth.assignedCafeIds };
 
-  promises.push(
-    Bill.find(billFilter).select('billId totalPaisa status businessDate orderType').limit(5).lean()
-      .then((res) => ({ type: 'BILLS', items: res.map((b) => ({ id: b.billId, title: b.billId, subtitle: `₹${b.totalPaisa / 100} • ${b.status} • ${b.businessDate}`, route: 'pos' })) }))
-  );
+    const billRoute = ['MASTER', 'OWNER'].includes(role) ? 'bills' : 'pos';
 
-}
+    promises.push(
+      Bill.find(billFilter).select('billId totalPaisa status businessDate orderType').limit(5).lean()
+        .then((res) => ({ type: 'BILLS', items: res.map((b) => ({ id: b.billId, title: b.billId, subtitle: `₹${b.totalPaisa / 100} • ${b.status} • ${b.businessDate}`, route: billRoute })) }))
+    );
+  }
   // 6. Personal Ledger (MASTER and OWNER only; always scoped to the authenticated owner)
 if (['MASTER', 'OWNER'].includes(role)) {
   const ledgerFilter = {

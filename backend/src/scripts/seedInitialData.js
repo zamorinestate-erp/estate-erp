@@ -605,48 +605,34 @@ async function seedPermissionRules({
       });
 
     if (existingRule) {
-      const desiredSecurityPolicy = {
-        requiresMfa:
-          Boolean(rule.requiresMfa),
-        requiresStepUpAuthentication:
-          Boolean(
-            rule
-              .requiresStepUpAuthentication
-          ),
-        requiresReason:
-          Boolean(rule.requiresReason),
-        requiresAuditEvent:
-          rule.requiresAuditEvent !== false,
-        requiresReauthentication:
-          Boolean(
-            rule.requiresReauthentication
-          ),
+      const desiredProperties = {
+        scope: rule.scope,
+        module: rule.module,
+        resource: rule.resource,
+        action: rule.action,
+        effect: rule.effect,
+        description: rule.description,
+        requiresMfa: Boolean(rule.requiresMfa),
+        requiresStepUpAuthentication: Boolean(rule.requiresStepUpAuthentication),
+        requiresReason: Boolean(rule.requiresReason),
+        requiresAuditEvent: rule.requiresAuditEvent !== false,
+        requiresReauthentication: Boolean(rule.requiresReauthentication),
       };
 
-      let securityPolicyChanged = false;
+      let ruleChanged = false;
 
-      for (
-        const [field, value] of
-        Object.entries(
-          desiredSecurityPolicy
-        )
-      ) {
+      for (const [field, value] of Object.entries(desiredProperties)) {
         if (existingRule[field] !== value) {
           existingRule[field] = value;
-          securityPolicyChanged = true;
+          ruleChanged = true;
         }
       }
 
-      if (securityPolicyChanged) {
-        existingRule.updatedBy =
-          masterUserId;
-
-        existingRule.policyVersion =
-          Number.isInteger(
-            existingRule.policyVersion
-          )
-            ? existingRule.policyVersion + 1
-            : 1;
+      if (ruleChanged) {
+        existingRule.updatedBy = masterUserId;
+        existingRule.policyVersion = Number.isInteger(existingRule.policyVersion)
+          ? existingRule.policyVersion + 1
+          : 1;
 
         await existingRule.save();
       }
