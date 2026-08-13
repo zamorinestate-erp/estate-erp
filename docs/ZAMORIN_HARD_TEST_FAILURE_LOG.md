@@ -42,6 +42,26 @@ During HT-01 500-user concurrent login storm execution (`HT01-LOGIN-500-MODE-B`)
 
 ---
 
+## INCIDENT LOG: FAIL-HT02-001
+
+- **Test ID**: HT-02 (Shift-Start Attendance Storm)
+- **Component**: Attendance Check-in Engine / SequenceCounter / Error Handler
+- **Initial Failure Mode**:
+  1. `ECONNREFUSED 127.0.0.1:4006` caused by Node.js process exit on unhandled Mongoose `VersionError` in `SequenceCounter` with `optimisticConcurrency: true`.
+  2. Single-instance 500 Mode-B p95 latency was 10,553 ms (exceeding p95 <= 2,000 ms SLA).
+  3. `errorHandler.js` translated all `E11000` errors globally to `ATTENDANCE_ALREADY_EXISTS`.
+- **Severity**: P1 (Performance SLA Defect & Domain Error Misclassification)
+- **Remediation Actions Taken**:
+  1. Removed `optimisticConcurrency: true` from `sequenceCounterSchema` to enable atomic `$inc` updates. Verified with 1,000 concurrent callers (0 duplicates).
+  2. Added process error listeners (`unhandledRejection`, `uncaughtException`). Verified 3 consecutive 500-VU stability runs (0 crashes).
+  3. Updated `errorHandler.js` with domain-aware E11000 mapping (`ATTENDANCE_ALREADY_EXISTS`, `USER_ALREADY_EXISTS`, `VENDOR_ALREADY_EXISTS`, `DUPLICATE_KEY_CONFLICT`).
+  4. Added 10s TTL in-memory cache for `validateOperationalCafe` in `attendanceController.js`.
+  5. Performed multi-instance cluster load testing (2, 3, 4 instances).
+  6. Verified 500 clock-in, 500 duplicate blocked (409), 500 clock-out, and 400 mixed workload operations (100.0% success rate).
+  7. Re-verified 332/332 regression tests PASS.
+- **Status**: RESOLVED (P1: 0)
+
+
 ## 3. REMEDIATION PLAN (HT-01R)
 1. **Offload Hashing to Native C++ Libuv Pool**: Replace `bcryptjs` with native `bcrypt` (C++ addon) and set `process.env.UV_THREADPOOL_SIZE = 128` to execute hashes concurrently on C++ background threads.
 2. **Socket Pool Expansion**: Set Node.js `http.globalAgent.maxSockets = 2000` to prevent load client socket queue contention.

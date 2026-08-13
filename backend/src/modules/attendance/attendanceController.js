@@ -81,6 +81,9 @@ function ensureCafeAccess(
   }
 }
 
+const CAFE_CACHE_TTL_MS = 10000;
+const operationalCafeCache = new Map();
+
 async function validateOperationalCafe(
   request,
   cafeId
@@ -89,6 +92,14 @@ async function validateOperationalCafe(
     request,
     cafeId
   );
+
+  const cacheKey = `${request.auth.organisationId}:${cafeId}`;
+  const cached = operationalCafeCache.get(cacheKey);
+  const now = Date.now();
+
+  if (cached && now - cached.timestamp < CAFE_CACHE_TTL_MS) {
+    return cached.cafe;
+  }
 
   const cafe = await Cafe.findOne({
     organisationId:
@@ -106,6 +117,7 @@ async function validateOperationalCafe(
     );
   }
 
+  operationalCafeCache.set(cacheKey, { cafe, timestamp: now });
   return cafe;
 }
 
