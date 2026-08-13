@@ -553,6 +553,19 @@ const userSchema = new mongoose.Schema(
       uppercase: true,
       default: null,
     },
+
+    // ── Custom Fields (Capability 26) ─────────────────────────────────────────
+    // Arbitrary org-defined key→value metadata. Keys are set by CustomField
+    // definitions (see CustomFieldDefinition model). Values are Mixed so they
+    // can hold strings, numbers, booleans or ISO-date strings.
+    // MASTER-only write; all roles may read (scope-filtered by the controller).
+    // Keys are sanitised: alphanumeric + underscore, max 64 chars.
+    // Total map size is capped at 50 keys in the controller before save.
+    customFields: {
+      type: Map,
+      of: mongoose.Schema.Types.Mixed,
+      default: () => new Map(),
+    },
   },
   {
     timestamps: true,
