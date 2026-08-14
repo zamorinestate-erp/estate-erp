@@ -15,7 +15,7 @@
 | **HT-01** | Concurrent Login Storm | 500+ Staff simultaneous login and bootstrap storm | 500 VUs | Success >= 99.5%, p95 <= 3.0s | **REMEDIATION REQUIRED** |
 | **HT-02** | Shift-Start Attendance Storm | Simultaneous clock-in / attendance submission | 500 VUs | Success >= 99.5%, p95 <= 2.0s | **BLOCKED** (Production-Like Staging Validation Pending) |
 | **HT-03** | Mixed Workload Stress | POS billing, expense submission, inventory check, self-service | 500+ VUs | Success >= 99.0%, p95 <= 3.0s | **PASS** (100% Workload Correctness Verified; Staging Capacity Pending) |
-| **HT-04** | Stress & Breakpoint | Ramping load until system breaking point discovery | 1,000+ VUs | Identify maximum throughput limit | NOT STARTED |
+| **HT-04** | Stress & Breakpoint | Ramping load until system breaking point discovery | 1,000+ VUs | Identify maximum throughput limit | **PASS WITH LOCAL CAPACITY LIMIT DOCUMENTED** |
 | **HT-05** | Sudden Spike Storm | Instantaneous load jump from 10 to 500 VUs | 500 VUs | Zero unhandled process crashes | NOT STARTED |
 | **HT-06** | Soak / Endurance | Sustained continuous operational load over multi-hour run | 100 VUs | 0 memory leak, 0 connection leak | NOT STARTED |
 | **HT-07** | Network Resilience | High latency, jitter, packet loss, and dropped connections | 50 VUs | 0 corrupted state, retry safety | NOT STARTED |

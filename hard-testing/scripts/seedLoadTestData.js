@@ -98,8 +98,8 @@ async function seedLoadTestData() {
     { upsert: true }
   );
 
-  // 3. Create 4 Additional MASTER Users
-  for (let i = 2; i <= 5; i++) {
+  // 3. Create 9 Additional MASTER Users
+  for (let i = 2; i <= 10; i++) {
     const userId = `MU-${String(9000 + i)}`;
     await User.updateOne(
       { userId, organisationId: ORG_ID },
@@ -120,8 +120,8 @@ async function seedLoadTestData() {
     );
   }
 
-  // 4. Create 2 OWNER Users
-  for (let i = 1; i <= 2; i++) {
+  // 4. Create 5 OWNER Users
+  for (let i = 1; i <= 5; i++) {
     const userId = `OW-${String(9000 + i)}`;
     await User.updateOne(
       { userId, organisationId: ORG_ID },
@@ -142,35 +142,39 @@ async function seedLoadTestData() {
     );
   }
 
-  // 5. Create 50 CAFE_ADMIN Users (5 per Cafe)
-  for (let i = 1; i <= 50; i++) {
+  // 5. Create 200 CAFE_ADMIN Users (20 per Cafe)
+  const adminOps = [];
+  for (let i = 1; i <= 200; i++) {
     const userId = `AD-${String(9000 + i)}`;
     const assignedCafe = cafeIds[(i - 1) % 10];
 
-    await User.updateOne(
-      { userId, organisationId: ORG_ID },
-      {
-        $set: {
-          userId,
-          organisationId: ORG_ID,
-          name: `Cafe Admin #${i}`,
-          email: `admin${i}@loadtest.internal`,
-          role: 'CAFE_ADMIN',
-          accountStatus: 'ACTIVE',
-          primaryCafeId: assignedCafe,
-          assignedCafeIds: [assignedCafe],
-          passwordHash,
-          mustChangePassword: false,
-          createdBy: 'SYSTEM',
+    adminOps.push({
+      updateOne: {
+        filter: { userId, organisationId: ORG_ID },
+        update: {
+          $set: {
+            userId,
+            organisationId: ORG_ID,
+            name: `Cafe Admin #${i}`,
+            email: `admin${i}@loadtest.internal`,
+            role: 'CAFE_ADMIN',
+            accountStatus: 'ACTIVE',
+            primaryCafeId: assignedCafe,
+            assignedCafeIds: [assignedCafe],
+            passwordHash,
+            mustChangePassword: false,
+            createdBy: 'SYSTEM',
+          },
         },
+        upsert: true,
       },
-      { upsert: true }
-    );
+    });
   }
+  await User.bulkWrite(adminOps);
 
-  // 6. Create 1,000 STAFF Users (100 per Cafe)
+  // 6. Create 2,500 STAFF Users (250 per Cafe)
   const staffOps = [];
-  for (let i = 1; i <= 1000; i++) {
+  for (let i = 1; i <= 2500; i++) {
     const userId = `ST-${String(1000 + i)}`;
     const assignedCafe = cafeIds[(i - 1) % 10];
 
