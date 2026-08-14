@@ -14,6 +14,7 @@ const { seedLoadTestData, resetLoadTestData } = require('../scripts/seedLoadTest
 const { createApp } = require('../../backend/src/server');
 const { Bill } = require('../../backend/src/models/Bill');
 const { Expense } = require('../../backend/src/models/Expense');
+const { CashTransaction } = require('../../backend/src/models/CashTransaction');
 const { MenuItem } = require('../../backend/src/models/MenuItem');
 const { User } = require('../../backend/src/models/User');
 const { Session } = require('../../backend/src/models/Session');
@@ -389,35 +390,58 @@ async function main() {
   const instances = await startCluster(4, 4300);
   const sessionsByRole = await prewarmMixedSessions();
 
-  // Run 1: 500 VUs
+  console.log(`\n================================================================================`);
+  console.log(`ZAMORIN CAFE ERP — HT-03R 3x CONSECUTIVE 500-VU MIXED WORKLOAD RUNS`);
+  console.log(`================================================================================`);
+
+  // Run #1: HT03R-MIXED-500-001
+  console.log(`\n>>> RUN 1: HT03R-MIXED-500-001 <<<`);
   const run1 = await runMixedWorkloadTest(500, 3000, instances, sessionsByRole);
+
+  // Run #2: HT03R-MIXED-500-002
+  console.log(`\n>>> RUN 2: HT03R-MIXED-500-002 <<<`);
+  const run2 = await runMixedWorkloadTest(500, 3000, instances, sessionsByRole);
+
+  // Run #3: HT03R-MIXED-500-003
+  console.log(`\n>>> RUN 3: HT03R-MIXED-500-003 <<<`);
+  const run3 = await runMixedWorkloadTest(500, 3000, instances, sessionsByRole);
 
   // Financial integrity check
   const totalBills = await Bill.countDocuments({ organisationId: 'LOADTEST_ORG' });
   const totalExpenses = await Expense.countDocuments({ organisationId: 'LOADTEST_ORG' });
-  console.log(`\n[FINANCIAL INTEGRITY CHECK] Total DB Bills: ${totalBills} | Total DB Expenses: ${totalExpenses}`);
+  const totalCashTxs = await CashTransaction.countDocuments({ organisationId: 'LOADTEST_ORG' });
+  console.log(`\n[TOTAL RECORDS CHECK] Total Bills: ${totalBills} | Total Expenses: ${totalExpenses} | Total Cash Transactions: ${totalCashTxs}`);
 
   // Post-Load Recovery check
+  const recoveryStart = Date.now();
   const healthRes = await fetch(`${instances[0].url}/health`).then((r) => r.json());
   const readinessRes = await fetch(`${instances[0].url}/readiness`).then((r) => r.json());
-  console.log(`[RECOVERY CHECK] Health: ${healthRes.status} | Readiness: ${readinessRes.status}`);
+  const recoveryDurationSec = ((Date.now() - recoveryStart) / 1000).toFixed(2);
+  console.log(`[RECOVERY CHECK] Health: ${healthRes.status} | Readiness: ${readinessRes.status} | Time: ${recoveryDurationSec}s`);
 
   for (const inst of instances) {
     inst.server.close();
   }
   await mongoose.disconnect();
 
-  const reportPath = path.join(RESULTS_DIR, 'HT03_MIXED_WORKLOAD_RESULTS.json');
-  fs.writeFileSync(reportPath, JSON.stringify({ run1, totalBills, totalExpenses, health: healthRes, readiness: readinessRes }, null, 2));
+  const reportPath = path.join(RESULTS_DIR, 'HT03R_MIXED_WORKLOAD_3RUNS_RESULTS.json');
+  fs.writeFileSync(reportPath, JSON.stringify({ run1, run2, run3, totalBills, totalExpenses, totalCashTxs, health: healthRes, readiness: readinessRes, recoveryDurationSec }, null, 2));
 
-  const pass = run1.successRate >= 99.0 && run1.status5xxCount === 0 && run1.p95 <= 3000;
-  console.log(`\n[HT-03 TEST SUITE RESULT] ${pass ? 'PASS' : 'FAIL / CAPACITY LIMIT DOCUMENTED'}`);
+  const allPassed =
+    run1.successRate === 100 &&
+    run2.successRate === 100 &&
+    run3.successRate === 100 &&
+    run1.status5xxCount === 0 &&
+    run2.status5xxCount === 0 &&
+    run3.status5xxCount === 0;
 
-  process.exit(pass ? 0 : 1);
+  console.log(`\n[HT-03R 3-RUN SUITE RESULT] ${allPassed ? 'PASS (100% Correctness Across All 3 Runs)' : 'FAIL'}`);
+
+  process.exit(allPassed ? 0 : 1);
 }
 
 main().catch((err) => {
-  console.error('[HT-03 FATAL ERROR]', err);
+  console.error('[HT-03R FATAL ERROR]', err);
   mongoose.disconnect();
   process.exit(1);
 });

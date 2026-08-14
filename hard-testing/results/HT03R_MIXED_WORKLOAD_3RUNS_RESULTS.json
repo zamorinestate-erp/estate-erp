@@ -1,0 +1,189 @@
+{
+  "run1": {
+    "totalVUs": 500,
+    "arrivalWindowMs": 3000,
+    "totalDurationMs": 7878,
+    "totalCount": 500,
+    "successCount": 500,
+    "status5xxCount": 0,
+    "successRate": 100,
+    "rps": 63.47,
+    "p50": 4548,
+    "p90": 6423,
+    "p95": 6868,
+    "p99": 6950,
+    "breakdown": {
+      "POS_BILLING": {
+        "total": 175,
+        "success": 175,
+        "successRate": 100,
+        "p50": 5382,
+        "p95": 6945,
+        "p99": 7020
+      },
+      "EXPENSE_SUBMISSION": {
+        "total": 75,
+        "success": 75,
+        "successRate": 100,
+        "p50": 4365,
+        "p95": 5371,
+        "p99": 5577
+      },
+      "MENU_QUERY": {
+        "total": 125,
+        "success": 125,
+        "successRate": 100,
+        "p50": 5435,
+        "p95": 5689,
+        "p99": 5859
+      },
+      "ATTENDANCE_QUERY": {
+        "total": 100,
+        "success": 100,
+        "successRate": 100,
+        "p50": 4151,
+        "p95": 4777,
+        "p99": 4968
+      },
+      "REPORT_QUERY": {
+        "total": 25,
+        "success": 25,
+        "successRate": 100,
+        "p50": 4162,
+        "p95": 4382,
+        "p99": 4441
+      }
+    }
+  },
+  "run2": {
+    "totalVUs": 500,
+    "arrivalWindowMs": 3000,
+    "totalDurationMs": 5298,
+    "totalCount": 500,
+    "successCount": 500,
+    "status5xxCount": 0,
+    "successRate": 100,
+    "rps": 94.38,
+    "p50": 2700,
+    "p90": 3706,
+    "p95": 3954,
+    "p99": 4220,
+    "breakdown": {
+      "POS_BILLING": {
+        "total": 175,
+        "success": 175,
+        "successRate": 100,
+        "p50": 3311,
+        "p95": 4214,
+        "p99": 4456
+      },
+      "EXPENSE_SUBMISSION": {
+        "total": 75,
+        "success": 75,
+        "successRate": 100,
+        "p50": 2571,
+        "p95": 3188,
+        "p99": 3239
+      },
+      "MENU_QUERY": {
+        "total": 125,
+        "success": 125,
+        "successRate": 100,
+        "p50": 2790,
+        "p95": 3089,
+        "p99": 3091
+      },
+      "ATTENDANCE_QUERY": {
+        "total": 100,
+        "success": 100,
+        "successRate": 100,
+        "p50": 2401,
+        "p95": 2721,
+        "p99": 2736
+      },
+      "REPORT_QUERY": {
+        "total": 25,
+        "success": 25,
+        "successRate": 100,
+        "p50": 2202,
+        "p95": 2350,
+        "p99": 2376
+      }
+    }
+  },
+  "run3": {
+    "totalVUs": 500,
+    "arrivalWindowMs": 3000,
+    "totalDurationMs": 3669,
+    "totalCount": 500,
+    "successCount": 500,
+    "status5xxCount": 0,
+    "successRate": 100,
+    "rps": 136.28,
+    "p50": 944,
+    "p90": 1350,
+    "p95": 1510,
+    "p99": 1687,
+    "breakdown": {
+      "POS_BILLING": {
+        "total": 175,
+        "success": 175,
+        "successRate": 100,
+        "p50": 1021,
+        "p95": 1599,
+        "p99": 1959
+      },
+      "EXPENSE_SUBMISSION": {
+        "total": 75,
+        "success": 75,
+        "successRate": 100,
+        "p50": 851,
+        "p95": 1157,
+        "p99": 1385
+      },
+      "MENU_QUERY": {
+        "total": 125,
+        "success": 125,
+        "successRate": 100,
+        "p50": 1197,
+        "p95": 1540,
+        "p99": 1688
+      },
+      "ATTENDANCE_QUERY": {
+        "total": 100,
+        "success": 100,
+        "successRate": 100,
+        "p50": 855,
+        "p95": 1034,
+        "p99": 1053
+      },
+      "REPORT_QUERY": {
+        "total": 25,
+        "success": 25,
+        "successRate": 100,
+        "p50": 704,
+        "p95": 752,
+        "p99": 753
+      }
+    }
+  },
+  "totalBills": 525,
+  "totalExpenses": 225,
+  "totalCashTxs": 261,
+  "health": {
+    "success": true,
+    "status": "ok",
+    "service": "zamorin-cafe-erp-api",
+    "timestamp": "2026-08-14T18:25:26.266Z",
+    "correlationId": "6903b4c9-c71d-4f1c-b15a-f5411e4d34ad"
+  },
+  "readiness": {
+    "success": true,
+    "status": "ready",
+    "service": "zamorin-cafe-erp-api",
+    "database": "connected",
+    "timestamp": "2026-08-14T18:25:26.269Z",
+    "correlationId": "d9fe483e-691c-4d21-9d26-c215b3debf29"
+  },
+  "recoveryDurationSec": "0.01"
+}

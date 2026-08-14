@@ -360,9 +360,9 @@ const DEFAULT_PERMISSION_RULES = [
     resource: 'CUSTOM_FIELDS',
     action: 'READ',
     effect: 'ALLOW',
-    scope: 'ASSIGNED_CAFES',
+    scope: 'SELF',
     requiresMfa: false,
-    description: 'STAFF may read organisation custom field definitions.',
+    description: 'STAFF may read custom field definitions for self forms.',
   },
   // Quality & Compliance
   { role: 'MASTER', permissionCode: 'QUALITY_READ', module: 'QUALITY', resource: 'CHECKLIST', action: 'READ', effect: 'ALLOW', scope: 'ORGANISATION', description: 'MASTER may read quality checklists.' },
