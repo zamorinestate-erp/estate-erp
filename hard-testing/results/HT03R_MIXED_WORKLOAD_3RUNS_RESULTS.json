@@ -2,168 +2,168 @@
   "run1": {
     "totalVUs": 500,
     "arrivalWindowMs": 3000,
-    "totalDurationMs": 7878,
+    "totalDurationMs": 4982,
     "totalCount": 500,
     "successCount": 500,
     "status5xxCount": 0,
     "successRate": 100,
-    "rps": 63.47,
-    "p50": 4548,
-    "p90": 6423,
-    "p95": 6868,
-    "p99": 6950,
+    "rps": 100.36,
+    "p50": 2419,
+    "p90": 3568,
+    "p95": 3815,
+    "p99": 4076,
     "breakdown": {
       "POS_BILLING": {
         "total": 175,
         "success": 175,
         "successRate": 100,
-        "p50": 5382,
-        "p95": 6945,
-        "p99": 7020
+        "p50": 2822,
+        "p95": 4004,
+        "p99": 4278
       },
       "EXPENSE_SUBMISSION": {
         "total": 75,
         "success": 75,
         "successRate": 100,
-        "p50": 4365,
-        "p95": 5371,
-        "p99": 5577
+        "p50": 2158,
+        "p95": 2459,
+        "p99": 2640
       },
       "MENU_QUERY": {
         "total": 125,
         "success": 125,
         "successRate": 100,
-        "p50": 5435,
-        "p95": 5689,
-        "p99": 5859
+        "p50": 2554,
+        "p95": 2786,
+        "p99": 2860
       },
       "ATTENDANCE_QUERY": {
         "total": 100,
         "success": 100,
         "successRate": 100,
-        "p50": 4151,
-        "p95": 4777,
-        "p99": 4968
+        "p50": 2002,
+        "p95": 2300,
+        "p99": 2422
       },
       "REPORT_QUERY": {
         "total": 25,
         "success": 25,
         "successRate": 100,
-        "p50": 4162,
-        "p95": 4382,
-        "p99": 4441
+        "p50": 1870,
+        "p95": 2012,
+        "p99": 2080
       }
     }
   },
   "run2": {
     "totalVUs": 500,
     "arrivalWindowMs": 3000,
-    "totalDurationMs": 5298,
+    "totalDurationMs": 4081,
     "totalCount": 500,
     "successCount": 500,
     "status5xxCount": 0,
     "successRate": 100,
-    "rps": 94.38,
-    "p50": 2700,
-    "p90": 3706,
-    "p95": 3954,
-    "p99": 4220,
+    "rps": 122.52,
+    "p50": 1146,
+    "p90": 1719,
+    "p95": 1852,
+    "p99": 2121,
     "breakdown": {
       "POS_BILLING": {
         "total": 175,
         "success": 175,
         "successRate": 100,
-        "p50": 3311,
-        "p95": 4214,
-        "p99": 4456
+        "p50": 1104,
+        "p95": 1868,
+        "p99": 2348
       },
       "EXPENSE_SUBMISSION": {
         "total": 75,
         "success": 75,
         "successRate": 100,
-        "p50": 2571,
-        "p95": 3188,
-        "p99": 3239
+        "p50": 905,
+        "p95": 1198,
+        "p99": 1557
       },
       "MENU_QUERY": {
         "total": 125,
         "success": 125,
         "successRate": 100,
-        "p50": 2790,
-        "p95": 3089,
-        "p99": 3091
+        "p50": 1504,
+        "p95": 1999,
+        "p99": 2132
       },
       "ATTENDANCE_QUERY": {
         "total": 100,
         "success": 100,
         "successRate": 100,
-        "p50": 2401,
-        "p95": 2721,
-        "p99": 2736
+        "p50": 1147,
+        "p95": 1387,
+        "p99": 1573
       },
       "REPORT_QUERY": {
         "total": 25,
         "success": 25,
         "successRate": 100,
-        "p50": 2202,
-        "p95": 2350,
-        "p99": 2376
+        "p50": 1078,
+        "p95": 1153,
+        "p99": 1159
       }
     }
   },
   "run3": {
     "totalVUs": 500,
     "arrivalWindowMs": 3000,
-    "totalDurationMs": 3669,
+    "totalDurationMs": 3966,
     "totalCount": 500,
     "successCount": 500,
     "status5xxCount": 0,
     "successRate": 100,
-    "rps": 136.28,
-    "p50": 944,
-    "p90": 1350,
-    "p95": 1510,
-    "p99": 1687,
+    "rps": 126.07,
+    "p50": 1211,
+    "p90": 1725,
+    "p95": 1782,
+    "p99": 2357,
     "breakdown": {
       "POS_BILLING": {
         "total": 175,
         "success": 175,
         "successRate": 100,
-        "p50": 1021,
-        "p95": 1599,
-        "p99": 1959
+        "p50": 1213,
+        "p95": 2219,
+        "p99": 2582
       },
       "EXPENSE_SUBMISSION": {
         "total": 75,
         "success": 75,
         "successRate": 100,
-        "p50": 851,
-        "p95": 1157,
-        "p99": 1385
+        "p50": 1170,
+        "p95": 1428,
+        "p99": 1812
       },
       "MENU_QUERY": {
         "total": 125,
         "success": 125,
         "successRate": 100,
-        "p50": 1197,
-        "p95": 1540,
-        "p99": 1688
+        "p50": 1552,
+        "p95": 1757,
+        "p99": 1945
       },
       "ATTENDANCE_QUERY": {
         "total": 100,
         "success": 100,
         "successRate": 100,
-        "p50": 855,
-        "p95": 1034,
-        "p99": 1053
+        "p50": 1088,
+        "p95": 1275,
+        "p99": 1473
       },
       "REPORT_QUERY": {
         "total": 25,
         "success": 25,
         "successRate": 100,
-        "p50": 704,
-        "p95": 752,
-        "p99": 753
+        "p50": 869,
+        "p95": 1067,
+        "p99": 1068
       }
     }
   },
@@ -174,16 +174,16 @@
     "success": true,
     "status": "ok",
     "service": "zamorin-cafe-erp-api",
-    "timestamp": "2026-08-14T18:25:26.266Z",
-    "correlationId": "6903b4c9-c71d-4f1c-b15a-f5411e4d34ad"
+    "timestamp": "2026-08-14T18:31:34.322Z",
+    "correlationId": "0dbb54ff-3050-4d80-805f-4bb0e4a3e343"
   },
   "readiness": {
     "success": true,
     "status": "ready",
     "service": "zamorin-cafe-erp-api",
     "database": "connected",
-    "timestamp": "2026-08-14T18:25:26.269Z",
-    "correlationId": "d9fe483e-691c-4d21-9d26-c215b3debf29"
+    "timestamp": "2026-08-14T18:31:34.326Z",
+    "correlationId": "0d898fde-e955-4815-832e-4f7324d9a3b0"
   },
   "recoveryDurationSec": "0.01"
 }
