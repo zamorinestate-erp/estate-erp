@@ -267,14 +267,16 @@ const createBill = asyncHandler(async (request, response) => {
         cafeId,
         businessDate,
         transactionType: 'CASH_IN',
-        direction: 'INWARD',
-        amountPaisa: totalPaisa,
+        direction: 'IN',
+        category: 'POS_SALE',
+        amount: Math.max(0.01, totalPaisa / 100),
         paymentMethod: 'CASH',
         status: 'POSTED',
         description: `POS Sale Receipt #${seqId}`,
-        sourceModule: 'POS_BILLING',
-        sourceRecordId: seqId,
-        performedByUserId: request.auth.userId,
+        referenceType: 'BILL',
+        referenceId: seqId,
+        recordedBy: request.auth.userId,
+        createdBy: request.auth.userId,
       });
 
       await cashTx.save();
