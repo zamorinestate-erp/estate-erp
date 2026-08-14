@@ -63,7 +63,6 @@ export const NAVIGATION = {
       { id: "performance", label: "Cafe Performance", icon: "reports", route: "performance" },
       { id: "employees", label: "Employees", icon: "employees", route: "employees" },
       { id: "finance-summary", label: "Finance Summary", icon: "finance", route: "finance" },
-      { id: "ledger", label: "Personal Ledger", icon: "ledger", route: "ledger" },
       { id: "my-loans-advances", label: "My Loans & Advances", icon: "payslip", route: "staff-loans-advances" },
       { id: "my-payslips", label: "My Payslips", icon: "payslip", route: "staff-payslips" },
       { id: "my-profile", label: "My Profile", icon: "employees", route: "employee-profile" },
@@ -71,7 +70,7 @@ export const NAVIGATION = {
       { id: "reports", label: "Reports", icon: "reports", route: "reports" },
       { id: "settings", label: "Settings & Preferences", icon: "settings", route: "settings" },
     ],
-    footnote: "Owner Portal — strategic governance, executive metrics, and Personal Ledger.",
+    footnote: "Owner Portal — strategic governance, executive metrics, and cafe oversight.",
   },
 
   [ROLES.CAFE_ADMIN]: {

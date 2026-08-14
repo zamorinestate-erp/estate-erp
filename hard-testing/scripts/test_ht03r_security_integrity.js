@@ -93,11 +93,45 @@ async function createActiveSession(user) {
 
 async function runSecurityAndIntegritySuite() {
   console.log(`\n================================================================================`);
-  console.log(`ZAMORIN CAFE ERP — HT-03R SECURITY, FINANCIAL INTEGRITY & ATTACK AUDIT SUITE`);
+  console.log(`ZAMORIN CAFE ERP — HT-03R2 SECURITY, FINANCIAL INTEGRITY & ATTACK AUDIT SUITE`);
   console.log(`================================================================================`);
 
   // 1. AUDIT ROLE PERMISSIONS & SEED RECONCILIATION
-  console.log(`\n--- 1. AUDITING STAFF ROLE PERMISSION RULES & RECONCILIATION ---`);
+  console.log(`\n--- 1. AUDITING STAFF ROLE PERMISSION RULES & STALE RULE RECONCILIATION ---`);
+  
+  // Inject synthetic stale rules to test reconciliation
+  await RolePermission.create([
+    {
+      permissionRuleId: 'PR-9991',
+      organisationId: 'LOADTEST_ORG',
+      role: 'OWNER',
+      permissionCode: 'PERSONAL_LEDGER_READ',
+      module: 'PERSONAL_LEDGER',
+      resource: 'PERSONAL_LEDGER_ENTRY',
+      action: 'READ',
+      effect: 'ALLOW',
+      scope: 'ORGANISATION',
+      isActive: true,
+      policyVersion: 1,
+      createdBy: 'MU-9001',
+    },
+    {
+      permissionRuleId: 'PR-9992',
+      organisationId: 'LOADTEST_ORG',
+      role: 'STAFF',
+      permissionCode: 'QUALITY_READ',
+      module: 'QUALITY',
+      resource: 'CHECKLIST',
+      action: 'READ',
+      effect: 'ALLOW',
+      scope: 'ASSIGNED_CAFES',
+      isActive: true,
+      policyVersion: 1,
+      createdBy: 'MU-9001',
+    },
+  ]);
+
+  console.log(`Injected 2 stale rules into database. Running seedPermissionRules reconciliation...`);
   await seedPermissionRules({ organisationId: 'LOADTEST_ORG', masterUserId: 'MU-9001' });
 
   const staffRules = await RolePermission.find({
@@ -118,12 +152,21 @@ async function runSecurityAndIntegritySuite() {
     else if (rule.scope === 'ORGANISATION') staffOrgCount++;
   }
 
-  console.log(`STAFF Rules Summary: SELF=${staffSelfCount} | ASSIGNED_CAFES=${staffAssignedCount} | ORGANISATION=${staffOrgCount}`);
-  const staffScopeAuditPassed = staffOrgCount === 0;
-  console.log(`[STAFF SCOPE AUDIT RESULT]: ${staffScopeAuditPassed ? 'PASS' : 'FAIL'}`);
+  const ownerPlRules = await RolePermission.find({
+    organisationId: 'LOADTEST_ORG',
+    role: 'OWNER',
+    permissionCode: { $in: ['PERSONAL_LEDGER_READ', 'PERSONAL_LEDGER_WRITE'] },
+    isActive: true,
+  }).lean();
 
-  // 2. DIRECT STAFF CROSS-USER ATTACK
-  console.log(`\n--- 2. DIRECT STAFF CROSS-USER & CROSS-CAFE ATTACK ---`);
+  console.log(`STAFF Rules Summary: SELF=${staffSelfCount} | ASSIGNED_CAFES=${staffAssignedCount} | ORGANISATION=${staffOrgCount}`);
+  console.log(`Active OWNER Personal Ledger Rules: ${ownerPlRules.length}`);
+
+  const staffScopeAuditPassed = staffOrgCount === 0 && staffAssignedCount === 0 && staffSelfCount === 7 && ownerPlRules.length === 0;
+  console.log(`[STAFF SCOPE & RECONCILIATION RESULT]: ${staffScopeAuditPassed ? 'PASS' : 'FAIL'}`);
+
+  // 2. DIRECT STAFF CROSS-USER & OPERATIONAL ATTACK
+  console.log(`\n--- 2. DIRECT STAFF CROSS-USER & OPERATIONAL ATTACK ---`);
   const staffA = await User.findOne({ userId: 'ST-1001' }).lean(); // Cafe 1
   const staffB = await User.findOne({ userId: 'ST-1002' }).lean(); // Cafe 2
   const staffC = await User.findOne({ userId: 'ST-1011' }).lean(); // Cafe 1 (Same cafe as Staff A)
@@ -135,12 +178,22 @@ async function runSecurityAndIntegritySuite() {
   const resEmpC = await fetch(`${BASE_URL}/employees/${staffC.permanentEmployeeId}`, { headers: { Cookie: cookieA } });
   const resAttendC = await fetch(`${BASE_URL}/attendance?userId=${staffC.userId}`, { headers: { Cookie: cookieA } });
 
+  // Attack 2: Staff A attempts operational quality checklist
+  const resQualityRead = await fetch(`${BASE_URL}/quality/checklists`, { headers: { Cookie: cookieA } });
+  const resQualityWrite = await fetch(`${BASE_URL}/quality/checklists`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: cookieA, Origin: `http://127.0.0.1:${PORT}` },
+    body: JSON.stringify({ cafeId: 'CF-LOAD-0001', title: 'Hostile Checklist', frequency: 'DAILY', items: [], overallResult: 'PASS' }),
+  });
+
   console.log(`Attack Staff A -> Staff C (Same Cafe):`);
   console.log(`- GET /users/${staffC.userId} (Expect 403/404): Status ${resUserC.status}`);
   console.log(`- GET /employees/${staffC.permanentEmployeeId} (Expect 403/404): Status ${resEmpC.status}`);
   console.log(`- GET /attendance?userId=${staffC.userId} (Expect 403/DENIED): Status ${resAttendC.status}`);
+  console.log(`- GET /quality/checklists (Expect 403): Status ${resQualityRead.status}`);
+  console.log(`- POST /quality/checklists (Expect 403): Status ${resQualityWrite.status}`);
 
-  // Attack 2: Staff A attempts to read Staff B (different cafe)
+  // Attack 3: Staff A attempts to read Staff B (different cafe)
   const resUserB = await fetch(`${BASE_URL}/users/${staffB.userId}`, { headers: { Cookie: cookieA } });
   const resEmpB = await fetch(`${BASE_URL}/employees/${staffB.permanentEmployeeId}`, { headers: { Cookie: cookieA } });
 
@@ -152,9 +205,11 @@ async function runSecurityAndIntegritySuite() {
     (resUserC.status === 403 || resUserC.status === 404) &&
     (resEmpC.status === 403 || resEmpC.status === 404) &&
     (resUserB.status === 403 || resUserB.status === 404) &&
-    (resEmpB.status === 403 || resEmpB.status === 404);
+    (resEmpB.status === 403 || resEmpB.status === 404) &&
+    resQualityRead.status === 403 &&
+    resQualityWrite.status === 403;
 
-  console.log(`[STAFF CROSS-USER ATTACK RESULT]: ${crossUserAttackPassed ? 'PASS (100% Denied)' : 'FAIL'}`);
+  console.log(`[STAFF CROSS-USER & OPERATIONAL ATTACK RESULT]: ${crossUserAttackPassed ? 'PASS (100% Denied)' : 'FAIL'}`);
 
   // 3. CAFE ADMIN ISOLATION AUDIT
   console.log(`\n--- 3. CAFE ADMIN ASSIGNED-CAFE ISOLATION AUDIT ---`);
@@ -194,9 +249,8 @@ async function runSecurityAndIntegritySuite() {
   const adminIsolationPassed = resAdminPosUnassigned.status === 403 && resAdminExpUnassigned.status === 403;
   console.log(`[CAFE ADMIN ISOLATION RESULT]: ${adminIsolationPassed ? 'PASS (100% Denied)' : 'FAIL'}`);
 
-  // 4. EXPENSE SUBMISSION PROHIBITED DECISION ATTEMPTS
+  // 4. EXPENSE SUBMISSION PROHIBITED DECISION ATTEMPTS BY CAFE ADMIN & STAFF
   console.log(`\n--- 4. EXPENSE PROHIBITED DECISION ATTEMPTS BY CAFE ADMIN & STAFF ---`);
-  // Create a draft expense in Cafe 1
   const createExpRes = await fetch(`${BASE_URL}/expenses`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Cookie: cookieAdminA, Origin: `http://127.0.0.1:${PORT}` },
@@ -210,27 +264,23 @@ async function runSecurityAndIntegritySuite() {
   const expData = await createExpRes.json();
   const expenseId = expData?.data?.expense?.expenseId;
 
-  // Submit expense to reach SUBMITTED state
   await fetch(`${BASE_URL}/expenses/${expenseId}/submit`, {
     method: 'POST',
     headers: { Cookie: cookieAdminA },
   });
 
-  // Staff A attempts decision on submitted expense (Staff has no decision authority)
   const resStaffDecide = await fetch(`${BASE_URL}/expenses/${expenseId}/decision`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Cookie: cookieA, Origin: `http://127.0.0.1:${PORT}` },
     body: JSON.stringify({ decision: 'APPROVED' }),
   });
 
-  // Admin A attempts REVERSE (Master-only action)
   const resAdminReverse = await fetch(`${BASE_URL}/expenses/${expenseId}/reverse`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Cookie: cookieAdminA, Origin: `http://127.0.0.1:${PORT}` },
     body: JSON.stringify({ reversalReason: 'Hostile Reversal' }),
   });
 
-  // Admin B (assigned CF-LOAD-0002) attempts decision on Cafe 1's expense
   const adminB = await User.findOne({ userId: 'AD-9002' }).lean(); // Assigned CF-LOAD-0002
   const cookieAdminB = await createActiveSession(adminB);
   const resAdminBDecide = await fetch(`${BASE_URL}/expenses/${expenseId}/decision`, {
@@ -251,8 +301,8 @@ async function runSecurityAndIntegritySuite() {
 
   console.log(`[EXPENSE DECISION AUTHORITY RESULT]: ${expenseDecisionAuthorityPassed ? 'PASS (0 Prohibited Decisions Succeeded)' : 'FAIL'}`);
 
-  // 5. PERSONAL LEDGER SECURITY AUDIT
-  console.log(`\n--- 5. PERSONAL LEDGER ROLE ACCESS AUDIT ---`);
+  // 5. PERSONAL LEDGER MASTER-ONLY AUDIT
+  console.log(`\n--- 5. PERSONAL LEDGER MASTER-ONLY AUDIT ---`);
   const ownerUser = await User.findOne({ userId: 'OW-9001' }).lean();
   const masterUser = await User.findOne({ userId: 'MU-9001' }).lean();
 
@@ -267,21 +317,19 @@ async function runSecurityAndIntegritySuite() {
   console.log(`Personal Ledger Access By Role:`);
   console.log(`- STAFF (Expect 403): Status ${resPlStaff.status}`);
   console.log(`- CAFE_ADMIN (Expect 403): Status ${resPlAdmin.status}`);
-  console.log(`- OWNER (Expect 200 / Allowed): Status ${resPlOwner.status}`);
+  console.log(`- OWNER (Expect 403 / DENIED): Status ${resPlOwner.status}`);
   console.log(`- MASTER (Expect 200 / Allowed): Status ${resPlMaster.status}`);
 
   const personalLedgerAuditPassed =
     resPlStaff.status === 403 &&
     resPlAdmin.status === 403 &&
+    resPlOwner.status === 403 &&
     resPlMaster.status === 200;
 
-  console.log(`[PERSONAL LEDGER AUDIT RESULT]: ${personalLedgerAuditPassed ? 'PASS (0 Leakage to Staff/Admin)' : 'FAIL'}`);
+  console.log(`[PERSONAL LEDGER AUDIT RESULT]: ${personalLedgerAuditPassed ? 'PASS (MASTER Only, 0 Leakage to OWNER/Admin/Staff)' : 'FAIL'}`);
 
   // 6. POS FINANCIAL RECONCILIATION
   console.log(`\n--- 6. POS FINANCIAL RECONCILIATION & CASH TRANSACTION VERIFICATION ---`);
-  const initialBills = await Bill.find({ organisationId: 'LOADTEST_ORG' }).lean();
-  const initialCashTxs = await CashTransaction.find({ organisationId: 'LOADTEST_ORG' }).lean();
-
   let expectedCashPaisa = 0;
   let expectedUpiPaisa = 0;
   let cashBillsCount = 0;
@@ -372,14 +420,14 @@ async function main() {
     const allPassed = Object.values(results).every((v) => v === true || typeof v === 'string');
 
     console.log(`\n================================================================================`);
-    console.log(`HT-03R SECURITY & FINANCIAL SUITE FINAL RESULT: ${allPassed ? 'ALL PASS (100%)' : 'FAIL'}`);
+    console.log(`HT-03R2 SECURITY & FINANCIAL SUITE FINAL RESULT: ${allPassed ? 'ALL PASS (100%)' : 'FAIL'}`);
     console.log(`================================================================================\n`);
 
     server.close();
     await mongoose.disconnect();
     process.exit(allPassed ? 0 : 1);
   } catch (err) {
-    console.error('Fatal error in HT-03R suite:', err);
+    console.error('Fatal error in HT-03R2 suite:', err);
     server.close();
     await mongoose.disconnect();
     process.exit(1);

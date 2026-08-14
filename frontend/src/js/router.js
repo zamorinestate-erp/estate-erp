@@ -184,6 +184,10 @@ async function renderPage() {
       break;
 
     case "ledger":
+      if (state.role !== ROLES.MASTER) {
+        content.innerHTML = renderNotAvailable();
+        break;
+      }
       content.innerHTML = renderLedger();
       wireLedger(content);
       break;

@@ -113,10 +113,6 @@ test(
         role: 'MASTER',
         userId: 'MU-0001',
       },
-      {
-        role: 'OWNER',
-        userId: 'OW-0001',
-      },
     ]) {
       await t.test(
         `${allowed.role} queries Personal Ledger scoped to self`,
@@ -157,6 +153,10 @@ test(
     }
 
     for (const denied of [
+      {
+        role: 'OWNER',
+        userId: 'OW-0001',
+      },
       {
         role: 'CAFE_ADMIN',
         userId: 'CA-0001',

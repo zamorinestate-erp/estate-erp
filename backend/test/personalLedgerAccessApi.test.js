@@ -229,7 +229,6 @@ test(
 
     for (const allowed of [
       { role: 'MASTER', userId: 'MU-0001' },
-      { role: 'OWNER', userId: 'OW-0001' },
     ]) {
       await t.test(
         `${allowed.role} may read own Personal Ledger balance`,
@@ -273,6 +272,7 @@ test(
     }
 
     for (const denied of [
+      { role: 'OWNER', userId: 'OW-0001' },
       { role: 'CAFE_ADMIN', userId: 'CA-0001' },
       { role: 'STAFF', userId: 'ST-0001' },
     ]) {

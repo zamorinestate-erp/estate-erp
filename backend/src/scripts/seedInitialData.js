@@ -134,31 +134,6 @@ const DEFAULT_PERMISSION_RULES = [
   },
   {
     role: 'OWNER',
-    permissionCode: 'PERSONAL_LEDGER_READ',
-    module: 'PERSONAL_LEDGER',
-    resource: 'PERSONAL_LEDGER_ENTRY',
-    action: 'READ',
-    effect: 'ALLOW',
-    scope: 'ORGANISATION',
-    requiresMfa: true,
-    requiresAuditEvent: false,
-    description: 'OWNER may read their own Personal Ledger.',
-  },
-  {
-    role: 'OWNER',
-    permissionCode: 'PERSONAL_LEDGER_WRITE',
-    module: 'PERSONAL_LEDGER',
-    resource: 'PERSONAL_LEDGER_ENTRY',
-    action: 'WRITE',
-    effect: 'ALLOW',
-    scope: 'ORGANISATION',
-    requiresMfa: true,
-    requiresReason: true,
-    requiresAuditEvent: true,
-    description: 'OWNER may write to their own Personal Ledger.',
-  },
-  {
-    role: 'OWNER',
     permissionCode: 'CAFE:READ',
     module: 'CAFE',
     resource: 'CAFE',
@@ -368,10 +343,8 @@ const DEFAULT_PERMISSION_RULES = [
   { role: 'MASTER', permissionCode: 'QUALITY_READ', module: 'QUALITY', resource: 'CHECKLIST', action: 'READ', effect: 'ALLOW', scope: 'ORGANISATION', description: 'MASTER may read quality checklists.' },
   { role: 'OWNER', permissionCode: 'QUALITY_READ', module: 'QUALITY', resource: 'CHECKLIST', action: 'READ', effect: 'ALLOW', scope: 'ORGANISATION', description: 'OWNER may read quality checklists.' },
   { role: 'CAFE_ADMIN', permissionCode: 'QUALITY_READ', module: 'QUALITY', resource: 'CHECKLIST', action: 'READ', effect: 'ALLOW', scope: 'ASSIGNED_CAFES', description: 'CAFE_ADMIN may read quality checklists.' },
-  { role: 'STAFF', permissionCode: 'QUALITY_READ', module: 'QUALITY', resource: 'CHECKLIST', action: 'READ', effect: 'ALLOW', scope: 'ASSIGNED_CAFES', description: 'STAFF may read quality checklists.' },
   { role: 'MASTER', permissionCode: 'QUALITY_WRITE', module: 'QUALITY', resource: 'CHECKLIST', action: 'WRITE', effect: 'ALLOW', scope: 'ORGANISATION', description: 'MASTER may submit quality checklists.' },
   { role: 'CAFE_ADMIN', permissionCode: 'QUALITY_WRITE', module: 'QUALITY', resource: 'CHECKLIST', action: 'WRITE', effect: 'ALLOW', scope: 'ASSIGNED_CAFES', description: 'CAFE_ADMIN may submit quality checklists.' },
-  { role: 'STAFF', permissionCode: 'QUALITY_WRITE', module: 'QUALITY', resource: 'CHECKLIST', action: 'WRITE', effect: 'ALLOW', scope: 'ASSIGNED_CAFES', description: 'STAFF may submit quality checklists.' },
   // Revenue Share
   { role: 'MASTER', permissionCode: 'REVENUE_SHARE_READ', module: 'REVENUE_SHARE', resource: 'AGREEMENT', action: 'READ', effect: 'ALLOW', scope: 'ORGANISATION', description: 'MASTER may read revenue share agreements.' },
   { role: 'OWNER', permissionCode: 'REVENUE_SHARE_READ', module: 'REVENUE_SHARE', resource: 'AGREEMENT', action: 'READ', effect: 'ALLOW', scope: 'ORGANISATION', description: 'OWNER may read revenue share agreements.' },
@@ -775,6 +748,32 @@ async function seedPermissionRules({
     createdCount += 1;
   }
 
+  // Deactivate any stale active system-level rules (cafeId: null) that are no longer in DEFAULT_PERMISSION_RULES
+  let deactivatedCount = 0;
+  if (RolePermission.db && RolePermission.db.readyState === 1) {
+    const validRuleKeys = new Set(
+      DEFAULT_PERMISSION_RULES.map((r) => `${r.role}|${r.permissionCode}`)
+    );
+
+    const activeSystemRules = await RolePermission.find({
+      organisationId,
+      cafeId: null,
+      isActive: true,
+      archivedAt: null,
+    });
+
+    for (const dbRule of activeSystemRules) {
+      const key = `${dbRule.role}|${dbRule.permissionCode}`;
+      if (!validRuleKeys.has(key)) {
+        dbRule.isActive = false;
+        dbRule.archivedAt = new Date();
+        dbRule.updatedBy = masterUserId;
+        await dbRule.save();
+        deactivatedCount += 1;
+      }
+    }
+  }
+
   console.log(
     `Permission rules created: ${createdCount}`
   );
@@ -782,6 +781,12 @@ async function seedPermissionRules({
   console.log(
     `Permission rules already existing: ${existingCount}`
   );
+
+  if (deactivatedCount > 0) {
+    console.log(
+      `Stale permission rules deactivated: ${deactivatedCount}`
+    );
+  }
 }
 
 async function runSeed() {

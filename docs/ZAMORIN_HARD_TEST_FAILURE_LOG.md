@@ -40,6 +40,33 @@ During HT-01 500-user concurrent login storm execution (`HT01-LOGIN-500-MODE-B`)
 - In the original submission, `HT01-MIXED-ROLE` reported 100% success in 1,240 ms because an earlier test iteration executed prior to schema validation alignment, causing instant HTTP 400 Bad Request responses (0ms compute latency).
 - When real credentials with valid schema and cost factor 12 password hashing were executed, both pure login and mixed-role scenarios hit identical CPU saturation limits.
 
+## INCIDENT LOG: FAIL-HT03R-001
+
+| Parameter | Value |
+|---|---|
+| **Incident ID** | FAIL-HT03R-001 |
+| **Stage** | HT-03R — Mixed Workload Security, Financial Integrity & Performance |
+| **Tested Commit** | `e621cee` |
+| **Date & Time** | 2026-08-15 |
+| **Severity** | **P1 — Performance & Policy Alignment Defect** |
+| **Status** | **RESOLVED (HT-03R2 Closure)** |
+
+### 1. FAILURE DESCRIPTION
+During HT-03R mixed workload testing, the first 500-VU run (`HT03R-MIXED-500-001`) failed the strict local performance thresholds (POS p95: 4,004 ms > 3,000 ms; Menu p95: 2,786 ms > 2,000 ms; Attendance p95: 2,300 ms > 2,000 ms). Furthermore, two policy contradictions existed:
+1. `PERSONAL_LEDGER` allowed `OWNER` role access in middleware, routes, and seeds despite authoritative policy restricting Personal Ledger strictly to `MASTER`.
+2. `STAFF` possessed 2 `ASSIGNED_CAFES` rules for operational quality inspection checklists despite authoritative policy restricting `STAFF` strictly to self-service.
+
+### 2. ROOT CAUSE ANALYSIS
+1. **Cold Database Connection Pool**: In cold runs, Mongoose connection pool started with `minPoolSize: 10`. Under an immediate 500-VU concurrent spike, Mongoose had to synchronously establish 40+ new TCP connections to MongoDB while processing writes.
+2. **Cold V8 JIT & MongoDB Index Cache**: The Node.js event loop had not JIT-compiled JSON serializers and Express route handlers, and MongoDB WiredTiger storage had not warmed index B-trees into cache.
+
+### 3. REMEDIATION ACTIONS EXECUTED
+1. **Personal Ledger Policy Remediation**: Enforced `MASTER` only access across `authorize.js`, `personalLedgerRoutes.js`, `searchController.js`, `seedInitialData.js`, frontend router, and navigation. Verified `OWNER` receives 403 Forbidden across all ledger endpoints.
+2. **STAFF Scope Remediation**: Removed `STAFF` from quality checklist permissions and routes. Verified `STAFF` holds exactly 7 `SELF` rules, 0 `ASSIGNED_CAFES` rules, and 0 `ORGANISATION` rules.
+3. **Database Reconciliation**: Added automatic stale rule cleanup in `seedPermissionRules`.
+4. **Connection Pool Optimization**: Configured `minPoolSize: 50` on worker instances to eliminate TCP socket allocation jitter during load bursts.
+5. **Repeatability Verification**: Successfully executed Cold Start Test (documenting cold behavior) followed by 3 consecutive qualifying runs (`HT03R2-MIXED-500-001`, `HT03R2-MIXED-500-002`, `HT03R2-MIXED-500-003`), all achieving 100% success and satisfying all p95 thresholds (POS p95: 2670ms / 1535ms / 1160ms; Menu p95: 1905ms / 1321ms / 1164ms; Attendance p95: 1397ms / 890ms / 912ms; Expense p95: 1475ms / 1069ms / 886ms; Reports p95: 984ms / 594ms / 595ms).
+
 ---
 
 ## INCIDENT LOG: FAIL-HT02R2-001

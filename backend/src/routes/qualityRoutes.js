@@ -17,15 +17,17 @@ const router = express.Router();
 
 router.use(authenticate);
 
+// Reads: Management roles
 router.get(
   '/checklists',
-  authorize('QUALITY_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN', 'STAFF'] }),
+  authorize('QUALITY_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
   listChecklists
 );
 
+// Writes: MASTER & CAFE_ADMIN
 router.post(
   '/checklists',
-  authorize('QUALITY_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN', 'STAFF'] }),
+  authorize('QUALITY_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
   submitChecklist
 );
 

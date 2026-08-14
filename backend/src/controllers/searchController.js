@@ -87,8 +87,8 @@ const performGlobalSearch = asyncHandler(async (request, response) => {
         .then((res) => ({ type: 'BILLS', items: res.map((b) => ({ id: b.billId, title: b.billId, subtitle: `₹${b.totalPaisa / 100} • ${b.status} • ${b.businessDate}`, route: billRoute })) }))
     );
   }
-  // 6. Personal Ledger (MASTER and OWNER only; always scoped to the authenticated owner)
-  if (['MASTER', 'OWNER'].includes(role)) {
+  // 6. Personal Ledger (MASTER only; always scoped to the authenticated Master owner)
+  if (role === 'MASTER') {
   const ledgerFilter = {
     organisationId: orgId,
     ownerUserId: request.auth.userId,
