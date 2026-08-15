@@ -343,7 +343,22 @@ async function authenticatePassword({
   user.lockedUntil = null;
   user.lastLoginAt = new Date();
 
-  await user.save();
+  try {
+    await user.save();
+  } catch (_saveErr) {
+    if (user._id) {
+      await User.updateOne(
+        { _id: user._id },
+        {
+          $set: {
+            failedLoginAttempts: 0,
+            lockedUntil: null,
+            lastLoginAt: user.lastLoginAt,
+          },
+        }
+      );
+    }
+  }
 
   const roleRequiresMfa =
     MFA_REQUIRED_ROLES.includes(user.role);
