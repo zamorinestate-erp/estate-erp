@@ -47,6 +47,7 @@ import { renderQuality, wireQuality } from "./pages/quality.js";
 import { renderAssets, wireAssets } from "./pages/assets.js";
 import { renderDepartmentOrders, wireDepartmentOrders } from "./pages/departmentOrders.js";
 import { renderTrashBin, wireTrashBin } from "./pages/trashBin.js";
+import { CafeAttendanceDisplayPage } from "./pages/cafeAttendanceDisplay.js";
 
 // ROLE_LABELS: display-safe generic labels used only for topbar scope chip
 // until /auth/me bootstrap provides the real user's display name.
@@ -309,6 +310,14 @@ async function renderPage() {
     case "trash":
       content.innerHTML = renderTrashBin();
       wireTrashBin(content);
+      break;
+
+    case "kiosk-attendance":
+      const kioskDisplay = new CafeAttendanceDisplayPage();
+      kioskDisplay.init(content, {
+        deviceId: localStorage.getItem('zamorin_device_id') || 'ACTIVE_KIOSK',
+        boundCafeId: localStorage.getItem('zamorin_bound_cafe_id') || 'ZC-0001',
+      });
       break;
 
     case "not-built":
