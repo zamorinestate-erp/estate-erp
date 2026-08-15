@@ -255,13 +255,13 @@ function loadEnvironment(
       parsePositiveInteger(
         'MONGODB_MAX_POOL_SIZE',
         source.MONGODB_MAX_POOL_SIZE,
-        10
+        100
       ),
     mongodbMinPoolSize:
       parseNonNegativeInteger(
         'MONGODB_MIN_POOL_SIZE',
         source.MONGODB_MIN_POOL_SIZE,
-        0
+        10
       ),
     allowedOrigins: parseAllowedOrigins(
       source.ALLOWED_ORIGINS,

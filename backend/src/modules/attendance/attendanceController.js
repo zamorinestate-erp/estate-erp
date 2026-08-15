@@ -364,6 +364,7 @@ const checkIn = asyncHandler(
         prefix:
           `AT-${datePart}`,
         minimumDigits: 4,
+        blockSize: 500,
       });
 
     const attendance =

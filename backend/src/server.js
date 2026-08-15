@@ -175,9 +175,10 @@ function createApp(environment) {
 
   const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    limit: process.env.RATE_LIMIT_MAX ? Number(process.env.RATE_LIMIT_MAX) : 300,
+    limit: process.env.RATE_LIMIT_MAX ? Number(process.env.RATE_LIMIT_MAX) : 50000,
     standardHeaders: 'draft-8',
     legacyHeaders: false,
+    validate: { trustProxy: false },
   });
 
   app.get(
@@ -238,8 +239,11 @@ async function listen(
   return new Promise(
     (resolve, reject) => {
       const server = app.listen(
-        port,
-        host,
+        {
+          port,
+          host,
+          backlog: 2048,
+        },
         () => resolve(server)
       );
 

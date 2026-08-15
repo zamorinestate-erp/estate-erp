@@ -35,8 +35,8 @@ function getDatabaseState() {
 async function connectDatabase({
   uri,
   serverSelectionTimeoutMs = 10000,
-  maxPoolSize = 10,
-  minPoolSize = 0,
+  maxPoolSize = 100,
+  minPoolSize = 10,
 } = {}) {
   if (
     typeof uri !== 'string' ||

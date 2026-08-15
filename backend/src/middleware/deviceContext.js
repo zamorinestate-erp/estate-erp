@@ -3,6 +3,9 @@
 const { DeviceRegistration } = require('../models/DeviceRegistration');
 const deviceTrustService = require('../services/deviceTrustService');
 
+const DEVICE_CACHE_TTL_MS = 10000;
+const activeDeviceCache = new Map();
+
 /**
  * Middleware that inspects incoming request headers/session for device identity,
  * resolves DeviceRegistration from Atlas, and attaches effective privilege profile.
@@ -17,10 +20,21 @@ async function attachDeviceContext(req, res, next) {
     let deviceRegistration = null;
 
     if (deviceId) {
-      deviceRegistration = await DeviceRegistration.findOne({
-        deviceId,
-        status: 'ACTIVE',
-      }).lean();
+      const now = Date.now();
+      const cached = activeDeviceCache.get(deviceId);
+
+      if (cached && now - cached.timestamp < DEVICE_CACHE_TTL_MS) {
+        deviceRegistration = cached.doc;
+      } else if (req.auth.role !== 'STAFF') {
+        deviceRegistration = await DeviceRegistration.findOne({
+          deviceId,
+          status: 'ACTIVE',
+        }).lean();
+
+        if (deviceRegistration) {
+          activeDeviceCache.set(deviceId, { doc: deviceRegistration, timestamp: now });
+        }
+      }
     }
 
     const effective = deviceTrustService.derivePrivilegeProfile(
