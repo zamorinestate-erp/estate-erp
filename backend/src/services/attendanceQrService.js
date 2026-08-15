@@ -24,6 +24,22 @@ function calculateDistanceMetres(lat1, lon1, lat2, lon2) {
 }
 
 class AttendanceQrService {
+  constructor() {
+    this.userPinAttempts = new Map();
+  }
+
+  getUserPinAttemptState(userId) {
+    return this.userPinAttempts.get(userId) || { failedAttempts: 0, lockedUntil: null };
+  }
+
+  setUserPinAttemptState(userId, state) {
+    this.userPinAttempts.set(userId, state);
+  }
+
+  clearUserPinAttemptState(userId) {
+    this.userPinAttempts.delete(userId);
+  }
+
   /**
    * Generates HMAC-SHA256 signature for challenge payload.
    */
@@ -161,27 +177,28 @@ class AttendanceQrService {
 
       challenge = await AttendanceQrChallenge.findOne({ challengeId: envelopeData.cid });
     } else if (fallbackPin) {
+      const userAttempt = this.getUserPinAttemptState(userId);
+      if (userAttempt.lockedUntil && userAttempt.lockedUntil > new Date()) {
+        throw new Error('FALLBACK_PIN_USER_LOCKED_TOO_MANY_ATTEMPTS');
+      }
+
       challenge = await AttendanceQrChallenge.findOne({
         cafeId,
         fallbackPin,
-        isRevoked: false,
         expiresAt: { $gt: new Date() },
       });
 
       if (!challenge) {
-        // Increment attempts on active challenges for cafe to mitigate brute force
-        await AttendanceQrChallenge.updateMany(
-          { cafeId, expiresAt: { $gt: new Date() } },
-          { $inc: { pinAttempts: 1 } }
-        );
+        userAttempt.failedAttempts += 1;
+        if (userAttempt.failedAttempts >= 5) {
+          userAttempt.lockedUntil = new Date(Date.now() + 15 * 60 * 1000);
+        }
+        this.setUserPinAttemptState(userId, userAttempt);
         throw new Error('INVALID_OR_EXPIRED_FALLBACK_PIN');
       }
 
-      if (challenge.pinAttempts >= 5) {
-        challenge.isRevoked = true;
-        await challenge.save();
-        throw new Error('FALLBACK_PIN_LOCKED_TOO_MANY_ATTEMPTS');
-      }
+      // Reset user failure counter on successful PIN match
+      this.clearUserPinAttemptState(userId);
     } else {
       throw new Error('CHALLENGE_ENVELOPE_OR_PIN_REQUIRED');
     }
