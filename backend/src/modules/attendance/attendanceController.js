@@ -455,7 +455,7 @@ const checkOut = asyncHandler(
 
 const submitQrAttendance = asyncHandler(
   async (request, response) => {
-    const { challengeEnvelope, fallbackPin, idempotencyKey, cafeId, clientScannedAt } = request.body || {};
+    const { challengeEnvelope, fallbackPin, idempotencyKey, cafeId, clientScannedAt, latitude, longitude } = request.body || {};
     const attendanceQrService = require('../../services/attendanceQrService');
 
     const result = await attendanceQrService.submitAttendance({
@@ -466,6 +466,8 @@ const submitQrAttendance = asyncHandler(
       fallbackPin,
       idempotencyKey,
       clientScannedAt,
+      latitude: typeof latitude === 'number' ? latitude : undefined,
+      longitude: typeof longitude === 'number' ? longitude : undefined,
       correlationId: request.correlationId,
     });
 

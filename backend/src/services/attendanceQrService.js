@@ -7,8 +7,21 @@ const { AttendanceOfflineLease } = require('../models/AttendanceOfflineLease');
 const { DeviceRegistration } = require('../models/DeviceRegistration');
 const { DeviceSecurityEvent } = require('../models/DeviceSecurityEvent');
 const { Attendance } = require('../modules/attendance/Attendance');
+const { Cafe } = require('../models/Cafe');
 
 const QR_SIGNING_SECRET = process.env.QR_SIGNING_SECRET || 'zamorin_qr_master_signing_secret_key_2026_dsec';
+
+function calculateDistanceMetres(lat1, lon1, lat2, lon2) {
+  const R = 6371000; // Earth radius in metres
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
 
 class AttendanceQrService {
   /**
@@ -77,7 +90,7 @@ class AttendanceQrService {
   /**
    * Submits and validates a QR attendance scan from an authenticated staff personal session.
    */
-  async submitAttendance({ organisationId, userId, cafeId, challengeEnvelope, fallbackPin, idempotencyKey, clientScannedAt, correlationId }) {
+  async submitAttendance({ organisationId, userId, cafeId, challengeEnvelope, fallbackPin, idempotencyKey, clientScannedAt, latitude, longitude, correlationId }) {
     if (!idempotencyKey) {
       throw new Error('IDEMPOTENCY_KEY_REQUIRED');
     }
@@ -99,6 +112,30 @@ class AttendanceQrService {
         serverReceivedAt: existingSubmission.serverReceivedAt,
         idempotentReplay: true,
       };
+    }
+
+    // Geofence Validation if coordinates are provided
+    if (typeof latitude === 'number' && typeof longitude === 'number') {
+      const cafeDoc = await Cafe.findOne({ cafeId }).lean();
+      if (
+        cafeDoc &&
+        cafeDoc.address &&
+        typeof cafeDoc.address.latitude === 'number' &&
+        typeof cafeDoc.address.longitude === 'number'
+      ) {
+        const distance = calculateDistanceMetres(
+          latitude,
+          longitude,
+          cafeDoc.address.latitude,
+          cafeDoc.address.longitude
+        );
+        const maxRadius = cafeDoc.address.geofenceRadiusMetres || 100;
+        if (distance > maxRadius) {
+          throw new Error(
+            `GEOFENCE_RADIUS_EXCEEDED: Distance ${Math.round(distance)}m exceeds allowed radius of ${maxRadius}m`
+          );
+        }
+      }
     }
 
     // 2. Resolve and Validate Challenge
