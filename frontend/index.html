@@ -34,9 +34,12 @@
   <link rel="stylesheet" href="src/styles/layout.css" />
   <link rel="stylesheet" href="src/styles/components.css" />
   <script>
-    window.ZAMORIN_API_BASE_URL = window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1')
-      ? 'http://localhost:4000/api/v1'
-      : '/api/v1';
+    // In development: use local backend.
+    // In staging/production: use the Render-hosted backend API.
+    window.ZAMORIN_API_BASE_URL =
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+        ? 'http://localhost:4000/api/v1'
+        : 'https://zamorin-cafe-erp-backend.onrender.com/api/v1';
   </script>
 </head>
 <body>

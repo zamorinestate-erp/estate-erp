@@ -27,16 +27,21 @@ async function startProductionServer() {
 
   // Connect to production MongoDB cluster
   console.log('[INIT] Connecting to MongoDB cluster...');
-  await connectDatabase();
+  await connectDatabase({
+    uri: env.mongodbUri,
+    serverSelectionTimeoutMs: env.mongodbServerSelectionTimeoutMs,
+    maxPoolSize: env.mongodbMaxPoolSize,
+    minPoolSize: env.mongodbMinPoolSize,
+  });
   console.log('[INIT] Connected to MongoDB database successfully.');
 
   // Seed default data & permissions if missing (idempotent)
   console.log('[INIT] Verifying database seeding and permission rules...');
   await seedInitialData({
-    organisationId: env.DEFAULT_ORGANISATION_ID || 'ZAMORIN',
-    masterName: env.DEFAULT_MASTER_NAME || 'Master User',
-    masterEmail: env.DEFAULT_MASTER_EMAIL || 'master@example.com',
-    masterPassword: env.DEFAULT_MASTER_PASSWORD || 'PK@NilaVega_8427!Cedar',
+    organisationId: process.env.INITIAL_ORGANISATION_ID || 'ZAMORIN',
+    masterName: process.env.INITIAL_MASTER_NAME || 'Zamorin Master',
+    masterEmail: process.env.INITIAL_MASTER_EMAIL || 'master@example.com',
+    masterPassword: process.env.INITIAL_MASTER_PASSWORD || 'PK@NilaVega_8427!Cedar',
   });
   console.log('[INIT] Database seeding verified.');
 
