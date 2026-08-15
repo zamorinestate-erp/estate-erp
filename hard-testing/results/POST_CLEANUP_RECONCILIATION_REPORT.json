@@ -1,0 +1,18 @@
+{
+  "executedAt": "2026-08-15T13:07:10.289Z",
+  "restoreReference": "ATLAS_SNAPSHOT_ZAMORIN_PROD_1786799228142",
+  "results": {
+    "syntheticUsersExpected": 502,
+    "syntheticUsersActuallyDeleted": 502,
+    "syntheticUsersRemaining": 0,
+    "syntheticSessionsExpected": 2507,
+    "syntheticSessionsActuallyDeleted": 2515,
+    "syntheticSessionsRemaining": 0,
+    "remainingTotalUsers": 1,
+    "primaryMasterIntact": true,
+    "canonicalRulesIntact": true,
+    "sequenceCountersIntact": true,
+    "businessRecordsDeleted": 0,
+    "financialVariance": "₹0.00"
+  }
+}
