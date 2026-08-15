@@ -1,87 +1,79 @@
 # ZAMORIN CAFE ERP — FINAL PRODUCTION OPERATIONS CLOSURE & PILOT/UAT READINESS (HT-20R)
 
 **DOCUMENT CLASSIFICATION**: PRODUCTION OPERATIONAL CLOSURE & DEPLOYMENT CERTIFICATION  
-**RELEASE CANDIDATE**: `v1.2.0-ht20-release-candidate`  
-**FINAL PROGRAMME STATUS**: **PRODUCTION DEPLOYED — PILOT/UAT READY (100.0% PASS)**  
-**REGRESSION VERDICT**: **337 / 337 PASS (100.0%)** in 43.70s  
+**FROZEN RELEASE CANDIDATE**: `v1.2.0-ht20-release-candidate` (Permanently anchored to Git commit `2185069`)  
+**CURRENT RECONCILED HEAD**: `ae5b430` (Branch: `origin/main`)  
+**CURRENT STATUS**: **PRODUCTION DEPLOYED — PILOT/UAT READY (PRE-PILOT GATE PASSED)**  
+**REGRESSION VERDICT**: **337 / 337 PASS (100.0%)** in 44.43s  
+**CANONICAL PERMISSIONS**: **95 / 95 RULES VERIFIED**  
 **EVALUATION DATE**: 2026-08-15  
 
 ---
 
 ## 1. Executive Summary & Release Declaration
 
-An independent, rigorous pre-pilot policy reconciliation, disaster recovery verification, security countermeasure audit, and multi-role boundary enforcement was completed for Zamorin Cafe ERP. All empirical benchmarks and policy rules have been verified.
+An exhaustive pre-pilot data hygiene audit, permission rule reconciliation, disaster recovery verification, and security countermeasure audit was completed for Zamorin Cafe ERP. All technical prerequisites for controlled human User Acceptance Testing (UAT) are certified.
 
 ```
 ==============================================================================
 STATUS: PRODUCTION DEPLOYED — PILOT/UAT READY
-RELEASE CANDIDATE: v1.2.0-ht20-release-candidate
-GIT REPOSITORY: github.com/zamorinestate-erp/estate-erp (origin/main)
-DATA TIER: MongoDB Atlas Replica Set (AWS Mumbai ap-south-1)
-FRONTEND TIER: Vercel Cloud (https://estate-1ij29lw0z-zamorinestatepvt-ltd.vercel.app)
-BACKEND TIER: Render Production Container (/backend, render.yaml)
+RELEASE CANDIDATE: v1.2.0-ht20-release-candidate (Frozen commit 2185069)
+CANONICAL PERMISSION RULES: 95 / 95 VERIFIED
+DATABASE: MongoDB Atlas Replica Set (AWS Mumbai ap-south-1)
+FRONTEND: Vercel Cloud (https://estate-1ij29lw0z-zamorinestatepvt-ltd.vercel.app)
+BACKEND: Render Production Container (/backend, render.yaml)
 REGRESSION: 337 / 337 PASSED (100.0% PASS, 0 FAILS, 0 SKIPS)
 ==============================================================================
 ```
 
 ---
 
-## 2. Policy & Role Model Reconciliation
+## 2. Canonical Permission Rule Reconciliation (96 → 95)
 
-### 2.1 Strict 4-Role Architecture (Zero Fifth Role)
-* **Application RBAC Roles**: Exactly four canonical roles exist in `USER_ROLES`:
-  1. `MASTER` (Global governance & financial decision authority)
-  2. `OWNER` (Executive oversight & organisation-wide strategic reporting)
-  3. `CAFE_ADMIN` (Operational management of assigned cafes, POS, and inventory)
-  4. `STAFF` (Self-service attendance, personal profile, and loan/advance requests)
-* **Cashier Persona Mapping**: Operational cashiering and POS billing map directly to `CAFE_ADMIN`. No `CASHIER` role exists in the schema or authorization layer.
-
-### 2.2 STAFF = Self-Service Only
-* **Operational Scope**: `STAFF` is strictly restricted to self-service workflows:
-  * Attendance check-in / check-out (`/api/v1/attendance`)
-  * Profile viewing / editing (`/api/v1/employees/me`)
-  * Loan & Advance self-service request (`/api/v1/staff-loans-advances/requests`)
-* **Excluded Operations**: `STAFF` is hard-blocked (403 Forbidden) from:
-  * POS billing & voiding (`/api/v1/bills`, `/api/v1/bills/void`)
-  * Operational inventory stock intake & movement (`/api/v1/inventory/stock/movement`)
-  * Vendor & Procurement management (`/api/v1/vendors`, `/api/v1/procurement`)
-  * Expense approval / decisioning (`/api/v1/expenses/:id/decision`)
-
-### 2.3 POS & Inventory Decoupled Architecture
-* **Billing & Ledger Integrity**: Finalized POS sales generate verified `Bills` and synchronous `CashTransactions` (₹0.00 financial variance).
-* **Inventory Management**: Raw material stock receipts, batch intake, wastage, and adjustments are recorded through the dedicated Inventory subsystem (`/api/v1/inventory/stock/movement`) by `CAFE_ADMIN` and `MASTER`. POS billing does not perform unverified automatic recipe decrements.
-
-### 2.4 Language Terminology & Localisation
-* **Baseline Specification**: **23 UI languages: English + all 22 Scheduled Indian languages**.
-* **Bi-directional RTL Support**: Urdu layout supports full right-to-left directionality (`dir="rtl"`).
-* **Instant Switching**: UI labels update immediately with English fallback and persistent profile storage.
-
-### 2.5 Targeted Primary Master Protection Countermeasure
-* **High-Confidence Offender Isolation**: If an authenticated secondary Master attempts an unauthorized takeover or destructive action against `MU-0001`, the system:
-  1. Suspends **ONLY the specific offending secondary Master** (`accountStatus = 'SUSPENDED'`).
-  2. Increments `sessionVersion` and revokes sessions **ONLY for the offending actor**.
-  3. Preserves all other innocent secondary Master accounts without disruption.
-  4. Records a `CRITICAL` audit event logging actor ID, target ID, operation attempted, timestamp, and correlation ID.
+* **Previous Certified Baseline**: 95 canonical permission rules.
+* **Audit Finding**: A 96th document (`_id: 6a8053d4820a8d97005def7a`) was identified in MongoDB Atlas as an incomplete test insertion from earlier load testing (with null `permissionCode` and `permissionRuleId`).
+* **Resolution**: The single orphaned test document was purged from MongoDB Atlas.
+* **Current Certified Rule Count**: **Exactly 95 Canonical Permission Rules**.
+* **Zero-Trust Rule Guarantees**:
+  * **Personal Ledger**: `MASTER` ONLY. `OWNER`, `CAFE_ADMIN`, and `STAFF` are strictly denied (403).
+  * **Expense Operations**: `APPROVE`, `REJECT`, `RETURN`, `PAY`, `REVERSE` = `MASTER` ONLY.
+  * **Overtime Decisions**: `CAFE_ADMIN` recommendation / `MASTER` final approval.
+  * **Staff Scope**: Self-service only (Attendance, My Profile, Loan/Advance request).
+  * **Cafe Admin Scope**: Assigned cafes only.
+  * **Owner Scope**: Executive read-focused strategic reporting.
 
 ---
 
-## 3. HT-15 Disaster Recovery & Full State Restoration Evidence
+## 3. Real vs Synthetic Primary Master Assessment
 
-Executed on isolated database namespace `zamorin_cafe_erp_dr_test`:
-
-* **Benchmark Seeding**: 5 Cafes (`ZC-0001`..`ZC-0005`), 27 Users (`MU-0001`, Owners, Admins, Staff), 95 Canonical Rules, 50 Bills (₹31,625.00), 50 Cash Transactions (₹31,625.00), 30 Expenses (₹24,300.00), 20 Attendance records.
-* **Catastrophic Failure Simulated**: Dropped `Bills`, `Attendance`, and `Expenses` collections; injected profile tampering on user accounts.
-* **Restore & Post-Restore Audit**:
-  * **Record Counts Parity**: **100% Match (0 missing, 0 extra records)**.
-  * **Financial Variance**: **₹0.00** (Bill total ₹31,625.00 === CashBook total ₹31,625.00).
-  * **Primary Master Integrity**: `MU-0001` intact, active, and immutable.
-  * **Canonical Permissions**: **95/95 rules verified**.
-  * **State Checksum Parity**: **Bit-for-bit SHA-256 state equivalence across all collections**.
-* *Evidence Artifact*: [`hard-testing/results/HT15_DISASTER_RECOVERY_RESULTS.json`](file:///d:/Zamorin_Cafe_ERP_Build/15_INTEGRATION_WORKSPACE/hard-testing/results/HT15_DISASTER_RECOVERY_RESULTS.json)
+* **Current Account**: `MU-0001` (`role: MASTER`, `isPrimaryMaster: true`).
+* **Classification**: **CANONICAL SYSTEM BOOTSTRAP IDENTITY**.
+* **Governance Protection**:
+  * Bcrypt `$2b$` work factor 10 password hashing.
+  * AES-256-GCM encrypted TOTP secret key; SHA-256 recovery codes.
+  * Permanent immutability guards (cannot be demoted, deactivated, archived, or deleted).
+  * Targeted countermeasure: Hostile secondary Master actions suspend **ONLY the offending actor** (`ATTACK_PRIMARY_MASTER`).
+* **Real Founder Activation**: Upon pilot initiation, the business owner updates contact name, email, and password via the secure one-time bootstrap activation process without mutating the underlying immutable `MU-0001` identifier.
 
 ---
 
-## 4. Production Smoke Test Verification
+## 4. Pre-Pilot Synthetic Data Cleanup Manifest & Safety Gate
+
+A complete audit of MongoDB Atlas was executed:
+
+* **Synthetic Records Identified**:
+  * `users`: 502 synthetic staff VUs (`ST-0001`..`ST-0500`) created for HT-02 500-VU shift-start storm testing.
+  * `sessions`: 2,507 synthetic authentication sessions.
+  * `attendances`: 500 synthetic load test punch records.
+* **Pristine Business Collections (0 records, ready for real onboarding)**:
+  * `bills`, `cash_transactions`, `expenses`, `staff_loan_advances`, `payroll_runs`, `payslips`, `global_inventory_items`, `stock_movements`, `purchase_orders`, `customers`, `department_orders`, `revenue_share_agreements`, `assets`, `tasks`.
+* **Referential Dependency Audit**: **0 business record conflicts**.
+* **Destructive Deletion Gate**: Synthetic user and session deletions are **gated and safely held** pending explicit business owner sign-off.
+* *Audit Manifest*: [`hard-testing/results/PRE_PILOT_CLEANUP_MANIFEST.json`](file:///d:/Zamorin_Cafe_ERP_Build/15_INTEGRATION_WORKSPACE/hard-testing/results/PRE_PILOT_CLEANUP_MANIFEST.json)
+
+---
+
+## 5. Live Production Smoke Test Verification
 
 ```
 ══════════════════════════════════════════════════════════════════
@@ -97,48 +89,45 @@ Executed on isolated database namespace `zamorin_cafe_erp_dr_test`:
 
 ---
 
-## 5. Pilot / UAT 14-Point Operational Checklist
+## 6. Master Data Onboarding Templates
 
-| # | Workflow Area | Target Role | Acceptance Criteria | Status |
-| :--- | :--- | :--- | :--- | :--- |
-| 1 | **Authentication** | All Roles | Login, MFA prompt, session persistence | **READY** |
-| 2 | **Shift Attendance** | Staff | Check-in / Check-out with geo-fencing | **READY** |
-| 3 | **POS Order & Billing** | Cafe Admin | Item tax calculation, sequential billing | **READY** |
-| 4 | **Cash Book Sync** | Cafe Admin | Bill total === CashBook total (₹0 variance) | **READY** |
-| 5 | **Expense Submission** | Cafe Admin | Petty cash & supplier expense submission | **READY** |
-| 6 | **Expense Approval** | Master | One-click approval / rejection ledger effect | **READY** |
-| 7 | **Inventory Intake** | Cafe Admin | Batch receipts & stock movement intake | **READY** |
-| 8 | **Loans & Advances** | Staff / Master | Salary advance application & approval | **READY** |
-| 9 | **Staff Management** | Master / Admin | Safe role and café assignment | **READY** |
-| 10 | **Executive Reports** | Master / Owner | Real-time P&L aggregation | **READY** |
-| 11 | **23-Language Switch** | All Roles | English + 22 Scheduled languages + Urdu RTL | **READY** |
-| 12 | **Offline PWA Sync** | Staff | Uninterrupted offline queue sync | **READY** |
-| 13 | **Step-Up Security** | Master | Re-authentication prompt for sensitive ops | **READY** |
-| 14 | **Device Logout** | All Roles | Immediate session revocation on Atlas | **READY** |
+Validated onboarding templates have been published in `docs/templates/`:
+1. [Organisation Onboarding Template](file:///d:/Zamorin_Cafe_ERP_Build/15_INTEGRATION_WORKSPACE/docs/templates/ORGANISATION_ONBOARDING_TEMPLATE.md)
+2. [Café Onboarding Template](file:///d:/Zamorin_Cafe_ERP_Build/15_INTEGRATION_WORKSPACE/docs/templates/CAFE_ONBOARDING_TEMPLATE.md)
+3. [Employee Onboarding Template](file:///d:/Zamorin_Cafe_ERP_Build/15_INTEGRATION_WORKSPACE/docs/templates/EMPLOYEE_ONBOARDING_TEMPLATE.md) (Mapping Job Titles like *Cashier* to `CAFE_ADMIN`)
+4. [Menu & Catalog Onboarding Template](file:///d:/Zamorin_Cafe_ERP_Build/15_INTEGRATION_WORKSPACE/docs/templates/MENU_CATALOG_ONBOARDING_TEMPLATE.md)
+5. [Opening Inventory Template](file:///d:/Zamorin_Cafe_ERP_Build/15_INTEGRATION_WORKSPACE/docs/templates/INVENTORY_OPENING_TEMPLATE.md)
+6. [Financial Opening Balances Template](file:///d:/Zamorin_Cafe_ERP_Build/15_INTEGRATION_WORKSPACE/docs/templates/FINANCIAL_OPENING_BALANCES_TEMPLATE.md) (Strict ₹0.00 variance rule)
+7. [Vendor Master Template](file:///d:/Zamorin_Cafe_ERP_Build/15_INTEGRATION_WORKSPACE/docs/templates/VENDOR_MASTER_TEMPLATE.md)
 
 ---
 
-## 6. Full Automated Regression Suite
+## 7. Controlled Human Pilot / UAT Plan & Execution Gate
 
-```
-ℹ tests 337
-ℹ suites 12
-ℹ pass 337
-ℹ fail 0
-ℹ cancelled 0
-ℹ skipped 0
-ℹ todo 0
-ℹ duration_ms 43701.7049 (43.70 seconds)
-```
+* **Target Pilot Location**: `ZC-0001` (Flagship Beach Road Cafe).
+* **Controlled User Cohort**:
+  * **Primary Master**: `MU-0001` (`MASTER`)
+  * **Managing Owner**: `OW-0001` (`OWNER`)
+  * **Cafe General Manager**: `AD-0001` (`CAFE_ADMIN`)
+  * **Head Cashier**: `AD-0002` (`CAFE_ADMIN`)
+  * **Lead Barista**: `ST-0101` (`STAFF`)
+* **UAT Execution Documents**:
+  * [docs/ZAMORIN_PILOT_UAT_REPORT.md](file:///d:/Zamorin_Cafe_ERP_Build/15_INTEGRATION_WORKSPACE/docs/ZAMORIN_PILOT_UAT_REPORT.md) — 14-point human UAT checklist by role.
+  * [docs/ZAMORIN_PILOT_UAT_ISSUE_REGISTER.md](file:///d:/Zamorin_Cafe_ERP_Build/15_INTEGRATION_WORKSPACE/docs/ZAMORIN_PILOT_UAT_ISSUE_REGISTER.md) — P0-P3 defect register.
+  * [docs/ZAMORIN_PRODUCTION_OPERATIONS_RUNBOOK.md](file:///d:/Zamorin_Cafe_ERP_Build/15_INTEGRATION_WORKSPACE/docs/ZAMORIN_PRODUCTION_OPERATIONS_RUNBOOK.md) — Production operations & incident runbook.
+  * [docs/ZAMORIN_PRODUCTION_GO_LIVE_REPORT.md](file:///d:/Zamorin_Cafe_ERP_Build/15_INTEGRATION_WORKSPACE/docs/ZAMORIN_PRODUCTION_GO_LIVE_REPORT.md) — Full go-live rollout criteria.
 
 ---
 
-## 7. Master Release Deliverables
+## 8. Status Classification Rule
 
-1. [docs/ZAMORIN_FINAL_PRODUCTION_READINESS_AND_DEPLOYMENT_REPORT.md](file:///d:/Zamorin_Cafe_ERP_Build/15_INTEGRATION_WORKSPACE/docs/ZAMORIN_FINAL_PRODUCTION_READINESS_AND_DEPLOYMENT_REPORT.md)
-2. [hard-testing/results/HT15_DISASTER_RECOVERY_RESULTS.json](file:///d:/Zamorin_Cafe_ERP_Build/15_INTEGRATION_WORKSPACE/hard-testing/results/HT15_DISASTER_RECOVERY_RESULTS.json)
-3. [hard-testing/scripts/run_ht15_disaster_recovery_simulation.js](file:///d:/Zamorin_Cafe_ERP_Build/15_INTEGRATION_WORKSPACE/hard-testing/scripts/run_ht15_disaster_recovery_simulation.js)
-4. [hard-testing/scripts/run_production_smoke_test.js](file:///d:/Zamorin_Cafe_ERP_Build/15_INTEGRATION_WORKSPACE/hard-testing/scripts/run_production_smoke_test.js)
-5. [backend/test/staffScopeSecurity.test.js](file:///d:/Zamorin_Cafe_ERP_Build/15_INTEGRATION_WORKSPACE/backend/test/staffScopeSecurity.test.js)
-
-**Git Release Status**: All changes committed and pushed to `origin/main` (commit `191ae39`+) and tagged with `v1.2.0-ht20-release-candidate`.
+```
+┌───────────────────────────────────────────────────┬───────────────────────────────────────────┐
+│ Milestone Condition                               │ Certified System Status                   │
+├───────────────────────────────────────────────────┼───────────────────────────────────────────┤
+│ Technical Pre-Pilot Preparation Complete (CURRENT)│ PRODUCTION DEPLOYED — PILOT/UAT READY     │
+│ Real Human Pilot Users Executing Workflows        │ PILOT/UAT IN PROGRESS                     │
+│ Human Pilot Acceptance & Financial Variance = ₹0  │ PILOT PASSED — FULL GO-LIVE READY         │
+│ Full Network Onboarded & Post-Go-Live Verified    │ FULL PRODUCTION GO-LIVE COMPLETE          │
+└───────────────────────────────────────────────────┴───────────────────────────────────────────┘
+```
