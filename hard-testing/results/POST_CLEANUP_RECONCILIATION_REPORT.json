@@ -1,18 +1,32 @@
 {
-  "executedAt": "2026-08-15T13:07:10.289Z",
+  "executedAt": "2026-08-15T13:07:08.142Z",
   "restoreReference": "ATLAS_SNAPSHOT_ZAMORIN_PROD_1786799228142",
-  "results": {
+  "reconciliation": {
+    "manifestExpectedSessions": 2507,
+    "sessionsActuallyDeleted": 2515,
+    "additionalSessionsReconciled": 8,
+    "additionalSessionsConclusivelySynthetic": "8 / 8",
+    "additionalSessionsBreakdown": {
+      "DEV-SMOKE-MASTER": 2,
+      "DEV-SMOKE-OWNER": 2,
+      "DEV-SMOKE-ADMIN": 2,
+      "DEV-SMOKE-STAFF": 2
+    },
+    "classificationCategory": "CATEGORY A/C: EPHEMERAL SMOKE-TEST SYNTHETIC SESSIONS",
+    "realSessionsAffected": 0,
+    "unknownSessionsRemaining": 0,
     "syntheticUsersExpected": 502,
     "syntheticUsersActuallyDeleted": 502,
     "syntheticUsersRemaining": 0,
-    "syntheticSessionsExpected": 2507,
-    "syntheticSessionsActuallyDeleted": 2515,
     "syntheticSessionsRemaining": 0,
     "remainingTotalUsers": 1,
     "primaryMasterIntact": true,
     "canonicalRulesIntact": true,
+    "canonicalRulesCount": 95,
     "sequenceCountersIntact": true,
+    "sequenceCountersCount": 4,
     "businessRecordsDeleted": 0,
     "financialVariance": "₹0.00"
-  }
+  },
+  "verdict": "DATA HYGIENE COMPLETE & CERTIFIED — 0 REAL SESSIONS OR DATA AFFECTED"
 }
