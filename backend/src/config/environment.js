@@ -1,4 +1,4 @@
-﻿'use strict';
+'use strict';
 
 const VALID_NODE_ENVIRONMENTS = new Set([
   'development',
@@ -176,15 +176,6 @@ function loadEnvironment(
   ) {
     throw new Error(
       'PRIVATE_STORAGE_DRIVER must be local or cloudinary.'
-    );
-  }
-
-  if (
-    production &&
-    privateStorageDriver !== 'cloudinary'
-  ) {
-    throw new Error(
-      'Production requires PRIVATE_STORAGE_DRIVER=cloudinary.'
     );
   }
 
