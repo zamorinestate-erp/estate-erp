@@ -247,6 +247,19 @@ router.use(
   customFieldRoutes
 );
 
+const deviceRoutes =
+  require('./deviceRoutes');
+
+router.use(
+  '/devices',
+  deviceRoutes
+);
+
+router.use(
+  '/cafe-devices',
+  deviceRoutes
+);
+
 router.use(
   '/',
   expansionModulesRoutes

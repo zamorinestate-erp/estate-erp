@@ -453,9 +453,134 @@ const checkOut = asyncHandler(
   }
 );
 
+const submitQrAttendance = asyncHandler(
+  async (request, response) => {
+    const { challengeEnvelope, fallbackPin, idempotencyKey, cafeId, clientScannedAt } = request.body || {};
+    const attendanceQrService = require('../../services/attendanceQrService');
+
+    const result = await attendanceQrService.submitAttendance({
+      organisationId: request.auth.organisationId,
+      userId: request.auth.userId,
+      cafeId: normalizeIdentifier(cafeId),
+      challengeEnvelope,
+      fallbackPin,
+      idempotencyKey,
+      clientScannedAt,
+      correlationId: request.correlationId,
+    });
+
+    return response.status(200).json({
+      success: true,
+      message: 'QR Attendance processed successfully.',
+      data: result,
+      correlationId: request.correlationId || null,
+    });
+  }
+);
+
+const syncOfflineAttendance = asyncHandler(
+  async (request, response) => {
+    const { submissions } = request.body || {};
+    if (!Array.isArray(submissions) || submissions.length === 0) {
+      throw new ApiError(400, 'SUBMISSIONS_ARRAY_REQUIRED', 'An array of offline submissions is required.');
+    }
+
+    const attendanceQrService = require('../../services/attendanceQrService');
+    const results = [];
+
+    for (const item of submissions) {
+      try {
+        const res = await attendanceQrService.submitAttendance({
+          organisationId: request.auth.organisationId,
+          userId: request.auth.userId,
+          cafeId: normalizeIdentifier(item.cafeId),
+          challengeEnvelope: item.challengeEnvelope,
+          fallbackPin: item.fallbackPin,
+          idempotencyKey: item.idempotencyKey,
+          clientScannedAt: item.clientScannedAt,
+          correlationId: request.correlationId,
+        });
+        results.push({ idempotencyKey: item.idempotencyKey, status: 'SUCCESS', result: res });
+      } catch (err) {
+        results.push({ idempotencyKey: item.idempotencyKey, status: 'ERROR', error: err.message });
+      }
+    }
+
+    return response.status(200).json({
+      success: true,
+      message: 'Offline attendance batch processed.',
+      data: { processedCount: results.length, items: results },
+      correlationId: request.correlationId || null,
+    });
+  }
+);
+
+const recordManualAttendance = asyncHandler(
+  async (request, response) => {
+    const { targetUserId, transition, reason, cafeId } = request.body || {};
+    if (!targetUserId || !transition || !reason) {
+      throw new ApiError(400, 'INVALID_MANUAL_ATTENDANCE_PAYLOAD', 'targetUserId, transition, and reason are required.');
+    }
+
+    if (request.auth.role !== 'CAFE_ADMIN' && request.auth.role !== 'MASTER') {
+      throw new ApiError(403, 'FORBIDDEN', 'Manual attendance requires CAFE_ADMIN or MASTER role.');
+    }
+
+    if (request.auth.role === 'CAFE_ADMIN' && request.auth.privilegeProfile !== 'CAFE_OPERATIONS') {
+      throw new ApiError(403, 'DEVICE_SCOPE_DENIED', 'Manual attendance on behalf of staff is restricted to CAFE_OWNED devices.');
+    }
+
+    const today = getIstBusinessDate();
+    let attendance = await Attendance.findOne({
+      organisationId: request.auth.organisationId,
+      userId: targetUserId,
+      businessDate: today,
+    });
+
+    const now = new Date();
+    if (transition === 'CHECK_IN') {
+      if (!attendance) {
+        attendance = new Attendance({
+          organisationId: request.auth.organisationId,
+          cafeId: normalizeIdentifier(cafeId) || request.auth.deviceContext?.boundCafeId || request.auth.assignedCafeIds[0],
+          userId: targetUserId,
+          businessDate: today,
+          checkIn: now,
+          status: 'PRESENT',
+          source: 'MANUAL_EXCEPTION',
+          recordedBy: request.auth.userId,
+          exceptionReason: reason,
+        });
+      } else {
+        attendance.checkIn = now;
+        attendance.status = 'PRESENT';
+        attendance.exceptionReason = reason;
+      }
+    } else {
+      if (!attendance) {
+        throw new ApiError(404, 'ACTIVE_ATTENDANCE_NOT_FOUND', 'Cannot check-out an employee with no check-in record.');
+      }
+      attendance.checkOut = now;
+      attendance.exceptionReason = reason;
+    }
+
+    await attendance.save();
+
+    return response.status(200).json({
+      success: true,
+      message: 'Manual attendance exception recorded.',
+      data: { attendance },
+      correlationId: request.correlationId || null,
+    });
+  }
+);
+
 module.exports = {
   listAttendance,
   getTodayAttendance,
   checkIn,
   checkOut,
+  submitQrAttendance,
+  syncOfflineAttendance,
+  recordManualAttendance,
 };
