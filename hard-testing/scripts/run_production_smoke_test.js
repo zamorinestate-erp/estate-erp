@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * PRODUCTION SAFE SMOKE TEST MATRIX (NON-DESTRUCTIVE)
+ * PRODUCTION SAFE SMOKE TEST MATRIX (NON-DESTRUCTIVE WITH AUTO-TEARDOWN)
  *
  * Verifies live production routes across all 4 canonical roles:
  * - MASTER: Global dashboard, Personal Ledger access (200), Safe logout
@@ -9,6 +9,10 @@
  * - CAFE_ADMIN: Assigned-cafe view, Unassigned-cafe denial (403), Safe logout
  * - STAFF: Self-service attendance, Other-user denial (403), Safe logout
  * - Health & Readiness: /api/v1/health (200), /api/v1/readiness (200)
+ *
+ * AUTOMATIC TEARDOWN:
+ * All test sessions and temporary test users created during smoke testing
+ * are guaranteed to be cleaned up in the finally block.
  */
 
 const dns = require('node:dns');
@@ -73,6 +77,9 @@ async function runProductionSmokeTest() {
   console.log(` Target Backend: ${TARGET_URL}`);
   console.log('══════════════════════════════════════════════════════════════════');
 
+  const createdSessionIds = [];
+  const createdTestUserIds = [];
+
   console.log('\n[STEP 1] Verifying System Health & Readiness endpoints...');
   const healthRes = await makeRequest('/api/v1/health');
   const readyRes = await makeRequest('/api/v1/readiness');
@@ -82,41 +89,6 @@ async function runProductionSmokeTest() {
 
   console.log('\n[STEP 2] Connecting to MongoDB Atlas for smoke test session generation...');
   await mongoose.connect(MONGODB_URI, { serverSelectionTimeoutMS: 15000 });
-
-  async function ensureTestUser(role, userId, cafeId) {
-    let user = await User.findOne({ role, accountStatus: 'ACTIVE' }).lean();
-    if (!user) {
-      await User.updateOne(
-        { userId },
-        {
-          $setOnInsert: {
-            userId,
-            organisationId: 'ZAMORIN',
-            name: `Test ${role}`,
-            email: `smoke_${role.toLowerCase()}@zamorin.test`,
-            role,
-            accountStatus: 'ACTIVE',
-            primaryCafeId: cafeId || null,
-            assignedCafeIds: cafeId ? [cafeId] : [],
-            passwordHash: '$2b$10$dummySmokeHash00000000000000000000000000000000000',
-            sessionVersion: 0,
-            permissionsVersion: 0,
-            createdBy: 'MU-0001',
-          }
-        },
-        { upsert: true }
-      );
-      user = await User.findOne({ userId }).lean();
-    }
-    return user;
-  }
-
-  const testUsers = {
-    MASTER: await User.findOne({ role: 'MASTER', isPrimaryMaster: true }).lean(),
-    OWNER: await ensureTestUser('OWNER', 'OW-0001', null),
-    CAFE_ADMIN: await ensureTestUser('CAFE_ADMIN', 'AD-0001', 'ZC-0001'),
-    STAFF: await ensureTestUser('STAFF', 'ST-0001', 'ZC-0001'),
-  };
 
   const results = {
     healthOk: healthRes.statusCode === 200,
@@ -130,84 +102,154 @@ async function runProductionSmokeTest() {
     crossCafeLeakage: 0,
   };
 
-  // 1. MASTER Smoke Test
-  if (testUsers.MASTER) {
-    console.log('\n[STEP 3] Testing MASTER role boundaries...');
-    const masterSession = await authService.createSession({
-      user: testUsers.MASTER,
-      device: { deviceId: 'DEV-SMOKE-MASTER', deviceName: 'Smoke Test', deviceType: 'DESKTOP' },
-      network: { ipAddress: '127.0.0.1' },
-      mfaVerified: true,
-    });
-    const masterToken = masterSession.accessToken;
+  try {
+    async function ensureTestUser(role, userId, cafeId) {
+      let user = await User.findOne({ role, accountStatus: 'ACTIVE' }).lean();
+      if (!user) {
+        await User.updateOne(
+          { userId },
+          {
+            $setOnInsert: {
+              userId,
+              organisationId: 'ZAMORIN',
+              name: `Smoke ${role}`,
+              email: `smoke_${role.toLowerCase()}_${Date.now()}@zamorin.test`,
+              role,
+              accountStatus: 'ACTIVE',
+              primaryCafeId: cafeId || null,
+              assignedCafeIds: cafeId ? [cafeId] : [],
+              passwordHash: '$2b$10$dummySmokeHash00000000000000000000000000000000000',
+              sessionVersion: 0,
+              permissionsVersion: 0,
+              createdBy: 'MU-0001',
+            }
+          },
+          { upsert: true }
+        );
+        user = await User.findOne({ userId }).lean();
+        if (userId !== 'MU-0001') {
+          createdTestUserIds.push(userId);
+        }
+      }
+      return user;
+    }
 
-    const plRes = await makeRequest('/api/v1/personal-ledger/my-balance', {
-      headers: { Authorization: `Bearer ${masterToken}` },
+    const testUsers = {
+      MASTER: await User.findOne({ role: 'MASTER', isPrimaryMaster: true }).lean(),
+      OWNER: await ensureTestUser('OWNER', 'OW-0001', null),
+      CAFE_ADMIN: await ensureTestUser('CAFE_ADMIN', 'AD-0001', 'ZC-0001'),
+      STAFF: await ensureTestUser('STAFF', 'ST-0001', 'ZC-0001'),
+    };
+
+    // 1. MASTER Smoke Test
+    if (testUsers.MASTER) {
+      console.log('\n[STEP 3] Testing MASTER role boundaries...');
+      const masterSession = await authService.createSession({
+        user: testUsers.MASTER,
+        device: { deviceId: 'DEV-SMOKE-MASTER', deviceName: 'Smoke Test', deviceType: 'DESKTOP' },
+        network: { ipAddress: '127.0.0.1' },
+        mfaVerified: true,
+      });
+      createdSessionIds.push(masterSession.sessionId);
+      const masterToken = masterSession.accessToken;
+
+      const plRes = await makeRequest('/api/v1/personal-ledger/my-balance', {
+        headers: { Authorization: `Bearer ${masterToken}` },
+      });
+      results.masterPersonalLedgerAllowed = (plRes.statusCode === 200 || plRes.statusCode === 404);
+      console.log(`  MASTER Personal Ledger Access: Status ${plRes.statusCode} (${results.masterPersonalLedgerAllowed ? 'AUTHORIZED ✓' : 'DENIED ✗'})`);
+    }
+
+    // 2. OWNER Smoke Test
+    if (testUsers.OWNER) {
+      console.log('\n[STEP 4] Testing OWNER role boundary enforcement...');
+      const ownerSession = await authService.createSession({
+        user: testUsers.OWNER,
+        device: { deviceId: 'DEV-SMOKE-OWNER', deviceName: 'Smoke Test', deviceType: 'DESKTOP' },
+        network: { ipAddress: '127.0.0.1' },
+        mfaVerified: true,
+      });
+      createdSessionIds.push(ownerSession.sessionId);
+      const ownerToken = ownerSession.accessToken;
+
+      const ownerPlRes = await makeRequest('/api/v1/personal-ledger/my-balance', {
+        headers: { Authorization: `Bearer ${ownerToken}` },
+      });
+      results.ownerPersonalLedgerBlocked = (ownerPlRes.statusCode === 403 || ownerPlRes.statusCode === 401);
+      console.log(`  OWNER Personal Ledger Access: Status ${ownerPlRes.statusCode} (${results.ownerPersonalLedgerBlocked ? 'BLOCKED 403 ✓' : 'LEAK ✗'})`);
+      if (!results.ownerPersonalLedgerBlocked) results.crossRoleLeakage += 1;
+    }
+
+    // 3. CAFE_ADMIN Smoke Test
+    if (testUsers.CAFE_ADMIN) {
+      console.log('\n[STEP 5] Testing CAFE_ADMIN assigned-cafe boundary enforcement...');
+      const adminSession = await authService.createSession({
+        user: testUsers.CAFE_ADMIN,
+        device: { deviceId: 'DEV-SMOKE-ADMIN', deviceName: 'Smoke Test', deviceType: 'DESKTOP' },
+        network: { ipAddress: '127.0.0.1' },
+        mfaVerified: true,
+      });
+      createdSessionIds.push(adminSession.sessionId);
+      const adminToken = adminSession.accessToken;
+
+      const unassignedRes = await makeRequest('/api/v1/cafes/ZC-9999/attendance', {
+        headers: { Authorization: `Bearer ${adminToken}` },
+      });
+      results.cafeAdminUnassignedBlocked = (unassignedRes.statusCode === 403 || unassignedRes.statusCode === 404);
+      console.log(`  CAFE_ADMIN Unassigned-Cafe Access: Status ${unassignedRes.statusCode} (${results.cafeAdminUnassignedBlocked ? 'RESTRICTED ✓' : 'LEAK ✗'})`);
+      if (!results.cafeAdminUnassignedBlocked) results.crossCafeLeakage += 1;
+    }
+
+    // 4. STAFF Smoke Test
+    if (testUsers.STAFF) {
+      console.log('\n[STEP 6] Testing STAFF self-service isolation...');
+      const staffSession = await authService.createSession({
+        user: testUsers.STAFF,
+        device: { deviceId: 'DEV-SMOKE-STAFF', deviceName: 'Smoke Test', deviceType: 'MOBILE' },
+        network: { ipAddress: '127.0.0.1' },
+        mfaVerified: false,
+      });
+      createdSessionIds.push(staffSession.sessionId);
+      const staffToken = staffSession.accessToken;
+
+      const otherUserRes = await makeRequest('/api/v1/staff-loans-advances/requests/OTHER_USER_REQ_001', {
+        headers: { Authorization: `Bearer ${staffToken}` },
+      });
+      results.staffOtherUserBlocked = (otherUserRes.statusCode === 403 || otherUserRes.statusCode === 404 || otherUserRes.statusCode === 401);
+      console.log(`  STAFF Other-User Data Access: Status ${otherUserRes.statusCode} (${results.staffOtherUserBlocked ? 'ISOLATED ✓' : 'LEAK ✗'})`);
+      if (!results.staffOtherUserBlocked) results.crossUserLeakage += 1;
+    }
+  } finally {
+    // AUTOMATIC TEARDOWN: Purge only sessions created during this smoke run
+    console.log('\n[TEARDOWN] Purging ephemeral smoke test sessions and temporary users...');
+    if (createdSessionIds.length > 0) {
+      const delSessions = await mongoose.connection.db.collection('sessions').deleteMany({
+        $or: [
+          { sessionId: { $in: createdSessionIds } },
+          { _id: { $in: createdSessionIds.map(id => {
+            try { return new mongoose.Types.ObjectId(id); } catch (e) { return null; }
+          }).filter(Boolean) } },
+          { 'device.deviceId': /^DEV-SMOKE-/ }
+        ]
+      });
+      console.log(`  Cleaned up ${delSessions.deletedCount} smoke test session(s).`);
+    }
+
+    if (createdTestUserIds.length > 0) {
+      const delUsers = await mongoose.connection.db.collection('users').deleteMany({
+        userId: { $in: createdTestUserIds },
+        isPrimaryMaster: { $ne: true }
+      });
+      console.log(`  Cleaned up ${delUsers.deletedCount} temporary smoke test user(s).`);
+    }
+
+    const remainingSmokeSessions = await mongoose.connection.db.collection('sessions').countDocuments({
+      'device.deviceId': /^DEV-SMOKE-/
     });
-    results.masterPersonalLedgerAllowed = (plRes.statusCode === 200 || plRes.statusCode === 404);
-    console.log(`  MASTER Personal Ledger Access: Status ${plRes.statusCode} (${results.masterPersonalLedgerAllowed ? 'AUTHORIZED ✓' : 'DENIED ✗'})`);
+    console.log(`  Remaining smoke test sessions: ${remainingSmokeSessions} (Target: 0)`);
+
+    await mongoose.disconnect();
   }
-
-  // 2. OWNER Smoke Test
-  if (testUsers.OWNER) {
-    console.log('\n[STEP 4] Testing OWNER role boundary enforcement...');
-    const ownerSession = await authService.createSession({
-      user: testUsers.OWNER,
-      device: { deviceId: 'DEV-SMOKE-OWNER', deviceName: 'Smoke Test', deviceType: 'DESKTOP' },
-      network: { ipAddress: '127.0.0.1' },
-      mfaVerified: true,
-    });
-    const ownerToken = ownerSession.accessToken;
-
-    const ownerPlRes = await makeRequest('/api/v1/personal-ledger/my-balance', {
-      headers: { Authorization: `Bearer ${ownerToken}` },
-    });
-    results.ownerPersonalLedgerBlocked = (ownerPlRes.statusCode === 403 || ownerPlRes.statusCode === 401);
-    console.log(`  OWNER Personal Ledger Access: Status ${ownerPlRes.statusCode} (${results.ownerPersonalLedgerBlocked ? 'BLOCKED 403 ✓' : 'LEAK ✗'})`);
-    if (!results.ownerPersonalLedgerBlocked) results.crossRoleLeakage += 1;
-  }
-
-  // 3. CAFE_ADMIN Smoke Test
-  if (testUsers.CAFE_ADMIN) {
-    console.log('\n[STEP 5] Testing CAFE_ADMIN assigned-cafe boundary enforcement...');
-    const adminSession = await authService.createSession({
-      user: testUsers.CAFE_ADMIN,
-      device: { deviceId: 'DEV-SMOKE-ADMIN', deviceName: 'Smoke Test', deviceType: 'DESKTOP' },
-      network: { ipAddress: '127.0.0.1' },
-      mfaVerified: true,
-    });
-    const adminToken = adminSession.accessToken;
-
-    // Attempt accessing unassigned cafe resource
-    const unassignedRes = await makeRequest('/api/v1/cafes/ZC-9999/attendance', {
-      headers: { Authorization: `Bearer ${adminToken}` },
-    });
-    results.cafeAdminUnassignedBlocked = (unassignedRes.statusCode === 403 || unassignedRes.statusCode === 404);
-    console.log(`  CAFE_ADMIN Unassigned-Cafe Access: Status ${unassignedRes.statusCode} (${results.cafeAdminUnassignedBlocked ? 'RESTRICTED ✓' : 'LEAK ✗'})`);
-    if (!results.cafeAdminUnassignedBlocked) results.crossCafeLeakage += 1;
-  }
-
-  // 4. STAFF Smoke Test
-  if (testUsers.STAFF) {
-    console.log('\n[STEP 6] Testing STAFF self-service isolation...');
-    const staffSession = await authService.createSession({
-      user: testUsers.STAFF,
-      device: { deviceId: 'DEV-SMOKE-STAFF', deviceName: 'Smoke Test', deviceType: 'MOBILE' },
-      network: { ipAddress: '127.0.0.1' },
-      mfaVerified: false,
-    });
-    const staffToken = staffSession.accessToken;
-
-    // Attempt viewing other user's loan advance
-    const otherUserRes = await makeRequest('/api/v1/staff-loans-advances/requests/OTHER_USER_REQ_001', {
-      headers: { Authorization: `Bearer ${staffToken}` },
-    });
-    results.staffOtherUserBlocked = (otherUserRes.statusCode === 403 || otherUserRes.statusCode === 404 || otherUserRes.statusCode === 401);
-    console.log(`  STAFF Other-User Data Access: Status ${otherUserRes.statusCode} (${results.staffOtherUserBlocked ? 'ISOLATED ✓' : 'LEAK ✗'})`);
-    if (!results.staffOtherUserBlocked) results.crossUserLeakage += 1;
-  }
-
-  await mongoose.disconnect();
 
   const isSmokePass = (
     results.healthOk &&
