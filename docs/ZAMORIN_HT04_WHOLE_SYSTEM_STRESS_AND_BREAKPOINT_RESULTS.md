@@ -47,27 +47,25 @@ HT-04 executed whole-system mixed workload stress testing against Zamorin Cafe E
 
 ## 3. CAPACITY ENVELOPE ANALYSIS
 
-1. **Local Verified Sustainable Concurrency**: **500 VUs**  
+1. **LOCAL VERIFIED SUSTAINABLE CONCURRENCY**: **500 VUs**  
    - All operations strictly satisfy the frozen SLA: POS p95 = 1,083 ms (<=3,000 ms), Menu p95 = 1,050 ms (<=2,000 ms), Attendance p95 = 839 ms (<=2,000 ms), Reports p95 = 765 ms (<=5,000 ms).
    - Success rate: **100.0%**, 5xx errors: **0**.
 
-2. **First Degradation Point**: **750 VUs**  
+2. **FIRST SLA DEGRADATION**: **750 VUs**  
    - The system maintained 100% success and 0 errors, but Menu read p95 rose to 2,202 ms (exceeding the strict 2,000 ms read threshold). POS write p95 remained healthy at 2,361 ms.
 
-3. **First SLA Failure**: **750 VUs** (Menu Read p95: 2,202 ms > 2,000 ms).
+3. **LOCAL TEST GENERATOR CEILING**: **2500 VUs**  
+   - At 2,500 concurrent timers arriving in a 3-second window, local client-side socket pool backlog generated 50 HTTP socket connection timeouts (~177 req/s local harness ceiling).
 
-4. **First Error-Rate Failure**: **2,500 VUs**  
-   - At 2,500 VUs, 50 requests out of 2,500 (2.0%) timed out due to client-side Node.js event-loop socket backlog on the local machine.
+4. **ZAMORIN APPLICATION BREAKPOINT**: **NOT FOUND WITH RELIABLE LOCAL GENERATOR CAPACITY**  
+   - The Zamorin backend process maintained 100% data integrity, zero process crashes, zero unhandled errors, zero memory leaks, and immediate 0.02s post-overload recovery. A true application-level breakpoint was not reached within valid local generator measurements.
 
-5. **First Breakpoint / Local Ceiling**: **2,500 VUs**  
-   - Local hardware throughput ceiling is reached at **~177 requests/second**. Beyond 2,000 VUs, request queues grow linearly while throughput remains flat.
-
-6. **Process Stability**:  
+5. **Process Stability**:  
    - Process crashes: **0 (Zero)**  
    - Unhandled rejections: **0**  
    - Uncaught exceptions: **0**  
 
-7. **Post-Overload Recovery**:  
+6. **Post-Overload Recovery**:  
    - Immediate automatic recovery: **0.02 seconds** (`/health` = `ok`, `/readiness` = `ready`).
 
 ---
