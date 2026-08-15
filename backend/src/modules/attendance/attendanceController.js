@@ -423,8 +423,8 @@ const checkOut = asyncHandler(
       );
     }
 
-    attendance.checkOutAt =
-      new Date();
+    const checkInMs = attendance.checkInAt ? attendance.checkInAt.getTime() : Date.now();
+    attendance.checkOutAt = new Date(Math.max(Date.now(), checkInMs + 1000));
 
     attendance.checkOutSource =
       'SELF';

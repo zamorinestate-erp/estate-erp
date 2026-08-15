@@ -24,6 +24,10 @@ async function startProductionServer() {
     console.warn('[INIT] Database seed note (may already be initialized):', seedErr.message);
   }
 
+  process.env.RATE_LIMIT_MAX = process.env.RATE_LIMIT_MAX || '10000';
+  process.env.MONGODB_MAX_POOL_SIZE = process.env.MONGODB_MAX_POOL_SIZE || '100';
+  process.env.MONGODB_MIN_POOL_SIZE = process.env.MONGODB_MIN_POOL_SIZE || '20';
+
   // Start HTTP Express Server using canonical server.js bootstrap
   const { server, environment } = await startServer();
   registerShutdownHandlers(server);
