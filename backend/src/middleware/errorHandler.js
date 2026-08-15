@@ -9,6 +9,21 @@ function errorHandler(error, req, res, next) {
   let code = error.code || 'INTERNAL_SERVER_ERROR';
   let message = error.message || 'An unexpected server error occurred.';
 
+  // Mongoose Validation & Schema constraint errors -> 400
+  if (error.name === 'ValidationError') {
+    statusCode = 400;
+    code = 'VALIDATION_ERROR';
+    message = error.message;
+  } else if (error.name === 'CastError') {
+    statusCode = 400;
+    code = 'INVALID_FORMAT';
+    message = `Invalid value for field '${error.path}'.`;
+  } else if (error.type === 'entity.too.large' || error.status === 413) {
+    statusCode = 413;
+    code = 'PAYLOAD_TOO_LARGE';
+    message = 'The request payload exceeds the allowed size limit.';
+  }
+
   // MongoDB E11000 Duplicate Key Error domain-aware translation
   if (error.code === 11000 || error.name === 'MongoServerError') {
     statusCode = 409;

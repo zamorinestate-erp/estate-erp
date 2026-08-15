@@ -1,0 +1,26 @@
+{
+  "checks": [
+    {
+      "name": "FinancialReconciliationIntegrity",
+      "description": "Sum of all completed cash bills exactly equals cash transaction book",
+      "passed": true,
+      "details": "Bill total: ₹0.00 | CashBook: ₹0.00 | Variance: ₹0.00"
+    },
+    {
+      "name": "ReferentialIntegrity",
+      "description": "Zero orphaned staff or cafe admins without cafe assignments",
+      "passed": true,
+      "details": "Orphaned users: 0"
+    },
+    {
+      "name": "SessionSchemaIntegrity",
+      "description": "100% of active sessions match SS-YYYYMMDD-NNNN standard format",
+      "passed": true,
+      "details": "Invalid sessions: 0"
+    }
+  ],
+  "totalChecks": 3,
+  "passed": 3,
+  "failed": 0,
+  "status": "PASS"
+}
