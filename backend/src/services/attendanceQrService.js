@@ -161,9 +161,26 @@ class AttendanceQrService {
 
       challenge = await AttendanceQrChallenge.findOne({ challengeId: envelopeData.cid });
     } else if (fallbackPin) {
-      challenge = await AttendanceQrChallenge.findOne({ fallbackPin, expiresAt: { $gt: new Date() } });
+      challenge = await AttendanceQrChallenge.findOne({
+        cafeId,
+        fallbackPin,
+        isRevoked: false,
+        expiresAt: { $gt: new Date() },
+      });
+
       if (!challenge) {
+        // Increment attempts on active challenges for cafe to mitigate brute force
+        await AttendanceQrChallenge.updateMany(
+          { cafeId, expiresAt: { $gt: new Date() } },
+          { $inc: { pinAttempts: 1 } }
+        );
         throw new Error('INVALID_OR_EXPIRED_FALLBACK_PIN');
+      }
+
+      if (challenge.pinAttempts >= 5) {
+        challenge.isRevoked = true;
+        await challenge.save();
+        throw new Error('FALLBACK_PIN_LOCKED_TOO_MANY_ATTEMPTS');
       }
     } else {
       throw new Error('CHALLENGE_ENVELOPE_OR_PIN_REQUIRED');
@@ -190,9 +207,9 @@ class AttendanceQrService {
     });
 
     let transition = 'CHECK_IN';
-    if (attendance && attendance.checkIn && !attendance.checkOut) {
+    if (attendance && attendance.checkInAt && !attendance.checkOutAt) {
       transition = 'CHECK_OUT';
-    } else if (attendance && attendance.checkIn && attendance.checkOut) {
+    } else if (attendance && attendance.checkInAt && attendance.checkOutAt) {
       throw new Error('ATTENDANCE_ALREADY_COMPLETED_FOR_TODAY');
     }
 
@@ -211,24 +228,57 @@ class AttendanceQrService {
     const serverReceivedAt = new Date();
 
     // 4. Atomic Attendance Record Update
+    const datePart = today.replaceAll('-', '');
+    const timeSlice = Date.now().toString().slice(-6);
+    const randDigits = Math.floor(1000 + Math.random() * 9000).toString();
+    const generatedAttendanceId = `AT-${datePart}-${timeSlice}${randDigits}`;
+
     if (transition === 'CHECK_IN') {
       if (!attendance) {
         attendance = new Attendance({
+          attendanceId: generatedAttendanceId,
           organisationId,
           cafeId,
           userId,
           businessDate: today,
-          checkIn: serverReceivedAt,
-          status: 'PRESENT',
-          source: 'QR_SCAN',
-          recordedBy: userId,
+          checkInAt: serverReceivedAt,
+          status: 'CHECKED_IN',
+          checkInSource: 'SELF',
+          checkInRecordedBy: userId,
+          timezone: 'Asia/Kolkata',
+          createdBy: userId,
+          updatedBy: userId,
         });
       } else {
-        attendance.checkIn = serverReceivedAt;
-        attendance.status = 'PRESENT';
+        attendance.checkInAt = serverReceivedAt;
+        attendance.status = 'CHECKED_IN';
+        attendance.checkInSource = 'SELF';
+        attendance.checkInRecordedBy = userId;
+        attendance.updatedBy = userId;
       }
     } else {
-      attendance.checkOut = serverReceivedAt;
+      if (attendance) {
+        attendance.checkOutAt = serverReceivedAt;
+        attendance.status = 'CHECKED_OUT';
+        attendance.checkOutSource = 'SELF';
+        attendance.checkOutRecordedBy = userId;
+        attendance.updatedBy = userId;
+      } else {
+        attendance = new Attendance({
+          attendanceId: generatedAttendanceId,
+          organisationId,
+          cafeId,
+          userId,
+          businessDate: today,
+          checkOutAt: serverReceivedAt,
+          status: 'CHECKED_OUT',
+          checkOutSource: 'SELF',
+          checkOutRecordedBy: userId,
+          timezone: 'Asia/Kolkata',
+          createdBy: userId,
+          updatedBy: userId,
+        });
+      }
     }
 
     await attendance.save();

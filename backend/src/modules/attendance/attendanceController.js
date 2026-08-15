@@ -458,25 +458,50 @@ const submitQrAttendance = asyncHandler(
     const { challengeEnvelope, fallbackPin, idempotencyKey, cafeId, clientScannedAt, latitude, longitude } = request.body || {};
     const attendanceQrService = require('../../services/attendanceQrService');
 
-    const result = await attendanceQrService.submitAttendance({
-      organisationId: request.auth.organisationId,
-      userId: request.auth.userId,
-      cafeId: normalizeIdentifier(cafeId),
-      challengeEnvelope,
-      fallbackPin,
-      idempotencyKey,
-      clientScannedAt,
-      latitude: typeof latitude === 'number' ? latitude : undefined,
-      longitude: typeof longitude === 'number' ? longitude : undefined,
-      correlationId: request.correlationId,
-    });
+    try {
+      const result = await attendanceQrService.submitAttendance({
+        organisationId: request.auth.organisationId,
+        userId: request.auth.userId,
+        cafeId: normalizeIdentifier(cafeId),
+        challengeEnvelope,
+        fallbackPin,
+        idempotencyKey,
+        clientScannedAt,
+        latitude: typeof latitude === 'number' ? latitude : undefined,
+        longitude: typeof longitude === 'number' ? longitude : undefined,
+        correlationId: request.correlationId,
+      });
 
-    return response.status(200).json({
-      success: true,
-      message: 'QR Attendance processed successfully.',
-      data: result,
-      correlationId: request.correlationId || null,
-    });
+      return response.status(200).json({
+        success: true,
+        message: 'QR Attendance processed successfully.',
+        data: result,
+        correlationId: request.correlationId || null,
+      });
+    } catch (err) {
+      const businessErrorCodes = [
+        'INVALID_QR_SIGNATURE',
+        'CHALLENGE_NOT_FOUND_OR_EXPIRED',
+        'QR_CHALLENGE_EXPIRED',
+        'QR_CAFE_SCOPE_MISMATCH',
+        'QR_CHALLENGE_ALREADY_USED_BY_USER_FOR_TRANSITION',
+        'ATTENDANCE_ALREADY_COMPLETED_FOR_TODAY',
+        'GEOFENCE_RADIUS_EXCEEDED',
+        'INVALID_OR_EXPIRED_FALLBACK_PIN',
+        'FALLBACK_PIN_LOCKED_TOO_MANY_ATTEMPTS',
+      ];
+
+      if (businessErrorCodes.includes(err.message)) {
+        return response.status(409).json({
+          error: {
+            code: err.message,
+            message: err.message,
+          },
+          correlationId: request.correlationId || null,
+        });
+      }
+      throw err;
+    }
   }
 );
 
