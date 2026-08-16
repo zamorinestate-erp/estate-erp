@@ -21,6 +21,7 @@ const {
   encryptMfaSecret,
   decryptMfaSecret,
   generateTotpSecret,
+  generateTotpCode,
   verifyTotpCode,
   generateOtpauthUri,
   generateRecoveryCodes,
@@ -532,12 +533,15 @@ const mfaSetup = asyncHandler(
       issuer: 'Zamorin Cafe ERP',
     });
 
+    const { code: autoCode } = generateTotpCode(manualEntrySecret);
+
     return response.status(200).json({
       success: true,
       message: 'MFA setup initiated.',
       data: {
         otpauthUri,
         manualEntrySecret,
+        autoCode,
         mfaSetupToken,
       },
       correlationId:

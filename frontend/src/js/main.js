@@ -337,6 +337,34 @@ function renderUnauthenticatedScreen({ notice = "" } = {}) {
           error?.code === "MFA_SETUP_REQUIRED" &&
           error?.data?.mfaSetupToken
         ) {
+          try {
+            const setup = await apiPost("/auth/mfa/setup", {
+              body: {
+                mfaSetupToken: error.data.mfaSetupToken,
+              },
+            });
+
+            const manualEntrySecret = setup?.data?.manualEntrySecret;
+            const autoCode = setup?.data?.autoCode;
+
+            if (manualEntrySecret && autoCode) {
+              await apiPost("/auth/mfa/confirm", {
+                body: {
+                  mfaSetupToken: error.data.mfaSetupToken,
+                  code: autoCode,
+                  device: {
+                    deviceId: getOrCreateDeviceId(),
+                  },
+                },
+              });
+
+              await boot();
+              return;
+            }
+          } catch (autoErr) {
+            console.warn("Automated MFA background setup fallback:", autoErr);
+          }
+
           const setup = await apiPost("/auth/mfa/setup", {
             body: {
               mfaSetupToken: error.data.mfaSetupToken,
