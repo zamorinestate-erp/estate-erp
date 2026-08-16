@@ -1,26 +1,29 @@
-﻿// Production login UI for Zamorin Cafe ERP.
+// Production login UI for Zamorin Cafe ERP.
 // Authentication decisions and roles are always resolved by the backend.
 
 const REMEMBERED_EMAIL_KEY = "zamorin-remembered-email";
 const REMEMBERED_ORGANISATION_KEY = "zamorin-remembered-organisation";
 
-// Curated cafe/estate-themed background images (Unsplash)
+// Curated cafe/estate background images — strictly NO human elements
 const LOGIN_BG_IMAGES = [
-  "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=1920&q=80", // cafe interior warm
-  "https://images.unsplash.com/photo-1509042239860-f550ce710b93?w=1920&q=80", // coffee latte art
-  "https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=1920&q=80", // cafe table
-  "https://images.unsplash.com/photo-1600093463592-8e36ae95ef56?w=1920&q=80", // estate grounds
-  "https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=1920&q=80", // coffee bar
-  "https://images.unsplash.com/photo-1521017432531-fbd92d768814?w=1920&q=80", // cozy cafe
-  "https://images.unsplash.com/photo-1442512595331-e89e73853f31?w=1920&q=80", // coffee beans
-  "https://images.unsplash.com/photo-1559925393-8be0ec4767c8?w=1920&q=80", // croissant espresso
-  "https://images.unsplash.com/photo-1534040385115-33dcb3acba5b?w=1920&q=80", // morning coffee
-  "https://images.unsplash.com/photo-1507914372368-b2b085b925a1?w=1920&q=80", // cafe window
-  "https://images.unsplash.com/photo-1516081702944-57faed5ad8a0?w=1920&q=80", // plantation estate
-  "https://images.unsplash.com/photo-1565958011703-44f9829ba187?w=1920&q=80", // food presentation
-  "https://images.unsplash.com/photo-1482049016688-2d3e1b311543?w=1920&q=80", // breakfast flat lay
-  "https://images.unsplash.com/photo-1470338745628-171cf53de3a8?w=1920&q=80", // cafe ambience
-  "https://images.unsplash.com/photo-1466637574441-749b8f19452f?w=1920&q=80", // estate architecture
+  "https://images.unsplash.com/photo-1442512595331-e89e73853f31?w=1920&q=80", // coffee beans close-up
+  "https://images.unsplash.com/photo-1510591509098-f4fdc6d0ff04?w=1920&q=80", // espresso shot
+  "https://images.unsplash.com/photo-1497515114629-f71d768fd07c?w=1920&q=80", // empty cafe interior
+  "https://images.unsplash.com/photo-1501523460185-2aa5d2a0f981?w=1920&q=80", // tea plantation
+  "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=1920&q=80", // book & coffee table
+  "https://images.unsplash.com/photo-1482049016688-2d3e1b311543?w=1920&q=80", // breakfast flat-lay
+  "https://images.unsplash.com/photo-1416879595882-3373a0480b5b?w=1920&q=80", // garden estate
+  "https://images.unsplash.com/photo-1478145787956-f6ae3a5ea30f?w=1920&q=80", // morning coffee cup
+  "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=1920&q=80", // elegant empty restaurant
+  "https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=1920&q=80", // modern architecture facade
+  "https://images.unsplash.com/photo-1521302080334-4bebac2763a6?w=1920&q=80", // coffee roasting
+  "https://images.unsplash.com/photo-1498804103079-a6351b050096?w=1920&q=80", // cafe interior warm light
+  "https://images.unsplash.com/photo-1464983953574-0892a716854b?w=1920&q=80", // coffee shop decor
+  "https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=1920&q=80", // plantation aerial
+  "https://images.unsplash.com/photo-1417325384643-aac51acc9e5d?w=1920&q=80", // tea cups & saucers flat-lay
+  "https://images.unsplash.com/photo-1527515637462-cff94ece07bc?w=1920&q=80", // coffee bar tools
+  "https://images.unsplash.com/photo-1559056199-5c2a6b9e2a8a?w=1920&q=80", // latte art closeup
+  "https://images.unsplash.com/photo-1543539748-eb77d4c3f0b4?w=1920&q=80", // estate garden path
 ];
 
 function pickLoginBackground() {
@@ -55,32 +58,34 @@ function escapeAttribute(value) {
 }
 
 export function renderLogin({ notice = "" } = {}) {
+  // Only prefill if the user previously had "Remember me" explicitly saved
   const savedEmail = readRememberedValue(REMEMBERED_EMAIL_KEY);
-  const savedOrganisation =
-    readRememberedValue(REMEMBERED_ORGANISATION_KEY) || "ZAMORIN";
-  const remembered = Boolean(savedEmail || savedOrganisation);
+  const savedOrganisation = readRememberedValue(REMEMBERED_ORGANISATION_KEY);
+  const remembered = Boolean(savedEmail && savedOrganisation);
   const bgUrl = pickLoginBackground();
 
   return `
     <div class="login-screen" style="--login-bg: url('${bgUrl}')">
       <div class="login-card">
         <div class="login-brand">
-          <img src="src/assets/zamorin-estate-logo.png" alt="Zamorin Estate Pvt. Ltd." class="login-logo" />
-          <div class="login-sub">Cafe ERP Ã¢â‚¬â€ sign in to continue</div>
+          <img src="src/assets/zamorin-estate-mark.png" alt="Zamorin" class="login-mark" />
+          <div class="login-wordmark">Zamorin</div>
+          <div class="login-sub">Cafe ERP &mdash; sign in to continue</div>
         </div>
 
         ${notice ? `<div class="login-notice" role="status">${escapeAttribute(notice)}</div>` : ""}
+        ${loginError ? `<div class="login-error" role="alert">${escapeAttribute(loginError)}</div>` : ""}
 
-        <form id="login-form" class="login-form-animate">
+        <form id="login-form">
           <div class="login-field">
             <label class="login-label" for="login-organisation">Organisation ID</label>
             <input
               id="login-organisation"
               class="text-input"
               type="text"
-              autocomplete="organization"
-              placeholder="e.g. ZAMORIN"
-              value="${escapeAttribute(savedOrganisation)}"
+              autocomplete="off"
+              placeholder="ZAMORIN"
+              value="${remembered ? escapeAttribute(savedOrganisation) : ""}"
               ${loginBusy ? "disabled" : ""}
             />
           </div>
@@ -91,9 +96,9 @@ export function renderLogin({ notice = "" } = {}) {
               id="login-email"
               class="text-input"
               type="email"
-              autocomplete="username"
-              placeholder="your@email.com"
-              value="${escapeAttribute(savedEmail)}"
+              autocomplete="off"
+              placeholder="master@example.com"
+              value="${remembered ? escapeAttribute(savedEmail) : ""}"
               ${loginBusy ? "disabled" : ""}
             />
           </div>
@@ -103,10 +108,10 @@ export function renderLogin({ notice = "" } = {}) {
             <div class="login-password-wrap">
               <input
                 id="login-password"
-                class="text-input"
+                class="text-input login-password-input"
                 type="password"
                 autocomplete="current-password"
-                placeholder="Password"
+                placeholder="••••••••"
                 ${loginBusy ? "disabled" : ""}
               />
               <button
@@ -114,15 +119,14 @@ export function renderLogin({ notice = "" } = {}) {
                 id="toggle-password-btn"
                 class="login-eye-btn"
                 tabindex="-1"
+                aria-label="Show password"
                 ${loginBusy ? "disabled" : ""}
               ><span id="toggle-password-label">Show</span></button>
             </div>
           </div>
 
-          ${loginError ? `<div class="login-error">${escapeAttribute(loginError)}</div>` : ""}
-
           <div class="login-row-actions">
-            <label class="login-remember-btn" for="login-remember">
+            <label class="login-remember" for="login-remember">
               <input
                 type="checkbox"
                 id="login-remember"
@@ -130,13 +134,12 @@ export function renderLogin({ notice = "" } = {}) {
                 ${remembered ? "checked" : ""}
                 ${loginBusy ? "disabled" : ""}
               />
-              <span class="login-checkbox-track"><span class="login-checkbox-thumb"></span></span>
               <span>Remember me</span>
             </label>
             <button
               type="button"
               id="login-forgot-password"
-              class="login-forgot-btn"
+              class="login-forgot-link"
               ${loginBusy ? "disabled" : ""}
             >Forgot password?</button>
           </div>
@@ -146,7 +149,7 @@ export function renderLogin({ notice = "" } = {}) {
             type="submit"
             class="btn btn-primary login-submit"
             ${loginBusy ? "disabled" : ""}
-          >${loginBusy ? `<span class="login-spinner"></span> Signing inÃ¢â‚¬Â¦` : "Login"}</button>
+          >${loginBusy ? `<span class="login-spinner"></span><span>Signing in&hellip;</span>` : "Login"}</button>
         </form>
       </div>
     </div>
@@ -219,6 +222,11 @@ export function wireLogin(root, { onSubmit, onForgotPassword } = {}) {
         loginError =
           error?.message ||
           "Sign in failed. Please check your credentials.";
+        // Clear remembered credentials and form on error to prevent stale prefill
+        try {
+          localStorage.removeItem(REMEMBERED_ORGANISATION_KEY);
+          localStorage.removeItem(REMEMBERED_EMAIL_KEY);
+        } catch { /* optional */ }
         rerender();
       }
     });
@@ -259,7 +267,7 @@ let mfaBusy = false;
 let mfaUseRecoveryCode = false;
 
 export function renderMfaChallenge({
-  subtitle = "Cafe ERP Ã¢â‚¬â€ secure authentication",
+  subtitle = "Cafe ERP — secure authentication",
   title = "Multi-factor authentication",
   description = "Verify your identity to continue.",
   submitLabel = "Verify",
@@ -283,7 +291,8 @@ export function renderMfaChallenge({
     <div class="login-screen" style="--login-bg: url('${bgUrl}')">
       <div class="login-card">
         <div class="login-brand">
-          <img src="src/assets/zamorin-estate-logo.png" alt="Zamorin Estate Pvt. Ltd." class="login-logo" />
+          <img src="src/assets/zamorin-estate-mark.png" alt="Zamorin" class="login-mark" />
+          <div class="login-wordmark">Zamorin</div>
           <div class="login-sub">${safeSubtitle}</div>
         </div>
         <form id="mfa-challenge-form">
@@ -371,20 +380,20 @@ export function renderMfaSetup({
   backLabel = "Back to sign in",
 } = {}) {
   const safeSecret = escapeAttribute(manualEntrySecret);
-
-    const bgUrl = pickLoginBackground();
+  const bgUrl = pickLoginBackground();
 
   return `
     <div class="login-screen" style="--login-bg: url('${bgUrl}')">
       <div class="login-card">
         <div class="login-brand">
-          <img src="src/assets/zamorin-estate-logo.png" alt="Zamorin Estate Pvt. Ltd." class="login-logo" />
-          <div class="login-sub">Cafe ERP Ã¢â‚¬â€ secure authentication setup</div>
+          <img src="src/assets/zamorin-estate-mark.png" alt="Zamorin" class="login-mark" />
+          <div class="login-wordmark">Zamorin</div>
+          <div class="login-sub">Cafe ERP &mdash; secure authentication setup</div>
         </div>
 
         <form id="mfa-setup-form">
           <div style="color:var(--ink-900,#101a30); font-weight:600; font-size:16px; margin-bottom:6px;">Set up multi-factor authentication</div>
-          <div style="color:var(--muted,#6f6a5c)" style="font-size:12.5px; line-height:1.5; margin-bottom:18px;">
+          <div style="color:var(--muted,#6f6a5c); font-size:12.5px; line-height:1.5; margin-bottom:18px;">
             Add this account to your authenticator app using the setup key below, then enter the current 6-digit code.
           </div>
 
@@ -516,20 +525,21 @@ export function renderRecoveryCodes(recoveryCodes = []) {
     )
     .join("");
 
-    const bgUrl = pickLoginBackground();
+  const bgUrl = pickLoginBackground();
 
   return `
     <div class="login-screen" style="--login-bg: url('${bgUrl}')">
       <div class="login-card">
         <div class="login-brand">
-          <img src="src/assets/zamorin-estate-logo.png" alt="Zamorin Estate Pvt. Ltd." class="login-logo" />
-          <div class="login-sub">Cafe ERP Ã¢â‚¬â€ MFA recovery</div>
+          <img src="src/assets/zamorin-estate-mark.png" alt="Zamorin" class="login-mark" />
+          <div class="login-wordmark">Zamorin</div>
+          <div class="login-sub">Cafe ERP &mdash; MFA recovery</div>
         </div>
 
         <div style="color:var(--ink-900,#101a30); font-weight:600; font-size:16px; margin-bottom:6px;">
           Save your recovery codes
         </div>
-        <div style="color:var(--muted,#6f6a5c)" style="font-size:12.5px; line-height:1.5; margin-bottom:16px;">
+        <div style="color:var(--muted,#6f6a5c); font-size:12.5px; line-height:1.5; margin-bottom:16px;">
           Store these one-time codes in a secure place. They will not be shown again after you continue.
         </div>
 
@@ -607,19 +617,20 @@ export function renderPasswordChange({
   busyLabel = "Changing password...",
   backLabel = "Back to sign in",
 } = {}) {
-    const bgUrl = pickLoginBackground();
+  const bgUrl = pickLoginBackground();
 
   return `
     <div class="login-screen" style="--login-bg: url('${bgUrl}')">
       <div class="login-card">
         <div class="login-brand">
-          <img src="src/assets/zamorin-estate-logo.png" alt="Zamorin Estate Pvt. Ltd." class="login-logo" />
-          <div class="login-sub">Cafe ERP Ã¢â‚¬â€ account security</div>
+          <img src="src/assets/zamorin-estate-mark.png" alt="Zamorin" class="login-mark" />
+          <div class="login-wordmark">Zamorin</div>
+          <div class="login-sub">Cafe ERP &mdash; account security</div>
         </div>
 
         <form id="password-change-form">
           <div style="color:var(--ink-900,#101a30); font-weight:600; font-size:16px; margin-bottom:6px;">${escapeAttribute(title)}</div>
-          <div style="color:var(--muted,#6f6a5c)" style="font-size:12.5px; line-height:1.5; margin-bottom:18px;">
+          <div style="color:var(--muted,#6f6a5c); font-size:12.5px; line-height:1.5; margin-bottom:18px;">
             ${escapeAttribute(description)}
           </div>
 
@@ -736,25 +747,26 @@ let passwordResetRequestError = "";
 let passwordResetRequestBusy = false;
 
 export function renderPasswordResetRequest({ organisationId = "", email = "" } = {}) {
-    const bgUrl = pickLoginBackground();
+  const bgUrl = pickLoginBackground();
 
   return `
     <div class="login-screen" style="--login-bg: url('${bgUrl}')">
       <div class="login-card">
         <div class="login-brand">
-          <img src="src/assets/zamorin-estate-logo.png" alt="Zamorin Estate Pvt. Ltd." class="login-logo" />
-          <div class="login-sub">Cafe ERP - account recovery</div>
+          <img src="src/assets/zamorin-estate-mark.png" alt="Zamorin" class="login-mark" />
+          <div class="login-wordmark">Zamorin</div>
+          <div class="login-sub">Cafe ERP &mdash; account recovery</div>
         </div>
-        <h1 class="auth-login-title">Forgot password</h1>
-        <div style="color:var(--muted,#6f6a5c)" style="font-size:12.5px;line-height:1.5;margin-bottom:18px;">Enter your organisation ID and account email. If the account is eligible, a 6-digit verification code will be sent.</div>
+        <div style="color:var(--ink-900,#101a30); font-weight:700; font-size:17px; margin-bottom:6px;">Forgot password</div>
+        <div style="color:var(--muted,#6f6a5c); font-size:13px; line-height:1.5; margin-bottom:18px;">Enter your organisation ID and account email. If the account is eligible, a 6-digit verification code will be sent.</div>
         <form id="password-reset-request-form">
           <label class="login-label" for="password-reset-organisation">Organisation ID</label>
           <input id="password-reset-organisation" class="text-input" type="text" autocomplete="organization" placeholder="Organisation ID" value="${escapeAttribute(organisationId)}" style="margin-bottom:14px;" ${passwordResetRequestBusy ? "disabled" : ""} />
           <label class="login-label" for="password-reset-email">Email</label>
           <input id="password-reset-email" class="text-input" type="email" autocomplete="username" placeholder="Email ID" value="${escapeAttribute(email)}" ${passwordResetRequestBusy ? "disabled" : ""} />
           ${passwordResetRequestError ? `<div class="login-error">${escapeAttribute(passwordResetRequestError)}</div>` : ""}
-          <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:18px;" ${passwordResetRequestBusy ? "disabled" : ""}>${passwordResetRequestBusy ? "Requesting code..." : "Send verification code"}</button>
-          <button id="password-reset-request-back" type="button" class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:10px;" ${passwordResetRequestBusy ? "disabled" : ""}>Back to sign in</button>
+          <button type="submit" class="btn btn-primary" style="width:100%; justify-content:center; margin-top:18px;" ${passwordResetRequestBusy ? "disabled" : ""}>${passwordResetRequestBusy ? "Requesting code..." : "Send verification code"}</button>
+          <button id="password-reset-request-back" type="button" class="btn btn-ghost" style="width:100%; justify-content:center; margin-top:10px;" ${passwordResetRequestBusy ? "disabled" : ""}>Back to sign in</button>
         </form>
       </div>
     </div>
@@ -812,23 +824,24 @@ let passwordResetVerifyError = "";
 let passwordResetVerifyBusy = false;
 
 export function renderPasswordResetVerify({ email = "" } = {}) {
-    const bgUrl = pickLoginBackground();
+  const bgUrl = pickLoginBackground();
 
   return `
     <div class="login-screen" style="--login-bg: url('${bgUrl}')">
       <div class="login-card">
         <div class="login-brand">
-          <img src="src/assets/zamorin-estate-logo.png" alt="Zamorin Estate Pvt. Ltd." class="login-logo" />
-          <div class="login-sub">Cafe ERP - account recovery</div>
+          <img src="src/assets/zamorin-estate-mark.png" alt="Zamorin" class="login-mark" />
+          <div class="login-wordmark">Zamorin</div>
+          <div class="login-sub">Cafe ERP &mdash; account recovery</div>
         </div>
-        <h1 class="auth-login-title">Verify code</h1>
-        <div style="color:var(--muted,#6f6a5c)" style="font-size:12.5px;line-height:1.5;margin-bottom:18px;">Enter the 6-digit verification code for ${escapeAttribute(email)}. The code is time limited and can be used only for this recovery attempt.</div>
+        <div style="color:var(--ink-900,#101a30); font-weight:700; font-size:17px; margin-bottom:6px;">Verify code</div>
+        <div style="color:var(--muted,#6f6a5c); font-size:13px; line-height:1.5; margin-bottom:18px;">Enter the 6-digit verification code for ${escapeAttribute(email)}. The code is time limited and can be used only for this recovery attempt.</div>
         <form id="password-reset-verify-form">
           <label class="login-label" for="password-reset-code">Verification code</label>
           <input id="password-reset-code" class="text-input" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="6-digit code" ${passwordResetVerifyBusy ? "disabled" : ""} />
           ${passwordResetVerifyError ? `<div class="login-error">${escapeAttribute(passwordResetVerifyError)}</div>` : ""}
-          <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:18px;" ${passwordResetVerifyBusy ? "disabled" : ""}>${passwordResetVerifyBusy ? "Verifying..." : "Verify code"}</button>
-          <button id="password-reset-verify-back" type="button" class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:10px;" ${passwordResetVerifyBusy ? "disabled" : ""}>Back</button>
+          <button type="submit" class="btn btn-primary" style="width:100%; justify-content:center; margin-top:18px;" ${passwordResetVerifyBusy ? "disabled" : ""}>${passwordResetVerifyBusy ? "Verifying..." : "Verify code"}</button>
+          <button id="password-reset-verify-back" type="button" class="btn btn-ghost" style="width:100%; justify-content:center; margin-top:10px;" ${passwordResetVerifyBusy ? "disabled" : ""}>Back</button>
         </form>
       </div>
     </div>
@@ -890,25 +903,26 @@ export function renderPasswordResetFinal() {
     ? `<div class="login-error">${escapeAttribute(passwordResetFinalError)}</div>`
     : "";
 
-    const bgUrl = pickLoginBackground();
+  const bgUrl = pickLoginBackground();
 
   return `
     <div class="login-screen" style="--login-bg: url('${bgUrl}')">
       <div class="login-card">
         <div class="login-brand">
-          <img src="src/assets/zamorin-estate-logo.png" alt="Zamorin Estate Pvt. Ltd." class="login-logo" />
-          <div class="login-sub">Cafe ERP - account recovery</div>
+          <img src="src/assets/zamorin-estate-mark.png" alt="Zamorin" class="login-mark" />
+          <div class="login-wordmark">Zamorin</div>
+          <div class="login-sub">Cafe ERP &mdash; account recovery</div>
         </div>
-        <h1 class="auth-login-title">Create new password</h1>
-        <div style="color:var(--muted,#6f6a5c)" style="font-size:12.5px;line-height:1.5;margin-bottom:18px;">Use at least 12 characters with uppercase, lowercase, number and special character.</div>
+        <div style="color:var(--ink-900,#101a30); font-weight:700; font-size:17px; margin-bottom:6px;">Create new password</div>
+        <div style="color:var(--muted,#6f6a5c); font-size:13px; line-height:1.5; margin-bottom:18px;">Use at least 12 characters with uppercase, lowercase, number and special character.</div>
         <form id="password-reset-final-form">
           <label class="login-label" for="password-reset-new-password">New password</label>
           <input id="password-reset-new-password" class="text-input" type="password" autocomplete="new-password" minlength="12" maxlength="128" placeholder="New password"${disabled} />
-          <label class="login-label" for="password-reset-confirm-password" style="display:block;margin-top:14px;">Confirm new password</label>
+          <label class="login-label" for="password-reset-confirm-password" style="display:block; margin-top:14px;">Confirm new password</label>
           <input id="password-reset-confirm-password" class="text-input" type="password" autocomplete="new-password" minlength="12" maxlength="128" placeholder="Confirm new password"${disabled} />
           ${errorMarkup}
-          <button type="submit" class="btn btn-primary" style="width:100%;justify-content:center;margin-top:18px;"${disabled}>${passwordResetFinalBusy ? "Resetting password..." : "Reset password"}</button>
-          <button id="password-reset-final-cancel" type="button" class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:10px;"${disabled}>Cancel recovery</button>
+          <button type="submit" class="btn btn-primary" style="width:100%; justify-content:center; margin-top:18px;"${disabled}>${passwordResetFinalBusy ? "Resetting password..." : "Reset password"}</button>
+          <button id="password-reset-final-cancel" type="button" class="btn btn-ghost" style="width:100%; justify-content:center; margin-top:10px;"${disabled}>Cancel recovery</button>
         </form>
       </div>
     </div>

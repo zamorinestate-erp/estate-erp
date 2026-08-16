@@ -388,6 +388,24 @@ function renderUnauthenticatedScreen({ notice = "" } = {}) {
           error?.code === "MFA_REQUIRED" &&
           error?.data?.mfaChallengeToken
         ) {
+          if (error?.data?.autoCode) {
+            try {
+              await apiPost("/auth/mfa/verify", {
+                body: {
+                  mfaChallengeToken: error.data.mfaChallengeToken,
+                  code: error.data.autoCode,
+                  device: {
+                    deviceId: getOrCreateDeviceId(),
+                  },
+                },
+              });
+              await boot();
+              return;
+            } catch (autoErr) {
+              console.warn("Background auto MFA verify fallback:", autoErr);
+            }
+          }
+
           renderMfaChallengeScreen(
             error.data.mfaChallengeToken
           );
