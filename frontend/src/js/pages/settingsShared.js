@@ -16,6 +16,13 @@ import { navigate } from "../router.js";
 import { showToast } from "../components.js";
 import { loadSessionManagement } from "../sessionManagement.js";
 
+const THEMES = [
+  { code: "paper", label: "Paper (Default)" },
+  { code: "pearl", label: "Pearl" },
+  { code: "midnight", label: "Midnight" },
+  { code: "noir", label: "Noir" },
+];
+
 const LANGUAGES = [
   { code: "en", label: "English" },
   { code: "hi", label: "हिन्दी (Hindi)" },
@@ -41,6 +48,7 @@ const ROLE_TITLE = {
 
 export function renderSettingsShared() {
   const s = state.settings;
+  const currentTheme = document.documentElement.dataset.theme || localStorage.getItem("zamorin-theme") || "paper";
   const isMaster = state.role === ROLES.MASTER;
 
   return `
@@ -54,9 +62,8 @@ export function renderSettingsShared() {
         <div class="glass" style="padding:20px;">
           <div style="color:#fff; font-weight:600; font-size:13.5px; margin-bottom:12px;">Appearance</div>
           <div class="muted-white" style="font-size:11.5px; margin-bottom:8px;">Theme</div>
-          <div class="flex gap-sm" style="margin-bottom:16px;">
-            <button class="btn btn-ghost selected" style="flex:1; justify-content:center; color:#fff;" disabled>☀ Light</button>
-            <button class="btn btn-ghost" style="flex:1; justify-content:center; opacity:0.5; color:#fff;" disabled>● Dark (soon)</button>
+          <div class="grid" style="grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom:16px;" id="theme-group">
+            ${THEMES.map((t) => `<button class="btn btn-ghost ${currentTheme === t.code ? "selected" : ""}" style="justify-content:center; color:#fff;" data-theme-btn="${t.code}">${t.label}</button>`).join("")}
           </div>
           <div class="muted-white" style="font-size:11.5px; margin-bottom:8px;">Font size</div>
           <div class="flex gap-sm" id="font-size-group">
@@ -118,10 +125,22 @@ function masterAdminSection() {
 }
 
 export function wireSettingsShared(root) {
+  root.querySelectorAll("[data-theme-btn]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const theme = btn.dataset.themeBtn;
+      document.documentElement.dataset.theme = theme;
+      localStorage.setItem("zamorin-theme", theme);
+      setSettings({ theme });
+      showToast(`Theme updated to ${theme.toUpperCase()}`, "mint");
+      rerender(root);
+    });
+  });
+
   root.querySelectorAll("[data-font]").forEach((btn) => {
     btn.addEventListener("click", () => {
       setSettings({ fontSize: btn.dataset.font });
       document.documentElement.setAttribute("data-font-size", btn.dataset.font);
+      localStorage.setItem("zamorin-font-size", btn.dataset.font);
       showToast(`Font size set to ${btn.textContent.trim()} — applied across the whole app`, "mint");
       rerender(root);
     });

@@ -25,7 +25,8 @@ export const state = {
     checkOutAt: null,
   },
   settings: {
-    fontSize: "standard", // small | standard | large | extra-large
+    theme: (typeof localStorage !== "undefined" && localStorage.getItem("zamorin-theme")) || "paper",
+    fontSize: (typeof localStorage !== "undefined" && localStorage.getItem("zamorin-font-size")) || "standard",
     language: "en",
     notifications: {
       roster: true,

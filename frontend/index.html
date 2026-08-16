@@ -15,6 +15,14 @@
   <link rel="stylesheet" href="/src/styles/tokens.css?v=2.0.1" />
   <link rel="stylesheet" href="/src/styles/zamorin.css?v=2.0.1" />
   <script>
+    (function() {
+      try {
+        const savedTheme = localStorage.getItem('zamorin-theme') || 'paper';
+        document.documentElement.dataset.theme = savedTheme;
+        const savedFontSize = localStorage.getItem('zamorin-font-size') || 'standard';
+        document.documentElement.dataset.fontSize = savedFontSize;
+      } catch (e) {}
+    })();
     window.ZAMORIN_API_BASE_URL =
       (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
         ? ('http://' + window.location.hostname + ':4000/api/v1')

@@ -376,6 +376,10 @@ function renderUnauthenticatedScreen({ notice = "" } = {}) {
 
 async function boot() {
   document.documentElement.setAttribute(
+    "data-theme",
+    state.settings.theme
+  );
+  document.documentElement.setAttribute(
     "data-font-size",
     state.settings.fontSize
   );

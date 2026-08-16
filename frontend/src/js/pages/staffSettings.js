@@ -8,6 +8,13 @@ import { state, setSettings } from "../state.js";
 import { showToast } from "../components.js";
 import { loadSessionManagement } from "../sessionManagement.js";
 
+const THEMES = [
+  { code: "paper", label: "Paper (Default)" },
+  { code: "pearl", label: "Pearl" },
+  { code: "midnight", label: "Midnight" },
+  { code: "noir", label: "Noir" },
+];
+
 const LANGUAGES = [
   { code: "en", label: "English" },
   { code: "hi", label: "हिन्दी (Hindi)" },
@@ -23,6 +30,7 @@ const FONT_SIZES = [
 
 export function renderStaffSettings() {
   const s = state.settings;
+  const currentTheme = document.documentElement.dataset.theme || localStorage.getItem("zamorin-theme") || "paper";
   return `
     <div class="page-enter" style="padding:8px 4px;">
       <div class="flex items-center gap-md" style="margin-bottom:24px;">
@@ -31,9 +39,10 @@ export function renderStaffSettings() {
 
       <div class="glass" style="padding:18px; margin-bottom:14px;">
         <div style="color:#fff; font-weight:600; font-size:13.5px; margin-bottom:12px;">Theme</div>
-        <div class="flex gap-sm">
-          <button class="btn btn-ghost selected" style="flex:1; justify-content:center;" disabled>☀ Light</button>
-          <button class="btn btn-ghost" style="flex:1; justify-content:center; opacity:0.5;" disabled>● Dark (soon)</button>
+        <div class="grid" style="grid-template-columns: repeat(2, 1fr); gap: 8px;" id="theme-group">
+          ${THEMES.map(
+            (t) => `<button class="btn btn-ghost ${currentTheme === t.code ? "selected" : ""}" style="justify-content:center; color:#fff;" data-theme-btn="${t.code}">${t.label}</button>`
+          ).join("")}
         </div>
       </div>
 
@@ -89,10 +98,22 @@ function notificationRow(key, label, on) {
 }
 
 export function wireStaffSettings(root) {
+  root.querySelectorAll("[data-theme-btn]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const theme = btn.dataset.themeBtn;
+      document.documentElement.dataset.theme = theme;
+      localStorage.setItem("zamorin-theme", theme);
+      setSettings({ theme });
+      showToast(`Theme updated to ${theme.toUpperCase()}`, "mint");
+      rerenderSettingsOnly(root);
+    });
+  });
+
   root.querySelectorAll("[data-font]").forEach((btn) => {
     btn.addEventListener("click", () => {
       setSettings({ fontSize: btn.dataset.font });
       document.documentElement.setAttribute("data-font-size", btn.dataset.font);
+      localStorage.setItem("zamorin-font-size", btn.dataset.font);
       showToast(`Font size set to ${btn.textContent.trim()}`, "mint");
       rerenderSettingsOnly(root);
     });
