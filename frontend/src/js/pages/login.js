@@ -30,13 +30,13 @@ export function renderLogin({ notice = "" } = {}) {
   const remembered = Boolean(savedEmail || savedOrganisation);
 
   return `
-    <div class="login-screen" style="--auth-background:url(https://picsum.photos/seed/zamorin-fallback-01/3840/2160)">
+    <div class="login-screen">
       <div class="login-card glass-dark">
         <div class="login-brand">
-          <img src="src/assets/zamorin-logo-horizontal.svg" alt="Zamorin Estate Pvt. Ltd." class="login-brand-logo" />
+          <img src="src/assets/zamorin-estate-mark.png" alt="Zamorin" class="login-mark" />
+          <div class="login-wordmark font-display">Zamorin</div>
           <div class="login-sub">Cafe ERP — sign in to continue</div>
         </div>
-        <h1 class="auth-login-title">Login</h1>
 
         ${notice ? `<div class="login-notice" role="status">${escapeAttribute(notice)}</div>` : ""}
 
@@ -240,10 +240,11 @@ export function renderMfaChallenge({
   const safeBackLabel = escapeAttribute(backLabel);
 
   return `
-    <div class="login-screen" style="--auth-background:url(https://picsum.photos/seed/zamorin-fallback-01/3840/2160)">
+    <div class="login-screen">
       <div class="login-card glass-dark">
         <div class="login-brand">
-          <img src="src/assets/zamorin-logo-horizontal.svg" alt="Zamorin Estate Pvt. Ltd." class="login-brand-logo" />
+          <img src="src/assets/zamorin-estate-mark.png" alt="Zamorin" class="login-mark" />
+          <div class="login-wordmark font-display">Zamorin</div>
           <div class="login-sub">${safeSubtitle}</div>
         </div>
         <form id="mfa-challenge-form">
@@ -333,10 +334,11 @@ export function renderMfaSetup({
   const safeSecret = escapeAttribute(manualEntrySecret);
 
   return `
-    <div class="login-screen" style="--auth-background:url(https://picsum.photos/seed/zamorin-fallback-01/3840/2160)">
+    <div class="login-screen">
       <div class="login-card glass-dark">
         <div class="login-brand">
-          <img src="src/assets/zamorin-logo-horizontal.svg" alt="Zamorin Estate Pvt. Ltd." class="login-brand-logo" />
+          <img src="src/assets/zamorin-estate-mark.png" alt="Zamorin" class="login-mark" />
+          <div class="login-wordmark font-display">Zamorin</div>
           <div class="login-sub">Cafe ERP — secure authentication setup</div>
         </div>
 
@@ -475,10 +477,11 @@ export function renderRecoveryCodes(recoveryCodes = []) {
     .join("");
 
   return `
-    <div class="login-screen" style="--auth-background:url(https://picsum.photos/seed/zamorin-fallback-01/3840/2160)">
+    <div class="login-screen">
       <div class="login-card glass-dark">
         <div class="login-brand">
-          <img src="src/assets/zamorin-logo-horizontal.svg" alt="Zamorin Estate Pvt. Ltd." class="login-brand-logo" />
+          <img src="src/assets/zamorin-estate-mark.png" alt="Zamorin" class="login-mark" />
+          <div class="login-wordmark font-display">Zamorin</div>
           <div class="login-sub">Cafe ERP — MFA recovery</div>
         </div>
 
@@ -564,10 +567,11 @@ export function renderPasswordChange({
   backLabel = "Back to sign in",
 } = {}) {
   return `
-    <div class="login-screen" style="--auth-background:url(https://picsum.photos/seed/zamorin-fallback-01/3840/2160)">
+    <div class="login-screen">
       <div class="login-card glass-dark">
         <div class="login-brand">
-          <img src="src/assets/zamorin-logo-horizontal.svg" alt="Zamorin Estate Pvt. Ltd." class="login-brand-logo" />
+          <img src="src/assets/zamorin-estate-mark.png" alt="Zamorin" class="login-mark" />
+          <div class="login-wordmark font-display">Zamorin</div>
           <div class="login-sub">Cafe ERP — account security</div>
         </div>
 
@@ -691,10 +695,11 @@ let passwordResetRequestBusy = false;
 
 export function renderPasswordResetRequest({ organisationId = "", email = "" } = {}) {
   return `
-    <div class="login-screen" style="--auth-background:url(https://picsum.photos/seed/zamorin-fallback-01/3840/2160)">
+    <div class="login-screen">
       <div class="login-card glass-dark">
         <div class="login-brand">
-          <img src="src/assets/zamorin-logo-horizontal.svg" alt="Zamorin Estate Pvt. Ltd." class="login-brand-logo" />
+          <img src="src/assets/zamorin-estate-mark.png" alt="Zamorin" class="login-mark" />
+          <div class="login-wordmark font-display">Zamorin</div>
           <div class="login-sub">Cafe ERP - account recovery</div>
         </div>
         <h1 class="auth-login-title">Forgot password</h1>
@@ -765,10 +770,11 @@ let passwordResetVerifyBusy = false;
 
 export function renderPasswordResetVerify({ email = "" } = {}) {
   return `
-    <div class="login-screen" style="--auth-background:url(https://picsum.photos/seed/zamorin-fallback-01/3840/2160)">
+    <div class="login-screen">
       <div class="login-card glass-dark">
         <div class="login-brand">
-          <img src="src/assets/zamorin-logo-horizontal.svg" alt="Zamorin Estate Pvt. Ltd." class="login-brand-logo" />
+          <img src="src/assets/zamorin-estate-mark.png" alt="Zamorin" class="login-mark" />
+          <div class="login-wordmark font-display">Zamorin</div>
           <div class="login-sub">Cafe ERP - account recovery</div>
         </div>
         <h1 class="auth-login-title">Verify code</h1>
@@ -841,10 +847,11 @@ export function renderPasswordResetFinal() {
     : "";
 
   return `
-    <div class="login-screen" style="--auth-background:url(https://picsum.photos/seed/zamorin-fallback-01/3840/2160)">
+    <div class="login-screen">
       <div class="login-card glass-dark">
         <div class="login-brand">
-          <img src="src/assets/zamorin-logo-horizontal.svg" alt="Zamorin Estate Pvt. Ltd." class="login-brand-logo" />
+          <img src="src/assets/zamorin-estate-mark.png" alt="Zamorin" class="login-mark" />
+          <div class="login-wordmark font-display">Zamorin</div>
           <div class="login-sub">Cafe ERP - account recovery</div>
         </div>
         <h1 class="auth-login-title">Create new password</h1>
