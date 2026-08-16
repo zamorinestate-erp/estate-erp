@@ -117,6 +117,19 @@ const TEMPLATES = {
       </table>
     `,
   },
+  CAFE_CLOSING_CONTROL: {
+    subject: '[ZAMORIN][OPERATIONS] Cafe Closing Control: {{cafeId}} - {{status}}',
+    heading: 'Cafe Closing Control Report',
+    bodyText: 'Cafe: {{cafeId}}\nStatus: {{status}}\nRegisters: {{cashierStatus}}\nIncidents: {{incidentStatus}}',
+    bodyHtml: `
+      <p style="font-weight: bold; font-size: 16px;">CAFE CLOSING CONTROL REPORT: {{cafeId}}</p>
+      <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+        <tr><td style="padding: 6px; color: #888;">Status:</td><td style="padding: 6px; font-weight: bold;">{{status}}</td></tr>
+        <tr><td style="padding: 6px; color: #888;">Register Reconciliation:</td><td style="padding: 6px;">{{cashierStatus}}</td></tr>
+        <tr><td style="padding: 6px; color: #888;">Security & Incidents:</td><td style="padding: 6px;">{{incidentStatus}}</td></tr>
+      </table>
+    `,
+  },
   EXECUTIVE_EXCEPTION_DIGEST: {
     subject: '[ZAMORIN][EXECUTIVE] Daily Control Digest - {{date}}',
     heading: 'Executive Control Digest',

@@ -49,19 +49,80 @@ class OperationalReportService {
       cashStatus: 'Opening Cash Float Initialized',
     };
 
+    // Routine opening report goes to the cafe's CAFE_ADMIN.
+    // Primary Master is notified ONLY if an abnormal/attention-required condition exists.
+    const recipientRoles = isReady ? ['CAFE_ADMIN'] : ['CAFE_ADMIN', 'MASTER'];
+
     await notificationService.publishNotification({
       eventType: 'CAFE_OPENING_READINESS',
       organisationId,
       cafeId,
-      recipientRoles: ['CAFE_ADMIN', 'MASTER'],
+      recipientRoles,
+      includePrimaryMaster: !isReady,
       severity: isReady ? 'INFO' : 'WARNING',
       priority: isReady ? 'NORMAL' : 'HIGH',
       templateId: 'CAFE_OPENING_READINESS',
-      templateData: reportData,
+      templateData: {
+        ...reportData,
+        awaitOutboxProcessing: true,
+      },
       idempotencyKey: `OPENING_READINESS_${cafeId}_${new Date().toISOString().slice(0, 10)}`,
     });
 
     return { cafeId, status, isReady };
+  }
+
+  /**
+   * Generates and dispatches Cafe Closing Control Report.
+   */
+  static async generateClosingControlReport(cafeId, organisationId = 'ZAMORIN') {
+    const cafe = await Cafe.findOne({ cafeId, organisationId });
+    if (!cafe) throw new Error(`Cafe ${cafeId} not found.`);
+
+    const openCashiers = await CashTransaction.countDocuments({
+      cafeId,
+      organisationId,
+      status: 'PENDING_RECONCILIATION',
+    });
+
+    const activeIncidents = await Incident.countDocuments({
+      organisationId,
+      affectedCafes: cafeId,
+      severity: { $in: ['P0', 'P1'] },
+      status: { $in: ['OPEN', 'ACKNOWLEDGED', 'INVESTIGATING'] },
+    });
+
+    const isCleanClose = openCashiers === 0 && activeIncidents === 0;
+    const status = isCleanClose ? 'BALANCED & SECURED' : 'VARIANCE / ATTENTION REQUIRED';
+
+    const reportData = {
+      cafeId,
+      status,
+      cashierStatus: openCashiers === 0 ? 'All Registers Reconciled' : `${openCashiers} Unreconciled Register(s)`,
+      incidentStatus: activeIncidents === 0 ? 'No Active P0/P1 Incidents' : `${activeIncidents} Active Incident(s)`,
+    };
+
+    // Routine closing report goes to CAFE_ADMIN.
+    // Primary Master is notified ONLY if an abnormal condition exists.
+    const recipientRoles = isCleanClose ? ['CAFE_ADMIN'] : ['CAFE_ADMIN', 'MASTER'];
+
+    await notificationService.publishNotification({
+      eventType: 'CAFE_CLOSING_CONTROL',
+      organisationId,
+      cafeId,
+      recipientRoles,
+      includePrimaryMaster: !isCleanClose,
+      severity: isCleanClose ? 'INFO' : 'WARNING',
+      priority: isCleanClose ? 'NORMAL' : 'HIGH',
+      templateId: 'CAFE_CLOSING_CONTROL',
+      templateData: {
+        ...reportData,
+        awaitOutboxProcessing: true,
+      },
+      idempotencyKey: `CLOSING_CONTROL_${cafeId}_${new Date().toISOString().slice(0, 10)}`,
+    });
+
+    return { cafeId, status, isCleanClose };
   }
 
   /**
@@ -108,6 +169,7 @@ class OperationalReportService {
         date: dateStr,
         summary,
         exceptionDetails,
+        awaitOutboxProcessing: true,
       },
       idempotencyKey: `EXEC_EXCEPTION_${dateStr}`,
     });

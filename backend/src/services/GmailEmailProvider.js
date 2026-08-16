@@ -20,11 +20,67 @@ class GmailEmailProvider extends EmailProvider {
     super('GMAIL_API');
     this.operationsEmail = config.operationsEmail || 'zamorinestatepvtltd.erp@gmail.com';
     this.accessToken = config.accessToken || process.env.GMAIL_API_ACCESS_TOKEN || null;
+    this.refreshToken = config.refreshToken || process.env.GMAIL_REFRESH_TOKEN || null;
     this.clientId = config.clientId || process.env.GOOGLE_OAUTH_CLIENT_ID || null;
+    this.clientSecret = config.clientSecret || process.env.GOOGLE_OAUTH_CLIENT_SECRET || null;
+    this.tokenExpiresAt = 0;
   }
 
   isConfigured() {
-    return Boolean(this.accessToken || (process.env.GMAIL_API_ACCESS_TOKEN));
+    return Boolean(
+      this.accessToken ||
+      process.env.GMAIL_API_ACCESS_TOKEN ||
+      (this.refreshToken && this.clientId && this.clientSecret) ||
+      (process.env.GMAIL_REFRESH_TOKEN && process.env.GOOGLE_OAUTH_CLIENT_ID && process.env.GOOGLE_OAUTH_CLIENT_SECRET)
+    );
+  }
+
+  /**
+   * Retrieves a valid OAuth2 access token, refreshing if necessary.
+   */
+  async getValidAccessToken() {
+    if (this.accessToken && Date.now() < this.tokenExpiresAt) {
+      return this.accessToken;
+    }
+
+    if (process.env.GMAIL_API_ACCESS_TOKEN) {
+      return process.env.GMAIL_API_ACCESS_TOKEN;
+    }
+
+    const refreshToken = this.refreshToken || process.env.GMAIL_REFRESH_TOKEN;
+    const clientId = this.clientId || process.env.GOOGLE_OAUTH_CLIENT_ID;
+    const clientSecret = this.clientSecret || process.env.GOOGLE_OAUTH_CLIENT_SECRET;
+
+    if (refreshToken && clientId && clientSecret) {
+      try {
+        const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            client_id: clientId,
+            client_secret: clientSecret,
+            refresh_token: refreshToken,
+            grant_type: 'refresh_token',
+          }),
+        });
+
+        if (!tokenRes.ok) {
+          const err = new Error(`OAuth token refresh failed with HTTP ${tokenRes.status}`);
+          err.code = 'OAUTH_REFRESH_FAILED';
+          throw err;
+        }
+
+        const tokenData = await tokenRes.json();
+        this.accessToken = tokenData.access_token;
+        this.tokenExpiresAt = Date.now() + ((tokenData.expires_in || 3600) - 300) * 1000;
+        return this.accessToken;
+      } catch (err) {
+        if (!err.code) err.code = 'OAUTH_REFRESH_NETWORK_ERROR';
+        throw err;
+      }
+    }
+
+    return null;
   }
 
   _buildRawRfc822({ to, from, replyTo, subject, html, text }) {
@@ -84,6 +140,7 @@ class GmailEmailProvider extends EmailProvider {
       throw error;
     }
 
+    const token = await this.getValidAccessToken();
     const rawBase64 = this._buildRawRfc822(options);
     const endpoint = options.isDraft
       ? 'https://gmail.googleapis.com/gmail/v1/users/me/drafts'
@@ -97,7 +154,7 @@ class GmailEmailProvider extends EmailProvider {
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${this.accessToken || process.env.GMAIL_API_ACCESS_TOKEN}`,
+          Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(payload),
@@ -123,6 +180,86 @@ class GmailEmailProvider extends EmailProvider {
     }
   }
 
+  /**
+   * Sets up or renews Gmail Push Watch via Google Cloud Pub/Sub topic.
+   */
+  async setupWatch(topicName) {
+    if (!this.isConfigured()) {
+      return {
+        success: false,
+        error: 'Gmail credentials not configured.',
+        status: 'AUTH_REQUIRED',
+      };
+    }
+
+    const token = await this.getValidAccessToken();
+    try {
+      const res = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/watch', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          topicName: topicName || process.env.GOOGLE_PUBSUB_TOPIC || 'projects/zamorin-cafe-erp/topics/gmail-inbound',
+          labelIds: ['INBOX'],
+        }),
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        return {
+          success: false,
+          status: 'WATCH_FAILED',
+          error: `HTTP ${res.status}: ${errText.substring(0, 150)}`,
+        };
+      }
+
+      const data = await res.json();
+      return {
+        success: true,
+        historyId: data.historyId,
+        expiration: data.expiration, // Timestamp in ms
+        status: 'ACTIVE',
+      };
+    } catch (err) {
+      return {
+        success: false,
+        status: 'WATCH_NETWORK_ERROR',
+        error: err.message,
+      };
+    }
+  }
+
+  /**
+   * Fetches missed messages since historyId for history reconciliation.
+   */
+  async fetchHistory(startHistoryId) {
+    if (!this.isConfigured() || !startHistoryId) {
+      return { history: [], nextHistoryId: startHistoryId };
+    }
+
+    const token = await this.getValidAccessToken();
+    try {
+      const url = `https://gmail.googleapis.com/gmail/v1/users/me/history?startHistoryId=${encodeURIComponent(startHistoryId)}&historyTypes=messageAdded`;
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!res.ok) {
+        return { history: [], nextHistoryId: startHistoryId, error: `HTTP ${res.status}` };
+      }
+
+      const data = await res.json();
+      return {
+        history: data.history || [],
+        nextHistoryId: data.historyId || startHistoryId,
+      };
+    } catch (err) {
+      return { history: [], nextHistoryId: startHistoryId, error: err.message };
+    }
+  }
+
   async checkHealth() {
     if (!this.isConfigured()) {
       return {
@@ -135,9 +272,10 @@ class GmailEmailProvider extends EmailProvider {
 
     const start = Date.now();
     try {
+      const token = await this.getValidAccessToken();
       const response = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile', {
         headers: {
-          Authorization: `Bearer ${this.accessToken || process.env.GMAIL_API_ACCESS_TOKEN}`,
+          Authorization: `Bearer ${token}`,
         },
       });
       const latency = Date.now() - start;
