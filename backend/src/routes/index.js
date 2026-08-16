@@ -260,6 +260,13 @@ router.use(
   deviceRoutes
 );
 
+const mailOpsRoutes = require('./mailOpsRoutes');
+
+router.use(
+  '/mailops',
+  mailOpsRoutes
+);
+
 router.use(
   '/',
   expansionModulesRoutes

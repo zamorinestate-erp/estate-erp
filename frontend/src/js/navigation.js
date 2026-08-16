@@ -37,6 +37,7 @@ export const NAVIGATION = {
       { id: "expenses", label: "Expenses", icon: "finance", route: "expenses" },
       { id: "finance", label: "Finance & Accounts", icon: "finance", route: "finance" },
       { id: "inventory", label: "Inventory", icon: "inventory", route: "inventory" },
+      { id: "mailops", label: "MailOps Command Centre", icon: "reports", route: "mailops" },
       { id: "menu", label: "Menu Management", icon: "pos", route: "menu" },
       { id: "my-loans-advances", label: "My Loans & Advances", icon: "payslip", route: "staff-loans-advances" },
       { id: "my-payslips", label: "My Payslips", icon: "payslip", route: "staff-payslips" },

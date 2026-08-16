@@ -47,6 +47,7 @@ import { renderQuality, wireQuality } from "./pages/quality.js?v=2.0.1";
 import { renderAssets, wireAssets } from "./pages/assets.js?v=2.0.1";
 import { renderDepartmentOrders, wireDepartmentOrders } from "./pages/departmentOrders.js?v=2.0.1";
 import { renderTrashBin, wireTrashBin } from "./pages/trashBin.js?v=2.0.1";
+import { renderMailOpsCommandCentre, wireMailOpsCommandCentre } from "./pages/mailOpsCommandCentre.js?v=2.0.1";
 import { CafeAttendanceDisplayPage } from "./pages/cafeAttendanceDisplay.js?v=2.0.1";
 
 // ROLE_LABELS: display-safe generic labels used only for topbar scope chip
@@ -275,6 +276,11 @@ async function renderPage() {
     case "procurement":
       content.innerHTML = renderProcurement();
       wireProcurement(content);
+      break;
+
+    case "mailops":
+      content.innerHTML = renderMailOpsCommandCentre();
+      await wireMailOpsCommandCentre(content);
       break;
 
     case "menu":

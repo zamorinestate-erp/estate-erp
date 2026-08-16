@@ -180,6 +180,53 @@ const vendorSchema = new mongoose.Schema(
       default: '',
     },
 
+    primaryContactEmail: {
+      type: String,
+      trim: true,
+      lowercase: true,
+      maxlength: 200,
+      default: '',
+    },
+
+    accountsEmail: {
+      type: String,
+      trim: true,
+      lowercase: true,
+      maxlength: 200,
+      default: '',
+    },
+
+    salesEmail: {
+      type: String,
+      trim: true,
+      lowercase: true,
+      maxlength: 200,
+      default: '',
+    },
+
+    approvedEmailAddresses: [
+      {
+        type: String,
+        trim: true,
+        lowercase: true,
+        maxlength: 200,
+      },
+    ],
+
+    approvedDomains: [
+      {
+        type: String,
+        trim: true,
+        lowercase: true,
+        maxlength: 150,
+      },
+    ],
+
+    lastEmailVerifiedAt: {
+      type: Date,
+      default: null,
+    },
+
     website: {
       type: String,
       trim: true,

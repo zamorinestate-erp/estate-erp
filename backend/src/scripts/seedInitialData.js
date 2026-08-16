@@ -843,6 +843,24 @@ async function runSeed() {
         masterUser.userId,
     });
 
+    const { SystemCommunicationSettings } = require('../models/SystemCommunicationSettings');
+    const existingSettings = await SystemCommunicationSettings.findOne({ organisationId });
+    if (!existingSettings) {
+      await SystemCommunicationSettings.create({
+        organisationId,
+        operationsEmail: 'zamorinestatepvtltd.erp@gmail.com',
+        primaryMasterEmail: masterEmail || 'pradeeshk331@gmail.com',
+        identityType: 'SYSTEM_OPERATIONS_MAILBOX',
+        applicationRole: 'NONE',
+        canLoginToERP: false,
+        enabled: true,
+        provider: 'GMAIL_API',
+        defaultSenderName: 'Zamorin Cafe ERP',
+        replyTo: 'zamorinestatepvtltd.erp@gmail.com',
+      });
+      console.log('System communication settings initialized for zamorinestatepvtltd.erp@gmail.com');
+    }
+
     console.log(
       'Initial backend data seeded successfully.'
     );
