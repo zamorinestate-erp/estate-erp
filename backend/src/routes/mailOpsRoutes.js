@@ -26,33 +26,33 @@ router.use(authenticate);
 // Status & Metrics (MASTER and OWNER can view operations status)
 router.get(
   '/status',
-  authorize('MAILOPS:READ', { allowedRoles: ['MASTER', 'OWNER'] }),
+  authorize('ADMIN', { allowedRoles: ['MASTER', 'OWNER'] }),
   getMailOpsStatus
 );
 
 // Outbound queue listing & manual retry
 router.get(
   '/outbox',
-  authorize('MAILOPS:MANAGE', { allowedRoles: ['MASTER'] }),
+  authorize('ADMIN', { allowedRoles: ['MASTER'] }),
   listOutbox
 );
 
 router.post(
   '/outbox/:outboxId/retry',
-  authorize('MAILOPS:MANAGE', { allowedRoles: ['MASTER'] }),
+  authorize('ADMIN', { allowedRoles: ['MASTER'] }),
   retryOutboxItem
 );
 
 // Inbound message review queue
 router.get(
   '/inbound',
-  authorize('MAILOPS:MANAGE', { allowedRoles: ['MASTER'] }),
+  authorize('ADMIN', { allowedRoles: ['MASTER'] }),
   listInboundMessages
 );
 
 router.post(
   '/inbound/simulate-ingest',
-  authorize('MAILOPS:MANAGE', { allowedRoles: ['MASTER'] }),
+  authorize('ADMIN', { allowedRoles: ['MASTER'] }),
   simulateInboundIngest
 );
 
