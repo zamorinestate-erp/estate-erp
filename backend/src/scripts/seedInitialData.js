@@ -345,6 +345,40 @@ const DEFAULT_PERMISSION_RULES = [
   { role: 'CAFE_ADMIN', permissionCode: 'QUALITY_READ', module: 'QUALITY', resource: 'CHECKLIST', action: 'READ', effect: 'ALLOW', scope: 'ASSIGNED_CAFES', description: 'CAFE_ADMIN may read quality checklists.' },
   { role: 'MASTER', permissionCode: 'QUALITY_WRITE', module: 'QUALITY', resource: 'CHECKLIST', action: 'WRITE', effect: 'ALLOW', scope: 'ORGANISATION', description: 'MASTER may submit quality checklists.' },
   { role: 'CAFE_ADMIN', permissionCode: 'QUALITY_WRITE', module: 'QUALITY', resource: 'CHECKLIST', action: 'WRITE', effect: 'ALLOW', scope: 'ASSIGNED_CAFES', description: 'CAFE_ADMIN may submit quality checklists.' },
+  // MailOps & Operations Communication
+  {
+    role: 'MASTER',
+    permissionCode: 'MAILOPS:MANAGE',
+    module: 'MAILOPS',
+    resource: 'OPERATIONS',
+    action: 'MANAGE',
+    effect: 'ALLOW',
+    scope: 'ORGANISATION',
+    requiresMfa: true,
+    description: 'MASTER may manage operations communication outbox, queues, and settings.',
+  },
+  {
+    role: 'MASTER',
+    permissionCode: 'MAILOPS:READ',
+    module: 'MAILOPS',
+    resource: 'OPERATIONS',
+    action: 'READ',
+    effect: 'ALLOW',
+    scope: 'ORGANISATION',
+    requiresMfa: true,
+    description: 'MASTER may view operations communication status, telemetry, and queues.',
+  },
+  {
+    role: 'OWNER',
+    permissionCode: 'MAILOPS:READ',
+    module: 'MAILOPS',
+    resource: 'OPERATIONS',
+    action: 'READ',
+    effect: 'ALLOW',
+    scope: 'ORGANISATION',
+    requiresMfa: true,
+    description: 'OWNER may view operations communication telemetry and health.',
+  },
   // Revenue Share
   { role: 'MASTER', permissionCode: 'REVENUE_SHARE_READ', module: 'REVENUE_SHARE', resource: 'AGREEMENT', action: 'READ', effect: 'ALLOW', scope: 'ORGANISATION', description: 'MASTER may read revenue share agreements.' },
   { role: 'OWNER', permissionCode: 'REVENUE_SHARE_READ', module: 'REVENUE_SHARE', resource: 'AGREEMENT', action: 'READ', effect: 'ALLOW', scope: 'ORGANISATION', description: 'OWNER may read revenue share agreements.' },
@@ -843,23 +877,10 @@ async function runSeed() {
         masterUser.userId,
     });
 
-    const { SystemCommunicationSettings } = require('../models/SystemCommunicationSettings');
-    const existingSettings = await SystemCommunicationSettings.findOne({ organisationId });
-    if (!existingSettings) {
-      await SystemCommunicationSettings.create({
-        organisationId,
-        operationsEmail: 'zamorinestatepvtltd.erp@gmail.com',
-        primaryMasterEmail: masterEmail || 'pradeeshk331@gmail.com',
-        identityType: 'SYSTEM_OPERATIONS_MAILBOX',
-        applicationRole: 'NONE',
-        canLoginToERP: false,
-        enabled: true,
-        provider: 'GMAIL_API',
-        defaultSenderName: 'Zamorin Cafe ERP',
-        replyTo: 'zamorinestatepvtltd.erp@gmail.com',
-      });
-      console.log('System communication settings initialized for zamorinestatepvtltd.erp@gmail.com');
-    }
+    await seedSystemCommunicationSettings({
+      organisationId,
+      masterEmail,
+    });
 
     console.log(
       'Initial backend data seeded successfully.'
@@ -875,6 +896,27 @@ async function runSeed() {
   }
 }
 
+async function seedSystemCommunicationSettings({ organisationId, masterEmail }) {
+  const { SystemCommunicationSettings } = require('../models/SystemCommunicationSettings');
+  let settings = await SystemCommunicationSettings.findOne({ organisationId });
+  if (!settings) {
+    settings = await SystemCommunicationSettings.create({
+      organisationId,
+      operationsEmail: 'zamorinestatepvtltd.erp@gmail.com',
+      primaryMasterEmail: masterEmail || 'pradeeshk331@gmail.com',
+      identityType: 'SYSTEM_OPERATIONS_MAILBOX',
+      applicationRole: 'NONE',
+      canLoginToERP: false,
+      enabled: true,
+      provider: 'GMAIL_API',
+      defaultSenderName: 'Zamorin Cafe ERP',
+      replyTo: 'zamorinestatepvtltd.erp@gmail.com',
+    });
+    console.log('System communication settings initialized for zamorinestatepvtltd.erp@gmail.com');
+  }
+  return settings;
+}
+
 if (require.main === module) {
   runSeed();
 }
@@ -885,5 +927,6 @@ module.exports = {
   assertPrimaryMasterCandidate,
   seedMasterUser,
   seedPermissionRules,
+  seedSystemCommunicationSettings,
   runSeed,
 };

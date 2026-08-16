@@ -22,6 +22,7 @@ const {
 const {
   seedMasterUser,
   seedPermissionRules,
+  seedSystemCommunicationSettings,
 } = require('./seedInitialData');
 
 async function main() {
@@ -63,6 +64,11 @@ async function main() {
   await seedPermissionRules({
     organisationId,
     masterUserId: masterUser.userId,
+  });
+
+  await seedSystemCommunicationSettings({
+    organisationId,
+    masterEmail,
   });
 
   console.log(
