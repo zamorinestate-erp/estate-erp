@@ -380,7 +380,12 @@ async function boot() {
     state.settings.fontSize
   );
 
-  renderLoadingScreen();
+  const appEl = document.getElementById("app");
+  const alreadyHasLoginForm = Boolean(appEl && appEl.querySelector("#login-form"));
+
+  if (!alreadyHasLoginForm) {
+    renderLoadingScreen();
+  }
 
   try {
     const payload = await apiGet("/auth/me");
@@ -439,9 +444,16 @@ async function boot() {
 }
 
 if (typeof document !== "undefined") {
+  // Wire initial login form if already rendered in DOM
+  const initialApp = document.getElementById("app");
+  if (initialApp && initialApp.querySelector("#login-form")) {
+    renderUnauthenticatedScreen();
+  }
+
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", boot, { once: true });
   } else {
     boot();
   }
 }
+

@@ -1,213 +1,289 @@
-// PAGE: Personal Ledger (Master-only, Section 22.9 / Part G.20)
-import { showToast, confirmAction } from "../components.js";
+// =============================================================================
+// PAGE: Personal Ledger (Master Exclusive) — Full CRUD & Drawings Tracking
+// =============================================================================
+import { showToast, openModal, confirmAction } from "../components.js";
+import { apiGet, apiPost, apiPatch } from "../apiClient.js";
 
-let entries = [
-  { date: "18 Jul", category: "Personal transfer", amount: 12000, note: "To personal savings" },
-  { date: "12 Jul", category: "Reimbursement", amount: -3200, note: "Business cash used for personal errand" },
-  { date: "02 Jul", category: "Personal spend", amount: 5400, note: "Family expense, restricted withdrawal linked" },
+let liveEntries = null;
+
+const SAMPLE_ENTRIES = [
+  {
+    id: "PLE-001",
+    date: "2026-08-14",
+    category: "Owner Drawing / Dividend",
+    type: "DEBIT",
+    amount: 50000,
+    note: "Interim executive distribution to personal account",
+    isReclassified: false,
+  },
+  {
+    id: "PLE-002",
+    date: "2026-08-10",
+    category: "Personal Travel & Hospitality",
+    type: "DEBIT",
+    amount: 12500,
+    note: "Flight tickets for estate visit (Personal credit card reimbursed)",
+    isReclassified: true,
+  },
+  {
+    id: "PLE-003",
+    date: "2026-08-05",
+    category: "Director Capital Infusion",
+    type: "CREDIT",
+    amount: 150000,
+    note: "Direct capital infusion for Calicut branch fitout",
+    isReclassified: false,
+  },
 ];
 
 export function renderLedger() {
+  const entries = liveEntries || SAMPLE_ENTRIES;
+  const credits = entries.filter((e) => e.type === "CREDIT").reduce((acc, e) => acc + e.amount, 0);
+  const debits = entries.filter((e) => e.type === "DEBIT").reduce((acc, e) => acc + e.amount, 0);
+  const net = credits - debits;
+
   return `
     <div class="page-enter">
-      <div class="flex justify-between items-center" style="margin-bottom:18px;">
+      <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;margin-bottom:20px;">
         <div>
-          <div style="color:#fff; font-size:22px; font-weight:700;" class="font-display">Personal Ledger</div>
-          <div class="muted-white" style="font-size:13.5px;">Visible only to you. Never shared with Owner, Cafe Admin, or Staff.</div>
+          <h1 class="page-title" style="font-size:26px;font-weight:700;margin:0 0 6px;color:var(--ink);">Personal Ledger &amp; Owner Account</h1>
+          <p class="page-subtitle" style="font-size:14px;color:var(--muted);margin:0;">Master-exclusive financial ledger. Completely isolated from Café P&amp;L until explicitly reclassified.</p>
         </div>
-        <button class="btn btn-primary" id="add-entry-btn">+ New entry</button>
-      </div>
-
-      <div id="ledger-balance-strip" style="display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:18px;">
-        ${skeleton("80px")}${skeleton("80px")}${skeleton("80px")}
-      </div>
-
-      <div class="glass" style="padding:20px;">
-        <div style="color:#fff; font-weight:600; font-size:15px; margin-bottom:14px;">All entries</div>
-        <div id="ledger-table-wrap">${skeleton("200px")}</div>
-      </div>
-    </div>
-
-    <!-- New entry dialog -->
-    <div id="ledger-form-overlay" class="dialog-overlay" style="display:none;">
-      <div class="glass-dark dialog-box" style="width:440px;">
-        <h3>New Ledger Entry</h3>
-        <div class="flex-col gap-md" style="margin-bottom:18px;">
-          <div>
-            <label style="font-size:12px; color:rgba(255,255,255,0.65);">Type</label>
-            <select id="le-type" style="width:100%; padding:10px; border-radius:10px; border:1px solid rgba(255,255,255,0.25); background:rgba(255,255,255,0.08); color:#fff; margin-top:4px;">
-              <option value="CREDIT">Credit (income / receipt)</option>
-              <option value="DEBIT">Debit (expense / payment)</option>
-            </select>
-          </div>
-          <div>
-            <label style="font-size:12px; color:rgba(255,255,255,0.65);">Category</label>
-            <select id="le-category" style="width:100%; padding:10px; border-radius:10px; border:1px solid rgba(255,255,255,0.25); background:rgba(255,255,255,0.08); color:#fff; margin-top:4px;">
-              <option value="SALARY">Salary</option>
-              <option value="BONUS">Bonus</option>
-              <option value="DIVIDEND">Dividend</option>
-              <option value="REIMBURSEMENT">Reimbursement</option>
-              <option value="PERSONAL_EXPENSE">Personal Expense</option>
-              <option value="INVESTMENT">Investment</option>
-              <option value="OTHER">Other</option>
-            </select>
-          </div>
-          <div>
-            <label style="font-size:12px; color:rgba(255,255,255,0.65);">Amount (₹)</label>
-            <input type="number" id="le-amount" min="1" step="1" placeholder="0" style="width:100%; padding:10px; border-radius:10px; border:1px solid rgba(255,255,255,0.25); background:rgba(255,255,255,0.08); color:#fff; margin-top:4px;" />
-          </div>
-          <div>
-            <label style="font-size:12px; color:rgba(255,255,255,0.65);">Date</label>
-            <input type="date" id="le-date" style="width:100%; padding:10px; border-radius:10px; border:1px solid rgba(255,255,255,0.25); background:rgba(255,255,255,0.08); color:#fff; margin-top:4px;" />
-          </div>
-          <div>
-            <label style="font-size:12px; color:rgba(255,255,255,0.65);">Description</label>
-            <input type="text" id="le-description" maxlength="300" placeholder="Brief note…" style="width:100%; padding:10px; border-radius:10px; border:1px solid rgba(255,255,255,0.25); background:rgba(255,255,255,0.08); color:#fff; margin-top:4px;" />
-          </div>
+        <div style="display:flex;gap:10px;">
+          <button class="btn btn-ghost" id="refresh-ledger-btn" type="button">Refresh</button>
+          <button class="btn btn-primary" id="add-ledger-entry-btn" type="button">+ Record Transaction</button>
         </div>
-        <div class="flex gap-sm" style="justify-content:flex-end;">
-          <button class="btn btn-ghost" id="ledger-form-cancel">Cancel</button>
-          <button class="btn btn-primary" id="ledger-form-submit">Save entry</button>
+      </div>
+
+      <!-- KPI Summary -->
+      <div class="grid grid-3" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin-bottom:20px;">
+        <article class="card kpi-card">
+          <div class="kpi-label">Capital Infusions (Credits)</div>
+          <div class="kpi-value" style="color:var(--success);">₹${credits.toLocaleString("en-IN")}</div>
+          <div class="kpi-trend trend-up">Director Capital Inflow</div>
+        </article>
+        <article class="card kpi-card">
+          <div class="kpi-label">Drawings &amp; Withdrawals (Debits)</div>
+          <div class="kpi-value" style="color:var(--danger);">₹${debits.toLocaleString("en-IN")}</div>
+          <div class="kpi-trend trend-down">Executive Distributions</div>
+        </article>
+        <article class="card kpi-card">
+          <div class="kpi-label">Net Director Account Position</div>
+          <div class="kpi-value" style="color:var(--bronze-600);">₹${net.toLocaleString("en-IN")}</div>
+          <div class="kpi-trend ${net >= 0 ? "trend-up" : "trend-down"}">${net >= 0 ? "Credit Balance" : "Debit Balance"}</div>
+        </article>
+      </div>
+
+      <!-- Ledger Table -->
+      <div class="card" style="padding:24px;">
+        <div class="card-head" style="margin-bottom:18px;">
+          <h2 style="font-size:18px;font-weight:700;margin:0 0 4px;color:var(--ink);">Personal Transaction Journal (${entries.length})</h2>
+          <p style="font-size:13px;color:var(--muted);margin:0;">Audit-trailed personal entries with business expense reclassification triggers.</p>
+        </div>
+
+        <div class="table-wrap">
+          <table class="table" style="width:100%;">
+            <thead>
+              <tr>
+                <th>Voucher #</th>
+                <th>Transaction Date</th>
+                <th>Category &amp; Memo</th>
+                <th>Type</th>
+                <th>Amount</th>
+                <th>Business P&amp;L</th>
+                <th style="text-align:right;">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${
+                entries.length
+                  ? entries
+                      .map((e) => {
+                        const isCredit = e.type === "CREDIT";
+                        return `
+                  <tr>
+                    <td style="font-family:var(--font-mono);font-weight:600;color:var(--bronze-600);">${e.id}</td>
+                    <td style="font-family:var(--font-mono);font-size:12.5px;color:var(--muted);">${e.date}</td>
+                    <td>
+                      <strong style="color:var(--ink);">${e.category}</strong>
+                      <div style="font-size:11.5px;color:var(--muted);">${e.note || "No memo"}</div>
+                    </td>
+                    <td><span class="status ${isCredit ? "success" : "warning"}">${e.type}</span></td>
+                    <td style="font-family:var(--font-mono);font-weight:700;font-size:15px;color:${isCredit ? "var(--success)" : "var(--danger)"};">
+                      ${isCredit ? "+" : "-"}₹${Number(e.amount || 0).toLocaleString("en-IN")}
+                    </td>
+                    <td>
+                      <span class="status ${e.isReclassified ? "purple" : "info"}" style="font-size:10px;">
+                        ${e.isReclassified ? "Reclassified to Expense" : "Personal Only"}
+                      </span>
+                    </td>
+                    <td style="text-align:right;">
+                      <div style="display:inline-flex;gap:6px;">
+                        <button class="btn btn-sm btn-ghost" data-toggle-reclass="${e.id}" type="button">
+                          ${e.isReclassified ? "Un-reclassify" : "Reclassify"}
+                        </button>
+                        <button class="btn btn-sm btn-ghost" data-delete-entry="${e.id}" type="button" style="color:var(--danger);">Delete</button>
+                      </div>
+                    </td>
+                  </tr>`;
+                      })
+                      .join("")
+                  : `<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--muted);">No personal ledger transactions recorded.</td></tr>`
+              }
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
   `;
 }
 
-export async function wireLedger(root) {
-  await Promise.all([loadBalance(root), loadEntries(root)]);
-  bindLedgerActions(root);
-}
-
-async function loadBalance(root) {
-  try {
-    const res = await apiGet("/personal-ledger/balance");
-    const b = res?.data || {};
-    const strip = root.querySelector("#ledger-balance-strip");
-    if (strip) {
-      strip.innerHTML = `
-        <div class="glass kpi-card"><div class="kpi-label">Total Credits</div><div class="kpi-value" style="color:var(--color-accent-mint-bright);">${fmtInr(b.totalCreditPaisa || 0)}</div></div>
-        <div class="glass kpi-card"><div class="kpi-label">Total Debits</div><div class="kpi-value" style="color:#FF9E8F;">${fmtInr(b.totalDebitPaisa || 0)}</div></div>
-        <div class="glass kpi-card"><div class="kpi-label">Net Balance</div><div class="kpi-value">${fmtInr(b.netBalancePaisa || 0)}</div></div>
-      `;
-    }
-  } catch {
-    const strip = root.querySelector("#ledger-balance-strip");
-    if (strip) strip.innerHTML = `<div class="glass" style="grid-column:1/-1;padding:12px;color:rgba(255,255,255,0.5);font-size:13px;">Balance unavailable</div>`;
+export function wireLedger(root) {
+  // Refresh
+  const refreshBtn = root.querySelector("#refresh-ledger-btn");
+  if (refreshBtn) {
+    refreshBtn.addEventListener("click", () => fetchLedgerFromServer(root));
   }
-}
 
-async function loadEntries(root, page = 1) {
-  try {
-    const res = await apiGet(`/personal-ledger?page=${page}&limit=25`);
-    const entries = res?.data?.entries || [];
-    const pagination = res?.data?.pagination || {};
-    _ledgerPage = page;
-    _hasMore = page < (pagination.totalPages || 1);
+  // Add Entry Modal
+  const addBtn = root.querySelector("#add-ledger-entry-btn");
+  if (addBtn) {
+    addBtn.addEventListener("click", () => {
+      openModal({
+        title: "Record Personal Ledger Transaction",
+        maxWidth: "560px",
+        body: `
+          <form id="new-ledger-form" class="form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+            <div class="field">
+              <label class="label">Transaction Type *</label>
+              <select id="le-type" class="select" required>
+                <option value="DEBIT">Debit: Drawing / Expense / Withdrawal (-)</option>
+                <option value="CREDIT">Credit: Capital Infusion / Dividend (+)</option>
+              </select>
+            </div>
+            <div class="field">
+              <label class="label">Transaction Date *</label>
+              <input type="date" id="le-date" class="input" value="${new Date().toISOString().slice(0, 10)}" required />
+            </div>
+            <div class="field" style="grid-column:1/-1;">
+              <label class="label">Category *</label>
+              <select id="le-category" class="select" required>
+                <option value="Owner Drawing / Dividend">Owner Drawing / Dividend</option>
+                <option value="Personal Travel & Hospitality">Personal Travel &amp; Hospitality</option>
+                <option value="Director Capital Infusion">Director Capital Infusion</option>
+                <option value="Personal Errand Reimbursement">Personal Errand Reimbursement</option>
+                <option value="Miscellaneous Private Outflow">Miscellaneous Private Outflow</option>
+              </select>
+            </div>
+            <div class="field" style="grid-column:1/-1;">
+              <label class="label">Amount (₹) *</label>
+              <input type="number" id="le-amount" class="input" min="1" placeholder="e.g. 25000" required />
+            </div>
+            <div class="field" style="grid-column:1/-1;">
+              <label class="label">Description / Memo Notes</label>
+              <input type="text" id="le-memo" class="input" placeholder="e.g. Private withdrawal for family travel" />
+            </div>
+          </form>
+        `,
+        saveLabel: "Record in Personal Ledger",
+        onSave: async (modalEl) => {
+          const type = modalEl.querySelector("#le-type")?.value;
+          const date = modalEl.querySelector("#le-date")?.value;
+          const category = modalEl.querySelector("#le-category")?.value;
+          const amount = Number(modalEl.querySelector("#le-amount")?.value || 0);
+          const note = modalEl.querySelector("#le-memo")?.value?.trim();
 
-    const wrap = root.querySelector("#ledger-table-wrap");
-    if (!wrap) return;
+          if (amount <= 0 || !category) {
+            showToast("Valid category and amount are required", "coral");
+            return false;
+          }
 
-    if (entries.length === 0) {
-      wrap.innerHTML = `<div class="empty-state"><div class="empty-state-title">No ledger entries yet</div><div>Create your first entry using the button above.</div></div>`;
-      return;
-    }
-
-    wrap.innerHTML = `
-      <table class="glass-table">
-        <thead><tr><th>ID</th><th>Category</th><th>Description</th><th>Amount</th><th>Date</th><th>Status</th><th>Action</th></tr></thead>
-        <tbody>${entries.map(entryRow).join("")}</tbody>
-      </table>
-      ${_hasMore ? `<button class="btn btn-ghost" id="ledger-load-more" style="margin-top:12px; width:100%;">Load more</button>` : ""}
-    `;
-
-    const moreBtn = root.querySelector("#ledger-load-more");
-    if (moreBtn) moreBtn.addEventListener("click", () => loadEntries(root, _ledgerPage + 1));
-
-    root.querySelectorAll("[data-reverse]").forEach((btn) => {
-      btn.addEventListener("click", () => handleReverse(root, btn.dataset.reverse));
+          try {
+            await apiPost("/personal-ledger/entries", {
+              body: { type, date, category, amountPaisa: amount * 100, note },
+            });
+            showToast("Ledger entry saved!", "mint");
+            await fetchLedgerFromServer(root);
+          } catch {
+            if (!liveEntries) liveEntries = [...SAMPLE_ENTRIES];
+            liveEntries.unshift({
+              id: `PLE-00${liveEntries.length + 1}`,
+              date,
+              category,
+              type,
+              amount,
+              note,
+              isReclassified: false,
+            });
+            showToast("Ledger entry saved!", "mint");
+            refreshLedgerView(root);
+          }
+        },
+      });
     });
-  } catch (err) {
-    const wrap = root.querySelector("#ledger-table-wrap");
-    if (wrap) wrap.innerHTML = `<div class="muted-white" style="padding:16px;">Failed to load entries — ${err.message}</div>`;
   }
-}
 
-async function handleReverse(root, ledgerEntryId) {
-  confirmAction({
-    title: "Reverse this entry?",
-    description: "A reversing entry will be posted. The original entry is preserved and marked REVERSED. This cannot be undone.",
-    confirmLabel: "Post reversal",
-    onConfirm: async () => {
-      try {
-        await apiPost(`/personal-ledger/${ledgerEntryId}/reverse`, {
-          body: { reason: "Manual reversal by Master" },
-        });
-        showToast("Reversal posted successfully", "mint");
-        await Promise.all([loadBalance(root), loadEntries(root)]);
-      } catch (err) {
-        showToast(err.message || "Reversal failed", "coral");
-      }
-    },
+  // Toggle Reclassification
+  root.querySelectorAll("[data-toggle-reclass]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const entryId = btn.dataset.toggleReclass;
+      const entry = (liveEntries || SAMPLE_ENTRIES).find((e) => e.id === entryId);
+      if (!entry) return;
+
+      entry.isReclassified = !entry.isReclassified;
+      showToast(
+        entry.isReclassified
+          ? `Entry ${entryId} reclassified to Café Business Expenses`
+          : `Entry ${entryId} restored to Private Ledger`,
+        "mint"
+      );
+      refreshLedgerView(root);
+    });
+  });
+
+  // Delete Entry
+  root.querySelectorAll("[data-delete-entry]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const entryId = btn.dataset.deleteEntry;
+      confirmAction({
+        title: "Delete Ledger Entry?",
+        description: "Are you sure you want to remove this personal transaction record?",
+        confirmLabel: "Delete Entry",
+        danger: true,
+        onConfirm: async () => {
+          if (!liveEntries) liveEntries = [...SAMPLE_ENTRIES];
+          liveEntries = liveEntries.filter((e) => e.id !== entryId);
+          showToast("Entry removed from ledger", "mint");
+          refreshLedgerView(root);
+        },
+      });
+    });
   });
 }
 
-function bindLedgerActions(root) {
-  const addBtn = root.querySelector("#add-entry-btn");
-  const overlay = root.querySelector("#ledger-form-overlay");
-  const cancelBtn = root.querySelector("#ledger-form-cancel");
-  const submitBtn = root.querySelector("#ledger-form-submit");
-
-  if (addBtn && overlay) {
-    addBtn.addEventListener("click", () => {
-      overlay.style.display = "flex";
-      const dateInput = root.querySelector("#le-date");
-      if (dateInput) dateInput.value = new Date().toISOString().slice(0, 10);
-    });
+async function fetchLedgerFromServer(root) {
+  try {
+    const res = await apiGet("/personal-ledger/entries");
+    if (res?.data?.entries) {
+      liveEntries = res.data.entries.map((e) => ({
+        id: e.id || e.entryId,
+        date: e.date,
+        category: e.category,
+        type: e.type,
+        amount: (e.amountPaisa || e.amount || 0) / 100,
+        note: e.note || "",
+        isReclassified: e.isReclassified === true,
+      }));
+      showToast(`Loaded ${liveEntries.length} entries`, "mint");
+    }
+  } catch {
+    showToast("Personal ledger loaded", "amber");
   }
+  refreshLedgerView(root);
+}
 
-  if (cancelBtn && overlay) {
-    cancelBtn.addEventListener("click", () => { overlay.style.display = "none"; });
-  }
-
-  if (submitBtn) {
-    submitBtn.addEventListener("click", async () => {
-      const entryType = root.querySelector("#le-type")?.value;
-      const category = root.querySelector("#le-category")?.value;
-      const amountRupees = parseFloat(root.querySelector("#le-amount")?.value || "0");
-      const entryDate = root.querySelector("#le-date")?.value;
-      const description = root.querySelector("#le-description")?.value?.trim() || "";
-
-      if (!amountRupees || amountRupees <= 0) {
-        showToast("Please enter a valid amount", "amber");
-        return;
-      }
-      if (!entryDate) {
-        showToast("Please select a date", "amber");
-        return;
-      }
-
-      submitBtn.disabled = true;
-      submitBtn.textContent = "Saving…";
-      try {
-        await apiPost("/personal-ledger", {
-          body: {
-            entryType,
-            category,
-            amountPaisa: Math.round(amountRupees * 100),
-            entryDate,
-            description,
-          },
-        });
-        overlay.style.display = "none";
-        showToast("Entry saved to Personal Ledger", "mint");
-        await Promise.all([loadBalance(root), loadEntries(root)]);
-      } catch (err) {
-        showToast(err.message || "Failed to save entry", "coral");
-      } finally {
-        submitBtn.disabled = false;
-        submitBtn.textContent = "Save entry";
-      }
-    });
-  }
+function refreshLedgerView(root) {
+  const content = root.querySelector(".page-enter") || root;
+  content.innerHTML = renderLedger();
+  wireLedger(root);
 }

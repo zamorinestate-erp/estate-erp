@@ -11,7 +11,7 @@
  * inventory stock, vendor contacts, or administrative secrets.
  */
 
-class CafeAttendanceDisplayPage {
+export class CafeAttendanceDisplayPage {
   constructor() {
     this.cafeId = null;
     this.cafeName = 'Flagship Beach Road Cafe';
@@ -113,6 +113,3 @@ class CafeAttendanceDisplayPage {
   }
 }
 
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { CafeAttendanceDisplayPage };
-}

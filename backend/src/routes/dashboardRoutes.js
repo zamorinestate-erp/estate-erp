@@ -13,6 +13,7 @@ const router = express.Router();
 
 router.use(authenticate);
 
+router.get('/', getDashboardMetrics);
 router.get('/metrics', getDashboardMetrics);
 
 module.exports = router;

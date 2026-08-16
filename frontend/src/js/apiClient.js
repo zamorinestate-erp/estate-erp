@@ -3,7 +3,7 @@
 const DEFAULT_API_BASE_URL =
   typeof globalThis.location !== "undefined" &&
   (globalThis.location.hostname === "localhost" || globalThis.location.hostname === "127.0.0.1")
-    ? "http://localhost:4000/api/v1"
+    ? `http://${globalThis.location.hostname}:4000/api/v1`
     : "/api/v1";
 
 function normalizeApiBaseUrl(value) {
@@ -182,6 +182,7 @@ async function refreshAuthenticatedSession() {
 }
 
 const NON_REFRESHABLE_AUTH_PATHS = new Set([
+  "/auth/me",
   "/auth/login",
   "/auth/refresh",
   "/auth/mfa/setup",

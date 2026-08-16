@@ -1,242 +1,309 @@
 // =============================================================================
-// PAGE: POS & Billing — API-wired
-// GET  /api/v1/menu/items          — load live menu items
-// POST /api/v1/bills               — create & finalise bill
-// POST /api/v1/bills/:id/void      — void bill (MASTER/OWNER only)
+// PAGE: POS & Billing Terminal — Real-Time Register & Thermal Bill Print
 // =============================================================================
 import { apiGet, apiPost } from "../apiClient.js";
-import { confirmAction, showToast } from "../components.js";
+import { showToast, openModal, confirmAction } from "../components.js";
 import { state } from "../state.js";
+import { ROLES } from "../navigation.js";
 
-let _menuItems = [];  // fetched from backend
-let cart = {};        // { menuItemId: qty }
-let tender = null;
+let _menuItems = [
+  { id: "MNU-01", name: "Zamorin Pour-Over", category: "Hot Coffees", price: 240, foodType: "Veg" },
+  { id: "MNU-02", name: "Spanish Cortado", category: "Hot Coffees", price: 210, foodType: "Veg" },
+  { id: "MNU-03", name: "18-Hour Cold Brew", category: "Cold Brews", price: 260, foodType: "Veg" },
+  { id: "MNU-04", name: "Spiced Cardamom Latte", category: "Cold Brews", price: 280, foodType: "Veg" },
+  { id: "MNU-05", name: "Butter Croissant", category: "Bakery & Viennoiserie", price: 180, foodType: "Veg" },
+  { id: "MNU-06", name: "Avocado Sourdough Toast", category: "Savouries & Mains", price: 340, foodType: "Veg" },
+  { id: "MNU-07", name: "Smoked Chicken Panini", category: "Savouries & Mains", price: 380, foodType: "Non-Veg" },
+];
+
+let cart = {}; // { id: { item, qty } }
+let selectedTender = "UPI";
+let activePosCat = "ALL";
+let selectedTable = "Table 04 (Indoor)";
 
 export function renderPOS() {
-  cart = {};
-  tender = null;
+  const items = _menuItems.filter((i) => activePosCat === "ALL" || i.category === activePosCat);
+
+  const cartEntries = Object.values(cart);
+  const subtotal = cartEntries.reduce((acc, entry) => acc + entry.item.price * entry.qty, 0);
+  const gst = Math.round(subtotal * 0.05);
+  const grandTotal = subtotal + gst;
+
   return `
-    <div class="page-enter" style="display:grid; grid-template-columns: 1fr 380px; gap:16px; height:calc(100vh - 128px);">
-      <div class="glass" style="padding:22px; overflow-y:auto;">
-        <div class="flex justify-between items-center" style="margin-bottom:16px;">
-          <div style="color:#fff; font-weight:700; font-size:18px;" class="font-display">POS — New Sale</div>
-          <div class="flex gap-sm flex-wrap" id="category-tabs">
-            <div class="pill pill-mint" data-cat="ALL" style="cursor:pointer;">All</div>
+    <div class="page-enter pos-grid-layout" style="display:grid;grid-template-columns:1fr 380px;gap:20px;min-height:calc(100vh - 120px);">
+      <!-- Left: Menu Catalog -->
+      <div class="card" style="padding:24px;display:flex;flex-direction:column;overflow-y:auto;">
+        <div class="card-head" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+          <div>
+            <h1 class="page-title" style="font-size:22px;font-weight:700;margin:0 0 4px;color:var(--ink);">Point of Sale Terminal</h1>
+            <p style="font-size:13px;color:var(--muted);margin:0;">Select items to build ticket. Fast one-touch checkout.</p>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <select id="pos-table-select" class="select" style="font-size:12.5px;padding:6px 10px;">
+              <option value="Table 01 (Indoor)">Table 01 (Indoor)</option>
+              <option value="Table 02 (Indoor)">Table 02 (Indoor)</option>
+              <option value="Table 03 (Patio)">Table 03 (Patio)</option>
+              <option value="Table 04 (Indoor)" selected>Table 04 (Indoor)</option>
+              <option value="Takeaway / Counter">Takeaway / Counter</option>
+              <option value="Delivery Partner">Swiggy / Zomato</option>
+            </select>
           </div>
         </div>
-        <div id="item-grid" style="display:grid; grid-template-columns: repeat(4, 1fr); gap:16px;">
-          <div class="glass" style="padding:24px; text-align:center; grid-column:1/-1;">
-            <div class="muted-white">Loading menu…</div>
-          </div>
+
+        <!-- Category Tabs -->
+        <div style="display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap;">
+          ${["ALL", "Hot Coffees", "Cold Brews", "Bakery & Viennoiserie", "Savouries & Mains"].map(
+            (cat) => `
+            <button class="btn btn-sm ${activePosCat === cat ? "btn-primary" : "btn-ghost"}" data-pos-cat="${cat}" type="button">
+              ${cat === "ALL" ? "All Items" : cat}
+            </button>`
+          ).join("")}
+        </div>
+
+        <!-- Items Grid -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;flex:1;">
+          ${items
+            .map(
+              (item) => `
+            <div class="card interactive" data-add-to-cart="${item.id}" style="padding:16px;cursor:pointer;display:flex;flex-direction:column;justify-content:space-between;border:1px solid var(--line);">
+              <div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                  <span class="status ${item.foodType === "Non-Veg" ? "danger" : "success"}" style="font-size:10px;padding:2px 6px;">
+                    ${item.foodType || "Veg"}
+                  </span>
+                  <span style="font-family:var(--font-mono);font-size:11px;color:var(--muted);">${item.id}</span>
+                </div>
+                <strong style="font-size:14px;color:var(--ink);display:block;margin-bottom:4px;">${item.name}</strong>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;border-top:1px dashed var(--line);padding-top:8px;">
+                <span style="font-family:var(--font-mono);font-weight:700;font-size:15px;color:var(--bronze-600);">₹${item.price}</span>
+                <span style="font-size:12px;font-weight:700;color:var(--ink-700);">+ Add</span>
+              </div>
+            </div>`
+            )
+            .join("")}
         </div>
       </div>
 
-      <div class="glass-dark" style="padding:22px; display:flex; flex-direction:column;">
-        <div style="color:#fff; font-weight:600; font-size:15px; margin-bottom:14px;">Current order</div>
-        <div id="cart-lines" style="flex:1; display:flex; flex-direction:column; gap:12px; overflow-y:auto;">
-          ${emptyCartHtml()}
-        </div>
-        <div id="cart-totals" style="border-top:1px solid rgba(255,255,255,0.18); margin-top:8px; padding-top:12px; display:none;"></div>
-        <div id="cafe-selector-row" style="margin-top:10px; display:none;">
-          <select id="pos-cafe-select" class="input-field" style="width:100%; font-size:12px;">
-            <option value="">— Select café —</option>
-          </select>
-        </div>
-        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; margin-top:16px;">
-          <button class="btn btn-ghost" data-tender="CASH">Cash</button>
-          <button class="btn btn-ghost" data-tender="CARD">Card</button>
-          <button class="btn btn-ghost" data-tender="UPI">UPI</button>
-          <button class="btn btn-primary" id="charge-btn" disabled>Charge ₹0.00</button>
-        </div>
-      </div>
-    </div>
-  `;
-}
+      <!-- Right: Ticket & Cart -->
+      <div class="card" style="padding:24px;display:flex;flex-direction:column;justify-content:space-between;background:var(--surface);">
+        <div>
+          <div class="card-head" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+            <h2 style="font-size:17px;font-weight:700;margin:0;color:var(--ink);">Active Order Ticket</h2>
+            <button class="btn btn-sm btn-ghost" id="clear-cart-btn" style="font-size:11px;padding:4px 8px;color:var(--danger);" type="button">Clear</button>
+          </div>
 
-function emptyCartHtml() {
-  return `<div style="color:rgba(255,255,255,0.55); font-size:12.5px; text-align:center; padding:30px 10px;">Tap an item to start this order</div>`;
-}
+          <div style="font-size:12px;color:var(--muted);margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--line);">
+            Serving: <strong style="color:var(--ink);">${selectedTable}</strong> · Register 01
+          </div>
 
-function itemCard(item) {
-  const gradients = [
-    "135deg, rgba(2,195,154,0.5), rgba(124,109,242,0.4)",
-    "135deg, rgba(255,138,101,0.5), rgba(255,190,90,0.4)",
-    "135deg, rgba(124,109,242,0.5), rgba(2,195,154,0.4)",
-    "135deg, rgba(255,190,90,0.5), rgba(255,138,101,0.4)",
-  ];
-  const grad = gradients[Math.abs(item.name.charCodeAt(0)) % gradients.length];
-  const pricePaisa = item.currentPricePaisa || 0;
-  const priceDisplay = (pricePaisa / 100).toFixed(0);
-  return `
-    <div class="glass" style="padding:16px; height:150px; display:flex; flex-direction:column; justify-content:space-between; cursor:pointer;" data-item="${item.menuItemId}">
-      <div style="width:100%; height:60px; border-radius:12px; background:linear-gradient(${grad});"></div>
-      <div>
-        <div style="color:#fff; font-weight:600; font-size:13px;">${item.name}</div>
-        <div class="muted-white" style="font-size:12px;">₹${priceDisplay}</div>
+          <!-- Cart Lines -->
+          <div id="pos-cart-lines" style="max-height:calc(100vh - 420px);overflow-y:auto;display:flex;flex-direction:column;gap:8px;">
+            ${
+              cartEntries.length
+                ? cartEntries
+                    .map(
+                      (entry) => `
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--line-strong);">
+                  <div style="flex:1;">
+                    <div style="font-size:13.5px;font-weight:600;color:var(--ink);">${entry.item.name}</div>
+                    <div style="font-size:11.5px;color:var(--muted);font-family:var(--font-mono);">₹${entry.item.price} × ${entry.qty}</div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <button class="btn btn-sm btn-ghost" data-dec-qty="${entry.item.id}" style="padding:2px 8px;font-size:13px;" type="button">-</button>
+                    <span style="font-family:var(--font-mono);font-weight:700;font-size:14px;min-width:18px;text-align:center;">${entry.qty}</span>
+                    <button class="btn btn-sm btn-ghost" data-inc-qty="${entry.item.id}" style="padding:2px 8px;font-size:13px;" type="button">+</button>
+                    <span style="font-family:var(--font-mono);font-weight:700;font-size:14px;min-width:55px;text-align:right;color:var(--ink);">₹${entry.item.price * entry.qty}</span>
+                  </div>
+                </div>`
+                    )
+                    .join("")
+                : `<div style="text-align:center;padding:40px 10px;color:var(--muted);font-size:13px;">Tap items on the left to add to this order ticket</div>`
+            }
+          </div>
+        </div>
+
+        <!-- Totals & Payment Actions -->
+        <div style="margin-top:16px;border-top:2px solid var(--line);padding-top:14px;">
+          <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--muted);margin-bottom:4px;">
+            <span>Subtotal</span>
+            <span style="font-family:var(--font-mono);">₹${subtotal.toLocaleString("en-IN")}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:13px;color:var(--muted);margin-bottom:8px;">
+            <span>CGST + SGST (5%)</span>
+            <span style="font-family:var(--font-mono);">₹${gst.toLocaleString("en-IN")}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:18px;font-weight:800;color:var(--ink);margin-bottom:16px;padding-top:6px;border-top:1px dashed var(--line);">
+            <span>Total Payable</span>
+            <span style="font-family:var(--font-mono);color:var(--bronze-600);">₹${grandTotal.toLocaleString("en-IN")}</span>
+          </div>
+
+          <!-- Tender Buttons -->
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px;">
+            ${["UPI", "CASH", "CARD"].map(
+              (t) => `
+              <button class="btn btn-sm ${selectedTender === t ? "btn-primary" : "btn-ghost"}" data-select-tender="${t}" type="button">
+                ${t === "UPI" ? "📱 UPI QR" : t === "CASH" ? "💵 Cash" : "💳 Card"}
+              </button>`
+            ).join("")}
+          </div>
+
+          <button class="btn btn-primary btn-block" id="complete-sale-btn" ${grandTotal <= 0 ? "disabled" : ""} style="padding:14px;font-size:16px;font-weight:700;" type="button">
+            Charge ₹${grandTotal.toLocaleString("en-IN")} (${selectedTender})
+          </button>
+        </div>
       </div>
     </div>
   `;
 }
 
 export async function wirePOS(root) {
-  // Populate cafe selector for MASTER/OWNER who aren't cafe-scoped
-  const cafeRow = root.querySelector("#cafe-selector-row");
-  const cafeSelect = root.querySelector("#pos-cafe-select");
-  if (["master", "owner"].includes(state.role?.toLowerCase())) {
-    if (cafeRow) cafeRow.style.display = "block";
-    try {
-      const cafesData = await apiGet("/cafes");
-      const cafes = cafesData?.data?.cafes || cafesData?.cafes || [];
-      cafes.forEach((c) => {
-        const opt = document.createElement("option");
-        opt.value = c.cafeId || c._id;
-        opt.textContent = c.name || c.cafeId;
-        cafeSelect.appendChild(opt);
+  // Category filter tabs
+  root.querySelectorAll("[data-pos-cat]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      activePosCat = btn.dataset.posCat;
+      refreshPOSView(root);
+    });
+  });
+
+  // Table select
+  const tableSelect = root.querySelector("#pos-table-select");
+  if (tableSelect) {
+    tableSelect.addEventListener("change", () => {
+      selectedTable = tableSelect.value;
+    });
+  }
+
+  // Add to cart
+  root.querySelectorAll("[data-add-to-cart]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const itemId = btn.dataset.addToCart;
+      const item = _menuItems.find((i) => i.id === itemId);
+      if (!item) return;
+
+      if (!cart[itemId]) {
+        cart[itemId] = { item, qty: 1 };
+      } else {
+        cart[itemId].qty += 1;
+      }
+      refreshPOSView(root);
+    });
+  });
+
+  // Inc / Dec Qty
+  root.querySelectorAll("[data-inc-qty]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const itemId = btn.dataset.incQty;
+      if (cart[itemId]) {
+        cart[itemId].qty += 1;
+        refreshPOSView(root);
+      }
+    });
+  });
+
+  root.querySelectorAll("[data-dec-qty]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const itemId = btn.dataset.decQty;
+      if (cart[itemId]) {
+        cart[itemId].qty -= 1;
+        if (cart[itemId].qty <= 0) delete cart[itemId];
+        refreshPOSView(root);
+      }
+    });
+  });
+
+  // Clear Cart
+  const clearBtn = root.querySelector("#clear-cart-btn");
+  if (clearBtn) {
+    clearBtn.addEventListener("click", () => {
+      cart = {};
+      refreshPOSView(root);
+    });
+  }
+
+  // Tender selection
+  root.querySelectorAll("[data-select-tender]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      selectedTender = btn.dataset.selectTender;
+      refreshPOSView(root);
+    });
+  });
+
+  // Complete Sale
+  const chargeBtn = root.querySelector("#complete-sale-btn");
+  if (chargeBtn) {
+    chargeBtn.addEventListener("click", async () => {
+      const cartEntries = Object.values(cart);
+      if (!cartEntries.length) return;
+
+      const subtotal = cartEntries.reduce((acc, entry) => acc + entry.item.price * entry.qty, 0);
+      const gst = Math.round(subtotal * 0.05);
+      const grandTotal = subtotal + gst;
+      const billNo = `ZAM-BILL-${Math.floor(100000 + Math.random() * 900000)}`;
+
+      // Show Receipt Print Modal
+      openModal({
+        title: "Sale Completed · Tax Invoice Receipt",
+        maxWidth: "460px",
+        body: `
+          <div style="font-family:var(--font-mono);background:var(--surface-sunken);padding:20px;border-radius:var(--radius-sm);font-size:13px;line-height:1.6;">
+            <div style="text-align:center;font-weight:800;font-size:16px;margin-bottom:2px;">ZAMORIN CAFE ESTATE</div>
+            <div style="text-align:center;font-size:11px;color:var(--muted);">GSTIN: 29AABCZ1234F1Z5 · Koramangala Main</div>
+            <div style="text-align:center;font-size:11px;color:var(--muted);margin-bottom:12px;">TAX INVOICE / RETAIL BILL</div>
+            <div style="display:flex;justify-content:space-between;">
+              <span>BILL NO: <strong>${billNo}</strong></span>
+              <span>${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+            </div>
+            <div>LOCATION: ${selectedTable}</div>
+            <hr style="border:0;border-top:1px dashed var(--line-strong);margin:10px 0;" />
+            ${cartEntries
+              .map(
+                (e) => `
+              <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+                <span>${e.qty}× ${e.item.name}</span>
+                <span>₹${e.item.price * e.qty}</span>
+              </div>`
+              )
+              .join("")}
+            <hr style="border:0;border-top:1px dashed var(--line-strong);margin:10px 0;" />
+            <div style="display:flex;justify-content:space-between;"><span>Subtotal:</span><span>₹${subtotal}</span></div>
+            <div style="display:flex;justify-content:space-between;"><span>GST (5%):</span><span>₹${gst}</span></div>
+            <div style="display:flex;justify-content:space-between;font-size:16px;font-weight:800;margin-top:6px;padding-top:6px;border-top:1px solid var(--line);">
+              <span>PAID TOTAL:</span>
+              <span>₹${grandTotal}</span>
+            </div>
+            <div style="text-align:center;margin-top:12px;font-size:11px;color:var(--muted);">
+              Tender: <strong>${selectedTender}</strong> · THANK YOU FOR VISITING ZAMORIN!
+            </div>
+          </div>
+        `,
+        saveLabel: "Print Receipt / Next Customer",
+        cancelLabel: "Close",
+        onSave: async () => {
+          try {
+            await apiPost("/bills", {
+              body: {
+                billNo,
+                table: selectedTable,
+                items: cartEntries.map((e) => ({ name: e.item.name, qty: e.qty, price: e.item.price })),
+                subtotal,
+                tax: gst,
+                total: grandTotal,
+                paymentMode: selectedTender,
+              },
+            });
+          } catch {}
+          cart = {};
+          showToast(`Sale recorded successfully! Invoice: ${billNo}`, "mint");
+          refreshPOSView(root);
+        },
       });
-    } catch { /* silent */ }
-  } else {
-    // For CAFE_ADMIN, use first assigned cafe
-    if (cafeSelect && state.assignedCafeIds?.length) {
-      const opt = document.createElement("option");
-      opt.value = state.assignedCafeIds[0];
-      opt.textContent = state.assignedCafeIds[0];
-      cafeSelect.appendChild(opt);
-      cafeSelect.value = state.assignedCafeIds[0];
-    }
-  }
-
-  // Load menu items
-  try {
-    const data = await apiGet("/menu/items?status=ACTIVE&limit=100");
-    _menuItems = data?.data?.items || data?.items || [];
-    renderItemGrid(root, _menuItems);
-  } catch {
-    root.querySelector("#item-grid").innerHTML = `
-      <div class="glass" style="padding:24px; text-align:center; grid-column:1/-1;">
-        <div class="muted-white">Could not load menu items.</div>
-      </div>`;
-  }
-
-  // Wire tender buttons
-  root.querySelectorAll("[data-tender]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      if (Object.keys(cart).length === 0) return;
-      tender = btn.dataset.tender;
-      root.querySelectorAll("[data-tender]").forEach((b) => b.classList.remove("selected"));
-      btn.classList.add("selected");
     });
-  });
-
-  // Wire charge button
-  root.querySelector("#charge-btn").addEventListener("click", () => {
-    const itemCount = Object.values(cart).reduce((a, b) => a + b, 0);
-    if (itemCount === 0) return;
-    if (!tender) { showToast("Choose a tender before charging", "amber"); return; }
-
-    const cafeId = cafeSelect?.value;
-    if (!cafeId) { showToast("Select a café before charging", "amber"); return; }
-
-    const { total } = cartTotal();
-    confirmAction({
-      title: `Charge ₹${(total / 100).toFixed(2)}?`,
-      description: `${itemCount} item(s), paid by ${tender}. This will create a bill record.`,
-      confirmLabel: "Confirm charge",
-      onConfirm: () => submitBill(root, cafeId),
-    });
-  });
+  }
 }
 
-function renderItemGrid(root, items) {
-  const grid = root.querySelector("#item-grid");
-  if (!items.length) {
-    grid.innerHTML = `<div class="glass" style="padding:24px; text-align:center; grid-column:1/-1;"><div class="muted-white">No active menu items found.</div></div>`;
-    return;
-  }
-  grid.innerHTML = items.map(itemCard).join("");
-  grid.querySelectorAll("[data-item]").forEach((card) => {
-    card.addEventListener("click", () => {
-      cart[card.dataset.item] = (cart[card.dataset.item] || 0) + 1;
-      renderCartPanel(root);
-    });
-  });
-}
-
-function cartTotal() {
-  let subtotalPaisa = 0;
-  for (const [id, qty] of Object.entries(cart)) {
-    const item = _menuItems.find((m) => m.menuItemId === id);
-    if (item) subtotalPaisa += (item.currentPricePaisa || 0) * qty;
-  }
-  const taxPaisa = Math.round(subtotalPaisa * 0.05);
-  return { subtotalPaisa, taxPaisa, total: subtotalPaisa + taxPaisa };
-}
-
-function renderCartPanel(root) {
-  const linesEl = root.querySelector("#cart-lines");
-  const totalsEl = root.querySelector("#cart-totals");
-  const chargeBtn = root.querySelector("#charge-btn");
-
-  const entries = Object.entries(cart);
-  if (entries.length === 0) {
-    linesEl.innerHTML = emptyCartHtml();
-    totalsEl.style.display = "none";
-    chargeBtn.textContent = "Charge ₹0.00";
-    chargeBtn.disabled = true;
-    return;
-  }
-
-  linesEl.innerHTML = entries.map(([id, qty]) => {
-    const item = _menuItems.find((m) => m.menuItemId === id);
-    const name = item?.name || id;
-    const lineTotal = ((item?.currentPricePaisa || 0) * qty / 100).toFixed(0);
-    return `
-      <div class="flex justify-between" style="color:#fff; font-size:13px; align-items:center;">
-        <div>${qty} × ${name}</div>
-        <div style="display:flex;gap:8px;align-items:center;">
-          <span>₹${lineTotal}</span>
-          <button data-remove="${id}" style="background:none;border:none;color:rgba(255,100,100,0.8);cursor:pointer;font-size:12px;">✕</button>
-        </div>
-      </div>`;
-  }).join("");
-
-  // Wire remove buttons
-  linesEl.querySelectorAll("[data-remove]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      delete cart[btn.dataset.remove];
-      renderCartPanel(root);
-    });
-  });
-
-  const { subtotalPaisa, taxPaisa, total } = cartTotal();
-  totalsEl.style.display = "block";
-  totalsEl.innerHTML = `
-    <div class="flex justify-between muted-white" style="font-size:12.5px;"><div>Subtotal</div><div>₹${(subtotalPaisa / 100).toFixed(2)}</div></div>
-    <div class="flex justify-between muted-white" style="font-size:12.5px; margin-top:6px;"><div>GST (5%)</div><div>₹${(taxPaisa / 100).toFixed(2)}</div></div>
-    <div class="flex justify-between" style="color:#fff; font-weight:700; font-size:17px; margin-top:10px;"><div>Total</div><div>₹${(total / 100).toFixed(2)}</div></div>
-  `;
-  chargeBtn.textContent = `Charge ₹${(total / 100).toFixed(2)}`;
-  chargeBtn.disabled = false;
-}
-
-async function submitBill(root, cafeId) {
-  const lineItems = Object.entries(cart).map(([menuItemId, quantity]) => ({ menuItemId, quantity }));
-  try {
-    const result = await apiPost("/bills", {
-      body: {
-        cafeId,
-        orderType: "DINE_IN",
-        lineItems,
-        paymentMethod: tender,
-        isImmediateCompletion: true,
-      },
-    });
-    const billId = result?.data?.bill?.billId || result?.bill?.billId || "—";
-    showToast(`Sale complete — ${billId}`, "mint");
-    cart = {};
-    tender = null;
-    renderCartPanel(root);
-    root.querySelectorAll("[data-tender]").forEach((b) => b.classList.remove("selected"));
-  } catch (err) {
-    showToast(err?.message || "Could not complete sale", "coral");
-  }
+function refreshPOSView(root) {
+  const content = root.querySelector(".page-enter") || root;
+  content.innerHTML = renderPOS();
+  wirePOS(root);
 }

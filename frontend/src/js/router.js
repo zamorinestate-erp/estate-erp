@@ -10,44 +10,44 @@
 
 import { state, setState } from "./state.js";
 import { NAVIGATION, isRouteAllowed, ROLES } from "./navigation.js";
-import { renderSidebar, wireSidebar, renderTopbar, wireBell, updateBellBadge } from "./components.js";
+import { renderSidebar, wireSidebar, renderTopbar, wireBell, updateBellBadge, isSidebarCollapsed } from "./components.js";
 import { renderNotificationCentre, wireNotificationCentre } from "./pages/notificationCentre.js";
 import { icon } from "./icons.js";
 import { renderMasterDashboard, hydrateMasterDashboard } from "./pages/dashboardMaster.js";
 import { renderAdminDashboard } from "./pages/dashboardAdmin.js";
 import { renderStaffHome, wireStaffHome } from "./pages/staffHome.js";
 import { renderStaffSettings, wireStaffSettings } from "./pages/staffSettings.js";
-import { renderSettingsShared, wireSettingsShared } from "./pages/settingsShared.js";
-import { renderPOS, wirePOS } from "./pages/posTill.js";
-import { renderOwnerBills, wireOwnerBills } from "./pages/ownerBills.js";
-import { renderInventory, wireInventory } from "./pages/inventory.js";
-import { renderExpenses, wireExpenses } from "./pages/expenses.js";
-import { renderFinance, wireFinance } from "./pages/financeAccounts.js";
-import { renderLedger, wireLedger } from "./pages/personalLedger.js";
-import { renderEmployees, wireEmployees } from "./pages/employees.js";
-import { renderEmployeeProfile, wireEmployeeProfile } from "./pages/employeeProfile.js";
-import { renderAttendance } from "./modules/attendance/attendanceShifts.js";
-import { renderReports, wireReports } from "./pages/reportsAnalytics.js";
-import { renderAdmin, wireAdmin } from "./pages/administration.js";
-import { renderCashBook, wireCashBook } from "./pages/cashBook.js";
-import { renderTasks, wireTasks } from "./pages/tasksApprovals.js";
-import { renderPerformance, wirePerformance } from "./pages/cafePerformance.js";
-import { renderStaffAttendance, wireStaffAttendance } from "./modules/attendance/staffAttendance.js";
-import { renderStaffLeave, wireStaffLeave } from "./pages/staffLeave.js";
-import { renderStaffPayslips, wireStaffPayslips } from "./pages/staffPayslips.js";
-import { renderStaffLoansAdvances, wireStaffLoansAdvances } from "./pages/staffLoansAdvances.js";
-import { renderPayrollManagement, wirePayrollManagement } from "./pages/payrollManagement.js";
-import { renderAnnouncements, wireAnnouncements } from "./pages/announcements.js";
-import { renderNotAvailable, renderNotBuiltYet } from "./pages/notAvailable.js";
-import { renderVendors, wireVendors } from "./pages/vendors.js";
-import { renderProcurement, wireProcurement } from "./pages/procurement.js";
-import { renderMenuManagement, wireMenuManagement } from "./pages/menuManagement.js";
-import { renderCustomers, wireCustomers } from "./pages/customers.js";
-import { renderQuality, wireQuality } from "./pages/quality.js";
-import { renderAssets, wireAssets } from "./pages/assets.js";
-import { renderDepartmentOrders, wireDepartmentOrders } from "./pages/departmentOrders.js";
-import { renderTrashBin, wireTrashBin } from "./pages/trashBin.js";
-import { CafeAttendanceDisplayPage } from "./pages/cafeAttendanceDisplay.js";
+import { renderSettingsShared, wireSettingsShared } from "./pages/settingsShared.js?v=2.0.1";
+import { renderPOS, wirePOS } from "./pages/posTill.js?v=2.0.1";
+import { renderOwnerBills, wireOwnerBills } from "./pages/ownerBills.js?v=2.0.1";
+import { renderInventory, wireInventory } from "./pages/inventory.js?v=2.0.1";
+import { renderExpenses, wireExpenses } from "./pages/expenses.js?v=2.0.1";
+import { renderFinance, wireFinance } from "./pages/financeAccounts.js?v=2.0.1";
+import { renderLedger, wireLedger } from "./pages/personalLedger.js?v=2.0.1";
+import { renderEmployees, wireEmployees } from "./pages/employees.js?v=2.0.1";
+import { renderEmployeeProfile, wireEmployeeProfile } from "./pages/employeeProfile.js?v=2.0.1";
+import { renderAttendance } from "./modules/attendance/attendanceShifts.js?v=2.0.1";
+import { renderReports, wireReports } from "./pages/reportsAnalytics.js?v=2.0.1";
+import { renderAdmin, wireAdmin } from "./pages/administration.js?v=2.0.1";
+import { renderCashBook, wireCashBook } from "./pages/cashBook.js?v=2.0.1";
+import { renderTasks, wireTasks } from "./pages/tasksApprovals.js?v=2.0.1";
+import { renderPerformance, wirePerformance } from "./pages/cafePerformance.js?v=2.0.1";
+import { renderStaffAttendance, wireStaffAttendance } from "./modules/attendance/staffAttendance.js?v=2.0.1";
+import { renderStaffLeave, wireStaffLeave } from "./pages/staffLeave.js?v=2.0.1";
+import { renderStaffPayslips, wireStaffPayslips } from "./pages/staffPayslips.js?v=2.0.1";
+import { renderStaffLoansAdvances, wireStaffLoansAdvances } from "./pages/staffLoansAdvances.js?v=2.0.1";
+import { renderPayrollManagement, wirePayrollManagement } from "./pages/payrollManagement.js?v=2.0.1";
+import { renderAnnouncements, wireAnnouncements } from "./pages/announcements.js?v=2.0.1";
+import { renderNotAvailable, renderNotBuiltYet } from "./pages/notAvailable.js?v=2.0.1";
+import { renderVendors, wireVendors } from "./pages/vendors.js?v=2.0.1";
+import { renderProcurement, wireProcurement } from "./pages/procurement.js?v=2.0.1";
+import { renderMenuManagement, wireMenuManagement } from "./pages/menuManagement.js?v=2.0.1";
+import { renderCustomers, wireCustomers } from "./pages/customers.js?v=2.0.1";
+import { renderQuality, wireQuality } from "./pages/quality.js?v=2.0.1";
+import { renderAssets, wireAssets } from "./pages/assets.js?v=2.0.1";
+import { renderDepartmentOrders, wireDepartmentOrders } from "./pages/departmentOrders.js?v=2.0.1";
+import { renderTrashBin, wireTrashBin } from "./pages/trashBin.js?v=2.0.1";
+import { CafeAttendanceDisplayPage } from "./pages/cafeAttendanceDisplay.js?v=2.0.1";
 
 // ROLE_LABELS: display-safe generic labels used only for topbar scope chip
 // until /auth/me bootstrap provides the real user's display name.
@@ -75,49 +75,43 @@ export function navigate(route) {
 }
 
 export function renderShell() {
-  const isStaffShell = state.role === ROLES.STAFF;
   const app = document.getElementById("app");
+  if (!app) return;
   app.classList.remove("auth-screen");
-  app.classList.toggle("shell-minimal", isStaffShell);
+  const collapsed = isSidebarCollapsed();
 
-  if (isStaffShell) {
+  if (!document.getElementById("sidebar") || app.dataset.shellRole !== state.role) {
+    app.dataset.shellRole = state.role;
     app.innerHTML = `
-      <div id="page-content" style="grid-column:1; padding-bottom:90px;"></div>
-      <div id="staff-tabbar" class="glass-dark" style="position:fixed; bottom:16px; left:50%; transform:translateX(-50%); width:calc(100% - 32px); max-width:430px; padding:10px; display:flex; justify-content:space-around; z-index:800;"></div>
+      <div class="app-shell ${collapsed ? "sidebar-collapsed" : ""}">
+        <aside id="sidebar" class="sidebar ${collapsed ? "collapsed" : ""}"></aside>
+        <main class="main-shell">
+          <header id="topbar" class="topbar"></header>
+          <div id="page-content" class="page"></div>
+        </main>
+      </div>
+      <div id="modal-root"></div>
+      <div id="toast-root" class="toast-stack"></div>
     `;
-    const tabbar = document.getElementById("staff-tabbar");
-    tabbar.innerHTML = NAVIGATION[ROLES.STAFF].items
-      .map(
-        (item) => `
-        <div class="nav-item ${state.route === item.route ? "active" : ""}" data-route="${item.route}" data-navid="${item.id}" style="flex-direction:column; gap:4px; padding:8px 6px; font-size:10px; text-align:center;">
-          ${icon(item.icon, 18)}
-          <span>${item.label}</span>
-        </div>`
-      )
-      .join("");
-    tabbar.querySelectorAll(".nav-item").forEach((el) => {
-      el.addEventListener("click", () => navigate(el.dataset.route));
-    });
-  } else {
-    // Only rebuild sidebar/topbar containers if they don't already exist for
-    // this role — otherwise just update active-state classes (Part H.3).
-    if (!document.getElementById("sidebar") || app.dataset.shellRole !== state.role) {
-      app.dataset.shellRole = state.role;
-      app.innerHTML = `
-        <div id="sidebar" class="glass-dark"></div>
-        <div id="topbar"></div>
-        <div id="page-content"></div>
-      `;
-      document.getElementById("sidebar").innerHTML = renderSidebar();
-      wireSidebar(document.getElementById("sidebar"));
-      document.getElementById("topbar").innerHTML = renderTopbar({
-        scopeChip: `<div class="pill pill-dark">${state.role === ROLES.MASTER ? "🏠 All Cafes ▾" : "🏠 Dawn Roast — Koramangala"}</div>`,
-      });
-      wireBell(document.getElementById("topbar"));
+    const sb = document.getElementById("sidebar");
+    const tb = document.getElementById("topbar");
+    if (sb) {
+      sb.innerHTML = renderSidebar();
+      wireSidebar(sb);
+    }
+    if (tb) {
+      tb.innerHTML = renderTopbar();
+      wireBell(tb);
       updateBellBadge();
-    } else {
-      document.getElementById("sidebar").innerHTML = renderSidebar();
-      wireSidebar(document.getElementById("sidebar"));
+    }
+  } else {
+    const shell = document.querySelector(".app-shell");
+    const sb = document.getElementById("sidebar");
+    if (shell) shell.classList.toggle("sidebar-collapsed", collapsed);
+    if (sb) {
+      sb.classList.toggle("collapsed", collapsed);
+      sb.innerHTML = renderSidebar();
+      wireSidebar(sb);
     }
   }
 
@@ -185,6 +179,7 @@ async function renderPage() {
       break;
 
     case "ledger":
+    case "personal-ledger":
       if (state.role !== ROLES.MASTER) {
         content.innerHTML = renderNotAvailable();
         break;
@@ -303,6 +298,7 @@ async function renderPage() {
       break;
 
     case "dept-orders":
+    case "department-orders":
       content.innerHTML = renderDepartmentOrders();
       wireDepartmentOrders(content);
       break;

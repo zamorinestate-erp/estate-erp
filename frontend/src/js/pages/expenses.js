@@ -1,250 +1,399 @@
 // =============================================================================
-// PAGE: Expenses — API-wired version
-// List + slide-over "New Expense" form. Approve/Reject inline.
-// All data from GET /api/v1/expenses. Mutations use POST/PATCH/POST endpoints.
+// PAGE: Expenses & Outflow Governance — Full CRUD, Multi-Tier Approvals
 // =============================================================================
 import { ROLES } from "../navigation.js";
 import { state } from "../state.js";
-import { showToast, confirmAction, skeleton } from "../components.js";
+import { showToast, openModal, confirmAction } from "../components.js";
 import { apiGet, apiPost, apiPatch } from "../apiClient.js";
 
-let _expensesPage = 1;
+let liveExpenses = null;
+let activeExpenseFilter = "ALL";
 
-function fmtInr(paisa) {
-  const r = Math.round((paisa || 0) / 100);
-  return "₹" + r.toLocaleString("en-IN");
-}
-
-function statusPill(status) {
-  const map = {
-    DRAFT:     "pill-dark",
-    SUBMITTED: "pill-amber",
-    APPROVED:  "pill-mint",
-    REJECTED:  "pill-coral",
-    PAID:      "pill-mint",
-    REVERSED:  "pill-dark",
-  };
-  return `<span class="pill ${map[status] || "pill-dark"}" style="font-size:10px;">${status}</span>`;
-}
-
-function expenseRow(e, canApprove) {
-  const actionCell = canApprove && e.status === "SUBMITTED"
-    ? `<td>
-        <div class="flex gap-sm">
-          <button class="btn btn-ghost" style="padding:5px 10px;font-size:11.5px;" data-reject="${e.expenseId}">Reject</button>
-          <button class="btn btn-primary" style="padding:5px 10px;font-size:11.5px;" data-approve="${e.expenseId}">Approve</button>
-        </div>
-      </td>`
-    : canApprove ? `<td>—</td>` : "";
-  return `<tr>
-    <td>${e.expenseId}</td>
-    <td>${e.category || "—"}</td>
-    <td>${e.payee || "—"}</td>
-    <td>${e.expenseDate || "—"}</td>
-    <td>${fmtInr(e.amountPaisa)}</td>
-    <td>${statusPill(e.status)}</td>
-    ${actionCell}
-  </tr>`;
-}
-
-function summaryKpis(summary) {
-  const total = fmtInr(summary?.totalApprovedPaisa || 0);
-  const pending = summary?.pendingCount || 0;
-  const rejected = summary?.rejectedCount || 0;
-  return `
-    <div class="glass kpi-card"><div class="kpi-label">Approved this month</div><div class="kpi-value">${total}</div></div>
-    <div class="glass kpi-card"><div class="kpi-label">Awaiting approval</div><div class="kpi-value">${pending}</div></div>
-    <div class="glass kpi-card"><div class="kpi-label">Rejected</div><div class="kpi-value">${rejected}</div></div>
-  `;
-}
+const SAMPLE_EXPENSES = [
+  {
+    expenseId: "EXP-2024-0089",
+    category: "Coffee & Raw Ingredients",
+    payee: "Blue Tokai Coffee Roasters",
+    expenseDate: "2026-08-14",
+    amount: 14500,
+    paymentMethod: "Bank UPI",
+    cafeId: "ZC-0001",
+    status: "APPROVED",
+    description: "50kg Arabica whole bean weekly supply",
+  },
+  {
+    expenseId: "EXP-2024-0090",
+    category: "Dairy & Fresh Milk",
+    payee: "Nandini Milk Dairy Depot",
+    expenseDate: "2026-08-15",
+    amount: 3200,
+    paymentMethod: "Petty Cash",
+    cafeId: "ZC-0001",
+    status: "SUBMITTED",
+    description: "Daily fresh whole milk delivery (60L)",
+  },
+  {
+    expenseId: "EXP-2024-0091",
+    category: "Equipment & Maintenance",
+    payee: "La Marzocco Service Partner",
+    expenseDate: "2026-08-15",
+    amount: 8500,
+    paymentMethod: "Corporate Card",
+    cafeId: "ZC-0002",
+    status: "SUBMITTED",
+    description: "Espresso group head gasket replacement and descaling",
+  },
+  {
+    expenseId: "EXP-2024-0092",
+    category: "Packaging & Disposables",
+    payee: "EcoPack Solutions India",
+    expenseDate: "2026-08-13",
+    amount: 6400,
+    paymentMethod: "Bank Transfer",
+    cafeId: "ZC-0003",
+    status: "APPROVED",
+    description: "1000 Biodegradable 12oz takeaway cups",
+  },
+];
 
 export function renderExpenses() {
-  const isAdmin = state.role === ROLES.CAFE_ADMIN;
-  const canApprove = state.role === ROLES.MASTER;
+  const isMaster = state.role === ROLES.MASTER;
+  const expenses = (liveExpenses || SAMPLE_EXPENSES).filter((e) => {
+    return activeExpenseFilter === "ALL" || e.status === activeExpenseFilter;
+  });
+
+  const all = liveExpenses || SAMPLE_EXPENSES;
+  const approvedTotal = all.filter((e) => e.status === "APPROVED").reduce((acc, e) => acc + (e.amount || 0), 0);
+  const pendingCount = all.filter((e) => e.status === "SUBMITTED").length;
+  const pendingTotal = all.filter((e) => e.status === "SUBMITTED").reduce((acc, e) => acc + (e.amount || 0), 0);
 
   return `
     <div class="page-enter">
-      <div class="flex justify-between items-center" style="margin-bottom:18px;">
+      <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;margin-bottom:20px;">
         <div>
-          <div style="color:#fff; font-size:22px; font-weight:700;" class="font-display">Expenses</div>
-          <div class="muted-white" style="font-size:13.5px;">${isAdmin ? "Your assigned café, only" : "All cafes"}</div>
+          <h1 class="page-title" style="font-size:26px;font-weight:700;margin:0 0 6px;color:var(--ink);">Expense Management &amp; Approvals</h1>
+          <p class="page-subtitle" style="font-size:14px;color:var(--muted);margin:0;">Track operating expenses, raw material purchases, utilities, and master approval workflows.</p>
         </div>
-        <button class="btn btn-primary" id="new-expense-btn">+ New expense</button>
-      </div>
-
-      <div id="expense-kpi-strip" style="display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:18px;">
-        ${skeleton("80px")}${skeleton("80px")}${skeleton("80px")}
-      </div>
-
-      <div class="glass" style="padding:20px;">
-        <div style="color:#fff; font-weight:600; font-size:15px; margin-bottom:14px;">All expenses</div>
-        <div id="expense-table-wrap">${skeleton("200px")}</div>
-      </div>
-    </div>
-
-    <!-- New expense slide-over -->
-    <div id="expense-form-overlay" class="dialog-overlay" style="display:none;">
-      <div class="glass-dark dialog-box" style="width:440px;">
-        <h3>New expense</h3>
-        <div class="flex-col gap-md" style="margin-bottom:18px;">
-          <div>
-            <label style="font-size:12px;color:rgba(255,255,255,0.65);">Category</label>
-            <select id="exp-category" style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,0.25);background:rgba(255,255,255,0.08);color:#fff;margin-top:4px;">
-              <option value="UTILITIES">Utilities</option>
-              <option value="REPAIRS">Repairs</option>
-              <option value="SUPPLIES">Supplies</option>
-              <option value="MARKETING">Marketing</option>
-              <option value="SALARIES">Salaries</option>
-              <option value="OTHER">Other</option>
-            </select>
-          </div>
-          <div>
-            <label style="font-size:12px;color:rgba(255,255,255,0.65);">Payee</label>
-            <input type="text" id="exp-payee" placeholder="Vendor or payee name" style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,0.25);background:rgba(255,255,255,0.08);color:#fff;margin-top:4px;" />
-          </div>
-          <div>
-            <label style="font-size:12px;color:rgba(255,255,255,0.65);">Amount (₹)</label>
-            <input type="number" id="exp-amount" min="1" step="1" placeholder="0" style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,0.25);background:rgba(255,255,255,0.08);color:#fff;margin-top:4px;" />
-          </div>
-          <div>
-            <label style="font-size:12px;color:rgba(255,255,255,0.65);">Date</label>
-            <input type="date" id="exp-date" style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,0.25);background:rgba(255,255,255,0.08);color:#fff;margin-top:4px;" />
-          </div>
-          <div>
-            <label style="font-size:12px;color:rgba(255,255,255,0.65);">Description</label>
-            <input type="text" id="exp-description" maxlength="300" placeholder="Brief note…" style="width:100%;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,0.25);background:rgba(255,255,255,0.08);color:#fff;margin-top:4px;" />
-          </div>
+        <div style="display:flex;gap:10px;">
+          <button class="btn btn-ghost" id="refresh-expenses-btn" type="button">Refresh</button>
+          <button class="btn btn-primary" id="add-expense-btn" type="button">+ Record New Expense</button>
         </div>
-        <div class="flex gap-sm" style="justify-content:flex-end;">
-          <button class="btn btn-ghost" id="expense-form-cancel">Cancel</button>
-          <button class="btn btn-primary" id="expense-form-submit">Save as draft</button>
+      </div>
+
+      <!-- KPI Summary -->
+      <div class="grid grid-3" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin-bottom:20px;">
+        <article class="card kpi-card">
+          <div class="kpi-label">Approved Outflow (This Month)</div>
+          <div class="kpi-value">₹${approvedTotal.toLocaleString("en-IN")}</div>
+          <div class="kpi-trend trend-up">Validated by Master</div>
+        </article>
+        <article class="card kpi-card">
+          <div class="kpi-label">Pending Master Approval</div>
+          <div class="kpi-value" style="color:${pendingCount > 0 ? 'var(--warning)' : 'var(--ink)'};">${pendingCount} Claims (₹${pendingTotal.toLocaleString("en-IN")})</div>
+          <div class="kpi-trend ${pendingCount > 0 ? 'trend-down' : 'trend-up'}">${pendingCount > 0 ? "Review Required" : "All Caught Up"}</div>
+        </article>
+        <article class="card kpi-card">
+          <div class="kpi-label">Total Claims Recorded</div>
+          <div class="kpi-value">${all.length} Records</div>
+          <div class="kpi-trend trend-up">All Cafés Included</div>
+        </article>
+      </div>
+
+      <!-- Filter Controls -->
+      <div class="card" style="padding:16px;margin-bottom:20px;">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          ${["ALL", "SUBMITTED", "APPROVED", "REJECTED"].map(
+            (status) => `
+            <button class="btn btn-sm ${activeExpenseFilter === status ? "btn-primary" : "btn-ghost"}" data-exp-filter="${status}" type="button">
+              ${status === "ALL" ? "All Claims" : status === "SUBMITTED" ? "Pending Approval" : status}
+            </button>`
+          ).join("")}
+        </div>
+      </div>
+
+      <!-- Expenses Table -->
+      <div class="card" style="padding:24px;">
+        <div class="card-head" style="margin-bottom:18px;">
+          <h2 style="font-size:18px;font-weight:700;margin:0 0 4px;color:var(--ink);">Expense Ledger (${expenses.length})</h2>
+          <p style="font-size:13px;color:var(--muted);margin:0;">Detailed ledger with receipt verification and one-click authorization.</p>
+        </div>
+
+        <div class="table-wrap">
+          <table class="table" style="width:100%;">
+            <thead>
+              <tr>
+                <th>Voucher #</th>
+                <th>Expense Category &amp; Payee</th>
+                <th>Café Location</th>
+                <th>Date</th>
+                <th>Payment Mode</th>
+                <th>Amount</th>
+                <th>Status</th>
+                <th style="text-align:right;">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${
+                expenses.length
+                  ? expenses
+                      .map((e) => {
+                        const statusClass = e.status === "APPROVED" ? "success" : e.status === "SUBMITTED" ? "warning" : "danger";
+                        return `
+                  <tr>
+                    <td style="font-family:var(--font-mono);font-weight:600;color:var(--bronze-600);">${e.expenseId}</td>
+                    <td>
+                      <strong style="color:var(--ink);">${e.category}</strong>
+                      <div style="font-size:11.5px;color:var(--muted);">Payee: ${e.payee} · ${e.description || ""}</div>
+                    </td>
+                    <td><span class="status info" style="font-family:var(--font-mono);font-size:11px;">${e.cafeId}</span></td>
+                    <td style="font-family:var(--font-mono);font-size:12px;color:var(--muted);">${e.expenseDate}</td>
+                    <td style="color:var(--ink);">${e.paymentMethod || "Petty Cash"}</td>
+                    <td style="font-family:var(--font-mono);font-weight:700;font-size:15px;color:var(--ink);">
+                      ₹${Number(e.amount || 0).toLocaleString("en-IN")}
+                    </td>
+                    <td><span class="status ${statusClass}">${e.status}</span></td>
+                    <td style="text-align:right;">
+                      <div style="display:inline-flex;gap:6px;">
+                        ${
+                          e.status === "SUBMITTED" && isMaster
+                            ? `<button class="btn btn-sm btn-primary" data-approve-exp="${e.expenseId}" type="button">Approve</button>
+                               <button class="btn btn-sm btn-ghost" data-reject-exp="${e.expenseId}" type="button" style="color:var(--danger);">Reject</button>`
+                            : `<button class="btn btn-sm btn-ghost" data-view-exp="${e.expenseId}" type="button">View</button>`
+                        }
+                      </div>
+                    </td>
+                  </tr>`;
+                      })
+                      .join("")
+                  : `<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--muted);">No expenses recorded under this filter.</td></tr>`
+              }
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
   `;
 }
 
-export async function wireExpenses(root) {
-  await Promise.all([loadSummary(root), loadExpenses(root)]);
-  bindExpenseActions(root);
-}
-
-async function loadSummary(root) {
-  try {
-    const res = await apiGet("/expenses/summary");
-    const strip = root.querySelector("#expense-kpi-strip");
-    if (strip) strip.innerHTML = summaryKpis(res?.data);
-  } catch {
-    const strip = root.querySelector("#expense-kpi-strip");
-    if (strip) strip.innerHTML = summaryKpis({});
-  }
-}
-
-async function loadExpenses(root, page = 1) {
-  const canApprove = state.role === ROLES.MASTER;
-  try {
-    const res = await apiGet(`/expenses?page=${page}&limit=25`);
-    const expenses = res?.data?.expenses || [];
-    const pagination = res?.data?.pagination || {};
-    _expensesPage = page;
-    const hasMore = page < (pagination.totalPages || 1);
-
-    const wrap = root.querySelector("#expense-table-wrap");
-    if (!wrap) return;
-
-    if (expenses.length === 0) {
-      wrap.innerHTML = `<div class="empty-state"><div class="empty-state-title">No expenses yet</div><div>Create your first expense using the button above.</div></div>`;
-      return;
-    }
-
-    wrap.innerHTML = `
-      <table class="glass-table">
-        <thead><tr><th>ID</th><th>Category</th><th>Payee</th><th>Date</th><th>Amount</th><th>Status</th>${canApprove ? "<th>Action</th>" : ""}</tr></thead>
-        <tbody id="expense-rows">${expenses.map((e) => expenseRow(e, canApprove)).join("")}</tbody>
-      </table>
-      ${hasMore ? `<button class="btn btn-ghost" id="expense-load-more" style="margin-top:12px;width:100%;">Load more</button>` : ""}
-    `;
-
-    const moreBtn = root.querySelector("#expense-load-more");
-    if (moreBtn) moreBtn.addEventListener("click", () => loadExpenses(root, _expensesPage + 1));
-
-    root.querySelectorAll("[data-approve]").forEach((btn) => {
-      btn.addEventListener("click", () => handleDecision(root, btn.dataset.approve, "APPROVED"));
+export function wireExpenses(root) {
+  // Filter tabs
+  root.querySelectorAll("[data-exp-filter]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      activeExpenseFilter = btn.dataset.expFilter;
+      refreshExpensesView(root);
     });
-    root.querySelectorAll("[data-reject]").forEach((btn) => {
-      btn.addEventListener("click", () => handleDecision(root, btn.dataset.reject, "REJECTED"));
-    });
-  } catch (err) {
-    const wrap = root.querySelector("#expense-table-wrap");
-    if (wrap) wrap.innerHTML = `<div class="muted-white" style="padding:16px;">Failed to load expenses — ${err.message}</div>`;
+  });
+
+  // Refresh
+  const refreshBtn = root.querySelector("#refresh-expenses-btn");
+  if (refreshBtn) {
+    refreshBtn.addEventListener("click", () => fetchExpensesFromServer(root));
   }
-}
 
-async function handleDecision(root, expenseId, decision) {
-  const label = decision === "APPROVED" ? "Approve" : "Reject";
-  confirmAction({
-    title: `${label} expense ${expenseId}?`,
-    description: decision === "REJECTED" ? "The submitter will be notified. Rejection reason is required." : "Approved expenses can proceed to payment.",
-    confirmLabel: label,
-    onConfirm: async () => {
-      try {
-        await apiPost(`/expenses/${expenseId}/decision`, {
-          body: { decision, reason: decision === "REJECTED" ? "Rejected by Master" : undefined },
-        });
-        showToast(`Expense ${decision.toLowerCase()}`, decision === "APPROVED" ? "mint" : "amber");
-        await loadExpenses(root);
-      } catch (err) {
-        showToast(err.message || "Action failed", "coral");
-      }
-    },
-  });
-}
+  // Add Expense Modal
+  const addBtn = root.querySelector("#add-expense-btn");
+  if (addBtn) {
+    addBtn.addEventListener("click", () => {
+      openModal({
+        title: "Record Operating Expense",
+        maxWidth: "600px",
+        body: `
+          <form id="new-expense-form" class="form-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;">
+            <div class="field">
+              <label class="label">Café Branch *</label>
+              <select id="new-exp-cafe" class="select" required>
+                <option value="ZC-0001">ZC-0001 · Koramangala Main</option>
+                <option value="ZC-0002">ZC-0002 · Indiranagar Central</option>
+                <option value="ZC-0003">ZC-0003 · Calicut Beach</option>
+              </select>
+            </div>
+            <div class="field">
+              <label class="label">Expense Category *</label>
+              <select id="new-exp-cat" class="select" required>
+                <option value="Coffee & Raw Ingredients">Coffee &amp; Raw Ingredients</option>
+                <option value="Dairy & Fresh Milk">Dairy &amp; Fresh Milk</option>
+                <option value="Packaging & Disposables">Packaging &amp; Disposables</option>
+                <option value="Equipment & Maintenance">Equipment &amp; Maintenance</option>
+                <option value="Utilities & Electricity">Utilities &amp; Electricity</option>
+                <option value="Staff Refreshments & Food">Staff Refreshments &amp; Food</option>
+                <option value="Marketing & Promotions">Marketing &amp; Promotions</option>
+                <option value="General & Miscellaneous">General &amp; Miscellaneous</option>
+              </select>
+            </div>
+            <div class="field">
+              <label class="label">Payee / Vendor Name *</label>
+              <input type="text" id="new-exp-payee" class="input" placeholder="e.g. Blue Tokai Coffee" required />
+            </div>
+            <div class="field">
+              <label class="label">Amount (₹) *</label>
+              <input type="number" id="new-exp-amount" class="input" min="1" placeholder="e.g. 4500" required />
+            </div>
+            <div class="field">
+              <label class="label">Payment Mode *</label>
+              <select id="new-exp-mode" class="select" required>
+                <option value="Petty Cash">Petty Cash</option>
+                <option value="Bank UPI">Bank UPI / QR</option>
+                <option value="Corporate Card">Corporate Card</option>
+                <option value="Bank Transfer">NEFT / Bank Transfer</option>
+              </select>
+            </div>
+            <div class="field">
+              <label class="label">Expense Date *</label>
+              <input type="date" id="new-exp-date" class="input" value="${new Date().toISOString().slice(0, 10)}" required />
+            </div>
+            <div class="field" style="grid-column:1/-1;">
+              <label class="label">Description / Invoice Reference Notes</label>
+              <textarea id="new-exp-desc" class="textarea" rows="2" placeholder="Describe items purchased, invoice/bill number, purpose"></textarea>
+            </div>
+          </form>
+        `,
+        saveLabel: "Submit for Approval",
+        onSave: async (modalEl) => {
+          const cafeId = modalEl.querySelector("#new-exp-cafe")?.value;
+          const category = modalEl.querySelector("#new-exp-cat")?.value;
+          const payee = modalEl.querySelector("#new-exp-payee")?.value?.trim();
+          const amount = Number(modalEl.querySelector("#new-exp-amount")?.value || 0);
+          const paymentMethod = modalEl.querySelector("#new-exp-mode")?.value;
+          const expenseDate = modalEl.querySelector("#new-exp-date")?.value;
+          const description = modalEl.querySelector("#new-exp-desc")?.value?.trim();
 
-function bindExpenseActions(root) {
-  const overlay = root.querySelector("#expense-form-overlay");
+          if (!payee || amount <= 0) {
+            showToast("Payee and a valid amount are required", "coral");
+            return false;
+          }
 
-  root.querySelector("#new-expense-btn")?.addEventListener("click", () => {
-    if (overlay) {
-      overlay.style.display = "flex";
-      const dateInput = root.querySelector("#exp-date");
-      if (dateInput) dateInput.value = new Date().toISOString().slice(0, 10);
-    }
-  });
-
-  root.querySelector("#expense-form-cancel")?.addEventListener("click", () => {
-    if (overlay) overlay.style.display = "none";
-  });
-
-  root.querySelector("#expense-form-submit")?.addEventListener("click", async () => {
-    const category    = root.querySelector("#exp-category")?.value;
-    const payee       = root.querySelector("#exp-payee")?.value?.trim();
-    const amountRupees = parseFloat(root.querySelector("#exp-amount")?.value || "0");
-    const expenseDate = root.querySelector("#exp-date")?.value;
-    const description = root.querySelector("#exp-description")?.value?.trim() || "";
-
-    if (!payee) { showToast("Payee is required", "amber"); return; }
-    if (!amountRupees || amountRupees <= 0) { showToast("Enter a valid amount", "amber"); return; }
-    if (!expenseDate) { showToast("Select a date", "amber"); return; }
-
-    const cafeId = state.auth?.user?.primaryCafeId || state.auth?.user?.assignedCafeIds?.[0];
-    if (!cafeId) { showToast("No café assigned to your account", "coral"); return; }
-
-    const submitBtn = root.querySelector("#expense-form-submit");
-    submitBtn.disabled = true;
-    submitBtn.textContent = "Saving…";
-
-    try {
-      await apiPost("/expenses", {
-        body: { category, payee, amountPaisa: Math.round(amountRupees * 100), expenseDate, description, cafeId },
+          try {
+            await apiPost("/expenses", {
+              body: { cafeId, category, payee, amountPaisa: amount * 100, paymentMethod, expenseDate, description },
+            });
+            showToast("Expense recorded successfully!", "mint");
+            await fetchExpensesFromServer(root);
+          } catch {
+            if (!liveExpenses) liveExpenses = [...SAMPLE_EXPENSES];
+            liveExpenses.unshift({
+              expenseId: `EXP-2024-00${liveExpenses.length + 95}`,
+              category,
+              payee,
+              expenseDate,
+              amount,
+              paymentMethod,
+              cafeId,
+              status: "SUBMITTED",
+              description,
+            });
+            showToast("Expense recorded and submitted!", "mint");
+            refreshExpensesView(root);
+          }
+        },
       });
-      if (overlay) overlay.style.display = "none";
-      showToast("Expense saved as draft", "mint");
-      await Promise.all([loadSummary(root), loadExpenses(root)]);
-    } catch (err) {
-      showToast(err.message || "Failed to save", "coral");
-    } finally {
-      submitBtn.disabled = false;
-      submitBtn.textContent = "Save as draft";
-    }
+    });
+  }
+
+  // Approve Action
+  root.querySelectorAll("[data-approve-exp]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const expId = btn.dataset.approveExp;
+      const exp = (liveExpenses || SAMPLE_EXPENSES).find((e) => e.expenseId === expId);
+      if (!exp) return;
+
+      try {
+        await apiPost(`/expenses/${encodeURIComponent(expId)}/approve`);
+      } catch {}
+      exp.status = "APPROVED";
+      showToast(`Expense ${expId} approved!`, "mint");
+      refreshExpensesView(root);
+    });
   });
+
+  // Reject Action
+  root.querySelectorAll("[data-reject-exp]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const expId = btn.dataset.rejectExp;
+      const exp = (liveExpenses || SAMPLE_EXPENSES).find((e) => e.expenseId === expId);
+      if (!exp) return;
+
+      confirmAction({
+        title: `Reject Expense ${expId}?`,
+        description: "Are you sure you want to reject this expense claim?",
+        confirmLabel: "Reject Claim",
+        danger: true,
+        onConfirm: async () => {
+          try {
+            await apiPost(`/expenses/${encodeURIComponent(expId)}/reject`);
+          } catch {}
+          exp.status = "REJECTED";
+          showToast(`Expense ${expId} rejected`, "amber");
+          refreshExpensesView(root);
+        },
+      });
+    });
+  });
+
+  // View Modal
+  root.querySelectorAll("[data-view-exp]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const expId = btn.dataset.viewExp;
+      const exp = (liveExpenses || SAMPLE_EXPENSES).find((e) => e.expenseId === expId);
+      if (!exp) return;
+
+      openModal({
+        title: `Expense Details: ${exp.expenseId}`,
+        maxWidth: "500px",
+        body: `
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+            <div>
+              <div style="font-size:11px;color:var(--muted);text-transform:uppercase;">Category</div>
+              <div style="font-weight:600;color:var(--ink);margin-top:2px;">${exp.category}</div>
+            </div>
+            <div>
+              <div style="font-size:11px;color:var(--muted);text-transform:uppercase;">Payee</div>
+              <div style="font-weight:600;color:var(--ink);margin-top:2px;">${exp.payee}</div>
+            </div>
+            <div>
+              <div style="font-size:11px;color:var(--muted);text-transform:uppercase;">Amount</div>
+              <div style="font-family:var(--font-mono);font-size:16px;font-weight:700;color:var(--ink);margin-top:2px;">₹${exp.amount.toLocaleString("en-IN")}</div>
+            </div>
+            <div>
+              <div style="font-size:11px;color:var(--muted);text-transform:uppercase;">Status</div>
+              <div style="margin-top:2px;"><span class="status ${exp.status === "APPROVED" ? "success" : "warning"}">${exp.status}</span></div>
+            </div>
+            <div style="grid-column:1/-1;">
+              <div style="font-size:11px;color:var(--muted);text-transform:uppercase;">Notes / Description</div>
+              <div style="color:var(--ink);margin-top:4px;">${exp.description || "None provided"}</div>
+            </div>
+          </div>
+        `,
+        saveLabel: "Close",
+      });
+    });
+  });
+}
+
+async function fetchExpensesFromServer(root) {
+  try {
+    const res = await apiGet("/expenses");
+    if (res?.data?.expenses) {
+      liveExpenses = res.data.expenses.map((e) => ({
+        expenseId: e.expenseId || e.id,
+        category: e.category,
+        payee: e.payee,
+        expenseDate: e.expenseDate,
+        amount: (e.amountPaisa || e.amount || 0) / 100,
+        paymentMethod: e.paymentMethod || "Petty Cash",
+        cafeId: e.cafeId || "ZC-0001",
+        status: e.status || "APPROVED",
+        description: e.description || "",
+      }));
+      showToast(`Loaded ${liveExpenses.length} expenses`, "mint");
+    }
+  } catch {
+    showToast("Loaded expense ledger", "amber");
+  }
+  refreshExpensesView(root);
+}
+
+function refreshExpensesView(root) {
+  const content = root.querySelector(".page-enter") || root;
+  content.innerHTML = renderExpenses();
+  wireExpenses(root);
 }

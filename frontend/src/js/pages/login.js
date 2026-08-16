@@ -25,9 +25,8 @@ function escapeAttribute(value) {
 
 export function renderLogin({ notice = "" } = {}) {
   const savedEmail = readRememberedValue(REMEMBERED_EMAIL_KEY);
-  const savedOrganisation = readRememberedValue(
-    REMEMBERED_ORGANISATION_KEY
-  );
+  const savedOrganisation =
+    readRememberedValue(REMEMBERED_ORGANISATION_KEY) || "ZAMORIN";
   const remembered = Boolean(savedEmail || savedOrganisation);
 
   return `
@@ -329,6 +328,7 @@ let mfaSetupBusy = false;
 
 export function renderMfaSetup({
   manualEntrySecret = "",
+  backLabel = "Back to sign in",
 } = {}) {
   const safeSecret = escapeAttribute(manualEntrySecret);
 

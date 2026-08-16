@@ -1,55 +1,63 @@
 /* =========================================================================
-   ZAMORIN CAFE ERP — DESIGN TOKENS
-   Every color, radius, spacing and glass effect used anywhere in the app
-   is defined here ONCE. No component should hard-code a raw color value —
-   this is what lets a future theme (Dark, high-contrast) be a data change
-   instead of a rebuild, per the Antigravity guideline's Section 16.
+   ZAMORIN CAFE ERP — DESIGN SYSTEM v2 TOKENS (Ledger & Roastery)
    ========================================================================= */
 
 :root {
-  /* ---- Brand ---- */
-  --color-brand-primary: #174D53;
-  --color-brand-secondary: #1F6B73;
-  --color-brand-tint: #7BA9AE;
+  /* ---- Brand Ink & Bronze Accent ---- */
+  --color-brand-primary: #101a30;
+  --color-brand-secondary: #1a2740;
+  --color-brand-tint: #b17d38;
 
-  /* ---- Glassmorphism accent palette (approved in the mockup stage) ---- */
-  --color-accent-mint: #02C39A;
-  --color-accent-mint-bright: #6BFFD1;
-  --color-accent-violet: #7C6DF2;
-  --color-accent-coral: #FF8A65;
-  --color-accent-amber: #FFBE5A;
+  --ink-950: #0b1424;
+  --ink-900: #101a30;
+  --ink-800: #1a2740;
+  --ink-700: #29374f;
+  --ink-600: #445064;
 
-  /* ---- Ambient background gradient (glass needs color behind it) ---- */
-  --bg-gradient:
-    radial-gradient(circle at 12% 8%,  rgba(2,195,154,0.55) 0%, rgba(2,195,154,0) 42%),
-    radial-gradient(circle at 88% 12%, rgba(124,109,242,0.50) 0%, rgba(124,109,242,0) 45%),
-    radial-gradient(circle at 25% 92%, rgba(255,138,101,0.42) 0%, rgba(255,138,101,0) 40%),
-    radial-gradient(circle at 92% 88%, rgba(30,180,190,0.45) 0%, rgba(30,180,190,0) 45%),
-    linear-gradient(135deg, #0d3b40 0%, #123f52 35%, #1b3a6b 70%, #2a2f6b 100%);
+  --bronze-700: #7c5322;
+  --bronze-600: #9a6a2c;
+  --bronze-500: #b17d38;
+  --bronze-400: #c99a5c;
+  --bronze-100: #f4e7d2;
+  --bronze-050: #faf1e2;
 
-  /* ---- Glass surfaces ---- */
-  --glass-bg: rgba(255,255,255,0.14);
-  --glass-bg-dark: rgba(8,20,26,0.32);
-  --glass-border: rgba(255,255,255,0.32);
-  --glass-border-dark: rgba(255,255,255,0.14);
-  --glass-blur: 22px;
-  --glass-shadow: 0 8px 32px rgba(0,10,20,0.18);
-  --glass-shadow-dark: 0 8px 32px rgba(0,10,20,0.25);
+  /* ---- Surfaces & Line ---- */
+  --paper: #faf9f5;
+  --surface: #ffffff;
+  --surface-sunken: #f2f0e9;
+  --surface-raised: #ffffff;
 
-  /* ---- Text ---- */
-  --text-on-glass: #ffffff;
-  --text-on-glass-muted: rgba(255,255,255,0.72);
-  --text-on-light: #16232a;
-  --text-on-light-muted: rgba(22,35,42,0.62);
+  --ink: #17140f;
+  --muted: #6f6a5c;
+  --muted-2: #96907e;
+  --line: #e7e2d5;
+  --line-strong: #d7d0bd;
 
-  /* ---- Status ---- */
-  --color-success: #2E7D5B;
-  --color-warning: #C8A85C;
-  --color-danger: #B3453D;
+  /* ---- Functional Colors ---- */
+  --color-success: #1e7a4c;
+  --color-warning: #a9741a;
+  --color-danger: #b23b35;
+  --color-info: #2c5c9e;
+  --color-purple: #6a4e9e;
 
-  /* ---- Radius (Section 16.3 "soft edge" requirement) ---- */
-  --radius-card: 22px;
-  --radius-control: 14px;
+  --success: #1e7a4c;
+  --success-soft: #e8f5ee;
+  --danger: #b23b35;
+  --danger-soft: #fbeae7;
+  --warning: #a9741a;
+  --warning-soft: #faf0da;
+  --info: #2c5c9e;
+  --info-soft: #eaf1fb;
+  --purple: #6a4e9e;
+  --purple-soft: #efeaf7;
+
+  /* ---- Card & Control Radii ---- */
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 26px;
+  --radius-card: 20px;
+  --radius-control: 12px;
   --radius-pill: 999px;
 
   /* ---- Spacing scale ---- */
@@ -60,24 +68,20 @@
   --space-xl: 32px;
 
   /* ---- Typography ---- */
-  --font-display: 'Poppins', 'Segoe UI', system-ui, sans-serif;
-  --font-body: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-ui: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Fraunces", Georgia, "Times New Roman", serif;
+  --font-mono: "IBM Plex Mono", SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --font-body: var(--font-ui);
 
-  /* ---- Font-size scale (Section 16.2 — Small/Standard/Large/Extra Large) ---- */
   --font-scale: 1;
-
-  /* ---- Motion (Part J.1 timing) ---- */
-  --motion-fast: 120ms;
-  --motion-nav: 180ms;
-  --motion-panel: 250ms;
-  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* Font-size settings multiply the base scale — this is the ONLY thing
-   Staff's "font size" Settings control needs to touch. */
 [data-font-size="small"]      { --font-scale: 0.9; }
 [data-font-size="standard"]   { --font-scale: 1;   }
 [data-font-size="large"]      { --font-scale: 1.15; }
 [data-font-size="extra-large"]{ --font-scale: 1.3; }
 
-html { font-size: calc(15px * var(--font-scale)); }
+html {
+  font-family: var(--font-ui);
+  font-size: calc(15px * var(--font-scale));
+}
