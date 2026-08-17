@@ -157,6 +157,20 @@ export async function registerServiceWorker() {
     };
   }
 
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    try {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      for (const reg of registrations) {
+        await reg.unregister();
+      }
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      }
+    } catch {}
+    return { supported: true, registered: false };
+  }
+
   try {
     registration =
       await navigator.serviceWorker.register(

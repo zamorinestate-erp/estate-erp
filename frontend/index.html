@@ -12,14 +12,25 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,440;9..144,560;9..144,650&family=Inter:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@500;600&display=swap" />
-  <link rel="stylesheet" href="/src/styles/tokens.css?v=2.0.1" />
-  <link rel="stylesheet" href="/src/styles/zamorin.css?v=2.0.1" />
+  <link rel="stylesheet" href="/src/styles/tokens.css?v=2.1.0" />
+  <link rel="stylesheet" href="/src/styles/components.css?v=2.1.0" />
+  <link rel="stylesheet" href="/src/styles/zamorin.css?v=2.1.0" />
   <script>
     (function() {
       try {
-        const savedTheme = localStorage.getItem('zamorin-theme') || 'paper';
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistrations().then(function(registrations) {
+            for (var r of registrations) { r.unregister(); }
+          });
+        }
+        if ('caches' in window) {
+          caches.keys().then(function(names) {
+            for (var n of names) caches.delete(n);
+          });
+        }
+        var savedTheme = localStorage.getItem('zamorin-theme') || 'paper';
         document.documentElement.dataset.theme = savedTheme;
-        const savedFontSize = localStorage.getItem('zamorin-font-size') || 'standard';
+        var savedFontSize = localStorage.getItem('zamorin-font-size') || 'standard';
         document.documentElement.dataset.fontSize = savedFontSize;
       } catch (e) {}
     })();
@@ -30,42 +41,9 @@
   </script>
 </head>
 <body>
-  <div id="app" class="auth-screen">
-    <div class="login-screen">
-      <div class="login-card glass-dark">
-        <div class="login-brand">
-          <img src="/src/assets/zamorin-estate-mark.png" alt="Zamorin" class="login-mark" />
-          <div class="login-wordmark font-display">Zamorin</div>
-          <div class="login-sub">Cafe ERP — sign in to continue</div>
-        </div>
-        <form id="login-form">
-          <label class="login-label" for="login-organisation">Organisation ID</label>
-          <input id="login-organisation" class="text-input" type="text" autocomplete="organization" placeholder="Organisation ID" value="ZAMORIN" />
-
-          <label class="login-label" for="login-email" style="margin-top:12px;">Email</label>
-          <input id="login-email" class="text-input" type="email" autocomplete="username" placeholder="Email ID" value="master@example.com" />
-
-          <label class="login-label" for="login-password" style="margin-top:12px;">Password</label>
-          <div style="position:relative;">
-            <input id="login-password" class="text-input" type="password" autocomplete="current-password" placeholder="••••••••" />
-            <button type="button" id="toggle-password-btn" class="login-eye" tabindex="-1">Show</button>
-          </div>
-
-          <div class="flex justify-between items-center" style="margin:14px 0 18px;">
-            <label class="login-remember">
-              <input type="checkbox" id="login-remember" checked />
-              Remember me
-            </label>
-            <button type="button" id="login-forgot-password" class="login-forgot-link">Forgot password?</button>
-          </div>
-
-          <button id="login-submit-btn" type="submit" class="btn btn-primary" style="width:100%; justify-content:center;">Login</button>
-        </form>
-      </div>
-    </div>
-  </div>
+  <div id="app" class="auth-screen"></div>
   <div id="toast-root"></div>
 
-  <script type="module" src="/src/js/main.js?v=2.0.2"></script>
+  <script type="module" src="/src/js/main.js?v=2.1.0"></script>
 </body>
 </html>

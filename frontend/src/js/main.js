@@ -1,16 +1,20 @@
 // =============================================================================
 // ZAMORIN CAFE ERP — ENTRY POINT
 //
-// AUTHENTICATED BOOT SEQUENCE (Stage 8 Prerequisite):
-// On DOMContentLoaded, the frontend calls GET /api/v1/auth/me:
-//   1. Resolves authenticated identity and role from backend session.
-//   2. Sets state.role and state.auth from backend user object.
-//   3. Renders the role-authorized navigation shell (Master, Owner, Cafe Admin, Staff).
-//   4. If unauthenticated, displays a clean sign-in prompt (no fake MASTER fallback).
+// DIRECT DASHBOARD DEVELOPMENT ENTRY & ZERO-COLLATERAL-CHANGE PROGRAMME
+// -----------------------------------------------------------------------------
+// In development preview mode (localhost / 127.0.0.1):
+//   1. On boot, calls GET /api/v1/auth/me to check for an existing session.
+//   2. If session exists, uses authenticated user context.
+//   3. If unauthenticated, safely loads the development preview dashboard
+//      using the canonical MASTER role context (no 5th role created).
+//   4. Shows a discreet top banner indicating development preview mode.
+// In production mode (non-local origin or production environment):
+//   1. Fails closed if unauthenticated (no public unauthenticated dashboard access).
 // =============================================================================
 
 import { state, setState } from "./state.js";
-import { NAVIGATION } from "./navigation.js";
+import { NAVIGATION, ROLES } from "./navigation.js";
 import { renderShell } from "./router.js";
 import { apiGet, apiPost, getOrCreateDeviceId, setStepUpAuthenticationHandler } from "./apiClient.js";
 import { registerServiceWorker } from "./updateManager.js";
@@ -41,10 +45,64 @@ import {
   resetPasswordResetFinalUi,
 } from "./pages/login.js";
 
+// Canonical Master fixture used strictly for local development UI preview
+export const DEV_PREVIEW_USER = Object.freeze({
+  _id: "MU-0001",
+  id: "MU-0001",
+  name: "Zamorin Master (Dev Preview)",
+  email: "master@example.com",
+  role: "MASTER",
+  organisationId: "ZAMORIN",
+  status: "ACTIVE",
+  isPrimaryMaster: true,
+  isDevPreview: true,
+});
+
+export function isDirectDashboardAllowed() {
+  if (typeof window === "undefined") return false;
+  const isLocal =
+    window.location.hostname === "localhost" ||
+    window.location.hostname === "127.0.0.1" ||
+    window.location.hostname === "0.0.0.0";
+  const isExplicitProduction =
+    window.__ZAMORIN_ENV__ === "production" ||
+    window.location.hostname.includes("onrender.com") ||
+    window.location.hostname.includes("zamorin");
+  return isLocal && !isExplicitProduction;
+}
+
 function prepareAuthScreen(appEl) {
   appEl.classList.add("auth-screen");
   appEl.classList.remove("shell-minimal");
   delete appEl.dataset.shellRole;
+}
+
+function renderDevPreviewBanner() {
+  if (typeof document === "undefined") return;
+  if (document.getElementById("zamorin-dev-preview-banner")) return;
+  const banner = document.createElement("div");
+  banner.id = "zamorin-dev-preview-banner";
+  banner.className = "zamorin-dev-preview-banner";
+  banner.innerHTML = `
+    <span><strong>DEVELOPMENT PREVIEW</strong> — AUTHENTICATION UI TEMPORARILY DISABLED (NEW LOGIN PENDING REDESIGN)</span>
+  `;
+  document.body.prepend(banner);
+}
+
+function renderProductionFailClosedScreen() {
+  const appEl = document.getElementById("app");
+  if (!appEl) return;
+  prepareAuthScreen(appEl);
+  appEl.innerHTML = `
+    <div class="production-upgrade-screen" style="min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; background:#101a30; color:#ffffff; font-family:sans-serif; text-align:center;">
+      <div style="max-width:460px; background:#1a2740; border:1px solid rgba(255,255,255,0.12); border-radius:18px; padding:36px 28px; box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+        <img src="/src/assets/zamorin-estate-mark.png" alt="Zamorin" style="width:58px; height:58px; border-radius:16px; margin:0 auto 16px; display:block;" />
+        <h2 style="margin:0 0 8px; font-size:20px; font-weight:700;">Zamorin Cafe ERP</h2>
+        <p style="margin:0 0 16px; color:#94a3b8; font-size:13.5px; line-height:1.5;">Authentication Portal Upgrade in Progress. The previous login UI has been retired for redesign. Direct dashboard access is forbidden without an active authenticated session.</p>
+        <div style="font-size:11.5px; color:#64748b; border-top:1px solid rgba(255,255,255,0.08); padding-top:14px;">Status: Fail-Closed Security Enforced</div>
+      </div>
+    </div>
+  `;
 }
 
 function renderLoadingScreen() {
@@ -474,6 +532,26 @@ async function boot() {
 
     renderShell();
   } catch (error) {
+    if (isDirectDashboardAllowed()) {
+      // Local development preview: direct dashboard entry with safe canonical Master preview context
+      setState({
+        auth: {
+          authenticated: false,
+          loading: false,
+          user: DEV_PREVIEW_USER,
+          authentication: null,
+          error: null,
+        },
+        role: "master",
+        route: "dashboard",
+      });
+
+      renderShell();
+      renderDevPreviewBanner();
+      return;
+    }
+
+    // Production mode: fail-closed (strictly blocks unauthenticated access)
     setState({
       auth: {
         authenticated: false,
@@ -485,7 +563,7 @@ async function boot() {
       role: null,
     });
 
-    renderUnauthenticatedScreen();
+    renderProductionFailClosedScreen();
   }
 
   registerServiceWorker().catch(() => {
@@ -494,16 +572,11 @@ async function boot() {
 }
 
 if (typeof document !== "undefined") {
-  // Wire initial login form if already rendered in DOM
-  const initialApp = document.getElementById("app");
-  if (initialApp && initialApp.querySelector("#login-form")) {
-    renderUnauthenticatedScreen();
-  }
-
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", boot, { once: true });
   } else {
     boot();
   }
 }
+
 
