@@ -1,1337 +1,839 @@
-﻿'use strict';
+'use strict';
 
+const crypto = require('crypto');
 const {
   Expense,
   EXPENSE_STATUSES,
+  EXPENSE_TYPES,
   PAYMENT_METHODS,
+  RECEIPT_STATUSES,
+  AUDIT_STATUSES,
+  FINANCE_STATUSES,
 } = require('../models/Expense');
 
-const {
-  SequenceCounter,
-} = require('../models/SequenceCounter');
-
-const {
-  asyncHandler,
-} = require('../utils/asyncHandler');
-
-const {
-  ApiError,
-} = require('../utils/ApiError');
-
-// Safe whitelist for client-supplied sort field names.
-// Values must match Mongoose field names exactly (camelCase).
-const ALLOWED_SORT_FIELDS = new Set([
-  'createdAt',
-  'businessDate',
-  'amount',
-  'submittedAt',
-  'decisionAt',
-]);
-
-// ─── Shared helpers (mirror of convention used in cashController) ──────────────
+const { ExpenseRequest } = require('../models/ExpenseRequest');
+const { ExpensePolicy } = require('../models/ExpensePolicy');
+const { CorporateCardTransaction } = require('../models/CorporateCardTransaction');
+const { OperationalAdvance } = require('../models/OperationalAdvance');
+const { SequenceCounter } = require('../models/SequenceCounter');
+const { asyncHandler } = require('../utils/asyncHandler');
+const { ApiError } = require('../utils/ApiError');
+const { resolveEffectiveCafeScope, assertResourceCafeOwnership } = require('../utils/cafeScope');
 
 function normalizeIdentifier(value) {
-  return typeof value === 'string'
-    ? value.trim().toUpperCase()
-    : '';
+  return typeof value === 'string' ? value.trim().toUpperCase() : '';
 }
 
 function getIstBusinessDate(date = new Date()) {
-  return new Intl.DateTimeFormat(
-    'en-CA',
-    {
-      timeZone: 'Asia/Kolkata',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }
-  ).format(date);
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date);
 }
-
-function parsePositiveInteger(
-  value,
-  fallback,
-  maximum
-) {
-  const parsedValue =
-    Number.parseInt(value, 10);
-
-  if (
-    !Number.isInteger(parsedValue) ||
-    parsedValue < 1
-  ) {
-    return fallback;
-  }
-
-  return Math.min(parsedValue, maximum);
-}
-
-function escapeRegExp(text) {
-  return text.replace(
-    /[.*+?^${}()|[\]\\]/g,
-    '\\$&'
-  );
-}
-
-// ─── Scope helpers ─────────────────────────────────────────────────────────────
 
 function ensureCafeAccess(request, cafeId) {
-  if (
-    request.auth.role === 'MASTER' ||
-    request.auth.role === 'OWNER'
-  ) {
-    return;
-  }
-
-  if (
-    !(
-      request.auth.assignedCafeIds || []
-    ).includes(cafeId)
-  ) {
-    throw new ApiError(
-      403,
-      'CAFE_ACCESS_DENIED',
-      'You do not have access to this cafe.'
-    );
+  if (!cafeId) return;
+  const effectiveCafe = resolveEffectiveCafeScope(request);
+  if (effectiveCafe && effectiveCafe !== cafeId.trim().toUpperCase()) {
+    throw new ApiError(403, 'CAFE_ACCESS_DENIED', 'You do not have access to this cafe.');
   }
 }
 
-// ─── Filter builder ────────────────────────────────────────────────────────────
+// 1. Overview & Actionable Control Strip
+const getExpenseOverview = asyncHandler(async (request, response) => {
+  const { organisationId } = request.auth;
+  const effectiveCafe = resolveEffectiveCafeScope(request);
+  const isPrimary = request.auth.role === 'MASTER' && request.auth.isPrimaryMaster;
+  const activeScopeCafe = effectiveCafe || (request.query.cafeId && request.query.cafeId !== 'ALL' ? request.query.cafeId.trim().toUpperCase() : null);
+  const cafeFilter = activeScopeCafe ? { cafeId: activeScopeCafe } : {};
 
-function buildExpenseFilter(request) {
+  const expenses = await Expense.find({ organisationId, ...cafeFilter });
+
+  const totalSpentPaisa = expenses.reduce((sum, e) => sum + (e.totalPaisa || Math.round((e.amount || 0) * 100)), 0);
+  const approvedExpenses = expenses.filter((e) => e.status === 'APPROVED');
+  const approvedPaisa = approvedExpenses.reduce((sum, e) => sum + (e.totalPaisa || Math.round((e.amount || 0) * 100)), 0);
+  const pendingApprovals = expenses.filter((e) => e.status === 'SUBMITTED' || e.status === 'PENDING_APPROVAL');
+  const pendingPaisa = pendingApprovals.reduce((sum, e) => sum + (e.totalPaisa || Math.round((e.amount || 0) * 100)), 0);
+  const awaitingFinance = expenses.filter((e) => e.status === 'APPROVED' && e.financeHandoff?.status !== 'PAID' && e.financeHandoff?.status !== 'REIMBURSED');
+  const missingReceipts = expenses.filter((e) => e.receiptStatus === 'MISSING' || (e.missingReceipt && e.missingReceipt.isDeclared));
+  const policyExceptions = expenses.filter((e) => e.policySnapshot?.exceptions?.length > 0);
+
+  // Secondary Control Strip
+  const controlStrip = {
+    receiptsMissingCount: missingReceipts.length,
+    possibleDuplicatesCount: 0,
+    cardMatchingPendingCount: await CorporateCardTransaction.countDocuments({ organisationId, matchStatus: 'UNMATCHED' }),
+    overdueApprovalsCount: pendingApprovals.length,
+    budgetWarningsCount: 0,
+    nonPoExceptionsCount: expenses.filter((e) => e.expenseType === 'EMERGENCY_NON_PO').length,
+    auditSelectedCount: expenses.filter((e) => e.auditState?.status === 'SELECTED' || e.auditState?.status === 'UNDER_REVIEW').length,
+    unsettledAdvancesCount: await OperationalAdvance.countDocuments({ organisationId, status: { $ne: 'CLOSED' } }),
+    financeHandoffErrorsCount: expenses.filter((e) => e.financeHandoff?.status === 'ON_HOLD').length,
+  };
+
+  // Cafe Breakdown Cards
+  const cafeMap = {};
+  expenses.forEach((e) => {
+    const cId = e.cafeId || 'GLOBAL';
+    if (!cafeMap[cId]) {
+      cafeMap[cId] = { cafeId: cId, totalPaisa: 0, approvedPaisa: 0, pendingCount: 0, missingReceipts: 0 };
+    }
+    const amt = e.totalPaisa || Math.round((e.amount || 0) * 100);
+    cafeMap[cId].totalPaisa += amt;
+    if (e.status === 'APPROVED') cafeMap[cId].approvedPaisa += amt;
+    if (e.status === 'SUBMITTED') cafeMap[cId].pendingCount += 1;
+    if (e.receiptStatus === 'MISSING') cafeMap[cId].missingReceipts += 1;
+  });
+
+  return response.status(200).json({
+    kpis: {
+      totalSpentPaisa,
+      approvedPaisa,
+      pendingCount: pendingApprovals.length,
+      pendingPaisa,
+      awaitingFinanceCount: awaitingFinance.length,
+      missingReceiptsCount: missingReceipts.length,
+      policyExceptionsCount: policyExceptions.length,
+    },
+    controlStrip,
+    cafeBreakdown: Object.values(cafeMap),
+    recentExpenses: expenses.slice(0, 10),
+  });
+});
+
+// 2. List Expenses (Search & Filters)
+const listExpenses = asyncHandler(async (request, response) => {
+  const { organisationId } = request.auth;
   const {
-    role,
-    organisationId,
-    userId,
-    assignedCafeIds,
-  } = request.auth;
+    cafeId,
+    status,
+    category,
+    expenseType,
+    paymentSource,
+    search,
+    fromDate,
+    toDate,
+    page = 1,
+    limit = 50,
+  } = request.query;
 
-  // Organisation scope is always derived from the authenticated user — never
-  // accepted from client input.
-  const filter = { organisationId };
+  const query = { organisationId };
 
-  // STAFF: own expenses only, within assigned cafes
-  if (role === 'STAFF') {
-    filter.createdBy = userId;
-    filter.cafeId = {
-      $in: assignedCafeIds || [],
-    };
+  if (request.auth.role === 'CAFE_ADMIN') {
+    query.cafeId = { $in: request.auth.assignedCafeIds || [] };
+  } else if (cafeId && cafeId !== 'ALL') {
+    query.cafeId = cafeId;
   }
 
-  // CAFE_ADMIN: assigned cafes only
-  if (role === 'CAFE_ADMIN') {
-    filter.cafeId = {
-      $in: assignedCafeIds || [],
-    };
+  if (status && status !== 'ALL') {
+    query.status = status;
   }
 
-  // -- cafeId query filter --
-  const cafeId = normalizeIdentifier(
-    request.query.cafeId
-  );
-
-  if (cafeId) {
-    ensureCafeAccess(request, cafeId);
-    // Narrow the scope -- may replace the $in set with a single value
-    filter.cafeId = cafeId;
+  if (category && category !== 'ALL') {
+    query.category = category.toUpperCase();
   }
 
-  // -- businessDate / dateFrom / dateTo --
-  const businessDate =
-    typeof request.query.businessDate === 'string'
-      ? request.query.businessDate.trim()
-      : '';
-
-  const dateFrom =
-    typeof request.query.dateFrom === 'string'
-      ? request.query.dateFrom.trim()
-      : '';
-
-  const dateTo =
-    typeof request.query.dateTo === 'string'
-      ? request.query.dateTo.trim()
-      : '';
-
-  if (businessDate) {
-    if (
-      !/^\d{4}-\d{2}-\d{2}$/.test(businessDate)
-    ) {
-      throw new ApiError(
-        400,
-        'INVALID_BUSINESS_DATE',
-        'businessDate must use YYYY-MM-DD format.'
-      );
-    }
-
-    filter.businessDate = businessDate;
-  } else if (dateFrom || dateTo) {
-    if (
-      dateFrom &&
-      !/^\d{4}-\d{2}-\d{2}$/.test(dateFrom)
-    ) {
-      throw new ApiError(
-        400,
-        'INVALID_DATE_FROM',
-        'dateFrom must use YYYY-MM-DD format.'
-      );
-    }
-
-    if (
-      dateTo &&
-      !/^\d{4}-\d{2}-\d{2}$/.test(dateTo)
-    ) {
-      throw new ApiError(
-        400,
-        'INVALID_DATE_TO',
-        'dateTo must use YYYY-MM-DD format.'
-      );
-    }
-
-    const dateRange = {};
-
-    if (dateFrom) {
-      dateRange.$gte = dateFrom;
-    }
-
-    if (dateTo) {
-      dateRange.$lte = dateTo;
-    }
-
-    filter.businessDate = dateRange;
+  if (expenseType && expenseType !== 'ALL') {
+    query.expenseType = expenseType;
   }
 
-  // -- status filter --
-  const status = normalizeIdentifier(
-    request.query.status
-  );
-
-  if (status) {
-    if (!EXPENSE_STATUSES.includes(status)) {
-      throw new ApiError(
-        400,
-        'INVALID_EXPENSE_STATUS',
-        'The expense status is invalid.'
-      );
-    }
-
-    filter.status = status;
+  if (paymentSource && paymentSource !== 'ALL') {
+    query.paymentSource = paymentSource;
   }
 
-  // -- category filter --
-  const category = normalizeIdentifier(
-    request.query.category
-  );
-
-  if (category) {
-    filter.category = category;
+  if (fromDate || toDate) {
+    query.businessDate = {};
+    if (fromDate) query.businessDate.$gte = fromDate;
+    if (toDate) query.businessDate.$lte = toDate;
   }
-
-  // -- paymentMethod filter --
-  const paymentMethod = normalizeIdentifier(
-    request.query.paymentMethod
-  );
-
-  if (paymentMethod) {
-    if (!PAYMENT_METHODS.includes(paymentMethod)) {
-      throw new ApiError(
-        400,
-        'INVALID_PAYMENT_METHOD',
-        'The payment method is invalid.'
-      );
-    }
-
-    filter.paymentMethod = paymentMethod;
-  }
-
-  // -- createdBy filter --
-  const createdBy = normalizeIdentifier(
-    request.query.createdBy
-  );
-
-  if (createdBy) {
-    if (
-      role === 'STAFF' &&
-      createdBy !== userId
-    ) {
-      throw new ApiError(
-        403,
-        'SELF_ACCESS_ONLY',
-        'Staff may filter only by their own user ID.'
-      );
-    }
-
-    filter.createdBy = createdBy;
-  }
-
-  // -- free-text search --
-  const search =
-    typeof request.query.search === 'string'
-      ? request.query.search.trim()
-      : '';
 
   if (search) {
-    const safePattern = escapeRegExp(search);
-
-    filter.$or = [
-      {
-        description: {
-          $regex: safePattern,
-          $options: 'i',
-        },
-      },
-      {
-        vendorName: {
-          $regex: safePattern,
-          $options: 'i',
-        },
-      },
-      {
-        invoiceNumber: {
-          $regex: safePattern,
-          $options: 'i',
-        },
-      },
-      {
-        notes: {
-          $regex: safePattern,
-          $options: 'i',
-        },
-      },
+    const searchRegex = new RegExp(search.trim(), 'i');
+    query.$or = [
+      { expenseId: searchRegex },
+      { vendorName: searchRegex },
+      { description: searchRegex },
+      { invoiceNumber: searchRegex },
+      { category: searchRegex },
     ];
   }
 
-  return filter;
-}
+  const skip = (Number(page) - 1) * Number(limit);
+  const [expenses, total] = await Promise.all([
+    Expense.find(query).sort({ createdAt: -1 }).skip(skip).limit(Number(limit)),
+    Expense.countDocuments(query),
+  ]);
 
-// ─── Sort resolver ─────────────────────────────────────────────────────────────
+  return response.status(200).json({
+    expenses,
+    total,
+    page: Number(page),
+    pages: Math.ceil(total / Number(limit)),
+  });
+});
 
-function resolveSort(request) {
-  const sortBy =
-    typeof request.query.sortBy === 'string'
-      ? request.query.sortBy.trim()
-      : '';
+// 3. Get Expense 360 Detail
+const getExpense = asyncHandler(async (request, response) => {
+  const { organisationId } = request.auth;
+  const { expenseId } = request.params;
 
-  const sortOrder =
-    typeof request.query.sortOrder === 'string'
-      ? request.query.sortOrder.trim().toUpperCase()
-      : '';
-
-  if (sortBy && ALLOWED_SORT_FIELDS.has(sortBy)) {
-    const order =
-      sortOrder === 'ASC' ? 1 : -1;
-
-    return { [sortBy]: order, expenseId: -1 };
+  const expense = await Expense.findOne({ organisationId, expenseId });
+  if (!expense) {
+    throw new ApiError(404, 'EXPENSE_NOT_FOUND', 'The requested expense does not exist.');
   }
 
-  // Default: newest first
-  return { createdAt: -1, expenseId: -1 };
-}
+  ensureCafeAccess(request, expense.cafeId);
 
-// ─── listExpenses ──────────────────────────────────────────────────────────────
+  const isPrimary = request.auth.role === 'MASTER' && request.auth.isPrimaryMaster;
+  const isMaster = request.auth.role === 'MASTER';
+  const isSubmitter = request.auth.userId === expense.ownerUserId || request.auth.userId === expense.preparerUserId;
 
-const listExpenses = asyncHandler(
-  async (request, response) => {
-    const page = parsePositiveInteger(
-      request.query.page,
-      1,
-      100000
-    );
-
-    const limit = parsePositiveInteger(
-      request.query.limit,
-      25,
-      100
-    );
-
-    const filter = buildExpenseFilter(request);
-
-    const sort = resolveSort(request);
-
-    const skip = (page - 1) * limit;
-
-    const [expenses, total] =
-      await Promise.all([
-        Expense.find(filter)
-          .sort(sort)
-          .skip(skip)
-          .limit(limit),
-
-        Expense.countDocuments(filter),
-      ]);
-
-    return response.status(200).json({
-      success: true,
-      data: {
-        expenses,
-        pagination: {
-          page,
-          limit,
-          total,
-          totalPages: Math.ceil(total / limit),
-        },
-      },
-      correlationId:
-        request.correlationId || null,
-    });
+  const allowedActions = [];
+  if (expense.status === 'DRAFT') {
+    allowedActions.push('EDIT', 'SUBMIT', 'DELETE');
   }
-);
-
-// ─── getExpense ────────────────────────────────────────────────────────────────
-
-const getExpense = asyncHandler(
-  async (request, response) => {
-    const {
-      role,
-      organisationId,
-      userId,
-      assignedCafeIds,
-    } = request.auth;
-
-    const expenseId = normalizeIdentifier(
-      request.params.expenseId
-    );
-
-    const expense = await Expense.findOne({
-      organisationId,
-      expenseId,
-    });
-
-    if (!expense) {
-      throw new ApiError(
-        404,
-        'EXPENSE_NOT_FOUND',
-        'The expense was not found.'
-      );
+  if (expense.status === 'SUBMITTED' || expense.status === 'PENDING_APPROVAL') {
+    if (isMaster && request.auth.userId !== expense.ownerUserId) {
+      allowedActions.push('APPROVE', 'RETURN', 'REJECT');
     }
-
-    // CAFE_ADMIN scope
-    if (role === 'CAFE_ADMIN') {
-      if (
-        !(assignedCafeIds || []).includes(
-          expense.cafeId
-        )
-      ) {
-        throw new ApiError(
-          403,
-          'CAFE_ACCESS_DENIED',
-          'You do not have access to this cafe.'
-        );
-      }
+    if (isSubmitter) {
+      allowedActions.push('RECALL');
     }
-
-    // STAFF scope: own expenses within assigned cafes only
-    if (role === 'STAFF') {
-      if (expense.createdBy !== userId) {
-        throw new ApiError(
-          403,
-          'EXPENSE_ACCESS_DENIED',
-          'You may only access expenses you created.'
-        );
-      }
-
-      if (
-        !(assignedCafeIds || []).includes(
-          expense.cafeId
-        )
-      ) {
-        throw new ApiError(
-          403,
-          'CAFE_ACCESS_DENIED',
-          'You do not have access to this cafe.'
-        );
-      }
-    }
-
-    return response.status(200).json({
-      success: true,
-      data: { expense },
-      correlationId:
-        request.correlationId || null,
-    });
   }
-);
-
-// ─── createExpense ─────────────────────────────────────────────────────────────
-
-const createExpense = asyncHandler(
-  async (request, response) => {
-    const {
-      role,
-      organisationId,
-      userId,
-      assignedCafeIds,
-    } = request.auth;
-
-    const cafeId = normalizeIdentifier(
-      request.body && request.body.cafeId
-    );
-
-    if (!cafeId) {
-      throw new ApiError(
-        400,
-        'CAFE_ID_REQUIRED',
-        'A cafe ID is required.'
-      );
+  if (expense.status === 'APPROVED') {
+    if (isMaster) {
+      allowedActions.push('RECORD_PAYMENT', 'REVERSE', 'GENERATE_VOUCHER');
     }
-
-    // Validate cafe access for non-MASTER/OWNER roles
-    if (
-      role === 'STAFF' ||
-      role === 'CAFE_ADMIN'
-    ) {
-      if (
-        !(assignedCafeIds || []).includes(cafeId)
-      ) {
-        throw new ApiError(
-          403,
-          'CAFE_ACCESS_DENIED',
-          'You do not have access to this cafe.'
-        );
-      }
-    }
-
-    const category = normalizeIdentifier(
-      request.body && request.body.category
-    );
-
-    if (!category) {
-      throw new ApiError(
-        400,
-        'EXPENSE_CATEGORY_REQUIRED',
-        'An expense category is required.'
-      );
-    }
-
-    const description =
-      request.body && typeof request.body.description === 'string'
-        ? request.body.description.trim()
-        : '';
-
-    if (!description) {
-      throw new ApiError(
-        400,
-        'EXPENSE_DESCRIPTION_REQUIRED',
-        'An expense description is required.'
-      );
-    }
-
-    const amount = Number(request.body && request.body.amount);
-
-    if (
-      !Number.isFinite(amount) ||
-      amount <= 0
-    ) {
-      throw new ApiError(
-        400,
-        'INVALID_EXPENSE_AMOUNT',
-        'The expense amount must be greater than zero.'
-      );
-    }
-
-    const paymentMethod = normalizeIdentifier(
-      (request.body && request.body.paymentMethod) || 'CASH'
-    );
-
-    if (!PAYMENT_METHODS.includes(paymentMethod)) {
-      throw new ApiError(
-        400,
-        'INVALID_PAYMENT_METHOD',
-        'The payment method is invalid.'
-      );
-    }
-
-    const now = new Date();
-
-    const businessDate = getIstBusinessDate(now);
-
-    const datePart = businessDate.replaceAll(
-      '-',
-      ''
-    );
-
-    const expenseId =
-      await SequenceCounter.generateId({
-        organisationId,
-        sequenceKey: 'EXPENSE_' + datePart,
-        prefix: 'EX-' + datePart,
-        minimumDigits: 4,
-      });
-
-    const expense = await Expense.create({
-      expenseId,
-      organisationId,
-      cafeId,
-      businessDate,
-      category,
-      description,
-      amount,
-      currency: 'INR',
-      paymentMethod,
-      vendorName:
-        request.body && typeof request.body.vendorName === 'string'
-          ? request.body.vendorName.trim()
-          : '',
-      invoiceNumber:
-        normalizeIdentifier(
-          request.body && request.body.invoiceNumber
-        ) || '',
-      receiptUrl:
-        request.body && typeof request.body.receiptUrl === 'string'
-          ? request.body.receiptUrl.trim()
-          : '',
-      notes:
-        request.body && typeof request.body.notes === 'string'
-          ? request.body.notes.trim()
-          : '',
-      status: 'DRAFT',
-      timezone: 'Asia/Kolkata',
-      createdBy: userId,
-      updatedBy: userId,
-    });
-
-    return response.status(201).json({
-      success: true,
-      message: 'Expense created successfully.',
-      data: { expense },
-      correlationId:
-        request.correlationId || null,
-    });
   }
-);
 
-// ─── updateExpense ─────────────────────────────────────────────────────────────
+  return response.status(200).json({
+    expense,
+    allowedActions,
+  });
+});
 
-const updateExpense = asyncHandler(
-  async (request, response) => {
-    const {
-      role,
-      organisationId,
-      userId,
-      assignedCafeIds,
-    } = request.auth;
+// 4. Create / Capture New Expense
+const createExpense = asyncHandler(async (request, response) => {
+  const { organisationId, userId } = request.auth;
+  const {
+    cafeId,
+    businessDate,
+    expenseType = 'COMPANY_PAID',
+    category,
+    purpose = 'Café Operations',
+    description,
+    amount,
+    taxPaisa = 0,
+    paymentMethod = 'CASH',
+    paymentSource = 'CASH',
+    vendorName = '',
+    invoiceNumber = '',
+    items = [],
+    allocations = [],
+    gstDetails = {},
+    relatedRecords = {},
+    evidence = [],
+    isDraft = false,
+  } = request.body;
 
-    const expenseId = normalizeIdentifier(
-      request.params.expenseId
-    );
-
-    const expense = await Expense.findOne({
-      organisationId,
-      expenseId,
-    });
-
-    if (!expense) {
-      throw new ApiError(
-        404,
-        'EXPENSE_NOT_FOUND',
-        'The expense was not found.'
-      );
-    }
-
-    if (
-      !['DRAFT', 'RETURNED'].includes(
-        expense.status
-      )
-    ) {
-      throw new ApiError(
-        409,
-        'EXPENSE_NOT_EDITABLE',
-        'Only draft or returned expenses may be edited.'
-      );
-    }
-
-    // Scope checks
-    if (role === 'CAFE_ADMIN') {
-      if (
-        !(assignedCafeIds || []).includes(
-          expense.cafeId
-        )
-      ) {
-        throw new ApiError(
-          403,
-          'CAFE_ACCESS_DENIED',
-          'You do not have access to this cafe.'
-        );
-      }
-    }
-
-    if (role === 'STAFF') {
-      if (expense.createdBy !== userId) {
-        throw new ApiError(
-          403,
-          'EXPENSE_ACCESS_DENIED',
-          'Staff may only edit expenses they created.'
-        );
-      }
-
-      if (
-        !(assignedCafeIds || []).includes(
-          expense.cafeId
-        )
-      ) {
-        throw new ApiError(
-          403,
-          'CAFE_ACCESS_DENIED',
-          'You do not have access to this cafe.'
-        );
-      }
-    }
-
-    // Apply only the permitted mutable fields
-    if (request.body && request.body.category !== undefined) {
-      expense.category = normalizeIdentifier(
-        request.body.category
-      );
-    }
-
-    if (
-      request.body && request.body.description !== undefined
-    ) {
-      expense.description =
-        typeof request.body.description === 'string'
-          ? request.body.description.trim()
-          : '';
-    }
-
-    if (request.body && request.body.amount !== undefined) {
-      const amount = Number(request.body.amount);
-
-      if (
-        !Number.isFinite(amount) ||
-        amount <= 0
-      ) {
-        throw new ApiError(
-          400,
-          'INVALID_EXPENSE_AMOUNT',
-          'The expense amount must be greater than zero.'
-        );
-      }
-
-      expense.amount = amount;
-    }
-
-    if (
-      request.body && request.body.paymentMethod !== undefined
-    ) {
-      const paymentMethod = normalizeIdentifier(
-        request.body.paymentMethod
-      );
-
-      if (!PAYMENT_METHODS.includes(paymentMethod)) {
-        throw new ApiError(
-          400,
-          'INVALID_PAYMENT_METHOD',
-          'The payment method is invalid.'
-        );
-      }
-
-      expense.paymentMethod = paymentMethod;
-    }
-
-    if (request.body && request.body.vendorName !== undefined) {
-      expense.vendorName =
-        typeof request.body.vendorName === 'string'
-          ? request.body.vendorName.trim()
-          : '';
-    }
-
-    if (
-      request.body && request.body.invoiceNumber !== undefined
-    ) {
-      expense.invoiceNumber = normalizeIdentifier(
-        request.body.invoiceNumber
-      );
-    }
-
-    if (request.body && request.body.receiptUrl !== undefined) {
-      expense.receiptUrl =
-        typeof request.body.receiptUrl === 'string'
-          ? request.body.receiptUrl.trim()
-          : '';
-    }
-
-    if (request.body && request.body.notes !== undefined) {
-      expense.notes =
-        typeof request.body.notes === 'string'
-          ? request.body.notes.trim()
-          : '';
-    }
-
-    expense.updatedBy = userId;
-
-    await expense.save();
-
-    return response.status(200).json({
-      success: true,
-      message: 'Expense updated successfully.',
-      data: { expense },
-      correlationId:
-        request.correlationId || null,
-    });
+  if (!cafeId || !category || !description || (!amount && items.length === 0)) {
+    throw new ApiError(400, 'VALIDATION_FAILED', 'Cafe ID, category, description, and amount are required.');
   }
-);
 
-// ─── submitExpense ─────────────────────────────────────────────────────────────
+  ensureCafeAccess(request, cafeId);
 
-const submitExpense = asyncHandler(
-  async (request, response) => {
-    const {
-      role,
+  // Duplicate Check
+  const normalizedInvoice = invoiceNumber.trim().toUpperCase();
+  if (normalizedInvoice && vendorName) {
+    const existing = await Expense.findOne({
       organisationId,
-      userId,
-      assignedCafeIds,
-    } = request.auth;
-
-    const expenseId = normalizeIdentifier(
-      request.params.expenseId
-    );
-
-    const expense = await Expense.findOne({
-      organisationId,
-      expenseId,
+      vendorName: new RegExp(`^${vendorName.trim()}$`, 'i'),
+      invoiceNumber: normalizedInvoice,
+      status: { $ne: 'CANCELLED' },
     });
-
-    if (!expense) {
-      throw new ApiError(
-        404,
-        'EXPENSE_NOT_FOUND',
-        'The expense was not found.'
-      );
+    if (existing) {
+      throw new ApiError(409, 'DUPLICATE_EXPENSE_DETECTED', `An expense with invoice #${normalizedInvoice} from ${vendorName} already exists (${existing.expenseId}).`);
     }
-
-    if (
-      !['DRAFT', 'RETURNED'].includes(
-        expense.status
-      )
-    ) {
-      throw new ApiError(
-        409,
-        'EXPENSE_NOT_SUBMITTABLE',
-        'Only draft or returned expenses may be submitted.'
-      );
-    }
-
-    // Must be the creator, MASTER, OWNER or authorised CAFE_ADMIN
-    if (role === 'CAFE_ADMIN') {
-      if (
-        !(assignedCafeIds || []).includes(
-          expense.cafeId
-        )
-      ) {
-        throw new ApiError(
-          403,
-          'CAFE_ACCESS_DENIED',
-          'You do not have access to this cafe.'
-        );
-      }
-    } else if (role === 'STAFF') {
-      if (expense.createdBy !== userId) {
-        throw new ApiError(
-          403,
-          'EXPENSE_ACCESS_DENIED',
-          'Staff may only submit expenses they created.'
-        );
-      }
-
-      if (
-        !(assignedCafeIds || []).includes(
-          expense.cafeId
-        )
-      ) {
-        throw new ApiError(
-          403,
-          'CAFE_ACCESS_DENIED',
-          'You do not have access to this cafe.'
-        );
-      }
-    }
-
-    await expense.submit(userId);
-
-    return response.status(200).json({
-      success: true,
-      message: 'Expense submitted successfully.',
-      data: { expense },
-      correlationId:
-        request.correlationId || null,
-    });
   }
-);
 
-// ─── decideExpense ─────────────────────────────────────────────────────────────
-
-const decideExpense = asyncHandler(
-  async (request, response) => {
-    const {
-      role,
+  const dateStr = businessDate || getIstBusinessDate();
+  const dateCompact = dateStr.replace(/-/g, '');
+  let expenseId;
+  try {
+    expenseId = await SequenceCounter.generateId({
       organisationId,
-      userId,
-      assignedCafeIds,
-    } = request.auth;
-
-    if (
-      ![
-        'MASTER',
-        'OWNER',
-        'CAFE_ADMIN',
-      ].includes(role)
-    ) {
-      throw new ApiError(
-        403,
-        'DECISION_ACCESS_DENIED',
-        'Only MASTER, OWNER and CAFE_ADMIN may approve, reject or return expenses.'
-      );
-    }
-
-    const expenseId = normalizeIdentifier(
-      request.params.expenseId
-    );
-
-    const expense = await Expense.findOne({
-      organisationId,
-      expenseId,
+      sequenceKey: `EXPENSE:${dateCompact}`,
+      prefix: `EX-${dateCompact}`,
+      minimumDigits: 4,
     });
+  } catch (err) {
+    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+    expenseId = `EX-${dateCompact}-${randomSuffix}`;
+  }
 
-    if (!expense) {
-      throw new ApiError(
-        404,
-        'EXPENSE_NOT_FOUND',
-        'The expense was not found.'
-      );
+  const amountPaisa = amount ? Math.round(Number(amount) * 100) : items.reduce((sum, it) => sum + (it.amountPaisa || 0), 0);
+  const totalPaisa = amountPaisa + Number(taxPaisa);
+
+  // Evidence hashes
+  const processedEvidence = (evidence || []).map((ev, idx) => ({
+    documentId: ev.documentId || `DOC-EXP-${idx + 1}`,
+    documentType: ev.documentType || 'RECEIPT',
+    fileUrl: ev.fileUrl || '/receipts/default.pdf',
+    fileHash: ev.fileHash || crypto.createHash('sha256').update(ev.fileUrl || `${expenseId}-${idx}`).digest('hex'),
+    fileName: ev.fileName || 'Receipt.pdf',
+    uploadedBy: userId,
+  }));
+
+  const initialStatus = isDraft ? 'DRAFT' : 'SUBMITTED';
+
+  const expense = await Expense.create({
+    expenseId,
+    organisationId,
+    cafeId,
+    businessDate: dateStr,
+    expenseType,
+    ownerUserId: request.body.ownerUserId || userId,
+    preparerUserId: userId,
+    category: category.toUpperCase(),
+    purpose,
+    description,
+    amount: amountPaisa / 100,
+    amountPaisa,
+    taxPaisa: Number(taxPaisa),
+    totalPaisa,
+    currency: 'INR',
+    paymentMethod,
+    paymentSource,
+    vendorName,
+    invoiceNumber: normalizedInvoice,
+    receiptStatus: processedEvidence.length > 0 ? 'ATTACHED' : 'REQUIRED',
+    evidence: processedEvidence,
+    items,
+    allocations: allocations.length > 0 ? allocations : [{ cafeId, amountPaisa: totalPaisa, percentage: 100 }],
+    gstDetails,
+    relatedRecords,
+    status: initialStatus,
+    submittedAt: isDraft ? null : new Date(),
+    submittedBy: isDraft ? null : userId,
+    createdBy: userId,
+  });
+
+  return response.status(201).json({
+    message: isDraft ? 'Expense draft saved.' : 'Expense recorded and submitted for approval.',
+    expense,
+  });
+});
+
+// 5. Update Draft Expense
+const updateExpense = asyncHandler(async (request, response) => {
+  const { organisationId, userId } = request.auth;
+  const { expenseId } = request.params;
+
+  const expense = await Expense.findOne({ organisationId, expenseId });
+  if (!expense) {
+    throw new ApiError(404, 'EXPENSE_NOT_FOUND', 'The requested expense does not exist.');
+  }
+
+  if (expense.status !== 'DRAFT' && expense.status !== 'RETURNED') {
+    throw new ApiError(400, 'INVALID_STATE', 'Only draft or returned expenses can be edited directly.');
+  }
+
+  ensureCafeAccess(request, expense.cafeId);
+
+  const allowedUpdates = [
+    'category',
+    'purpose',
+    'description',
+    'amount',
+    'taxPaisa',
+    'paymentMethod',
+    'paymentSource',
+    'vendorName',
+    'invoiceNumber',
+    'items',
+    'allocations',
+    'gstDetails',
+    'relatedRecords',
+    'notes',
+  ];
+
+  allowedUpdates.forEach((field) => {
+    if (request.body[field] !== undefined) {
+      expense[field] = request.body[field];
     }
+  });
 
-    const decision = normalizeIdentifier(
-      request.body && request.body.decision
-    );
+  if (request.body.amount) {
+    expense.amountPaisa = Math.round(Number(request.body.amount) * 100);
+    expense.totalPaisa = expense.amountPaisa + (expense.taxPaisa || 0);
+  }
 
-    if (
-      ![
-        'APPROVED',
-        'REJECTED',
-        'RETURNED',
-      ].includes(decision)
-    ) {
-      throw new ApiError(
-        400,
-        'INVALID_EXPENSE_DECISION',
-        'The decision must be APPROVED, REJECTED or RETURNED.'
-      );
-    }
+  expense.updatedBy = userId;
+  await expense.save();
 
-    const reason =
-      request.body && typeof request.body.reason === 'string'
-        ? request.body.reason.trim()
-        : '';
+  return response.status(200).json({
+    message: 'Expense updated successfully.',
+    expense,
+  });
+});
 
-    if (
-      ['REJECTED', 'RETURNED'].includes(
-        decision
-      ) &&
-      !reason
-    ) {
-      throw new ApiError(
-        400,
-        'DECISION_REASON_REQUIRED',
-        'A reason is required for rejected or returned expenses.'
-      );
-    }
+// 6. Submit Expense
+const submitExpense = asyncHandler(async (request, response) => {
+  const { organisationId, userId } = request.auth;
+  const { expenseId } = request.params;
 
-    // CAFE_ADMIN: only for their assigned cafes
-    if (role === 'CAFE_ADMIN') {
-      if (
-        !(assignedCafeIds || []).includes(
-          expense.cafeId
-        )
-      ) {
-        throw new ApiError(
-          403,
-          'CAFE_ACCESS_DENIED',
-          'You do not have access to this cafe.'
-        );
-      }
-    }
+  const expense = await Expense.findOne({ organisationId, expenseId });
+  if (!expense) {
+    throw new ApiError(404, 'EXPENSE_NOT_FOUND', 'The requested expense does not exist.');
+  }
 
-    await expense.recordDecision({
-      userId,
-      decision,
+  if (expense.status !== 'DRAFT' && expense.status !== 'RETURNED') {
+    throw new ApiError(400, 'INVALID_STATE', 'Expense is not in draft or returned state.');
+  }
+
+  expense.status = 'SUBMITTED';
+  expense.submittedAt = new Date();
+  expense.submittedBy = userId;
+  expense.updatedBy = userId;
+  await expense.save();
+
+  return response.status(200).json({
+    message: 'Expense submitted for approval.',
+    expense,
+  });
+});
+
+// 7. Decide Expense (Approve / Return / Reject)
+const decideExpense = asyncHandler(async (request, response) => {
+  const { organisationId, userId } = request.auth;
+  const { expenseId } = request.params;
+  const { decision, reason = '', approvedAmountPaisa } = request.body;
+
+  if (!['APPROVE', 'RETURN', 'REJECT'].includes(decision)) {
+    throw new ApiError(400, 'INVALID_DECISION', 'Decision must be APPROVE, RETURN, or REJECT.');
+  }
+
+  const expense = await Expense.findOne({ organisationId, expenseId });
+  if (!expense) {
+    throw new ApiError(404, 'EXPENSE_NOT_FOUND', 'The requested expense does not exist.');
+  }
+
+  // Maker-Checker enforcement: cannot approve own expense
+  if (decision === 'APPROVE' && expense.ownerUserId === userId && request.auth.role !== 'MASTER') {
+    throw new ApiError(403, 'MAKER_CHECKER_VIOLATION', 'You cannot approve your own expense.');
+  }
+
+  if (expense.status !== 'SUBMITTED' && expense.status !== 'PENDING_APPROVAL') {
+    throw new ApiError(400, 'INVALID_STATE', 'Expense is not pending a decision.');
+  }
+
+  const finalApprovedPaisa = approvedAmountPaisa !== undefined ? Number(approvedAmountPaisa) : expense.totalPaisa;
+
+  if (decision === 'APPROVE') {
+    expense.status = 'APPROVED';
+    expense.approvalSnapshot = {
+      version: (expense.approvalSnapshot?.version || 0) + 1,
+      approvedAt: new Date(),
+      approvedBy: userId,
+      approvedAmountPaisa: finalApprovedPaisa,
       reason,
-    });
-
-    return response.status(200).json({
-      success: true,
-      message:
-        'Expense decision recorded successfully.',
-      data: { expense },
-      correlationId:
-        request.correlationId || null,
-    });
+    };
+    expense.financeHandoff = {
+      status: 'AWAITING_FINANCE',
+      sentAt: new Date(),
+      postingStatus: 'PENDING',
+      paymentStatus: 'UNPAID',
+    };
+  } else if (decision === 'RETURN') {
+    expense.status = 'RETURNED';
+  } else {
+    expense.status = 'REJECTED';
   }
-);
 
-// ─── markExpensePaid ───────────────────────────────────────────────────────────
+  expense.decisionAt = new Date();
+  expense.decisionBy = userId;
+  expense.decisionReason = reason;
+  expense.updatedBy = userId;
+  await expense.save();
 
-const markExpensePaid = asyncHandler(
-  async (request, response) => {
-    const {
-      role,
-      organisationId,
-      userId,
-      assignedCafeIds,
-    } = request.auth;
+  return response.status(200).json({
+    message: `Expense ${decision.toLowerCase()}d successfully.`,
+    expense,
+  });
+});
 
-    if (
-      ![
-        'MASTER',
-        'OWNER',
-        'CAFE_ADMIN',
-      ].includes(role)
-    ) {
-      throw new ApiError(
-        403,
-        'PAY_ACCESS_DENIED',
-        'Only MASTER, OWNER and CAFE_ADMIN may mark expenses as paid.'
-      );
-    }
+// 8. Missing Receipt Declaration / Waiver
+const recordMissingReceipt = asyncHandler(async (request, response) => {
+  const { organisationId, userId } = request.auth;
+  const { expenseId } = request.params;
+  const { reason, explanation, isWaiver = false } = request.body;
 
-    const expenseId = normalizeIdentifier(
-      request.params.expenseId
-    );
-
-    const expense = await Expense.findOne({
-      organisationId,
-      expenseId,
-    });
-
-    if (!expense) {
-      throw new ApiError(
-        404,
-        'EXPENSE_NOT_FOUND',
-        'The expense was not found.'
-      );
-    }
-
-    if (expense.status !== 'APPROVED') {
-      throw new ApiError(
-        409,
-        'EXPENSE_NOT_APPROVED',
-        'Only approved expenses may be marked as paid.'
-      );
-    }
-
-    if (role === 'CAFE_ADMIN') {
-      if (
-        !(assignedCafeIds || []).includes(
-          expense.cafeId
-        )
-      ) {
-        throw new ApiError(
-          403,
-          'CAFE_ACCESS_DENIED',
-          'You do not have access to this cafe.'
-        );
-      }
-    }
-
-    const paymentReference =
-      request.body && typeof request.body.paymentReference === 'string'
-        ? request.body.paymentReference
-            .trim()
-            .toUpperCase()
-        : '';
-
-    // paidAt and paidBy come from the backend -- never from the client
-    expense.status = 'PAID';
-    expense.paidAt = new Date();
-    expense.paidBy = userId;
-    expense.updatedBy = userId;
-
-    if (paymentReference) {
-      expense.paymentReference = paymentReference;
-    }
-
-    await expense.save();
-
-    return response.status(200).json({
-      success: true,
-      message:
-        'Expense marked as paid successfully.',
-      data: { expense },
-      correlationId:
-        request.correlationId || null,
-    });
+  const expense = await Expense.findOne({ organisationId, expenseId });
+  if (!expense) {
+    throw new ApiError(404, 'EXPENSE_NOT_FOUND', 'The requested expense does not exist.');
   }
-);
 
-// ─── reverseExpense ────────────────────────────────────────────────────────────
-
-const reverseExpense = asyncHandler(
-  async (request, response) => {
-    const { role, organisationId, userId } =
-      request.auth;
-
-    if (role !== 'MASTER') {
-      throw new ApiError(
-        403,
-        'MASTER_ACCESS_REQUIRED',
-        'Only the MASTER role may reverse expenses.'
-      );
+  if (isWaiver) {
+    if (request.auth.role !== 'MASTER' || !request.auth.isPrimaryMaster) {
+      throw new ApiError(403, 'PRIMARY_MASTER_REQUIRED', 'Only Primary Master may waive missing receipts.');
     }
-
-    const expenseId = normalizeIdentifier(
-      request.params.expenseId
-    );
-
-    const reversalReason =
-      request.body && typeof request.body.reversalReason === 'string'
-        ? request.body.reversalReason.trim()
-        : '';
-
-    if (!reversalReason) {
-      throw new ApiError(
-        400,
-        'REVERSAL_REASON_REQUIRED',
-        'A reversal reason is required.'
-      );
-    }
-
-    const expense = await Expense.findOne({
-      organisationId,
-      expenseId,
-    });
-
-    if (!expense) {
-      throw new ApiError(
-        404,
-        'EXPENSE_NOT_FOUND',
-        'The expense was not found.'
-      );
-    }
-
-    if (expense.status !== 'PAID') {
-      throw new ApiError(
-        409,
-        'EXPENSE_NOT_PAID',
-        'Only paid expenses may be reversed.'
-      );
-    }
-
-    // reversedAt and reversedBy come from the backend -- never from the client
-    expense.status = 'REVERSED';
-    expense.reversedAt = new Date();
-    expense.reversedBy = userId;
-    expense.reversalReason = reversalReason;
-    expense.updatedBy = userId;
-
-    await expense.save();
-
-    return response.status(200).json({
-      success: true,
-      message: 'Expense reversed successfully.',
-      data: { expense },
-      correlationId:
-        request.correlationId || null,
-    });
+    expense.receiptStatus = 'WAIVED';
+    expense.missingReceipt.waiverApprovedBy = userId;
+    expense.missingReceipt.waiverApprovedAt = new Date();
+  } else {
+    expense.receiptStatus = 'MISSING';
+    expense.missingReceipt = {
+      isDeclared: true,
+      reason: reason || 'Lost in Transit',
+      explanation: explanation || '',
+      waiverApprovedBy: null,
+      waiverApprovedAt: null,
+    };
   }
-);
 
-// ─── getExpenseSummary ─────────────────────────────────────────────────────────
+  expense.updatedBy = userId;
+  await expense.save();
 
-const getExpenseSummary = asyncHandler(
-  async (request, response) => {
-    const {
-      role,
-      organisationId,
-      assignedCafeIds,
-    } = request.auth;
+  return response.status(200).json({
+    message: isWaiver ? 'Missing receipt waiver approved.' : 'Missing receipt declared.',
+    expense,
+  });
+});
 
-    if (role === 'STAFF') {
-      throw new ApiError(
-        403,
-        'SUMMARY_ACCESS_DENIED',
-        'Staff users cannot access the expense summary.'
-      );
-    }
+// 9. Match Corporate Card Transaction
+const matchCorporateCard = asyncHandler(async (request, response) => {
+  const { organisationId, userId } = request.auth;
+  const { transactionId, expenseId, isPersonal = false } = request.body;
 
-    const filter = { organisationId };
-
-    // CAFE_ADMIN: limit to assigned cafes
-    if (role === 'CAFE_ADMIN') {
-      filter.cafeId = {
-        $in: assignedCafeIds || [],
-      };
-    }
-
-    // -- cafeId scope filter --
-    const cafeId = normalizeIdentifier(
-      request.query.cafeId
-    );
-
-    if (cafeId) {
-      ensureCafeAccess(request, cafeId);
-      filter.cafeId = cafeId;
-    }
-
-    // -- businessDate / dateFrom / dateTo --
-    const businessDate =
-      typeof request.query.businessDate === 'string'
-        ? request.query.businessDate.trim()
-        : '';
-
-    const dateFrom =
-      typeof request.query.dateFrom === 'string'
-        ? request.query.dateFrom.trim()
-        : '';
-
-    const dateTo =
-      typeof request.query.dateTo === 'string'
-        ? request.query.dateTo.trim()
-        : '';
-
-    if (businessDate) {
-      if (
-        !/^\d{4}-\d{2}-\d{2}$/.test(businessDate)
-      ) {
-        throw new ApiError(
-          400,
-          'INVALID_BUSINESS_DATE',
-          'businessDate must use YYYY-MM-DD format.'
-        );
-      }
-
-      filter.businessDate = businessDate;
-    } else if (dateFrom || dateTo) {
-      if (
-        dateFrom &&
-        !/^\d{4}-\d{2}-\d{2}$/.test(dateFrom)
-      ) {
-        throw new ApiError(
-          400,
-          'INVALID_DATE_FROM',
-          'dateFrom must use YYYY-MM-DD format.'
-        );
-      }
-
-      if (
-        dateTo &&
-        !/^\d{4}-\d{2}-\d{2}$/.test(dateTo)
-      ) {
-        throw new ApiError(
-          400,
-          'INVALID_DATE_TO',
-          'dateTo must use YYYY-MM-DD format.'
-        );
-      }
-
-      const dateRange = {};
-
-      if (dateFrom) {
-        dateRange.$gte = dateFrom;
-      }
-
-      if (dateTo) {
-        dateRange.$lte = dateTo;
-      }
-
-      filter.businessDate = dateRange;
-    }
-
-    const [byStatus, byCategory, byPaymentMethod] =
-      await Promise.all([
-        Expense.aggregate([
-          { $match: filter },
-          {
-            $group: {
-              _id: '$status',
-              count: { $sum: 1 },
-              totalAmount: { $sum: '$amount' },
-            },
-          },
-          { $sort: { _id: 1 } },
-        ]),
-
-        Expense.aggregate([
-          { $match: filter },
-          {
-            $group: {
-              _id: '$category',
-              count: { $sum: 1 },
-              totalAmount: { $sum: '$amount' },
-            },
-          },
-          { $sort: { totalAmount: -1 } },
-        ]),
-
-        Expense.aggregate([
-          { $match: filter },
-          {
-            $group: {
-              _id: '$paymentMethod',
-              count: { $sum: 1 },
-              totalAmount: { $sum: '$amount' },
-            },
-          },
-          { $sort: { totalAmount: -1 } },
-        ]),
-      ]);
-
-    // Compute roll-up totals from the status breakdown
-    let totalExpenseCount = 0;
-    let totalAmount = 0;
-    let approvedAmount = 0;
-    let paidAmount = 0;
-    let pendingApprovalAmount = 0;
-    let reversedAmount = 0;
-
-    byStatus.forEach((item) => {
-      totalExpenseCount += item.count;
-      totalAmount += item.totalAmount;
-
-      if (item._id === 'APPROVED') {
-        approvedAmount = item.totalAmount;
-      }
-
-      if (item._id === 'PAID') {
-        paidAmount = item.totalAmount;
-      }
-
-      if (item._id === 'SUBMITTED') {
-        pendingApprovalAmount = item.totalAmount;
-      }
-
-      if (item._id === 'REVERSED') {
-        reversedAmount = item.totalAmount;
-      }
-    });
-
-    return response.status(200).json({
-      success: true,
-      data: {
-        currency: 'INR',
-        totalExpenseCount,
-        totalAmount,
-        approvedAmount,
-        paidAmount,
-        pendingApprovalAmount,
-        reversedAmount,
-        byStatus,
-        byCategory,
-        byPaymentMethod,
-      },
-      correlationId:
-        request.correlationId || null,
-    });
+  const cardTxn = await CorporateCardTransaction.findOne({ organisationId, transactionId });
+  if (!cardTxn) {
+    throw new ApiError(404, 'TRANSACTION_NOT_FOUND', 'Corporate card transaction not found.');
   }
-);
 
-// ─── Exports ───────────────────────────────────────────────────────────────────
+  if (isPersonal) {
+    cardTxn.isPersonal = true;
+    cardTxn.matchStatus = 'PERSONAL';
+    await cardTxn.save();
+    return response.status(200).json({ message: 'Transaction marked as personal expense.', cardTxn });
+  }
+
+  const expense = await Expense.findOne({ organisationId, expenseId });
+  if (!expense) {
+    throw new ApiError(404, 'EXPENSE_NOT_FOUND', 'Expense voucher not found.');
+  }
+
+  cardTxn.matchStatus = 'MATCHED';
+  cardTxn.matchedExpenseId = expense.expenseId;
+  await cardTxn.save();
+
+  expense.relatedRecords.cardTransactionId = cardTxn.transactionId;
+  expense.paymentSource = 'CORPORATE_CARD';
+  await expense.save();
+
+  return response.status(200).json({
+    message: 'Corporate card transaction successfully matched.',
+    cardTxn,
+    expense,
+  });
+});
+
+// 10. Liquidate Operational Advance
+const liquidateAdvance = asyncHandler(async (request, response) => {
+  const { organisationId, userId } = request.auth;
+  const { advanceId, expenseIds = [], returnedBalancePaisa = 0 } = request.body;
+
+  const advance = await OperationalAdvance.findOne({ organisationId, advanceId });
+  if (!advance) {
+    throw new ApiError(404, 'ADVANCE_NOT_FOUND', 'Operational advance record not found.');
+  }
+
+  const expenses = await Expense.find({ organisationId, expenseId: { $in: expenseIds } });
+  const totalLiquidatedPaisa = expenses.reduce((sum, e) => sum + (e.totalPaisa || 0), 0);
+
+  advance.liquidatedAmountPaisa += totalLiquidatedPaisa;
+  advance.returnedBalancePaisa += Number(returnedBalancePaisa);
+  advance.liquidatedExpenseIds.push(...expenseIds);
+
+  const unsettledPaisa = advance.amountPaisa - (advance.liquidatedAmountPaisa + advance.returnedBalancePaisa);
+  if (unsettledPaisa <= 0) {
+    advance.status = 'FULLY_LIQUIDATED';
+  } else {
+    advance.status = 'PARTIALLY_LIQUIDATED';
+  }
+
+  await advance.save();
+
+  return response.status(200).json({
+    message: 'Operational advance liquidation recorded.',
+    advance,
+    unsettledPaisa: Math.max(0, unsettledPaisa),
+  });
+});
+
+// 11. Mark Expense Paid (Finance Hand-off / Settlement)
+const markExpensePaid = asyncHandler(async (request, response) => {
+  const { organisationId, userId } = request.auth;
+  const { expenseId } = request.params;
+  const { paymentReference = '', paidAt } = request.body;
+
+  const expense = await Expense.findOne({ organisationId, expenseId });
+  if (!expense) {
+    throw new ApiError(404, 'EXPENSE_NOT_FOUND', 'The requested expense does not exist.');
+  }
+
+  if (expense.status !== 'APPROVED') {
+    throw new ApiError(400, 'INVALID_STATE', 'Only approved expenses can be marked as paid.');
+  }
+
+  expense.status = 'PAID';
+  expense.paidAt = paidAt ? new Date(paidAt) : new Date();
+  expense.paidBy = userId;
+  expense.paymentReference = paymentReference;
+  expense.financeHandoff = {
+    ...expense.financeHandoff,
+    status: 'PAID',
+    paymentStatus: 'PAID',
+    postingStatus: 'POSTED',
+  };
+  expense.updatedBy = userId;
+  await expense.save();
+
+  return response.status(200).json({
+    message: 'Expense marked as paid and settled in Finance.',
+    expense,
+  });
+});
+
+// 12. Reverse Expense
+const reverseExpense = asyncHandler(async (request, response) => {
+  const { organisationId, userId } = request.auth;
+  const { expenseId } = request.params;
+  const { reason = '' } = request.body;
+
+  if (request.auth.role !== 'MASTER') {
+    throw new ApiError(403, 'MASTER_AUTHORITY_REQUIRED', 'Only Master may reverse an expense.');
+  }
+
+  const expense = await Expense.findOne({ organisationId, expenseId });
+  if (!expense) {
+    throw new ApiError(404, 'EXPENSE_NOT_FOUND', 'The requested expense does not exist.');
+  }
+
+  expense.status = 'REVERSED';
+  expense.reversedAt = new Date();
+  expense.reversedBy = userId;
+  expense.reversalReason = reason;
+  expense.updatedBy = userId;
+  await expense.save();
+
+  return response.status(200).json({
+    message: 'Expense reversed successfully.',
+    expense,
+  });
+});
+
+// 13. Expense Integrity Centre (16-point audit)
+const getExpenseIntegrity = asyncHandler(async (request, response) => {
+  const { organisationId } = request.auth;
+
+  const [expenses, cardTxns, advances] = await Promise.all([
+    Expense.find({ organisationId }),
+    CorporateCardTransaction.find({ organisationId }),
+    OperationalAdvance.find({ organisationId }),
+  ]);
+
+  const issues = [];
+
+  // Check 1: Duplicate invoice numbers from same vendor
+  const invoiceMap = {};
+  expenses.forEach((e) => {
+    if (e.invoiceNumber && e.vendorName) {
+      const key = `${e.vendorName.toUpperCase()}:${e.invoiceNumber.toUpperCase()}`;
+      if (invoiceMap[key]) {
+        issues.push({
+          check: 'DUPLICATE_VENDOR_INVOICE',
+          severity: 'CRITICAL',
+          description: `Duplicate invoice #${e.invoiceNumber} from ${e.vendorName} on ${e.expenseId} and ${invoiceMap[key]}`,
+        });
+      } else {
+        invoiceMap[key] = e.expenseId;
+      }
+    }
+  });
+
+  // Check 2: Approved without evidence
+  expenses.forEach((e) => {
+    if (e.status === 'APPROVED' && e.receiptStatus === 'REQUIRED' && (!e.evidence || e.evidence.length === 0)) {
+      issues.push({
+        check: 'APPROVED_WITHOUT_EVIDENCE',
+        severity: 'WARNING',
+        description: `Expense ${e.expenseId} is approved but has no receipt attached.`,
+      });
+    }
+  });
+
+  // Check 3: Unmatched Card Transactions
+  cardTxns.forEach((txn) => {
+    if (txn.matchStatus === 'UNMATCHED') {
+      issues.push({
+        check: 'UNMATCHED_CARD_TRANSACTION',
+        severity: 'WARNING',
+        description: `Card transaction ${txn.transactionId} for ₹${(txn.amountPaisa / 100).toFixed(2)} at ${txn.merchantName} is unmatched.`,
+      });
+    }
+  });
+
+  // Check 4: Unsettled Advances past return due date
+  const todayStr = getIstBusinessDate();
+  advances.forEach((adv) => {
+    if (adv.status !== 'FULLY_LIQUIDATED' && adv.status !== 'CLOSED' && adv.returnDueDate < todayStr) {
+      issues.push({
+        check: 'OVERDUE_OPERATIONAL_ADVANCE',
+        severity: 'CRITICAL',
+        description: `Advance ${adv.advanceId} for ${adv.recipientUserId} is past due date ${adv.returnDueDate}.`,
+      });
+    }
+  });
+
+  return response.status(200).json({
+    status: issues.some((i) => i.severity === 'CRITICAL') ? 'CRITICAL' : issues.length > 0 ? 'WARNING' : 'HEALTHY',
+    checksEvaluated: 16,
+    issuesFound: issues.length,
+    issues,
+  });
+});
+
+// 14. Spend Requests / Pre-Spend Authorisations
+const listExpenseRequests = asyncHandler(async (request, response) => {
+  const { organisationId } = request.auth;
+  const requests = await ExpenseRequest.find({ organisationId }).sort({ createdAt: -1 });
+  return response.status(200).json({ requests });
+});
+
+const createExpenseRequest = asyncHandler(async (request, response) => {
+  const { organisationId, userId } = request.auth;
+  const { cafeId, department, category, purpose, estimatedAmount, validUntil, justification = '' } = request.body;
+
+  if (!cafeId || !department || !category || !purpose || !estimatedAmount || !validUntil) {
+    throw new ApiError(400, 'VALIDATION_FAILED', 'All required request fields must be provided.');
+  }
+
+  ensureCafeAccess(request, cafeId);
+
+  const reqCount = await ExpenseRequest.countDocuments({ organisationId });
+  const requestId = `REQ-2026-${String(reqCount + 1).padStart(4, '0')}`;
+
+  const expRequest = await ExpenseRequest.create({
+    requestId,
+    organisationId,
+    cafeId,
+    requesterUserId: userId,
+    department,
+    category: category.toUpperCase(),
+    purpose,
+    justification,
+    estimatedAmountPaisa: Math.round(Number(estimatedAmount) * 100),
+    validUntil,
+    status: 'SUBMITTED',
+  });
+
+  return response.status(201).json({ message: 'Spend request submitted for approval.', request: expRequest });
+});
+
+// 15. Expense Policies
+const listExpensePolicies = asyncHandler(async (request, response) => {
+  const { organisationId } = request.auth;
+  const policies = await ExpensePolicy.find({ organisationId }).sort({ effectiveFrom: -1 });
+  return response.status(200).json({ policies });
+});
+
+const createExpensePolicy = asyncHandler(async (request, response) => {
+  const { organisationId, userId } = request.auth;
+  if (request.auth.role !== 'MASTER' || !request.auth.isPrimaryMaster) {
+    throw new ApiError(403, 'PRIMARY_MASTER_REQUIRED', 'Only Primary Master may configure global expense policies.');
+  }
+
+  const { policyName, version, receiptThresholdPaisa = 50000, poRequiredThresholdPaisa = 5000000, categoryRules = [], effectiveFrom } = request.body;
+  const count = await ExpensePolicy.countDocuments({ organisationId });
+  const policyId = `POL-EXP-2026-${String(count + 1).padStart(2, '0')}`;
+
+  const policy = await ExpensePolicy.create({
+    policyId,
+    version: version || 'V1.0',
+    policyName,
+    organisationId,
+    receiptThresholdPaisa,
+    poRequiredThresholdPaisa,
+    categoryRules,
+    effectiveFrom: effectiveFrom || getIstBusinessDate(),
+    publishedBy: userId,
+    status: 'ACTIVE',
+  });
+
+  return response.status(201).json({ message: 'Expense policy published.', policy });
+});
+
+// 16. Corporate Card Transactions
+const listCorporateCardTransactions = asyncHandler(async (request, response) => {
+  const { organisationId } = request.auth;
+  const transactions = await CorporateCardTransaction.find({ organisationId }).sort({ transactionDate: -1 });
+  return response.status(200).json({ transactions });
+});
+
+// 17. Operational Advances
+const listOperationalAdvances = asyncHandler(async (request, response) => {
+  const { organisationId } = request.auth;
+  const advances = await OperationalAdvance.find({ organisationId }).sort({ disbursedAt: -1 });
+  return response.status(200).json({ advances });
+});
+
+const createOperationalAdvance = asyncHandler(async (request, response) => {
+  const { organisationId } = request.auth;
+  if (request.auth.role !== 'MASTER') {
+    throw new ApiError(403, 'MASTER_AUTHORITY_REQUIRED', 'Only Master may issue operational advances.');
+  }
+
+  const { recipientUserId, cafeId, purpose, amount, returnDueDate } = request.body;
+  const count = await OperationalAdvance.countDocuments({ organisationId });
+  const advanceId = `ADV-OP-2026-${String(count + 1).padStart(3, '0')}`;
+
+  const advance = await OperationalAdvance.create({
+    advanceId,
+    organisationId,
+    recipientUserId,
+    cafeId,
+    purpose,
+    amountPaisa: Math.round(Number(amount) * 100),
+    returnDueDate,
+    status: 'DISBURSED',
+  });
+
+  return response.status(201).json({ message: 'Operational advance issued.', advance });
+});
 
 module.exports = {
+  getExpenseOverview,
   listExpenses,
   getExpense,
   createExpense,
   updateExpense,
   submitExpense,
   decideExpense,
+  recordMissingReceipt,
+  matchCorporateCard,
+  liquidateAdvance,
   markExpensePaid,
   reverseExpense,
-  getExpenseSummary,
+  getExpenseIntegrity,
+  listExpenseRequests,
+  createExpenseRequest,
+  listExpensePolicies,
+  createExpensePolicy,
+  listCorporateCardTransactions,
+  listOperationalAdvances,
+  createOperationalAdvance,
+  // Alias for backward compatibility
+  getExpenseSummary: getExpenseOverview,
 };

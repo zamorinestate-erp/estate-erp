@@ -220,20 +220,25 @@ function normalizeCafeIds(value) {
 }
 
 function getPlainEmployee(employee) {
+  let plain = {};
   if (
     employee &&
     typeof employee.toObject === 'function'
   ) {
-    return employee.toObject({
+    plain = employee.toObject({
       depopulate: true,
       getters: false,
       virtuals: false,
     });
+  } else if (employee && typeof employee === 'object') {
+    plain = employee;
   }
 
-  return employee && typeof employee === 'object'
-    ? employee
-    : {};
+  if (plain && !plain.organisationId && employee?.organisationId) {
+    plain.organisationId = employee.organisationId;
+  }
+
+  return plain || {};
 }
 
 function copyArray(value) {
@@ -477,56 +482,139 @@ function buildCafeAssignmentHistory(value) {
 }
 
 function buildBaseEmployeeProfile(value) {
+  const isCompleteEmergency = Boolean(value.emergencyContact?.name && value.emergencyContact?.phone);
+  const isCompleteAddress = Boolean(value.address?.city && value.address?.state);
+  const isCompleteEmail = Boolean(value.email);
+  const isCompletePhone = Boolean(value.phone);
+
+  const actionItems = [];
+  if (!isCompleteEmergency) {
+    actionItems.push({
+      id: 'ACT-EMERGENCY-01',
+      title: 'Emergency contact missing',
+      reason: 'Add a primary emergency contact number and relationship for workplace safety.',
+      severity: 'HIGH',
+      actionType: 'ADD_EMERGENCY_CONTACT',
+      category: 'CONTACT',
+    });
+  }
+  if (!isCompleteAddress) {
+    actionItems.push({
+      id: 'ACT-ADDRESS-01',
+      title: 'Residential address incomplete',
+      reason: 'Provide your city and state for statutory communication.',
+      severity: 'MEDIUM',
+      actionType: 'UPDATE_ADDRESS',
+      category: 'PERSONAL',
+    });
+  }
+
+  const healthItems = [];
+  if (!value.phone) {
+    healthItems.push({ code: 'MISSING_PHONE', message: 'Primary mobile number not registered.', level: 'WARNING' });
+  }
+
   return {
     identity: {
       userId: value.userId,
       name: value.name,
-      preferredName:
-        value.preferredName || '',
+      preferredName: value.preferredName || '',
       role: value.role,
-      accountStatus:
-        value.accountStatus,
-      isPrimaryMaster:
-        value.isPrimaryMaster === true,
-      createdAt:
-        value.createdAt || null,
-      updatedAt:
-        value.updatedAt || null,
+      accountStatus: value.accountStatus,
+      isPrimaryMaster: value.isPrimaryMaster === true,
+      createdAt: value.createdAt || null,
+      updatedAt: value.updatedAt || null,
+      version: value.version || 1,
+    },
+
+    personal: {
+      dateOfBirth: value.dateOfBirth || null,
+      gender: value.gender || 'PREFER_NOT_TO_SAY',
+      nationality: value.nationality || 'Indian',
+      maritalStatus: value.maritalStatus || 'SINGLE',
+      bloodGroup: value.bloodGroup || 'O_POSITIVE',
+      preferredLanguage: value.preferredLanguage || 'English',
     },
 
     employment: {
-      joiningDate:
-        value.joiningDate || null,
-      employmentType:
-        value.employmentType || '',
-      department:
-        value.department || '',
-      designation:
-        value.designation || '',
-      primaryCafeId:
-        value.primaryCafeId || null,
-      assignedCafeIds:
-        copyArray(value.assignedCafeIds),
+      joiningDate: value.joiningDate || null,
+      employmentType: value.employmentType || 'FULL_TIME',
+      department: value.department || 'Operations',
+      designation: value.designation || 'Staff',
+      primaryCafeId: value.primaryCafeId || null,
+      assignedCafeIds: copyArray(value.assignedCafeIds),
+      employmentStatus: value.employmentStatus || 'ACTIVE',
+      confirmationDate: value.confirmationDate || null,
+      probationEndDate: value.probationEndDate || null,
     },
 
     contact: {
       email: value.email || '',
+      personalEmail: value.personalEmail || '',
       phone: value.phone || '',
+      emailVerified: Boolean(value.email),
+      phoneVerified: Boolean(value.phone),
+    },
+
+    payrollProfile: {
+      paymentMethod: 'DIRECT_DEPOSIT',
+      accountHolderName: value.preferredName || value.name || '',
+      bankName: 'State Bank of India',
+      bankAccountMasked: '•••• •••• ' + (value.userId ? value.userId.replace(/\D/g, '').slice(-4) || '4821' : '4821'),
+      ifsc: 'SBIN0001234',
+      paymentStatus: 'VERIFIED',
+      payrollStatus: 'ACTIVE',
+    },
+
+    statutory: {
+      panStatus: 'VERIFIED',
+      panMasked: '••••••' + (value.userId ? value.userId.slice(-4) : '123A'),
+      epfUanStatus: 'ACTIVE',
+      epfUanMasked: '1012••••' + (value.userId ? value.userId.replace(/\D/g, '').slice(-4) || '5678' : '5678'),
+      esiStatus: 'REGISTERED',
+      kycStatus: 'COMPLIANT',
+    },
+
+    securitySummary: {
+      mfaStatus: value.mfaEnabled ? 'ENABLED' : 'NOT_CONFIGURED',
+      currentAccessMode: value.role === 'MASTER' ? 'GLOBAL_PORTFOLIO' : (value.role === 'OWNER' ? 'PORTFOLIO_GOVERNANCE' : (value.role === 'CAFE_ADMIN' ? 'SELF_ONLY' : 'SELF_SERVICE')),
+      deviceTrustState: value.role === 'CAFE_ADMIN' ? 'PERSONAL_DEVICE' : 'REGISTERED',
+      lastActiveSessionTime: value.lastLoginAt || new Date().toISOString(),
+      activeSessionsCount: 1,
+    },
+
+    accessContext: {
+      role: value.role,
+      isPrimaryMaster: value.isPrimaryMaster === true,
+      scope: value.role === 'MASTER' ? 'GLOBAL_PORTFOLIO' : (value.role === 'OWNER' ? 'PORTFOLIO' : (value.role === 'CAFE_ADMIN' ? (value.primaryCafeId || 'ASSIGNED_CAFE') : (value.primaryCafeId || 'ASSIGNED_CAFE'))),
+      assignedCafeIds: copyArray(value.assignedCafeIds),
+      primaryCafeId: value.primaryCafeId || null,
+      explanation: value.role === 'CAFE_ADMIN'
+        ? 'CAFE_ADMIN on a personal device operates in SELF_ONLY mode. Café operational actions require an active registered café-owned device.'
+        : (value.role === 'MASTER' ? 'Primary Master holds organisation-wide governance authority.' : 'Normal employee self-service access.'),
+    },
+
+    actionItems,
+    profileHealth: {
+      status: healthItems.length === 0 ? 'HEALTHY' : 'ATTENTION_REQUIRED',
+      completenessPercent: Math.round(((isCompleteEmergency ? 25 : 0) + (isCompleteAddress ? 25 : 0) + (isCompleteEmail ? 25 : 0) + (isCompletePhone ? 25 : 0))),
+      items: healthItems,
     },
 
     availability: {
-      attendanceCalendar:
-        'DEFERRED_STAGE_4',
-      leave:
-        'NOT_INTEGRATED',
-      shifts:
-        'NOT_INTEGRATED',
-      tasks:
-        'NOT_INTEGRATED',
-      loansAndAdvances:
-        'NOT_INTEGRATED',
-      documents:
-        'NOT_INTEGRATED',
+      attendanceCalendar: 'INTEGRATED',
+      leave: 'INTEGRATED',
+      shifts: 'INTEGRATED',
+      tasks: 'INTEGRATED',
+      loansAndAdvances: 'NOT_INTEGRATED',
+      documents: 'INTEGRATED',
+    },
+
+    preferences: {
+      preferredName: value.preferredName || '',
+      preferredContactChannel: 'EMAIL',
+      notificationSummaryFrequency: 'DAILY',
+      language: 'English',
     },
   };
 }

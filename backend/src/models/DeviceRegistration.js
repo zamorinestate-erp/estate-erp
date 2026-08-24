@@ -3,7 +3,16 @@
 const mongoose = require('mongoose');
 
 const DEVICE_CLASSES = ['PERSONAL', 'CAFE_OWNED'];
-const DEVICE_STATUSES = ['PENDING', 'ACTIVE', 'SUSPENDED', 'REVOKED', 'TRANSFERRED'];
+const DEVICE_STATUSES = [
+  'PENDING',
+  'ACTIVE',
+  'SUSPENDED',
+  'REVOKED',
+  'TRANSFERRED',
+  'LOST',
+  'RETIRED',
+  'REPLACED',
+];
 
 const deviceRegistrationSchema = new mongoose.Schema(
   {
@@ -52,6 +61,18 @@ const deviceRegistrationSchema = new mongoose.Schema(
       required: true,
       trim: true,
       maxlength: 100,
+    },
+
+    platform: {
+      type: String,
+      enum: ['ANDROID', 'IOS', 'WEB_POS', 'DESKTOP', 'UNKNOWN'],
+      default: 'ANDROID',
+    },
+
+    appVersion: {
+      type: String,
+      default: '2.0.1',
+      trim: true,
     },
 
     status: {
@@ -127,6 +148,11 @@ const deviceRegistrationSchema = new mongoose.Schema(
       default: null,
     },
 
+    lastSyncAt: {
+      type: Date,
+      default: null,
+    },
+
     revokedAt: {
       type: Date,
       default: null,
@@ -136,6 +162,27 @@ const deviceRegistrationSchema = new mongoose.Schema(
       type: String,
       default: null,
       trim: true,
+    },
+
+    retiredAt: {
+      type: Date,
+      default: null,
+    },
+
+    replacedAt: {
+      type: Date,
+      default: null,
+    },
+
+    replacedByDeviceId: {
+      type: String,
+      default: null,
+      trim: true,
+    },
+
+    metadata: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
     },
   },
   {

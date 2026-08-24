@@ -73,6 +73,8 @@ async function startServer(t) {
   return server;
 }
 
+const { RolePermission } = require('../src/models/RolePermission');
+
 function mockStaffAuth(t) {
   const user = {
     userId: 'ST-0001',
@@ -87,7 +89,7 @@ function mockStaffAuth(t) {
   const session = {
     sessionId: 'SS-20260809-0001',
     roleSnapshot: 'STAFF',
-    sessionVersion: 0,
+    sessionVersion: 1,
     mfaVerified: true,
     stepUpVerifiedAt: new Date().toISOString(),
   };
@@ -100,7 +102,7 @@ function mockStaffAuth(t) {
         sub: user.userId,
         org: user.organisationId,
         role: user.role,
-        sv: 0,
+        sv: 1,
         usv: 1,
         pv: 1,
         sid: session.sessionId,
@@ -113,6 +115,18 @@ function mockStaffAuth(t) {
     User,
     'findOne',
     async () => user
+  );
+
+  t.mock.method(
+    RolePermission,
+    'findEffectiveRules',
+    async () => [
+      {
+        effect: 'ALLOW',
+        scope: 'SELF',
+        isCurrentlyEffective: () => true,
+      },
+    ]
   );
 }
 
@@ -138,11 +152,14 @@ function findQuery(rows, onSelect) {
 
 function findOneQuery(row, onSelect) {
   return {
-    async select(value) {
+    select(value) {
       if (onSelect) {
         onSelect(value);
       }
-      return row;
+      return this;
+    },
+    then(resolve, reject) {
+      return Promise.resolve(row).then(resolve, reject);
     },
   };
 }

@@ -11,11 +11,21 @@
 const mongoose = require('mongoose');
 
 const OUTBOX_STATUSES = [
+  'DRAFT',
+  'VALIDATION_REQUIRED',
+  'APPROVAL_REQUIRED',
+  'SCHEDULED',
   'QUEUED',
   'PROCESSING',
+  'PROVIDER_ACCEPTED',
   'SENT',
   'RETRY',
+  'RETRY_SCHEDULED',
+  'SEND_STATE_UNKNOWN',
   'FAILED',
+  'BOUNCE_DETECTED',
+  'CANCELLED',
+  'DEAD_LETTER',
   'SUPPRESSED',
   'QUARANTINED',
 ];
@@ -39,6 +49,7 @@ const notificationOutboxSchema = new mongoose.Schema(
       trim: true,
       uppercase: true,
       maxlength: 50,
+      default: 'ZAMORIN',
     },
 
     cafeId: {
@@ -47,6 +58,26 @@ const notificationOutboxSchema = new mongoose.Schema(
       uppercase: true,
       maxlength: 50,
       default: null,
+      index: true,
+    },
+
+    correlationId: {
+      type: String,
+      trim: true,
+      default: null,
+      index: true,
+    },
+
+    idempotencyKey: {
+      type: String,
+      trim: true,
+      default: null,
+      index: true,
+    },
+
+    attemptCount: {
+      type: Number,
+      default: 0,
     },
 
     eventType: {
@@ -73,9 +104,29 @@ const notificationOutboxSchema = new mongoose.Schema(
       maxlength: 200,
     },
 
+    recipientName: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+
+    cc: [
+      {
+        email: { type: String, trim: true, lowercase: true },
+        name: { type: String, trim: true, default: '' },
+      },
+    ],
+
+    bcc: [
+      {
+        email: { type: String, trim: true, lowercase: true },
+        name: { type: String, trim: true, default: '' },
+      },
+    ],
+
     recipientRole: {
       type: String,
-      enum: ['MASTER', 'OWNER', 'CAFE_ADMIN', 'STAFF', 'VENDOR', 'EXTERNAL_OPERATIONS'],
+      enum: ['MASTER', 'OWNER', 'CAFE_ADMIN', 'STAFF', 'VENDOR', 'CUSTOMER', 'EXTERNAL_OPERATIONS'],
       default: 'STAFF',
     },
 
@@ -98,6 +149,33 @@ const notificationOutboxSchema = new mongoose.Schema(
       default: 'en',
     },
 
+    subject: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+
+    renderedSubject: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+
+    renderedBody: {
+      type: String,
+      default: '',
+    },
+
+    renderedBodyPlain: {
+      type: String,
+      default: '',
+    },
+
+    payload: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+
     severity: {
       type: String,
       enum: SEVERITIES,
@@ -110,106 +188,83 @@ const notificationOutboxSchema = new mongoose.Schema(
       default: 'NORMAL',
     },
 
-    subject: {
-      type: String,
-      required: true,
-      trim: true,
-      maxlength: 300,
-    },
-
-    from: {
-      type: String,
-      required: true,
-      trim: true,
-      maxlength: 200,
-      default: 'zamorinestatepvtltd.erp@gmail.com',
-    },
-
-    replyTo: {
-      type: String,
-      trim: true,
-      maxlength: 200,
-      default: 'zamorinestatepvtltd.erp@gmail.com',
-    },
-
-    htmlBody: {
-      type: String,
-      required: true,
-    },
-
-    textBody: {
-      type: String,
-      required: true,
-    },
-
-    isDraftFirst: {
-      type: Boolean,
-      default: false,
-    },
-
-    draftStatus: {
-      type: String,
-      enum: ['NONE', 'DRAFT_PREPARED', 'AWAITING_REVIEW', 'APPROVED_FOR_SEND', 'CANCELLED'],
-      default: 'NONE',
-    },
-
-    correlationId: {
-      type: String,
-      trim: true,
-      maxlength: 100,
-      default: null,
-    },
-
-    idempotencyKey: {
-      type: String,
-      required: true,
-      trim: true,
-      maxlength: 200,
-    },
+    channels: [
+      {
+        type: String,
+        enum: ['EMAIL', 'IN_APP', 'WEBHOOK'],
+        default: ['EMAIL'],
+      },
+    ],
 
     status: {
       type: String,
       enum: OUTBOX_STATUSES,
       default: 'QUEUED',
+      index: true,
     },
 
-    attemptCount: {
+    retryCount: {
       type: Number,
       default: 0,
     },
 
-    maxAttempts: {
+    maxRetries: {
       type: Number,
       default: 5,
     },
 
-    nextRetryAt: {
+    nextAttemptAt: {
       type: Date,
-      default: null,
+      default: Date.now,
+      index: true,
     },
 
-    provider: {
-      type: String,
-      trim: true,
-      maxlength: 50,
-      default: 'GMAIL_API',
-    },
+    attemptHistory: [
+      {
+        attemptNumber: { type: Number },
+        attemptedAt: { type: Date, default: Date.now },
+        resultStatus: { type: String },
+        errorMessage: { type: String },
+        providerResponseCode: { type: String },
+      },
+    ],
 
     providerMessageId: {
       type: String,
       trim: true,
-      maxlength: 200,
       default: null,
+      index: true,
     },
 
-    providerDraftId: {
+    providerThreadId: {
       type: String,
       trim: true,
-      maxlength: 200,
+      default: null,
+      index: true,
+    },
+
+    deadLetterReason: {
+      type: String,
+      trim: true,
       default: null,
     },
 
-    processingAt: {
+    requiresApproval: {
+      type: Boolean,
+      default: false,
+    },
+
+    approvedByUserId: {
+      type: String,
+      default: null,
+    },
+
+    approvedAt: {
+      type: Date,
+      default: null,
+    },
+
+    scheduledFor: {
       type: Date,
       default: null,
     },
@@ -219,22 +274,43 @@ const notificationOutboxSchema = new mongoose.Schema(
       default: null,
     },
 
-    failedAt: {
-      type: Date,
+    lastError: {
+      type: String,
       default: null,
     },
 
     lastErrorCode: {
       type: String,
-      trim: true,
-      maxlength: 100,
       default: null,
     },
 
     lastErrorSafeMessage: {
       type: String,
-      trim: true,
-      maxlength: 500,
+      default: null,
+    },
+
+    nextRetryAt: {
+      type: Date,
+      default: null,
+    },
+
+    providerDraftId: {
+      type: String,
+      default: null,
+    },
+
+    draftStatus: {
+      type: String,
+      default: 'NONE',
+    },
+
+    maxAttempts: {
+      type: Number,
+      default: 5,
+    },
+
+    failedAt: {
+      type: Date,
       default: null,
     },
   },
@@ -245,15 +321,13 @@ const notificationOutboxSchema = new mongoose.Schema(
 );
 
 notificationOutboxSchema.index({ outboxId: 1 }, { unique: true });
-notificationOutboxSchema.index({ organisationId: 1, idempotencyKey: 1 }, { unique: true });
-notificationOutboxSchema.index({ status: 1, nextRetryAt: 1 });
-notificationOutboxSchema.index({ organisationId: 1, eventType: 1, createdAt: -1 });
+notificationOutboxSchema.index({ organisationId: 1, status: 1, nextAttemptAt: 1 });
+notificationOutboxSchema.index({ organisationId: 1, correlationId: 1 });
 
-const NotificationOutbox = mongoose.model('NotificationOutbox', notificationOutboxSchema);
+const NotificationOutbox =
+  mongoose.models.NotificationOutbox || mongoose.model('NotificationOutbox', notificationOutboxSchema);
 
 module.exports = {
   NotificationOutbox,
   OUTBOX_STATUSES,
-  SEVERITIES,
-  PRIORITIES,
 };

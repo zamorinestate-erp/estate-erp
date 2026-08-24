@@ -1,9 +1,12 @@
 /* =========================================================================
-   ZAMORIN CAFE ERP — DESIGN SYSTEM v2 TOKENS (Ledger & Roastery)
+   ZAMORIN CAFE ERP — DESIGN SYSTEM v3 TOKENS
+   "Ledger & Roastery" — premium multi-café ERP aesthetic
    ========================================================================= */
 
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400&family=Inter:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
 :root {
-  /* ---- Brand Ink & Bronze Accent ---- */
+  /* ---- Brand Ink (sampled from Zamorin Estate mark) ---- */
   --color-brand-primary: #101a30;
   --color-brand-secondary: #1a2740;
   --color-brand-tint: #b17d38;
@@ -14,24 +17,37 @@
   --ink-700: #29374f;
   --ink-600: #445064;
 
+  /* ---- Bronze — the single accent, used sparingly ---- */
   --bronze-700: #7c5322;
   --bronze-600: #9a6a2c;
   --bronze-500: #b17d38;
   --bronze-400: #c99a5c;
+  --bronze-300: #ddb87a;
   --bronze-100: #f4e7d2;
   --bronze-050: #faf1e2;
 
-  /* ---- Surfaces & Line ---- */
+  /* ---- Warm porcelain ground ---- */
   --paper: #faf9f5;
   --surface: #ffffff;
   --surface-sunken: #f2f0e9;
   --surface-raised: #ffffff;
+  --surface-hover: #f7f5ef;
 
   --ink: #17140f;
   --muted: #6f6a5c;
   --muted-2: #96907e;
   --line: #e7e2d5;
   --line-strong: #d7d0bd;
+
+  /* ---- Semantic Text Tokens ---- */
+  --text-primary: var(--ink);
+  --text-secondary: var(--muted);
+  --text-muted: var(--muted-2);
+  --text-main: var(--ink);
+  --text-on-glass: var(--ink);
+  --text-on-glass-muted: var(--muted);
+  --text-on-light: var(--ink);
+  --text-on-light-muted: var(--muted);
 
   /* ---- Functional Colors ---- */
   --color-success: #1e7a4c;
@@ -42,30 +58,50 @@
 
   --success: #1e7a4c;
   --success-soft: #e8f5ee;
+  --success-border: rgba(30,122,76,0.2);
   --danger: #b23b35;
   --danger-soft: #fbeae7;
+  --danger-border: rgba(178,59,53,0.2);
   --warning: #a9741a;
   --warning-soft: #faf0da;
+  --warning-border: rgba(169,116,26,0.2);
   --info: #2c5c9e;
   --info-soft: #eaf1fb;
+  --info-border: rgba(44,92,158,0.2);
   --purple: #6a4e9e;
   --purple-soft: #efeaf7;
+  --purple-border: rgba(106,78,158,0.2);
 
-  /* ---- Card & Control Radii ---- */
+  /* ---- Elevation & Shadows ---- */
+  --shadow-xs: 0 1px 2px rgba(23,20,15,.05), 0 0 0 1px rgba(23,20,15,.03);
+  --shadow-sm: 0 2px 8px rgba(23,20,15,.06), 0 1px 3px rgba(23,20,15,.04);
+  --shadow-md: 0 8px 24px rgba(23,20,15,.08), 0 2px 8px rgba(23,20,15,.04);
+  --shadow-lg: 0 20px 48px rgba(16,26,48,.12), 0 4px 16px rgba(16,26,48,.06);
+  --shadow-xl: 0 32px 72px rgba(16,26,48,.16), 0 8px 24px rgba(16,26,48,.08);
+
+  /* ---- Radii ---- */
+  --radius-xs: 6px;
   --radius-sm: 10px;
   --radius-md: 14px;
   --radius-lg: 20px;
   --radius-xl: 26px;
-  --radius-card: 20px;
-  --radius-control: 12px;
+  --radius-card: 16px;
+  --radius-control: 10px;
   --radius-pill: 999px;
 
-  /* ---- Spacing scale ---- */
+  /* ---- Spacing ---- */
   --space-xs: 4px;
   --space-sm: 8px;
   --space-md: 16px;
   --space-lg: 24px;
   --space-xl: 32px;
+  --space-2xl: 48px;
+
+  /* ---- Layout ---- */
+  --sidebar: 264px;
+  --sidebar-collapsed: 68px;
+  --topbar: 72px;
+  --bottom-nav: 68px;
 
   /* ---- Typography ---- */
   --font-ui: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -73,15 +109,101 @@
   --font-mono: "IBM Plex Mono", SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   --font-body: var(--font-ui);
 
+  /* ---- Motion ---- */
+  --ease: cubic-bezier(.2,.8,.2,1);
+  --ease-out: cubic-bezier(0,0,.3,1);
+  --ease-spring: cubic-bezier(.175,.885,.32,1.275);
+  --motion-fast: 120ms;
+  --motion-nav: 180ms;
+  --motion-modal: 240ms;
+
+  /* ---- Layer Scale ---- */
+  --layer-base: 1;
+  --layer-sticky: 50;
+  --layer-header: 60;
+  --layer-sidebar: 70;
+  --layer-dropdown: 100;
+  --layer-popover: 120;
+  --layer-backdrop: 500;
+  --layer-drawer: 600;
+  --layer-modal: 700;
+  --layer-critical-dialog: 800;
+  --layer-toast: 900;
+
   --font-scale: 1;
 }
 
-[data-font-size="small"]      { --font-scale: 0.9; }
-[data-font-size="standard"]   { --font-scale: 1;   }
+[data-font-size="small"]      { --font-scale: 0.9;  }
+[data-font-size="standard"]   { --font-scale: 1;    }
 [data-font-size="large"]      { --font-scale: 1.15; }
-[data-font-size="extra-large"]{ --font-scale: 1.3; }
+[data-font-size="extra-large"]{ --font-scale: 1.3;  }
 
 html {
   font-family: var(--font-ui);
   font-size: calc(15px * var(--font-scale));
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* =========================================================================
+   BACKWARD-COMPATIBILITY ALIASES
+   Legacy CSS variable names still used in some JS page inline styles.
+   These shims map old names → new design-system tokens so old code
+   continues to render correctly without a mass JS refactor.
+   ========================================================================= */
+:root {
+  /* surface aliases */
+  --bg-canvas:           var(--paper);
+  --bg-surface:          var(--surface);
+  --bg-surface-2:        var(--surface-sunken);
+  --bg-subtle:           var(--surface-sunken);
+  --bg-raised:           var(--surface-raised);
+
+  /* border aliases */
+  --border-subtle:       var(--line);
+  --border-default:      var(--line-strong);
+  --border-strong:       var(--line-strong);
+
+  /* text aliases */
+  --text-primary:        var(--ink);
+  --text-secondary:      var(--muted);
+  --text-muted:          var(--muted-2);
+  --text-main:           var(--ink);
+  --fg-default:          var(--ink);
+  --fg-muted:            var(--muted);
+  --fg-subtle:           var(--muted-2);
+
+  /* colour semantic aliases used in inline JS styles */
+  --color-success:       var(--success);
+  --color-danger:        var(--danger);
+  --color-warning:       var(--warning);
+  --color-info:          var(--info);
+
+  /* accent aliases */
+  --color-accent-amber:  var(--bronze-500);
+  --gold-accent:         var(--bronze-500);
+  --accent-gold:         var(--bronze-500);
+  --accent-mint:         var(--success);
+  --accent-coral:        var(--danger);
+  --accent-amber:        var(--warning);
+  --accent-cobalt:       var(--info);
+
+  /* misc legacy */
+  --card-radius:         var(--radius-card);
+  --control-radius:      var(--radius-control);
+}
+
+/* Keep dark-theme aliases consistent */
+[data-theme="midnight"],
+[data-theme="noir"] {
+  --bg-canvas:           var(--paper);
+  --bg-surface:          var(--surface);
+  --bg-surface-2:        var(--surface-sunken);
+  --bg-subtle:           var(--surface-sunken);
+  --text-primary:        var(--ink);
+  --text-secondary:      var(--muted);
+  --color-success:       var(--success);
+  --color-danger:        var(--danger);
+  --color-warning:       var(--warning);
+  --color-accent-amber:  var(--bronze-500);
 }

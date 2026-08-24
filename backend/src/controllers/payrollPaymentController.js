@@ -65,6 +65,18 @@ function requirePayrollManagementAccess(
       'Only MASTER and OWNER may manage payroll.'
     );
   }
+
+  // Normal Master cannot manage organisational payroll.
+  if (
+    request.auth.role === 'MASTER' &&
+    !request.auth.isPrimaryMaster
+  ) {
+    throw new ApiError(
+      403,
+      'PRIMARY_MASTER_AUTHORITY_REQUIRED',
+      'Managing organisational payroll requires Primary Master authority.'
+    );
+  }
 }
 
 function normalizePayrollRunId(value) {

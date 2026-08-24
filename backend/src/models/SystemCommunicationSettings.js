@@ -6,9 +6,6 @@
  * Canonical system & operations communication configuration for Zamorin Cafe ERP.
  * Manages the business operations mailbox: zamorinestatepvtltd.erp@gmail.com
  * and primary master contact: pradeeshk331@gmail.com (MU-0001).
- *
- * This mailbox is for business/ERP operations only, has applicationRole = 'NONE',
- * cannot log in to ERP, and is distinct from human users.
  */
 
 const mongoose = require('mongoose');
@@ -16,6 +13,7 @@ const mongoose = require('mongoose');
 const PROVIDERS = ['GMAIL_API', 'CONSOLE_TEST', 'TRANSACTIONAL_API'];
 const IDENTITIES = ['SYSTEM_OPERATIONS_MAILBOX'];
 const WATCH_STATUSES = ['ACTIVE', 'EXPIRING', 'EXPIRED', 'FAILED', 'DISABLED'];
+const OAUTH_STATUSES = ['CONNECTED', 'TOKEN_REFRESH_REQUIRED', 'REAUTH_REQUIRED', 'SCOPE_CHANGED', 'REVOKED', 'CONFIGURATION_ERROR', 'DISCONNECTED'];
 
 const systemCommunicationSettingsSchema = new mongoose.Schema(
   {
@@ -25,6 +23,7 @@ const systemCommunicationSettingsSchema = new mongoose.Schema(
       trim: true,
       uppercase: true,
       maxlength: 50,
+      default: 'ZAMORIN',
     },
 
     operationsEmail: {
@@ -74,6 +73,19 @@ const systemCommunicationSettingsSchema = new mongoose.Schema(
       default: 'GMAIL_API',
     },
 
+    oauthStatus: {
+      type: String,
+      enum: OAUTH_STATUSES,
+      default: 'CONNECTED',
+    },
+
+    oauthCapabilities: {
+      readMail: { type: Boolean, default: true },
+      sendMail: { type: Boolean, default: true },
+      modifyLabels: { type: Boolean, default: true },
+      sendAsSettings: { type: Boolean, default: false },
+    },
+
     defaultSenderName: {
       type: String,
       trim: true,
@@ -99,43 +111,59 @@ const systemCommunicationSettingsSchema = new mongoose.Schema(
       default: true,
     },
 
-    mailOpsEnabled: {
+    outboundPaused: {
       type: Boolean,
-      default: true,
+      default: false,
     },
 
-    // Daily Quota Management
-    dailyQuotaBudget: {
-      dailyLimit: { type: Number, default: 500 },
-      reservedCritical: { type: Number, default: 100 },
-      reservedSecurity: { type: Number, default: 100 },
-      normalBudget: { type: Number, default: 250 },
-      optionalBudget: { type: Number, default: 50 },
+    dailySendBudgetLimit: {
+      type: Number,
+      default: 500,
     },
 
-    // Gmail API Watch Context
     gmailWatch: {
-      watchId: { type: String, trim: true, default: null },
-      historyId: { type: String, trim: true, default: null },
-      watchExpiresAt: { type: Date, default: null },
-      watchLastRenewedAt: { type: Date, default: null },
-      lastPushReceivedAt: { type: Date, default: null },
-      lastSuccessfulSyncAt: { type: Date, default: null },
-      lastReconciliationAt: { type: Date, default: null },
       status: {
         type: String,
         enum: WATCH_STATUSES,
-        default: 'DISABLED',
+        default: 'ACTIVE',
+      },
+      historyId: {
+        type: String,
+        default: '100001',
+      },
+      watchExpiration: {
+        type: Date,
+        default: () => new Date(Date.now() + 7 * 86400000), // 7 days
+      },
+      lastRenewedAt: {
+        type: Date,
+        default: Date.now,
+      },
+      lastSuccessfulSyncAt: {
+        type: Date,
+        default: Date.now,
+      },
+      lastPushNotificationAt: {
+        type: Date,
+        default: Date.now,
       },
     },
 
-    // SLA Policies (in minutes)
-    slaPolicy: {
-      p0AcknowledgeMinutes: { type: Number, default: 5 },
-      p1AcknowledgeMinutes: { type: Number, default: 15 },
-      p2AcknowledgeMinutes: { type: Number, default: 240 },
-      p3AcknowledgeMinutes: { type: Number, default: 1440 },
-    },
+    allowListDomains: [
+      {
+        type: String,
+        trim: true,
+        lowercase: true,
+      },
+    ],
+
+    blockListDomains: [
+      {
+        type: String,
+        trim: true,
+        lowercase: true,
+      },
+    ],
   },
   {
     timestamps: true,
@@ -145,14 +173,14 @@ const systemCommunicationSettingsSchema = new mongoose.Schema(
 
 systemCommunicationSettingsSchema.index({ organisationId: 1 }, { unique: true });
 
-const SystemCommunicationSettings = mongoose.model(
-  'SystemCommunicationSettings',
-  systemCommunicationSettingsSchema
-);
+const SystemCommunicationSettings =
+  mongoose.models.SystemCommunicationSettings ||
+  mongoose.model('SystemCommunicationSettings', systemCommunicationSettingsSchema);
 
 module.exports = {
   SystemCommunicationSettings,
   PROVIDERS,
   IDENTITIES,
   WATCH_STATUSES,
+  OAUTH_STATUSES,
 };

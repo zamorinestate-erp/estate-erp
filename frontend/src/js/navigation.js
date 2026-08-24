@@ -1,124 +1,250 @@
 // =============================================================================
 // ZAMORIN CAFE ERP — NAVIGATION CONFIGURATION
 //
-// This is the single most important file in the whole app. Per the
-// Antigravity guideline's Part B.1 and Part F.5: each role's navigation is
-// built from its OWN configuration, never from one shared menu with items
-// conditionally hidden. If an item is not listed for a role here, it must
-// not be reachable by that role anywhere else in the app either — the
-// router (router.js) enforces this at the route layer too, not just here.
+// Per the Global Implementation Governance Layer:
+//   - Each role's navigation is built from its OWN configuration.
+//   - Items not listed for a role here are unreachable by that role anywhere.
+//   - Navigation is structured in logical groups (COMMAND, OPERATIONS, PEOPLE,
+//     FINANCE, COMMERCIAL, INSIGHTS, ADMINISTRATION, SYSTEM).
+//   - Primary Master vs Normal Master distinction is enforced here and in
+//     router.js — no 5th/6th role is created.
+//   - User-facing CAFE_ADMIN terminology is "Cafe Operations" / "Operator".
+//   - My Profile, My Payslip → Avatar menu / Settings (not main sidebar).
+//   - My Payslips, My Loans & Advances → Settings → My Employment (not STAFF sidebar).
+//   - Trash Bin → Settings → Data & Recovery (not main sidebar).
+//   - Department Orders = University/Department/C/o business orders (NOT kitchen).
 //
 // route:  the hash route this item renders
-// scope:  "all" | "own-cafe" | "self" — used by the router as a second,
-//         independent check (Part B.3's "three layers" — this file is the
-//         navigation layer; router.js is the route layer; a real backend
-//         would add the data layer on top of both).
+// group:  logical section label for the sidebar heading
 // =============================================================================
 
 export const ROLES = {
-  MASTER: "master",
-  OWNER: "owner",
-  CAFE_ADMIN: "cafe_admin",
-  STAFF: "staff",
+  MASTER: 'master',
+  OWNER: 'owner',
+  CAFE_ADMIN: 'cafe_admin',
+  STAFF: 'staff',
 };
+
+// ─── Primary Master Navigation ────────────────────────────────────────────────
+// Full access — every café, every module, every sensitive finance area.
+const PRIMARY_MASTER_ITEMS = [
+  // ── COMMAND ─────────────────────────────────────────────────────────────────
+  { id: 'dashboard',     label: 'Command Centre',         icon: 'home',       route: 'dashboard',         group: 'COMMAND' },
+
+  // ── OPERATIONS ──────────────────────────────────────────────────────────────
+  { id: 'pos',           label: 'POS & Billing',          icon: 'pos',        route: 'pos',               group: 'OPERATIONS' },
+  { id: 'approvals',     label: 'Tasks & Oversight',       icon: 'tasks',      route: 'approvals',         group: 'OPERATIONS' },
+  { id: 'attendance',    label: 'Attendance & Shifts',    icon: 'attendance', route: 'attendance',        group: 'OPERATIONS' },
+  { id: 'dept-orders',   label: 'Department Orders',      icon: 'tasks',      route: 'dept-orders',       group: 'OPERATIONS' },
+  { id: 'inventory',     label: 'Inventory',              icon: 'inventory',  route: 'inventory',         group: 'OPERATIONS' },
+  { id: 'procurement',   label: 'Procurement',            icon: 'inventory',  route: 'procurement',       group: 'OPERATIONS' },
+  { id: 'assets',        label: 'Assets & Maintenance',   icon: 'settings',   route: 'assets',            group: 'OPERATIONS' },
+  { id: 'quality',       label: 'Quality & Compliance',   icon: 'reports',    route: 'quality',           group: 'OPERATIONS' },
+
+  // ── PEOPLE ───────────────────────────────────────────────────────────────────
+  { id: 'employees',     label: 'Employees',              icon: 'employees',  route: 'employees',         group: 'PEOPLE' },
+  { id: 'payroll',       label: 'Payroll & Payslips',     icon: 'payslip',    route: 'payroll',           group: 'PEOPLE', primaryMasterOnly: true },
+
+  // ── FINANCE ──────────────────────────────────────────────────────────────────
+  { id: 'bills',         label: 'Bills & Receipts',       icon: 'pos',        route: 'bills',             group: 'FINANCE' },
+  { id: 'expenses',      label: 'Expenses',               icon: 'finance',    route: 'expenses',          group: 'FINANCE' },
+  { id: 'finance',       label: 'Finance & Accounts',     icon: 'finance',    route: 'finance',           group: 'FINANCE' },
+  { id: 'ledger',        label: 'Personal Ledger & Owner Account', icon: 'ledger', route: 'ledger', group: 'FINANCE', primaryMasterOnly: true },
+
+  // ── COMMERCIAL ───────────────────────────────────────────────────────────────
+  { id: 'customers',     label: 'Customers & Loyalty',    icon: 'employees',  route: 'customers',         group: 'COMMERCIAL' },
+  { id: 'menu',          label: 'Menu Management',        icon: 'pos',        route: 'menu',              group: 'COMMERCIAL' },
+  { id: 'vendors',       label: 'Vendors',                icon: 'inventory',  route: 'vendors',           group: 'COMMERCIAL' },
+  { id: 'revenue-share', label: 'Revenue Share & Outlets', icon: 'finance',   route: 'revenue-share',     group: 'COMMERCIAL', primaryMasterOnly: true },
+
+  // ── INSIGHTS ─────────────────────────────────────────────────────────────────
+  { id: 'reports',       label: 'Reports & Analytics',    icon: 'reports',    route: 'reports',           group: 'INSIGHTS' },
+
+  // ── ADMINISTRATION ───────────────────────────────────────────────────────────
+  { id: 'admin',         label: 'Administration',         icon: 'settings',   route: 'admin',             group: 'ADMINISTRATION' },
+
+  // ── SYSTEM ───────────────────────────────────────────────────────────────────
+  { id: 'cafe-ops-devices', label: 'Devices & Sessions',  icon: 'settings',   route: 'cafe-ops-devices',  group: 'SYSTEM' },
+  { id: 'settings',      label: 'Settings',               icon: 'settings',   route: 'settings',          group: 'SYSTEM' },
+];
+
+// ─── Normal Master Navigation ─────────────────────────────────────────────────
+// Same as Primary Master EXCEPT: no Personal Ledger, no Universal Payroll,
+// no Staff Loans & Advances, no Revenue Share.
+const NORMAL_MASTER_ITEMS = PRIMARY_MASTER_ITEMS.filter(
+  (item) => !item.primaryMasterOnly
+);
 
 export const NAVIGATION = {
+  // ── MASTER ───────────────────────────────────────────────────────────────────
   [ROLES.MASTER]: {
-    scopeLabel: "Master View",
-    items: [
-      { id: "dashboard", label: "Command Centre", icon: "home", route: "dashboard" },
-      { id: "admin", label: "Administration", icon: "settings", route: "admin" },
-      { id: "assets", label: "Assets & Maintenance", icon: "settings", route: "assets" },
-      { id: "attendance", label: "Attendance & Shifts", icon: "attendance", route: "attendance" },
-      { id: "bills", label: "Bills & Receipts", icon: "pos", route: "bills" },
-      { id: "customers", label: "Customers & Loyalty", icon: "employees", route: "customers" },
-      { id: "dept-orders", label: "Department Orders", icon: "tasks", route: "dept-orders" },
-      { id: "employees", label: "Employees", icon: "employees", route: "employees" },
-      { id: "expenses", label: "Expenses", icon: "finance", route: "expenses" },
-      { id: "finance", label: "Finance & Accounts", icon: "finance", route: "finance" },
-      { id: "inventory", label: "Inventory", icon: "inventory", route: "inventory" },
-      { id: "mailops", label: "MailOps Command Centre", icon: "reports", route: "mailops" },
-      { id: "menu", label: "Menu Management", icon: "pos", route: "menu" },
-      { id: "my-loans-advances", label: "My Loans & Advances", icon: "payslip", route: "staff-loans-advances" },
-      { id: "my-payslips", label: "My Payslips", icon: "payslip", route: "staff-payslips" },
-      { id: "my-profile", label: "My Profile", icon: "employees", route: "employee-profile" },
-      { id: "payroll", label: "Payroll & Payslips", icon: "payslip", route: "payroll" },
-      { id: "ledger", label: "Personal Ledger", icon: "ledger", route: "ledger" },
-      { id: "pos", label: "POS & Billing", icon: "pos", route: "pos" },
-      { id: "procurement", label: "Procurement", icon: "inventory", route: "procurement" },
-      { id: "quality", label: "Quality & Compliance", icon: "reports", route: "quality" },
-      { id: "reports", label: "Reports & Analytics", icon: "reports", route: "reports" },
-      { id: "settings", label: "Settings & Preferences", icon: "settings", route: "settings" },
-      { id: "trash", label: "Trash Bin", icon: "settings", route: "trash" },
-      { id: "vendors", label: "Vendors", icon: "inventory", route: "vendors" },
-    ],
-    footnote: "Full access — every cafe, every module, every setting.",
+    scopeLabel: 'Master View',
+    primaryItems: PRIMARY_MASTER_ITEMS,
+    normalItems: NORMAL_MASTER_ITEMS,
+    footnote: 'Full operational and financial control across all cafés.',
   },
 
+  // ── OWNER ────────────────────────────────────────────────────────────────────
   [ROLES.OWNER]: {
-    scopeLabel: "Owner Portal",
+    scopeLabel: 'Owner Portal',
     items: [
-      { id: "dashboard", label: "Overview", icon: "home", route: "dashboard" },
-      { id: "approvals", label: "Approvals Waiting on You", icon: "tasks", route: "approvals" },
-      { id: "bills", label: "Bills & Receipts", icon: "pos", route: "bills" },
-      { id: "performance", label: "Cafe Performance", icon: "reports", route: "performance" },
-      { id: "employees", label: "Employees", icon: "employees", route: "employees" },
-      { id: "finance-summary", label: "Finance Summary", icon: "finance", route: "finance" },
-      { id: "my-loans-advances", label: "My Loans & Advances", icon: "payslip", route: "staff-loans-advances" },
-      { id: "my-payslips", label: "My Payslips", icon: "payslip", route: "staff-payslips" },
-      { id: "my-profile", label: "My Profile", icon: "employees", route: "employee-profile" },
-      { id: "payroll", label: "Payroll & Payslips", icon: "payslip", route: "payroll" },
-      { id: "reports", label: "Reports", icon: "reports", route: "reports" },
-      { id: "settings", label: "Settings & Preferences", icon: "settings", route: "settings" },
+      { id: 'dashboard',    label: 'Overview',                icon: 'home',       route: 'dashboard',       group: 'COMMAND' },
+      { id: 'approvals',    label: 'Tasks & Oversight',       icon: 'tasks',      route: 'approvals',       group: 'OPERATIONS' },
+      { id: 'bills',        label: 'Bills & Receipts',        icon: 'pos',        route: 'bills',           group: 'FINANCE' },
+      { id: 'performance',  label: 'Café Performance',        icon: 'reports',    route: 'performance',     group: 'INSIGHTS' },
+      { id: 'employees',    label: 'Employees',               icon: 'employees',  route: 'employees',       group: 'PEOPLE' },
+      { id: 'finance',      label: 'Finance Summary',         icon: 'finance',    route: 'finance',         group: 'FINANCE' },
+      { id: 'ledger',       label: 'Personal Ledger & Owner Account', icon: 'ledger', route: 'ledger',     group: 'FINANCE' },
+      { id: 'payroll',      label: 'Payroll & Payslips',      icon: 'payslip',    route: 'payroll',         group: 'PEOPLE' },
+      { id: 'revenue-share',label: 'Revenue Share & Outlets', icon: 'finance',    route: 'revenue-share',   group: 'COMMERCIAL' },
+      { id: 'reports',      label: 'Reports',                 icon: 'reports',    route: 'reports',         group: 'INSIGHTS' },
+      { id: 'settings',     label: 'Settings',                icon: 'settings',   route: 'settings',        group: 'SYSTEM' },
     ],
-    footnote: "Owner Portal — strategic governance, executive metrics, and cafe oversight.",
+    footnote: 'Owner Portal — strategic governance, executive metrics, and café oversight.',
   },
 
+  // ── CAFE ADMIN (CAFE OPERATIONS) ─────────────────────────────────────────────
   [ROLES.CAFE_ADMIN]: {
-    scopeLabel: "Dawn Roast Cafe",
+    scopeLabel: 'Cafe Operations',
     items: [
-      { id: "dashboard", label: "Command Centre", icon: "home", route: "dashboard" },
-      { id: "assets", label: "Assets & Maintenance", icon: "settings", route: "assets" },
-      { id: "attendance", label: "Attendance & Shifts", icon: "attendance", route: "attendance" },
-      { id: "customers", label: "Customers & Loyalty", icon: "employees", route: "customers" },
-      { id: "dept-orders", label: "Department Orders", icon: "tasks", route: "dept-orders" },
-      { id: "expenses", label: "Expenses", icon: "finance", route: "expenses" },
-      { id: "inventory", label: "Inventory", icon: "inventory", route: "inventory" },
-      { id: "my-loans-advances", label: "My Loans & Advances", icon: "payslip", route: "staff-loans-advances" },
-      { id: "my-payslips", label: "My Payslips", icon: "payslip", route: "staff-payslips" },
-      { id: "my-profile", label: "My Profile", icon: "employees", route: "employee-profile" },
-      { id: "pos", label: "POS & Billing", icon: "pos", route: "pos" },
-      { id: "procurement", label: "Procurement", icon: "inventory", route: "procurement" },
-      { id: "quality", label: "Quality & Compliance", icon: "reports", route: "quality" },
-      { id: "reports", label: "Reports (this cafe)", icon: "reports", route: "reports" },
-      { id: "sales-cash", label: "Sales & Cash", icon: "finance", route: "sales-cash" },
-      { id: "settings", label: "Settings & Preferences", icon: "settings", route: "settings" },
-      { id: "tasks", label: "Tasks & Approvals", icon: "tasks", route: "tasks" },
+      { id: 'dashboard',    label: 'Cafe Operations Dashboard', icon: 'home',       route: 'dashboard',       group: 'COMMAND' },
+      { id: 'pos',          label: 'POS & Billing',           icon: 'pos',        route: 'pos',             group: 'OPERATIONS' },
+      { id: 'attendance',   label: 'Attendance & Shifts',     icon: 'attendance', route: 'attendance',      group: 'OPERATIONS' },
+      { id: 'dept-orders',  label: 'Department Orders',       icon: 'tasks',      route: 'dept-orders',     group: 'OPERATIONS' },
+      { id: 'inventory',    label: 'Inventory',               icon: 'inventory',  route: 'inventory',       group: 'OPERATIONS' },
+      { id: 'procurement',  label: 'Procurement',             icon: 'inventory',  route: 'procurement',     group: 'OPERATIONS' },
+      { id: 'assets',       label: 'Assets & Maintenance',    icon: 'settings',   route: 'assets',          group: 'OPERATIONS' },
+      { id: 'quality',      label: 'Quality & Compliance',    icon: 'reports',    route: 'quality',         group: 'OPERATIONS' },
+      { id: 'expenses',     label: 'Expenses',                icon: 'finance',    route: 'expenses',        group: 'FINANCE' },
+      { id: 'sales-cash',   label: 'Sales & Cash',            icon: 'finance',    route: 'sales-cash',      group: 'FINANCE' },
+      { id: 'customers',    label: 'Customers & Loyalty',     icon: 'employees',  route: 'customers',       group: 'COMMERCIAL' },
+      { id: 'reports',      label: 'Reports (this café)',      icon: 'reports',    route: 'reports',         group: 'INSIGHTS' },
+      { id: 'tasks',        label: 'Action Centre',           icon: 'tasks',      route: 'tasks',           group: 'INSIGHTS' },
+      { id: 'cafe-ops-devices', label: 'Devices & Sessions',  icon: 'settings',   route: 'cafe-ops-devices',group: 'SYSTEM' },
+      { id: 'settings',     label: 'Settings',                icon: 'settings',   route: 'settings',        group: 'SYSTEM' },
     ],
-    footnote: "No Administration, no other cafe, no Personal Ledger.",
+    footnote: 'Cafe-owned trusted device operational workspace. Operator sessions & device context.',
   },
 
+  // ── STAFF ────────────────────────────────────────────────────────────────────
   [ROLES.STAFF]: {
-    scopeLabel: null, // Staff's mobile shell has no sidebar label — see shell-minimal
+    scopeLabel: null,
     items: [
-      { id: "home", label: "Home", icon: "home", route: "staff-home" },
-      { id: "announcements", label: "Announcements", icon: "announce", route: "announcements" },
-      { id: "attendance", label: "My Attendance", icon: "attendance", route: "staff-attendance" },
-      { id: "leave", label: "My Leave", icon: "calendar", route: "staff-leave" },
-      { id: "loans-advances", label: "My Loans & Advances", icon: "payslip", route: "staff-loans-advances" },
-      { id: "payslips", label: "My Payslips", icon: "payslip", route: "staff-payslips" },
-      { id: "my-profile", label: "My Profile", icon: "employees", route: "employee-profile" },
-      { id: "settings", label: "Settings", icon: "settings", route: "staff-settings" },
+      { id: 'home',          label: 'Home',           icon: 'home',       route: 'staff-home',       group: 'COMMAND' },
+      { id: 'announcements', label: 'Announcements',  icon: 'announce',   route: 'announcements',    group: 'COMMAND' },
+      { id: 'attendance',    label: 'My Attendance',  icon: 'attendance', route: 'staff-attendance', group: 'SELF' },
+      { id: 'leave',         label: 'My Leave',       icon: 'calendar',   route: 'staff-leave',      group: 'SELF' },
+      { id: 'settings',      label: 'Settings',       icon: 'settings',   route: 'staff-settings',   group: 'SYSTEM' },
     ],
-    footnote: "Self-service only — nothing outside these eight items.",
+    footnote: 'Self-service only. Payslips & Loans are inside Settings.',
   },
 };
 
-// Explicit deny-list check used by the router. This mirrors Part R's
-// permission matrix at a coarse, demo-appropriate level: it proves the
-// *mechanism* (route guard denies by default) rather than reproducing
-// the full production-grade permission engine.
-export function isRouteAllowed(role, route) {
-  const allowed = NAVIGATION[role].items.map((i) => i.route);
-  return allowed.includes(route);
+// ─── Routes exclusively accessible only to Primary Master (for MASTER role) ───
+export const PRIMARY_MASTER_ONLY_ROUTES = new Set([
+  'ledger',
+  'payroll',
+  'staff-loans-advances',
+  'revenue-share',
+]);
+
+// ─── Implicit routes — not in sidebar but accessible to all authenticated users ─
+// These are auth-context / device-state screens that any authenticated role may
+// reach (e.g. kiosk mode, operator sign-in, device blocked screens).
+const IMPLICIT_ROUTES_ALL = new Set([
+  'notifications',
+  'kiosk-attendance',
+]);
+
+// Implicit routes specific to CAFE_ADMIN — auth-context pages (not sidebar items)
+const IMPLICIT_ROUTES_CAFE_ADMIN = new Set([
+  'cafe-operator-signin',
+  'cafe-device-state',
+]);
+
+// ─── Route allowlist check ─────────────────────────────────────────────────────
+export function isRouteAllowed(role, route, isPrimaryMaster = false) {
+  // Implicit routes allowed for all authenticated roles
+  if (IMPLICIT_ROUTES_ALL.has(route)) return true;
+
+  // Implicit CAFE_ADMIN auth-context routes
+  if (role === ROLES.CAFE_ADMIN && IMPLICIT_ROUTES_CAFE_ADMIN.has(route)) return true;
+
+  // Settings subroutes and universal profile/employment aliases
+  if (route === "profile" || route === "my-profile" || route === "employment" || route === "my-employment") {
+    return true;
+  }
+
+  if (route.startsWith("settings/")) {
+    const sub = route.slice("settings/".length).toLowerCase();
+    // Organisation governance / trash subroutes are restricted to MASTER
+    if (sub === "trash" || sub === "data-recovery" || sub === "admin" || sub === "system-administration") {
+      return role === ROLES.MASTER;
+    }
+    // All personal preference and identity subroutes are accessible to all authenticated profiles
+    return true;
+  }
+
+  const navConfig = NAVIGATION[role];
+  if (!navConfig) return false;
+
+  // For MASTER: use the appropriate item set
+  let items;
+  if (role === ROLES.MASTER) {
+    items = isPrimaryMaster
+      ? navConfig.primaryItems
+      : navConfig.normalItems;
+  } else {
+    items = navConfig.items;
+  }
+
+  const baseRoute = route ? route.split("/")[0] : "";
+  const routeAliases = {
+    "devices": "cafe-ops-devices",
+    "cafe-ops-devices": "devices",
+    "tasks": "approvals",
+    "approvals": "tasks",
+    "personal-ledger": "ledger",
+    "ledger": "personal-ledger"
+  };
+
+  // Block Primary-Master-only routes for Normal Masters
+  if (
+    role === ROLES.MASTER &&
+    !isPrimaryMaster &&
+    (PRIMARY_MASTER_ONLY_ROUTES.has(route) || PRIMARY_MASTER_ONLY_ROUTES.has(baseRoute))
+  ) {
+    return false;
+  }
+
+  const allowed = items.map((i) => i.route);
+
+  // Check direct route match or base module match or alias match
+  return Boolean(
+    allowed.includes(route) ||
+    (baseRoute && allowed.includes(baseRoute)) ||
+    (routeAliases[route] && allowed.includes(routeAliases[route])) ||
+    (routeAliases[baseRoute] && allowed.includes(routeAliases[baseRoute]))
+  );
+}
+
+// ─── Grouped navigation for sidebar rendering ─────────────────────────────────
+export function getGroupedNavItems(role, isPrimaryMaster = false) {
+  const navConfig = NAVIGATION[role];
+  if (!navConfig) return {};
+
+  let items;
+  if (role === ROLES.MASTER) {
+    items = isPrimaryMaster ? navConfig.primaryItems : navConfig.normalItems;
+  } else {
+    items = navConfig.items;
+  }
+
+  const groups = {};
+  for (const item of items) {
+    const groupKey = item.group || 'OTHER';
+    if (!groups[groupKey]) groups[groupKey] = [];
+    groups[groupKey].push(item);
+  }
+  return groups;
 }

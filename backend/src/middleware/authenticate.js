@@ -53,6 +53,10 @@ async function authenticate(
   next
 ) {
   try {
+    if (request.auth) {
+      return next();
+    }
+
     const accessToken =
       extractAccessToken(request);
 
@@ -120,6 +124,7 @@ async function authenticate(
       userId: user.userId,
       organisationId: user.organisationId,
       role: user.role,
+      isPrimaryMaster: Boolean(user.isPrimaryMaster),
       assignedCafeIds,
       primaryCafeId:
         user.primaryCafeId || null,

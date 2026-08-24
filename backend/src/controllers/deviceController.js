@@ -125,6 +125,92 @@ class DeviceController {
       next(err);
     }
   }
+
+  async listDevices(req, res, next) {
+    try {
+      const organisationId = req.auth?.organisationId || 'ZAMORIN';
+      const { cafeId, status } = req.query;
+
+      const devices = await deviceTrustService.listDevices({
+        organisationId,
+        cafeId,
+        status,
+      });
+
+      res.status(200).json({ success: true, data: { devices } });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async reportDeviceLost(req, res, next) {
+    try {
+      const { deviceId } = req.params;
+      const { reason } = req.body;
+
+      const device = await deviceTrustService.reportDeviceLost({
+        deviceId,
+        masterUserId: req.auth.userId,
+        reason,
+        correlationId: req.headers['x-correlation-id'],
+      });
+
+      res.status(200).json({
+        message: 'DEVICE_MARKED_LOST',
+        device: { deviceId: device.deviceId, status: device.status },
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async retireDevice(req, res, next) {
+    try {
+      const { deviceId } = req.params;
+      const { reason } = req.body;
+
+      const device = await deviceTrustService.retireDevice({
+        deviceId,
+        masterUserId: req.auth.userId,
+        reason,
+        correlationId: req.headers['x-correlation-id'],
+      });
+
+      res.status(200).json({
+        message: 'DEVICE_RETIRED',
+        device: { deviceId: device.deviceId, status: device.status },
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  async replaceDevice(req, res, next) {
+    try {
+      const { deviceId } = req.params;
+      const { newDeviceId, newDeviceName, reason } = req.body;
+
+      if (!newDeviceId) {
+        return res.status(400).json({ error: 'NEW_DEVICE_ID_REQUIRED' });
+      }
+
+      const result = await deviceTrustService.replaceDevice({
+        oldDeviceId: deviceId,
+        newDeviceId,
+        newDeviceName,
+        masterUserId: req.auth.userId,
+        reason,
+        correlationId: req.headers['x-correlation-id'],
+      });
+
+      res.status(200).json({
+        message: 'DEVICE_REPLACED_SUCCESSFULLY',
+        data: result,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
 }
 
 module.exports = new DeviceController();

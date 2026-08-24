@@ -24,8 +24,8 @@ export function renderNotificationCentre() {
     <div class="page-enter">
       <div class="flex justify-between items-center" style="margin-bottom:18px;">
         <div>
-          <div style="color:#fff; font-size:22px; font-weight:700;" class="font-display">Notification Centre</div>
-          <div class="muted-white" style="font-size:13.5px;" id="notif-unread-count">Loading…</div>
+          <div style="color:var(--ink); font-size:22px; font-weight:700;" class="font-display">Notification Centre</div>
+          <div style="color:var(--muted);" style="font-size:13.5px;" id="notif-unread-count">Loading…</div>
         </div>
         <button class="btn btn-ghost" id="mark-all-read-btn">Mark all as read</button>
       </div>
@@ -38,7 +38,7 @@ export function renderNotificationCentre() {
 
       <div class="flex-col gap-md" id="notif-list">
         <div class="glass" style="padding:32px; text-align:center;">
-          <div class="muted-white">Loading notifications…</div>
+          <div style="color:var(--muted);">Loading notifications…</div>
         </div>
       </div>
     </div>
@@ -79,7 +79,7 @@ async function loadNotifications(root) {
     root.querySelector("#notif-list").innerHTML = `
       <div class="glass empty-state">
         <div class="empty-state-title">Could not load</div>
-        <div class="muted-white">Notifications unavailable right now.</div>
+        <div style="color:var(--muted);">Notifications unavailable right now.</div>
       </div>`;
   }
 }
@@ -113,9 +113,9 @@ function renderList(root) {
             <div class="pill ${pill}" style="padding:3px 9px; font-size:10.5px;">${n.category || n.type || "Info"}</div>
             ${!isRead ? `<div style="width:7px;height:7px;border-radius:50%;background:var(--color-accent-mint-bright);"></div>` : ""}
           </div>
-          <div style="color:#fff; font-weight:600; font-size:13.5px;">${n.title || n.subject || "Notification"}</div>
-          <div class="muted-white" style="font-size:12px; margin-top:2px;">${n.message || n.body || ""}</div>
-          <div class="muted-white" style="font-size:10.5px; margin-top:6px;">${timeAgo(n.createdAt)}</div>
+          <div style="color:var(--ink); font-weight:600; font-size:13.5px;">${n.title || n.subject || "Notification"}</div>
+          <div style="color:var(--muted);" style="font-size:12px; margin-top:2px;">${n.message || n.body || ""}</div>
+          <div style="color:var(--muted);" style="font-size:10.5px; margin-top:6px;">${timeAgo(n.createdAt)}</div>
         </div>
         <button class="btn btn-ghost" style="padding:7px 12px; font-size:11.5px;" data-notif-open="${n._id || n.id}" data-deeplink="${n.deepLink || n.link || "dashboard"}">Open</button>
       </div>

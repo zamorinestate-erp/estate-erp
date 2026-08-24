@@ -14,10 +14,11 @@
 // =============================================================================
 
 import { state, setState } from "./state.js";
-import { NAVIGATION, ROLES } from "./navigation.js";
-import { renderShell } from "./router.js";
+import { NAVIGATION, ROLES, isRouteAllowed } from "./navigation.js";
+import { renderShell, navigate } from "./router.js";
 import { apiGet, apiPost, getOrCreateDeviceId, setStepUpAuthenticationHandler } from "./apiClient.js";
 import { registerServiceWorker } from "./updateManager.js";
+import "./responsiveAuditor.js";
 import {
   renderLogin,
   wireLogin,
@@ -45,18 +46,81 @@ import {
   resetPasswordResetFinalUi,
 } from "./pages/login.js";
 
-// Canonical Master fixture used strictly for local development UI preview
-export const DEV_PREVIEW_USER = Object.freeze({
-  _id: "MU-0001",
-  id: "MU-0001",
-  name: "Zamorin Master (Dev Preview)",
-  email: "master@example.com",
-  role: "MASTER",
-  organisationId: "ZAMORIN",
-  status: "ACTIVE",
-  isPrimaryMaster: true,
-  isDevPreview: true,
+// Canonical preview fixtures used strictly for local development UI preview (strictly 4 canonical roles)
+export const DEV_PREVIEW_USERS = Object.freeze({
+  master: Object.freeze({
+    _id: "MU-0001",
+    id: "MU-0001",
+    name: "Zamorin Primary Master (Dev Preview)",
+    email: "master@example.com",
+    role: "MASTER",
+    organisationId: "ZAMORIN",
+    status: "ACTIVE",
+    isPrimaryMaster: true,
+    isDevPreview: true,
+  }),
+  master_normal: Object.freeze({
+    _id: "MU-0002",
+    id: "MU-0002",
+    name: "Zamorin Normal Master (Dev Preview)",
+    email: "normal.master@example.com",
+    role: "MASTER",
+    organisationId: "ZAMORIN",
+    status: "ACTIVE",
+    isPrimaryMaster: false,
+    isDevPreview: true,
+  }),
+  owner: Object.freeze({
+    _id: "OU-0001",
+    id: "OU-0001",
+    name: "Zamorin Owner (Dev Preview)",
+    email: "owner@example.com",
+    role: "OWNER",
+    organisationId: "ZAMORIN",
+    status: "ACTIVE",
+    isDevPreview: true,
+  }),
+  cafe_admin: Object.freeze({
+    _id: "AU-0001",
+    id: "AU-0001",
+    name: "Cafe Admin (Dev Preview)",
+    email: "admin@example.com",
+    role: "CAFE_ADMIN",
+    primaryCafeId: "ZC-0001",
+    primaryCafeName: "Koramangala Main",
+    assignedCafeIds: ["ZC-0001"],
+    organisationId: "ZAMORIN",
+    status: "ACTIVE",
+    isDevPreview: true,
+  }),
+  staff: Object.freeze({
+    _id: "SU-0001",
+    id: "SU-0001",
+    name: "Normal Employee / Staff (Dev Preview)",
+    email: "staff@example.com",
+    role: "STAFF",
+    primaryCafeId: "CAFE-001",
+    assignedCafeIds: ["CAFE-001"],
+    organisationId: "ZAMORIN",
+    status: "ACTIVE",
+    isDevPreview: true,
+  }),
 });
+
+export const DEV_PREVIEW_USER = DEV_PREVIEW_USERS.master;
+
+export function getRequestedDevRole() {
+  if (typeof window === "undefined") return "master";
+  const params = new URLSearchParams(window.location.search);
+  const requested = (params.get("role") || params.get("devRole") || localStorage.getItem("zamorin-dev-role") || "master").toLowerCase();
+  const authority = (params.get("authority") || "").toLowerCase();
+
+  if (requested === "staff" || requested === "employee" || requested === "normal-employee") return "staff";
+  if (requested === "owner") return "owner";
+  if (requested === "admin" || requested === "cafe_admin" || requested === "cafe-admin") return "cafe_admin";
+  if (requested === "master_normal" || (requested === "master" && authority === "normal")) return "master_normal";
+  return "master";
+}
 
 export function isDirectDashboardAllowed() {
   if (typeof window === "undefined") return false;
@@ -77,16 +141,39 @@ function prepareAuthScreen(appEl) {
   delete appEl.dataset.shellRole;
 }
 
-function renderDevPreviewBanner() {
+function renderDevPreviewBanner(activeRole = "master") {
   if (typeof document === "undefined") return;
-  if (document.getElementById("zamorin-dev-preview-banner")) return;
-  const banner = document.createElement("div");
-  banner.id = "zamorin-dev-preview-banner";
-  banner.className = "zamorin-dev-preview-banner";
+  let banner = document.getElementById("zamorin-dev-preview-banner");
+  if (!banner) {
+    banner = document.createElement("div");
+    banner.id = "zamorin-dev-preview-banner";
+    banner.className = "zamorin-dev-preview-banner";
+    document.body.prepend(banner);
+  }
+
+  const roleDisplay = {
+    master: "PRIMARY MASTER",
+    master_normal: "NORMAL MASTER",
+    owner: "OWNER",
+    cafe_admin: "CAFE ADMIN",
+    staff: "NORMAL EMPLOYEE (STAFF)",
+  }[activeRole] || activeRole.toUpperCase();
+
   banner.innerHTML = `
-    <span><strong>DEVELOPMENT PREVIEW</strong> — AUTHENTICATION UI TEMPORARILY DISABLED (NEW LOGIN PENDING REDESIGN)</span>
+    <span><strong>DEVELOPMENT PREVIEW</strong> — ACTIVE: <strong>${roleDisplay}</strong></span>
+    <span style="margin-left: 16px; display: inline-flex; align-items: center; gap: 8px; font-weight: 500;">
+      <span style="opacity: 0.8;">Switch View:</span>
+      <a href="/?role=master" style="color: ${activeRole === 'master' ? '#fff' : '#d4a359'}; text-decoration: ${activeRole === 'master' ? 'underline' : 'none'}; font-weight: 700;">Primary Master</a>
+      <span style="opacity: 0.4;">|</span>
+      <a href="/?role=master_normal" style="color: ${activeRole === 'master_normal' ? '#fff' : '#d4a359'}; text-decoration: ${activeRole === 'master_normal' ? 'underline' : 'none'}; font-weight: 700;">Normal Master</a>
+      <span style="opacity: 0.4;">|</span>
+      <a href="/?role=owner" style="color: ${activeRole === 'owner' ? '#fff' : '#d4a359'}; text-decoration: ${activeRole === 'owner' ? 'underline' : 'none'}; font-weight: 700;">Owner</a>
+      <span style="opacity: 0.4;">|</span>
+      <a href="/?role=admin" style="color: ${activeRole === 'cafe_admin' ? '#fff' : '#d4a359'}; text-decoration: ${activeRole === 'cafe_admin' ? 'underline' : 'none'}; font-weight: 700;">Cafe Ops</a>
+      <span style="opacity: 0.4;">|</span>
+      <a href="/?role=staff" style="color: ${activeRole === 'staff' ? '#fff' : '#d4a359'}; text-decoration: ${activeRole === 'staff' ? 'underline' : 'none'}; font-weight: 700;">Staff</a>
+    </span>
   `;
-  document.body.prepend(banner);
 }
 
 function renderProductionFailClosedScreen() {
@@ -478,6 +565,62 @@ function renderUnauthenticatedScreen({ notice = "" } = {}) {
   });
 }
 
+async function ensureDevSession() {
+  if (!isDirectDashboardAllowed()) return false;
+  try {
+    const check = await apiGet("/auth/me");
+    if (check?.data?.user) return true;
+  } catch (e) {
+    // Unauthenticated, proceed to auto-login
+  }
+
+  try {
+    const deviceId = getOrCreateDeviceId();
+    const loginRes = await apiPost("/auth/login", {
+      organisationId: "ZAMORIN",
+      email: "master@example.com",
+      password: "PK@NilaVega_8427!Cedar",
+      device: { deviceId },
+    });
+    return true;
+  } catch (err) {
+    const deviceId = getOrCreateDeviceId();
+    if (err?.code === "MFA_SETUP_REQUIRED" && err?.data?.mfaSetupToken) {
+      try {
+        const setup = await apiPost("/auth/mfa/setup", {
+          mfaSetupToken: err.data.mfaSetupToken,
+        });
+        const autoCode = setup?.data?.autoCode;
+        if (autoCode) {
+          await apiPost("/auth/mfa/confirm", {
+            mfaSetupToken: err.data.mfaSetupToken,
+            code: autoCode,
+            device: { deviceId },
+          });
+          return true;
+        }
+      } catch (mfaErr) {
+        console.warn("Dev auto MFA setup notice:", mfaErr?.message);
+      }
+    } else if (err?.code === "MFA_REQUIRED" && err?.data?.mfaChallengeToken) {
+      try {
+        const autoCode = err?.data?.autoCode;
+        if (autoCode) {
+          await apiPost("/auth/mfa/verify", {
+            mfaChallengeToken: err.data.mfaChallengeToken,
+            code: autoCode,
+            device: { deviceId },
+          });
+          return true;
+        }
+      } catch (verifyErr) {
+        console.warn("Dev auto MFA verify notice:", verifyErr?.message);
+      }
+    }
+  }
+  return false;
+}
+
 async function boot() {
   document.documentElement.setAttribute(
     "data-theme",
@@ -493,6 +636,44 @@ async function boot() {
 
   if (!alreadyHasLoginForm) {
     renderLoadingScreen();
+  }
+
+  if (isDirectDashboardAllowed()) {
+    await ensureDevSession();
+  }
+
+  const urlParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+  const hasExplicitRoleParam = urlParams && (urlParams.get("role") || urlParams.get("devRole"));
+
+  if (isDirectDashboardAllowed() && hasExplicitRoleParam) {
+    const devKey = getRequestedDevRole();
+    const devUser = DEV_PREVIEW_USERS[devKey] || DEV_PREVIEW_USERS.master;
+    const canonicalRole = devKey === "master_normal" ? "master" : devKey;
+    const roleNavigation = NAVIGATION[canonicalRole] || NAVIGATION.master;
+    const defaultRoute = roleNavigation?.items?.[0]?.route || (canonicalRole === "staff" ? "staff-home" : "dashboard");
+    const isPrimary = Boolean(devUser?.isPrimaryMaster);
+    const urlHash = (typeof window !== "undefined" && window.location.hash) ? window.location.hash.replace(/^#/, "") : "";
+    const initialRoute = urlHash
+      ? (isRouteAllowed(canonicalRole, urlHash, isPrimary) ? urlHash : "__blocked__")
+      : defaultRoute;
+
+    setState({
+      auth: {
+        authenticated: true,
+        loading: false,
+        user: devUser,
+        authentication: null,
+        error: null,
+      },
+      user: devUser,
+      isPrimaryMaster: isPrimary,
+      role: canonicalRole,
+      route: initialRoute,
+    });
+
+    renderShell();
+    renderDevPreviewBanner(devKey);
+    return;
   }
 
   try {
@@ -516,7 +697,12 @@ async function boot() {
       throw new Error("Unsupported authenticated role");
     }
 
-    const initialRoute = roleNavigation.items[0].route;
+    const defaultRoute = roleNavigation.items[0].route;
+    const urlHash = (typeof window !== "undefined" && window.location.hash) ? window.location.hash.replace(/^#/, "") : "";
+    const isPrimary = Boolean(user?.isPrimaryMaster);
+    const initialRoute = urlHash
+      ? (isRouteAllowed(normalizedRole, urlHash, isPrimary) ? urlHash : "__blocked__")
+      : defaultRoute;
 
     setState({
       auth: {
@@ -526,6 +712,8 @@ async function boot() {
         authentication: auth,
         error: null,
       },
+      user,
+      isPrimaryMaster: isPrimary,
       role: normalizedRole,
       route: initialRoute,
     });
@@ -533,21 +721,32 @@ async function boot() {
     renderShell();
   } catch (error) {
     if (isDirectDashboardAllowed()) {
-      // Local development preview: direct dashboard entry with safe canonical Master preview context
+      // Local development preview: direct entry with safe canonical preview context (Master, Owner, Admin, Staff)
+      const devKey = getRequestedDevRole();
+      const devUser = DEV_PREVIEW_USERS[devKey] || DEV_PREVIEW_USERS.master;
+      const canonicalRole = devKey === "master_normal" ? "master" : devKey;
+      const roleNavigation = NAVIGATION[canonicalRole] || NAVIGATION.master;
+      const defaultRoute = roleNavigation?.items?.[0]?.route || (canonicalRole === "staff" ? "staff-home" : "dashboard");
+      const isPrimary = Boolean(devUser?.isPrimaryMaster);
+      const urlHash = (typeof window !== "undefined" && window.location.hash) ? window.location.hash.replace(/^#/, "") : "";
+      const initialRoute = (urlHash && isRouteAllowed(canonicalRole, urlHash, isPrimary)) ? urlHash : defaultRoute;
+
       setState({
         auth: {
           authenticated: false,
           loading: false,
-          user: DEV_PREVIEW_USER,
+          user: devUser,
           authentication: null,
           error: null,
         },
-        role: "master",
-        route: "dashboard",
+        user: devUser,
+        isPrimaryMaster: isPrimary,
+        role: canonicalRole,
+        route: initialRoute,
       });
 
       renderShell();
-      renderDevPreviewBanner();
+      renderDevPreviewBanner(devKey);
       return;
     }
 
@@ -571,6 +770,15 @@ async function boot() {
   });
 }
 
+if (typeof window !== "undefined") {
+  window.addEventListener("hashchange", () => {
+    const rawHash = window.location.hash.replace(/^#/, "");
+    if (rawHash && state.route !== rawHash) {
+      navigate(rawHash);
+    }
+  });
+}
+
 if (typeof document !== "undefined") {
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", boot, { once: true });
@@ -578,5 +786,3 @@ if (typeof document !== "undefined") {
     boot();
   }
 }
-
-

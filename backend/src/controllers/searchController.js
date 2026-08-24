@@ -78,7 +78,11 @@ const performGlobalSearch = asyncHandler(async (request, response) => {
   // 5. Bills / Receipts (MASTER, OWNER and CAFE_ADMIN only)
   if (['MASTER', 'OWNER', 'CAFE_ADMIN'].includes(role)) {
     const billFilter = { organisationId: orgId, $or: [{ billId: regex }, { tableNumber: regex }, { customerPhone: regex }] };
-    if (role !== 'MASTER' && role !== 'OWNER') billFilter.cafeId = { $in: request.auth.assignedCafeIds };
+    if (role === 'CAFE_ADMIN') {
+      billFilter.cafeId = request.auth.primaryCafeId || { $in: request.auth.assignedCafeIds || [] };
+    } else if (role !== 'MASTER' && role !== 'OWNER') {
+      billFilter.cafeId = { $in: request.auth.assignedCafeIds || [] };
+    }
 
     const billRoute = ['MASTER', 'OWNER'].includes(role) ? 'bills' : 'pos';
 

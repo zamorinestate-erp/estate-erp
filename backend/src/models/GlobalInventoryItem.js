@@ -11,28 +11,26 @@
  *   CafeInventoryConfig.currentQuantityBase (atomic $inc operations)
  *     ↓ every change recorded in
  *   StockMovement (immutable ledger)
- *
- * Global items are MASTER-created and owned.
- * Café Admin may configure local availability/thresholds for assigned cafés.
- * When a global item is created, CafeInventoryConfig records are seeded with
- * ZERO quantity for every existing café (propagation — see inventoryController).
- *
- * Units:
- *   Base unit is the smallest stock-keeping unit (e.g., ml, grams, pieces).
- *   Conversion rules define how display units map to base units.
- *   Example: 1 litre = 1000 ml (baseUnit = 'ml', displayUnit = 'litre',
- *   factor = 1000). All quantities stored in baseUnit.
  */
 
 const mongoose = require('mongoose');
 
 const ITEM_STATUSES = [
-  'ACTIVE',     // Available for use, ordering, and POS
-  'DRAFT',      // Created but not yet published
-  'ARCHIVED',   // No longer in use; read-only
+  'DRAFT',
+  'ACTIVE',
+  'INACTIVE',
+  'DISCONTINUED',
+  'SUPERSEDED',
 ];
 
 const ITEM_CATEGORIES = [
+  'COFFEE_BEANS',
+  'DAIRY_FRESH',
+  'SYRUPS_FLAVOURS',
+  'PACKAGING_CONSUMABLES',
+  'BAKERY_FOOD_INPUTS',
+  'CLEANING_SUPPLIES',
+  'OTHER_CONTROLLED_MATERIALS',
   'BEVERAGE',
   'FOOD',
   'PACKAGING',
@@ -46,7 +44,6 @@ const ITEM_CATEGORIES = [
 
 const unitConversionSchema = new mongoose.Schema(
   {
-    // e.g., 'litre', 'kg', 'dozen'
     displayUnit: {
       type: String,
       required: true,
@@ -54,19 +51,14 @@ const unitConversionSchema = new mongoose.Schema(
       lowercase: true,
       maxlength: 30,
     },
-    // How many base units equals 1 displayUnit.
-    // e.g., litre→ml: factor = 1000
     factor: {
       type: Number,
       required: true,
-      min: 0.001,
+      min: 0.000001,
     },
-    // Display label for purchase orders / receipts.
-    label: {
-      type: String,
-      trim: true,
-      maxlength: 60,
-      default: '',
+    isDefaultDisplay: {
+      type: Boolean,
+      default: false,
     },
   },
   { _id: false }
@@ -74,19 +66,6 @@ const unitConversionSchema = new mongoose.Schema(
 
 const globalInventoryItemSchema = new mongoose.Schema(
   {
-    // ── Business identifier ──────────────────────────────────────────────────
-    itemId: {
-      type: String,
-      required: true,
-      unique: true,
-      immutable: true,
-      trim: true,
-      uppercase: true,
-      match: /^ITEM-\d{4,}$/,
-      index: true,
-    },
-
-    // ── Scope ────────────────────────────────────────────────────────────────
     organisationId: {
       type: String,
       required: true,
@@ -95,56 +74,119 @@ const globalInventoryItemSchema = new mongoose.Schema(
       uppercase: true,
       index: true,
     },
-
-    // ── Item identity ────────────────────────────────────────────────────────
+    itemId: {
+      type: String,
+      required: true,
+      immutable: true,
+      trim: true,
+      uppercase: true,
+      index: true,
+    },
+    sku: {
+      type: String,
+      required: true,
+      trim: true,
+      uppercase: true,
+      maxlength: 50,
+    },
     name: {
       type: String,
       required: true,
       trim: true,
-      minlength: 1,
-      maxlength: 200,
+      maxlength: 150,
     },
-
-    // Normalised lowercase name for case-insensitive duplicate detection.
     nameLower: {
       type: String,
-      required: true,
       trim: true,
       lowercase: true,
       index: true,
     },
-
+    shortName: {
+      type: String,
+      trim: true,
+      maxlength: 50,
+      default: '',
+    },
+    description: {
+      type: String,
+      trim: true,
+      maxlength: 500,
+      default: '',
+    },
     category: {
       type: String,
       required: true,
       enum: ITEM_CATEGORIES,
+      index: true,
     },
-
-    description: {
-      type: String,
-      trim: true,
-      maxlength: 1000,
-      default: '',
-    },
-
-    // ── Units ────────────────────────────────────────────────────────────────
-    // The canonical stock-keeping unit. All quantities stored in this unit.
-    // e.g., 'ml', 'grams', 'pieces'
     baseUnit: {
       type: String,
       required: true,
       trim: true,
       lowercase: true,
-      maxlength: 30,
+      maxlength: 20,
     },
-
-    // Optional conversion rules. If none, only baseUnit is available.
-    unitConversions: {
-      type: [unitConversionSchema],
+    stockUnit: {
+      type: String,
+      trim: true,
+      lowercase: true,
+      default: '',
+    },
+    purchaseUnit: {
+      type: String,
+      trim: true,
+      lowercase: true,
+      default: '',
+    },
+    packSize: {
+      type: Number,
+      default: 1,
+      min: 0.001,
+    },
+    barcode: {
+      type: String,
+      trim: true,
+      default: null,
+      index: true,
+    },
+    criticality: {
+      type: String,
+      enum: ['CRITICAL', 'STANDARD', 'LOW'],
+      default: 'STANDARD',
+      index: true,
+    },
+    trackingMethod: {
+      type: String,
+      enum: ['FIFO', 'FEFO', 'STANDARD'],
+      default: 'FEFO',
+    },
+    lotControl: {
+      type: Boolean,
+      default: true,
+    },
+    expiryControl: {
+      type: Boolean,
+      default: true,
+    },
+    shelfLifeDays: {
+      type: Number,
+      default: 30,
+      min: 0,
+    },
+    minShelfLifeOnReceiptDays: {
+      type: Number,
+      default: 7,
+      min: 0,
+    },
+    unitCostPaisa: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    approvedSubstituteItemIds: {
+      type: [String],
       default: [],
     },
-
-    // ── Status ───────────────────────────────────────────────────────────────
     status: {
       type: String,
       required: true,
@@ -152,120 +194,44 @@ const globalInventoryItemSchema = new mongoose.Schema(
       default: 'ACTIVE',
       index: true,
     },
-
-    // Whether this item appears in POS (only when status=ACTIVE and
-    // the café's CafeInventoryConfig also marks it available).
-    availableForPOS: {
-      type: Boolean,
-      default: false,
+    conversions: {
+      type: [unitConversionSchema],
+      default: [],
     },
-
-    // ── Governance ───────────────────────────────────────────────────────────
     createdByUserId: {
       type: String,
       required: true,
       immutable: true,
       trim: true,
-      uppercase: true,
     },
-
-    lastModifiedByUserId: {
+    updatedByUserId: {
       type: String,
       trim: true,
-      uppercase: true,
       default: null,
-    },
-
-    archivedAt: {
-      type: Date,
-      default: null,
-    },
-
-    archivedByUserId: {
-      type: String,
-      trim: true,
-      uppercase: true,
-      default: null,
-    },
-
-    archiveReason: {
-      type: String,
-      trim: true,
-      maxlength: 2000,
-      default: '',
-    },
-
-    // ── Tags / metadata ──────────────────────────────────────────────────────
-    tags: {
-      type: [String],
-      default: [],
-    },
-
-    notes: {
-      type: String,
-      trim: true,
-      maxlength: 3000,
-      default: '',
     },
   },
   {
     timestamps: true,
-    versionKey: 'version',
     optimisticConcurrency: true,
-    collection: 'global_inventory_items',
   }
 );
 
-// ── Compound indexes ─────────────────────────────────────────────────────────
-
-globalInventoryItemSchema.index(
-  { organisationId: 1, status: 1 },
-  { name: 'org_status' }
-);
-
-globalInventoryItemSchema.index(
-  { organisationId: 1, nameLower: 1 },
-  { unique: true, name: 'org_name_unique' }
-);
-
-globalInventoryItemSchema.index(
-  { organisationId: 1, category: 1, status: 1 },
-  { name: 'org_category_status' }
-);
-
-// ── Text index for search ────────────────────────────────────────────────────
-
-globalInventoryItemSchema.index(
-  { name: 'text', description: 'text', tags: 'text' },
-  { name: 'item_text_search' }
-);
-
-// ── Pre-validate normalisation ───────────────────────────────────────────────
-
-globalInventoryItemSchema.pre('validate', function normaliseItemFields() {
+globalInventoryItemSchema.pre('validate', function (next) {
   if (this.name) {
     this.nameLower = this.name.trim().toLowerCase();
   }
-  if (this.category) {
-    this.category = this.category.trim().toUpperCase();
-  }
-  if (this.status) {
-    this.status = this.status.trim().toUpperCase();
-  }
-  if (this.baseUnit) {
-    this.baseUnit = this.baseUnit.trim().toLowerCase();
-  }
-
-  const stringUpperFields = [
-    'itemId', 'organisationId', 'createdByUserId',
-    'lastModifiedByUserId', 'archivedByUserId',
-  ];
-  for (const field of stringUpperFields) {
-    if (this[field] && typeof this[field] === 'string') {
-      this[field] = this[field].trim().toUpperCase();
-    }
-  }
+  if (typeof next === 'function') next();
 });
+
+globalInventoryItemSchema.index(
+  { organisationId: 1, itemId: 1 },
+  { unique: true }
+);
+
+globalInventoryItemSchema.index(
+  { organisationId: 1, sku: 1 },
+  { unique: true }
+);
 
 const GlobalInventoryItem =
   mongoose.models.GlobalInventoryItem ||

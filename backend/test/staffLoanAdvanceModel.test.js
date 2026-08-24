@@ -25,12 +25,14 @@ function createValidLoan(overrides = {}) {
 
 test('StaffLoanAdvance exposes the neutral request contract', async () => {
   assert.deepEqual(LOAN_ADVANCE_TYPES, ['LOAN', 'SALARY_ADVANCE']);
-  assert.deepEqual(LOAN_ADVANCE_STATUSES, ['REQUESTED', 'APPROVED', 'REJECTED']);
+  assert.ok(LOAN_ADVANCE_STATUSES.includes('SUBMITTED'));
+  assert.ok(LOAN_ADVANCE_STATUSES.includes('APPROVED'));
+  assert.ok(LOAN_ADVANCE_STATUSES.includes('REJECTED'));
 
   const loan = createValidLoan();
   await loan.validate();
 
-  assert.equal(loan.status, 'REQUESTED');
+  assert.equal(loan.status, 'SUBMITTED');
   assert.equal(loan.currency, 'INR');
   assert.equal(loan.requestedAmountPaise, 500000);
 });

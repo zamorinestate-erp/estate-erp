@@ -14,10 +14,36 @@ class DeviceTrustService {
    */
   derivePrivilegeProfile(role, deviceRegistration, requestedCafeId = null) {
     if (role === 'MASTER') {
+      if (
+        deviceRegistration &&
+        deviceRegistration.deviceClass === 'CAFE_OWNED' &&
+        deviceRegistration.status === 'ACTIVE' &&
+        deviceRegistration.assignedCafeId
+      ) {
+        const boundCafe = deviceRegistration.assignedCafeId;
+        if (requestedCafeId && requestedCafeId !== '*' && requestedCafeId !== boundCafe) {
+          return {
+            privilegeProfile: 'SELF_ONLY',
+            allowedCafeScope: [],
+            isCafeOperationsAllowed: false,
+            boundCafeId: boundCafe,
+            workspaceMode: 'CAFE_OPERATIONS',
+          };
+        }
+        return {
+          privilegeProfile: 'CAFE_OPERATIONS',
+          allowedCafeScope: [boundCafe],
+          isCafeOperationsAllowed: true,
+          boundCafeId: boundCafe,
+          workspaceMode: 'CAFE_OPERATIONS',
+        };
+      }
+
       return {
         privilegeProfile: 'ORGANISATION_GOVERNANCE',
         allowedCafeScope: ['*'],
         isCafeOperationsAllowed: true,
+        workspaceMode: 'MASTER_WORKSPACE',
       };
     }
 
@@ -58,6 +84,16 @@ class DeviceTrustService {
           privilegeProfile: 'SELF_ONLY',
           allowedCafeScope: [],
           isCafeOperationsAllowed: false,
+        };
+      }
+
+      // If requested cafe does not match the device's bound cafe, deny access
+      if (requestedCafeId && requestedCafeId !== '*' && requestedCafeId !== boundCafe) {
+        return {
+          privilegeProfile: 'SELF_ONLY',
+          allowedCafeScope: [],
+          isCafeOperationsAllowed: false,
+          boundCafeId: boundCafe,
         };
       }
 
@@ -173,6 +209,19 @@ class DeviceTrustService {
 
     await reg.save();
 
+    // Immediately terminate any active operator sessions on this device
+    const { OperatorSession } = require('../models/OperatorSession');
+    await OperatorSession.updateMany(
+      { deviceId: reg.deviceId, status: { $in: ['ACTIVE', 'LOCKED'] } },
+      {
+        $set: {
+          status: 'REVOKED',
+          endedAt: new Date(),
+          endReason: 'DEVICE_REVOKED',
+        },
+      }
+    );
+
     await DeviceSecurityEvent.create({
       eventId: `DEV_EVT_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`,
       organisationId: reg.organisationId,
@@ -188,6 +237,126 @@ class DeviceTrustService {
     });
 
     return reg;
+  }
+
+  /**
+   * Marks a device as LOST.
+   */
+  async reportDeviceLost({ deviceId, masterUserId, reason, correlationId }) {
+    const reg = await DeviceRegistration.findOne({ deviceId });
+    if (!reg) {
+      throw new Error('DEVICE_NOT_FOUND');
+    }
+
+    reg.status = 'LOST';
+    reg.revocationReason = reason || 'REPORTED_LOST';
+    reg.policyVersion += 1;
+    reg.deviceVersion += 1;
+    await reg.save();
+
+    const { OperatorSession } = require('../models/OperatorSession');
+    await OperatorSession.updateMany(
+      { deviceId: reg.deviceId, status: { $in: ['ACTIVE', 'LOCKED'] } },
+      {
+        $set: {
+          status: 'REVOKED',
+          endedAt: new Date(),
+          endReason: 'DEVICE_LOST',
+        },
+      }
+    );
+
+    return reg;
+  }
+
+  /**
+   * Marks a device as RETIRED.
+   */
+  async retireDevice({ deviceId, masterUserId, reason, correlationId }) {
+    const reg = await DeviceRegistration.findOne({ deviceId });
+    if (!reg) {
+      throw new Error('DEVICE_NOT_FOUND');
+    }
+
+    reg.status = 'RETIRED';
+    reg.retiredAt = new Date();
+    reg.revocationReason = reason || 'HARDWARE_RETIRED';
+    reg.policyVersion += 1;
+    reg.deviceVersion += 1;
+    await reg.save();
+
+    const { OperatorSession } = require('../models/OperatorSession');
+    await OperatorSession.updateMany(
+      { deviceId: reg.deviceId, status: { $in: ['ACTIVE', 'LOCKED'] } },
+      {
+        $set: {
+          status: 'ENDED',
+          endedAt: new Date(),
+          endReason: 'DEVICE_RETIRED',
+        },
+      }
+    );
+
+    return reg;
+  }
+
+  /**
+   * Replaces an old device with a fresh new hardware device registration.
+   */
+  async replaceDevice({ oldDeviceId, newDeviceId, newDeviceName, masterUserId, reason, correlationId }) {
+    const oldReg = await DeviceRegistration.findOne({ deviceId: oldDeviceId });
+    if (!oldReg) {
+      throw new Error('OLD_DEVICE_NOT_FOUND');
+    }
+
+    oldReg.status = 'REPLACED';
+    oldReg.replacedAt = new Date();
+    oldReg.replacedByDeviceId = newDeviceId;
+    oldReg.revocationReason = reason || 'HARDWARE_REPLACEMENT';
+    await oldReg.save();
+
+    const { OperatorSession } = require('../models/OperatorSession');
+    await OperatorSession.updateMany(
+      { deviceId: oldReg.deviceId, status: { $in: ['ACTIVE', 'LOCKED'] } },
+      {
+        $set: {
+          status: 'ENDED',
+          endedAt: new Date(),
+          endReason: 'DEVICE_REPLACED',
+        },
+      }
+    );
+
+    // Create new device registration in ACTIVE state assigned to same cafe
+    const newReg = await DeviceRegistration.create({
+      deviceId: newDeviceId,
+      organisationId: oldReg.organisationId,
+      deviceName: newDeviceName || `${oldReg.deviceName} (Replacement)`,
+      deviceClass: 'CAFE_OWNED',
+      assignedCafeId: oldReg.assignedCafeId,
+      status: 'ACTIVE',
+      trustLevel: 'ENROLLED',
+      enrollmentApprovedBy: masterUserId,
+      enrollmentApprovedAt: new Date(),
+      policyVersion: 1,
+      deviceVersion: 1,
+    });
+
+    return { oldDevice: oldReg, newDevice: newReg };
+  }
+
+  /**
+   * Lists devices for an organisation / cafe.
+   */
+  async listDevices({ organisationId, cafeId, status }) {
+    const filter = { organisationId: organisationId.toUpperCase() };
+    if (cafeId && cafeId !== '*') {
+      filter.assignedCafeId = cafeId.toUpperCase();
+    }
+    if (status) {
+      filter.status = status;
+    }
+    return DeviceRegistration.find(filter).sort({ createdAt: -1 }).lean();
   }
 }
 

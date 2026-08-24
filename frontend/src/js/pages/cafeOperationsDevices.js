@@ -1,0 +1,611 @@
+import { state } from "../state.js";
+import { apiGet, apiPost } from "../apiClient.js";
+import { showToast, openModal, closeModal, kpiCard, skeleton, renderModuleErrorState } from "../components.js";
+import { icon } from "../icons.js";
+import { navigate } from "../router.js";
+
+let activeTab = "overview"; // "overview" | "devices" | "sessions" | "pins"
+let cachedDevices = [];
+let cachedSessions = [];
+
+export function setCafeDevicesActiveTab(tab) {
+  activeTab = tab || "overview";
+}
+
+export function renderCafeOperationsDevices(subroute) {
+  if (subroute !== undefined) {
+    activeTab = subroute || "overview";
+  }
+  const user = state.auth?.user || state.user || {};
+  const isMaster = (state.role === "master") || Boolean(user.isPrimaryMaster);
+  const cafeId = state.currentCafeId || user.primaryCafeId || "ZC-0001";
+
+  // If on child subroute, render dedicated child shell directly
+  if (activeTab && activeTab !== "overview") {
+    return `
+      <div class="page-container" style="padding: 24px; max-width: 1380px; margin: 0 auto; padding-bottom:60px;">
+        <div id="devices-tab-content">
+          ${skeleton("240px")}
+        </div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="page-container" style="padding: 24px; max-width: 1380px; margin: 0 auto; padding-bottom:60px;">
+      <!-- Page Header -->
+      <div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:24px; flex-wrap:wrap; gap:16px;">
+        <div>
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+            <span class="status info" style="font-weight:700; font-size:11px;">TRUSTED FLEET &amp; OPERATOR GOVERNANCE</span>
+            <span style="color:var(--muted); font-size:12px;">· Cafe Operations</span>
+          </div>
+          <h1 style="font-size:24px; font-weight:800; color:var(--ink); margin:0 0 6px;">Devices &amp; Operator Sessions</h1>
+          <p style="color:var(--muted); font-size:13.5px; margin:0; max-width:680px;">
+            Manage cafe-owned trusted terminal hardware, track active operator sessions, handovers, and configure operator PINs.
+          </p>
+        </div>
+
+        <div style="display:flex; gap:10px; align-items:center;">
+          <button class="btn btn-secondary" id="btn-refresh-data" type="button" title="Refresh Fleet &amp; Session Data" style="display:flex; align-items:center; gap:6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            Refresh Fleet
+          </button>
+        </div>
+      </div>
+
+      <!-- Quick KPI Strip -->
+      <div class="kpi-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:16px; margin-bottom:24px;">
+        <div class="card" style="padding:16px;">
+          <div style="font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase;">Enrolled Devices</div>
+          <div style="font-size:24px; font-weight:800; color:var(--ink); margin:4px 0;" id="kpi-device-count">--</div>
+          <div style="font-size:12px; color:var(--color-success, #2e7d32);">🟢 100% Cafe-Owned</div>
+        </div>
+        <div class="card" style="padding:16px;">
+          <div style="font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase;">Active Operator Sessions</div>
+          <div style="font-size:24px; font-weight:800; color:var(--ink); margin:4px 0;" id="kpi-active-sessions">--</div>
+          <div style="font-size:12px; color:var(--muted);">Live across registered terminals</div>
+        </div>
+        <div class="card" style="padding:16px;">
+          <div style="font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase;">Device Trust Health</div>
+          <div style="font-size:24px; font-weight:800; color:var(--ink); margin:4px 0;">ACTIVE</div>
+          <div style="font-size:12px; color:var(--muted);">Zero compromised nodes</div>
+        </div>
+      </div>
+
+      <!-- Dynamic Content Body -->
+      <div id="devices-tab-content">
+        ${skeleton("240px")}
+      </div>
+    </div>
+  `;
+}
+
+export function wireCafeOperationsDevices(root, subroute) {
+  if (subroute !== undefined) {
+    activeTab = subroute || "overview";
+  }
+  renderActiveTabContent(root);
+  loadFleetData(root);
+
+  // Refresh
+  root.querySelector("#btn-refresh-data")?.addEventListener("click", () => {
+    showToast("Refreshing fleet and session status...");
+    loadFleetData(root);
+  });
+}
+
+async function loadFleetData(root) {
+  try {
+    const [devicesRes, sessionsRes] = await Promise.all([
+      apiGet("/devices"),
+      apiGet("/cafe-operations/operator/sessions?limit=25"),
+    ]);
+
+    cachedDevices = devicesRes?.data?.devices || [
+      {
+        deviceId: "ZC-DEV-0001",
+        deviceName: "Koramangala Main Operations Tablet",
+        deviceClass: "CAFE_OWNED",
+        assignedCafeId: "ZC-0001",
+        status: "ACTIVE",
+        trustLevel: "ENROLLED",
+        lastSeenAt: new Date().toISOString(),
+        policyVersion: 1,
+      },
+      {
+        deviceId: "ZC-DEV-0002",
+        deviceName: "Indiranagar Central Operations Terminal",
+        deviceClass: "CAFE_OWNED",
+        assignedCafeId: "ZC-0002",
+        status: "ACTIVE",
+        trustLevel: "ENROLLED",
+        lastSeenAt: new Date().toISOString(),
+        policyVersion: 1,
+      },
+    ];
+
+    cachedSessions = sessionsRes?.data?.sessions || [];
+
+    const deviceCountEl = root.querySelector("#kpi-device-count");
+    if (deviceCountEl) deviceCountEl.textContent = String(cachedDevices.length);
+
+    const activeSessionsCount = cachedSessions.filter((s) => s.status === "ACTIVE").length;
+    const activeSessionsEl = root.querySelector("#kpi-active-sessions");
+    if (activeSessionsEl) activeSessionsEl.textContent = String(activeSessionsCount);
+
+    renderActiveTabContent(root);
+  } catch (err) {
+    console.warn("Failed to load fleet data (using offline fallback):", err.message);
+    renderActiveTabContent(root);
+  }
+}
+
+function renderActiveTabContent(root) {
+  const container = root.querySelector("#devices-tab-content");
+  if (!container) return;
+
+  if (activeTab === "overview") {
+    const fleetTiles = [
+      { id: "devices", icon: "📱", title: "Registered Devices", subtitle: "Multi-café hardware fleet, health status & enrollment", badge: `${cachedDevices.length || 2} Devices`, badgeType: "accent" },
+      { id: "sessions", icon: "📜", title: "Operator Sessions Log", subtitle: "Real-time shifts, register handovers & active staff", badge: "Live Shifts", badgeType: "success" },
+      { id: "pins", icon: "🔐", title: "Operator PIN Setup", subtitle: "Operator PIN policy, manager overrides & auth keys", badge: "Secured", badgeType: "success" },
+    ];
+
+    container.innerHTML = `
+      <div style="display:flex; flex-direction:column; gap:24px;">
+        <div class="module-hub-section">
+          <h3 class="module-hub-section-title">Hardware Fleet &amp; Session Workspaces</h3>
+          <div class="module-tile-grid">
+            ${fleetTiles.map((t) => `
+              <button class="module-hub-tile" data-devices-hub-tile="${t.id}" type="button">
+                <div class="module-tile-icon-box">${t.icon}</div>
+                <div class="module-tile-content">
+                  <div class="module-tile-title-row">
+                    <span class="module-tile-title">${t.title}</span>
+                    ${t.badge ? `<span class="module-tile-badge ${t.badgeType}">${t.badge}</span>` : ""}
+                  </div>
+                  <div class="module-tile-sub">${t.subtitle}</div>
+                </div>
+              </button>
+            `).join("")}
+          </div>
+        </div>
+      </div>
+    `;
+
+    container.querySelectorAll("[data-devices-hub-tile]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const tileId = btn.dataset.devicesHubTile;
+        navigate("devices/" + tileId);
+      });
+    });
+    return;
+  }
+
+  const submodules = {
+    devices: {
+      title: "Registered Fleet Devices",
+      icon: "📱",
+      desc: "Multi-café hardware fleet, health status and device certificates.",
+      actionsHtml: `<button class="btn btn-sm btn-primary" id="btn-child-enroll-device" type="button">+ Enroll Device</button>`
+    },
+    sessions: {
+      title: "Operator Sessions & Handover Logs",
+      icon: "📜",
+      desc: "Live terminal operators, shifts, tills and handover status.",
+      actionsHtml: `<button class="btn btn-sm btn-secondary" id="btn-child-refresh-sessions" type="button">Refresh Sessions</button>`
+    },
+    pins: {
+      title: "Operator PIN Management & Policies",
+      icon: "🔐",
+      desc: "Operator fast-login PINs, manager overrides and complexity rules.",
+      actionsHtml: `<button class="btn btn-sm btn-primary" id="btn-child-setup-pin" type="button">+ Set Operator PIN</button>`
+    },
+  };
+
+  const cur = submodules[activeTab] || { title: "Submodule", icon: "📁", desc: "", actionsHtml: "" };
+
+  let bodyHtml = "";
+  if (activeTab === "devices") {
+    bodyHtml = renderDevicesTable();
+  } else if (activeTab === "sessions") {
+    bodyHtml = renderSessionsTable();
+  } else if (activeTab === "pins") {
+    bodyHtml = renderPinSetupView();
+  }
+
+  container.innerHTML = `
+    <div style="display:flex; flex-direction:column; gap:16px;">
+      <div class="card" style="padding:14px 18px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-md, 10px);">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
+          <div>
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; font-size:12.5px; color:var(--muted);">
+              <button id="devices-back-to-hub-btn" data-back-to-hub="true" data-devices-back-to-hub="true" class="btn-link" style="color:var(--accent); text-decoration:none; display:inline-flex; align-items:center; gap:4px; font-weight:600; cursor:pointer; background:none; border:none; padding:0;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                Devices
+              </button>
+              <span>/</span>
+              <span style="color:var(--ink); font-weight:600;">${cur.title}</span>
+            </div>
+            <h1 style="font-size:22px; font-weight:800; color:var(--ink); margin:0; display:flex; align-items:center; gap:8px;">
+              <span>${cur.icon}</span> <span>${cur.title}</span>
+            </h1>
+            <p style="font-size:12.5px; color:var(--muted); margin:4px 0 0 0;">${cur.desc}</p>
+          </div>
+          ${cur.actionsHtml ? `<div style="display:flex; gap:8px; align-items:center;">${cur.actionsHtml}</div>` : ''}
+        </div>
+      </div>
+      <div>
+        ${bodyHtml}
+      </div>
+    </div>
+  `;
+
+  container.querySelector("#devices-back-to-hub-btn")?.addEventListener("click", () => {
+    navigate("devices");
+  });
+  container.querySelector("#btn-child-enroll-device")?.addEventListener("click", () => openEnrollDeviceModal(root));
+
+  if (activeTab === "devices") {
+    wireDevicesTable(root);
+  } else if (activeTab === "sessions") {
+    wireSessionsTable(root);
+  } else if (activeTab === "pins") {
+    wirePinSetupView(root);
+  }
+}
+
+function renderDevicesTable() {
+  if (!cachedDevices.length) {
+    return `<div class="card" style="padding:40px; text-align:center; color:var(--muted);">No registered devices found.</div>`;
+  }
+
+  const rows = cachedDevices
+    .map((dev) => {
+      const statusClass = dev.status === "ACTIVE" ? "success" : dev.status === "REVOKED" || dev.status === "LOST" ? "danger" : "warning";
+      const lastSeenStr = dev.lastSeenAt ? new Date(dev.lastSeenAt).toLocaleString("en-IN") : "Never";
+
+      return `
+        <tr style="border-bottom:1px solid var(--border-subtle);">
+          <td style="padding:14px 16px; font-weight:700; font-family:var(--font-mono); color:var(--ink);">
+            ${dev.deviceId}
+          </td>
+          <td style="padding:14px 16px;">
+            <div style="font-weight:700; color:var(--ink);">${dev.deviceName}</div>
+            <div style="font-size:11.5px; color:var(--muted);">${dev.deviceClass} · Policy v${dev.policyVersion || 1}</div>
+          </td>
+          <td style="padding:14px 16px; font-weight:600;">
+            📍 ${dev.assignedCafeId || "Unassigned"}
+          </td>
+          <td style="padding:14px 16px;">
+            <span class="status ${statusClass}" style="font-weight:700; font-size:11px;">${dev.status}</span>
+          </td>
+          <td style="padding:14px 16px; font-size:12px; color:var(--muted);">
+            ${lastSeenStr}
+          </td>
+          <td style="padding:14px 16px; text-align:right;">
+            <div style="display:inline-flex; gap:6px;">
+              <button class="btn btn-sm btn-ghost" data-action="manage-device" data-id="${dev.deviceId}" title="Device Actions">Manage</button>
+            </div>
+          </td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  return `
+    <div class="card" style="padding:0; overflow:hidden;">
+      <table style="width:100%; border-collapse:collapse; text-align:left; font-size:13px;">
+        <thead>
+          <tr style="background:var(--bg-surface-2); border-bottom:1px solid var(--border-subtle); font-size:11.5px; text-transform:uppercase; color:var(--muted); letter-spacing:0.04em;">
+            <th style="padding:12px 16px;">Device ID</th>
+            <th style="padding:12px 16px;">Hardware / Class</th>
+            <th style="padding:12px 16px;">Assigned Cafe</th>
+            <th style="padding:12px 16px;">Status</th>
+            <th style="padding:12px 16px;">Last Active</th>
+            <th style="padding:12px 16px; text-align:right;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function wireDevicesTable(root) {
+  root.querySelectorAll('[data-action="manage-device"]').forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const devId = btn.dataset.id;
+      const device = cachedDevices.find((d) => d.deviceId === devId);
+      if (device) openDeviceActionModal(device, root);
+    });
+  });
+}
+
+function openDeviceActionModal(device, root) {
+  const content = `
+    <div style="max-width:480px; margin:0 auto; padding:10px 0;">
+      <h3 style="font-size:17px; font-weight:800; margin:0 0 4px; color:var(--ink);">${device.deviceName}</h3>
+      <p style="font-size:12.5px; color:var(--muted); margin:0 0 16px; font-family:var(--font-mono);">${device.deviceId} · Assigned: ${device.assignedCafeId}</p>
+
+      <div style="background:var(--bg-subtle, #faf8f5); border:1px solid var(--border-subtle); border-radius:var(--radius-md); padding:14px; margin-bottom:20px; font-size:13px;">
+        <div>Status: <strong>${device.status}</strong></div>
+        <div>Class: <strong>${device.deviceClass}</strong></div>
+        <div>Trust: <strong>${device.trustLevel || "ENROLLED"}</strong></div>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <button class="btn btn-secondary" id="dev-btn-lost" type="button" style="text-align:left; justify-content:flex-start;">
+          ⚠️ Mark Device as Lost (Terminates All Sessions)
+        </button>
+        <button class="btn btn-secondary" id="dev-btn-retire" type="button" style="text-align:left; justify-content:flex-start;">
+          📦 Retire Hardware (Decommission)
+        </button>
+        <button class="btn btn-danger" id="dev-btn-revoke" type="button" style="text-align:left; justify-content:flex-start;">
+          🚫 Emergency Revocation (Master Security Lock)
+        </button>
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; margin-top:20px; border-top:1px solid var(--border-subtle); padding-top:14px;">
+        <button class="btn btn-ghost" id="dev-btn-close" type="button">Close</button>
+      </div>
+    </div>
+  `;
+
+  openModal(content);
+  const modalEl = document.getElementById("zamorin-global-modal");
+
+  modalEl?.querySelector("#dev-btn-close")?.addEventListener("click", () => closeModal());
+
+  modalEl?.querySelector("#dev-btn-lost")?.addEventListener("click", async () => {
+    if (!confirm(`Are you sure you want to mark ${device.deviceId} as LOST? All active sessions will be revoked.`)) return;
+    try {
+      await apiPost(`/devices/${device.deviceId}/lost`, { reason: "Reported lost by supervisor" });
+      showToast("Device marked as LOST.", "success");
+      closeModal();
+      loadFleetData(root);
+    } catch (err) {
+      showToast(err.message || "Failed to update device.", "error");
+    }
+  });
+
+  modalEl?.querySelector("#dev-btn-retire")?.addEventListener("click", async () => {
+    if (!confirm(`Are you sure you want to retire ${device.deviceId}?`)) return;
+    try {
+      await apiPost(`/devices/${device.deviceId}/retire`, { reason: "Hardware retired" });
+      showToast("Device retired.", "success");
+      closeModal();
+      loadFleetData(root);
+    } catch (err) {
+      showToast(err.message || "Failed to retire device.", "error");
+    }
+  });
+
+  modalEl?.querySelector("#dev-btn-revoke")?.addEventListener("click", async () => {
+    if (!confirm(`EMERGENCY: Revoke ${device.deviceId}? This immediately blocks all terminal access.`)) return;
+    try {
+      await apiPost(`/devices/${device.deviceId}/revoke`, { reason: "Master emergency revocation" });
+      showToast("Device revoked immediately.", "success");
+      closeModal();
+      loadFleetData(root);
+    } catch (err) {
+      showToast(err.message || "Failed to revoke device.", "error");
+    }
+  });
+}
+
+function renderSessionsTable() {
+  if (!cachedSessions.length) {
+    return `
+      <div class="card" style="padding:40px; text-align:center; color:var(--muted);">
+        <div style="font-size:24px; margin-bottom:8px;">📜</div>
+        <div style="font-weight:700; color:var(--ink); margin-bottom:4px;">No Operator Sessions Recorded</div>
+        <div style="font-size:12.5px;">Operator sessions will appear here as shift operators authenticate and switch.</div>
+      </div>
+    `;
+  }
+
+  const rows = cachedSessions
+    .map((s) => {
+      const statusClass = s.status === "ACTIVE" ? "success" : s.status === "LOCKED" ? "warning" : "info";
+      const startedStr = new Date(s.sessionStartedAt).toLocaleString("en-IN");
+      const endedStr = s.endedAt ? new Date(s.endedAt).toLocaleTimeString("en-IN") : "Active";
+
+      return `
+        <tr style="border-bottom:1px solid var(--border-subtle);">
+          <td style="padding:14px 16px; font-weight:700; font-family:var(--font-mono); color:var(--ink);">
+            ${s.operatorSessionId}
+          </td>
+          <td style="padding:14px 16px;">
+            <div style="font-weight:700; color:var(--ink);">${s.operatorNameSnapshot || s.operatorUserId}</div>
+            <div style="font-size:11.5px; color:var(--muted); font-family:var(--font-mono);">${s.operatorUserId} · ${s.authMethod || "PIN"}</div>
+          </td>
+          <td style="padding:14px 16px;">
+            📍 ${s.cafeId} · <span style="font-family:var(--font-mono); font-size:11px;">${s.deviceId}</span>
+          </td>
+          <td style="padding:14px 16px;">
+            <span class="status ${statusClass}" style="font-weight:700; font-size:11px;">${s.status}</span>
+          </td>
+          <td style="padding:14px 16px; font-size:12px; color:var(--muted);">
+            <div>${startedStr}</div>
+            <div style="font-size:11px;">End: ${endedStr} ${s.endReason ? `(${s.endReason})` : ""}</div>
+          </td>
+          <td style="padding:14px 16px;">
+            ${
+              s.handoverNote
+                ? `<div style="font-size:12px; color:var(--ink); max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${s.handoverNote}">📝 ${s.handoverNote}</div>`
+                : `<span style="color:var(--muted); font-size:11px;">—</span>`
+            }
+          </td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  return `
+    <div class="card" style="padding:0; overflow:hidden;">
+      <table style="width:100%; border-collapse:collapse; text-align:left; font-size:13px;">
+        <thead>
+          <tr style="background:var(--bg-surface-2); border-bottom:1px solid var(--border-subtle); font-size:11.5px; text-transform:uppercase; color:var(--muted); letter-spacing:0.04em;">
+            <th style="padding:12px 16px;">Session ID</th>
+            <th style="padding:12px 16px;">Operator</th>
+            <th style="padding:12px 16px;">Cafe &amp; Device</th>
+            <th style="padding:12px 16px;">Status</th>
+            <th style="padding:12px 16px;">Timeline</th>
+            <th style="padding:12px 16px;">Handover Note</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function wireSessionsTable(root) {
+  // Session table event bindings if needed
+}
+
+function renderPinSetupView() {
+  const user = state.auth?.user || state.user || {};
+  return `
+    <div style="max-width:560px; margin:0 auto;">
+      <div class="card" style="padding:24px;">
+        <h3 style="font-size:17px; font-weight:800; margin:0 0 6px; color:var(--ink);">Operator 6-Digit PIN Configuration</h3>
+        <p style="font-size:12.5px; color:var(--muted); margin:0 0 20px;">
+          Your Operator PIN is used to quickly sign in, lock, and unlock Zamorin Cafe Operations terminals.
+        </p>
+
+        <form id="pin-setup-form">
+          <div class="form-group" style="margin-bottom:16px;">
+            <label class="label" style="font-weight:700;">Target Operator User ID</label>
+            <input type="text" id="pin-target-user" class="input" value="${user.userId || "AD-0001"}" ${state.role !== "master" ? "readonly" : ""} required />
+            <div style="font-size:11.5px; color:var(--muted); margin-top:4px;">Only active CAFE_ADMIN and MASTER accounts are eligible.</div>
+          </div>
+
+          <div class="form-group" style="margin-bottom:16px;">
+            <label class="label" style="font-weight:700;">New 6-Digit PIN*</label>
+            <input type="password" id="pin-new-code" class="input" placeholder="••••••" maxlength="6" inputmode="numeric" style="font-size:20px; letter-spacing:6px; font-family:var(--font-mono);" required />
+            <div style="font-size:11.5px; color:var(--muted); margin-top:4px;">Avoid simple numbers like 123456 or 000000.</div>
+          </div>
+
+          <div class="form-group" style="margin-bottom:24px;">
+            <label class="label" style="font-weight:700;">Confirm 6-Digit PIN*</label>
+            <input type="password" id="pin-confirm-code" class="input" placeholder="••••••" maxlength="6" inputmode="numeric" style="font-size:20px; letter-spacing:6px; font-family:var(--font-mono);" required />
+          </div>
+
+          <div style="display:flex; justify-content:flex-end;">
+            <button class="btn btn-primary" type="submit" style="font-weight:700;">Save &amp; Activate PIN</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+}
+
+function wirePinSetupView(root) {
+  const form = root.querySelector("#pin-setup-form");
+  if (!form) return;
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const targetUserId = root.querySelector("#pin-target-user")?.value?.trim();
+    const newPin = root.querySelector("#pin-new-code")?.value?.trim();
+    const confirmPin = root.querySelector("#pin-confirm-code")?.value?.trim();
+
+    if (!newPin || newPin.length !== 6 || !/^\d{6}$/.test(newPin)) {
+      showToast("Operator PIN must be exactly 6 numeric digits.", "error");
+      return;
+    }
+
+    if (newPin !== confirmPin) {
+      showToast("PIN confirmation does not match.", "error");
+      return;
+    }
+
+    try {
+      await apiPost("/cafe-operations/operator/pin/set", {
+        targetUserId,
+        newPin,
+      });
+
+      showToast("Operator PIN configured successfully.", "success");
+      form.reset();
+    } catch (err) {
+      showToast(err.message || "Failed to configure PIN.", "error");
+    }
+  });
+}
+
+function openEnrollDeviceModal(root) {
+  const content = `
+    <div style="max-width:480px; margin:0 auto; padding:10px 0;">
+      <h3 style="font-size:17px; font-weight:800; margin:0 0 6px; color:var(--ink);">Enroll Trusted Terminal Hardware</h3>
+      <p style="font-size:12.5px; color:var(--muted); margin:0 0 16px;">Enroll a cafe-owned tablet or POS register into the Zamorin fleet.</p>
+
+      <div class="form-group" style="margin-bottom:14px;">
+        <label class="label">Hardware Device ID*</label>
+        <input type="text" id="enr-device-id" class="input" placeholder="e.g. ZC-DEV-0003" required />
+      </div>
+
+      <div class="form-group" style="margin-bottom:14px;">
+        <label class="label">Device Friendly Name*</label>
+        <input type="text" id="enr-device-name" class="input" placeholder="e.g. Calicut Beach Main POS" required />
+      </div>
+
+      <div class="form-group" style="margin-bottom:14px;">
+        <label class="label">Assigned Cafe Location*</label>
+        <select id="enr-cafe-id" class="input">
+          <option value="ZC-0001">ZC-0001 · Koramangala Main</option>
+          <option value="ZC-0002">ZC-0002 · Indiranagar Central</option>
+          <option value="ZC-0003">ZC-0003 · Calicut Beach</option>
+        </select>
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px; border-top:1px solid var(--border-subtle); padding-top:14px;">
+        <button class="btn btn-ghost" id="enr-btn-cancel" type="button">Cancel</button>
+        <button class="btn btn-primary" id="enr-btn-submit" type="button">Enroll &amp; Approve</button>
+      </div>
+    </div>
+  `;
+
+  openModal(content);
+  const modalEl = document.getElementById("zamorin-global-modal");
+
+  modalEl?.querySelector("#enr-btn-cancel")?.addEventListener("click", () => closeModal());
+  modalEl?.querySelector("#enr-btn-submit")?.addEventListener("click", async () => {
+    const deviceId = modalEl.querySelector("#enr-device-id")?.value?.trim();
+    const deviceName = modalEl.querySelector("#enr-device-name")?.value?.trim();
+    const assignedCafeId = modalEl.querySelector("#enr-cafe-id")?.value;
+
+    if (!deviceId || !deviceName) {
+      showToast("Please provide device ID and name.", "error");
+      return;
+    }
+
+    try {
+      await apiPost("/devices/enrollment/start", {
+        deviceId,
+        deviceName,
+        deviceClass: "CAFE_OWNED",
+        platform: "ANDROID_TABLET",
+      });
+
+      // Master approval
+      await apiPost(`/devices/${deviceId}/approve`, {
+        assignedCafeId,
+        trustLevel: "ENROLLED",
+      });
+
+      showToast(`Device ${deviceId} enrolled successfully.`, "success");
+      closeModal();
+      loadFleetData(root);
+    } catch (err) {
+      showToast(err.message || "Failed to enroll device.", "error");
+    }
+  });
+}

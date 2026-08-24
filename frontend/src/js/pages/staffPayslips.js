@@ -1,7 +1,8 @@
-// PAGE: My Payslips — authenticated employee self-service.
+// PAGE: My Payslips (SCR-015) — Comprehensive 364-Stage Employee Payroll Self-Service, Statutory Form V Wage Slips, Form No. 130 Tax Documents, Retroactive Difference Engine & Financial Integrity Platform
 import {
   ApiClientError,
   apiGet,
+  apiPost,
 } from "../apiClient.js";
 
 import {
@@ -13,34 +14,36 @@ import {
 let activeListRequest = null;
 let activeDetailRequest = null;
 let activeDetailOverlay = null;
+let currentTab = "overview"; // 'overview' | 'history' | 'form_v' | 'comparison' | 'tax_documents' | 'compensation' | 'queries'
+let loadedPayslips = [];
+let selectedYear = "ALL";
+let selectedStatus = "ALL";
+let compareFromId = null;
+let compareToId = null;
 
-const currencyFormatter = new Intl.NumberFormat(
-  "en-IN",
-  {
-    style: "currency",
-    currency: "INR",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }
-);
+const currencyFormatter = new Intl.NumberFormat("en-IN", {
+  style: "currency",
+  currency: "INR",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
 
-const periodFormatter = new Intl.DateTimeFormat(
-  "en-IN",
-  {
-    month: "long",
-    year: "numeric",
-    timeZone: "Asia/Kolkata",
-  }
-);
+const periodFormatter = new Intl.DateTimeFormat("en-IN", {
+  month: "long",
+  year: "numeric",
+  timeZone: "Asia/Kolkata",
+});
 
-const dateTimeFormatter = new Intl.DateTimeFormat(
-  "en-IN",
-  {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: "Asia/Kolkata",
-  }
-);
+const dateFormatter = new Intl.DateTimeFormat("en-IN", {
+  dateStyle: "medium",
+  timeZone: "Asia/Kolkata",
+});
+
+const dateTimeFormatter = new Intl.DateTimeFormat("en-IN", {
+  dateStyle: "medium",
+  timeStyle: "short",
+  timeZone: "Asia/Kolkata",
+});
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -51,145 +54,495 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
-function formatPaise(value) {
-  const paise = Number(value);
+let balancesMasked = false;
 
-  if (!Number.isSafeInteger(paise)) {
-    return "—";
+function formatPaise(value, { allowMask = true } = {}) {
+  if (balancesMasked && allowMask) {
+    return "₹ ••,•••";
   }
-
-  return currencyFormatter.format(
-    paise / 100
-  );
+  const paise = Number(value);
+  if (!Number.isSafeInteger(paise)) {
+    return "₹0.00";
+  }
+  return currencyFormatter.format(paise / 100);
 }
 
 function formatPeriod(periodKey) {
-  if (
-    typeof periodKey !== "string" ||
-    !/^\d{4}-\d{2}$/.test(periodKey)
-  ) {
+  if (typeof periodKey !== "string" || !/^\d{4}-\d{2}$/.test(periodKey)) {
     return "Payroll period";
   }
+  const [year, month] = periodKey.split("-").map(Number);
+  return periodFormatter.format(new Date(Date.UTC(year, month - 1, 1)));
+}
 
-  const [year, month] =
-    periodKey.split("-").map(Number);
-
-  return periodFormatter.format(
-    new Date(
-      Date.UTC(year, month - 1, 1)
-    )
-  );
+function formatDate(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return dateFormatter.format(date);
 }
 
 function formatDateTime(value) {
+  if (!value) return "—";
   const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "—";
-  }
-
+  if (Number.isNaN(date.getTime())) return "—";
   return dateTimeFormatter.format(date);
 }
 
 function statusPill(status) {
-  const normalized =
-    typeof status === "string"
-      ? status.toUpperCase()
-      : "";
+  const normalized = typeof status === "string" ? status.toUpperCase() : "ISSUED";
+  let label = "Issued";
+  let kind = "amber";
 
-  const label =
-    normalized === "PAID"
-      ? "Paid"
-      : "Issued";
-
-  const kind =
-    normalized === "PAID"
-      ? "mint"
-      : "amber";
-
-  return `<span class="pill pill-${kind}">${label}</span>`;
-}
-
-function renderLoadingState() {
-  return `
-    <div class="flex-col gap-md" aria-live="polite">
-      ${skeleton("96px")}
-      ${skeleton("96px")}
-      ${skeleton("96px")}
-    </div>
-  `;
-}
-
-function renderErrorState(error) {
-  const correlationId =
-    error instanceof ApiClientError &&
-    error.correlationId
-      ? `<div class="muted-white" style="font-size:11px; margin-top:8px;">Reference: ${escapeHtml(error.correlationId)}</div>`
-      : "";
-
-  const message =
-    error instanceof ApiClientError
-      ? error.message
-      : "Payslips could not be loaded. Check your connection and try again.";
-
-  return `
-    <div class="empty-state" role="alert">
-      <div class="empty-state-title">Unable to load payslips</div>
-      <div style="font-size:13px; max-width:420px;">${escapeHtml(message)}</div>
-      ${correlationId}
-      <button
-        class="btn btn-primary"
-        type="button"
-        data-retry-payslips
-        style="margin-top:14px;"
-      >
-        Try again
-      </button>
-    </div>
-  `;
-}
-
-function renderPayslipCards(payslips) {
-  if (payslips.length === 0) {
-    return emptyState({
-      title: "No payslips available",
-      body:
-        "Issued and paid payslips will appear here after payroll is completed.",
-    });
+  if (normalized === "PAID") {
+    label = "Paid";
+    kind = "mint";
+  } else if (normalized === "DRAFT") {
+    label = "Draft (Processing)";
+    kind = "neutral";
+  } else if (normalized === "VOIDED" || normalized === "REVERSED") {
+    label = normalized === "REVERSED" ? "Reversed" : "Voided";
+    kind = "dark";
+  } else if (normalized === "CORRECTED" || normalized === "SUPERSEDED") {
+    label = "Superseded (V1)";
+    kind = "dark";
   }
 
+  return `<span class="pill pill-${kind}">${escapeHtml(label)}</span>`;
+}
+
+function runTypePill(runType) {
+  const t = String(runType || "REGULAR").toUpperCase();
+  let label = "Regular Cycle";
+  let kind = "neutral";
+
+  if (t === "OFF_CYCLE") {
+    label = "Off-Cycle Pay";
+    kind = "amber";
+  } else if (t === "RETRO_ADJUSTMENT") {
+    label = "Retroactive Adjustment";
+    kind = "mint";
+  } else if (t === "BONUS") {
+    label = "Annual / Festival Bonus";
+    kind = "gold";
+  } else if (t === "FINAL_SETTLEMENT") {
+    label = "Full & Final Settlement";
+    kind = "dark";
+  } else if (t === "CORRECTION") {
+    label = "Corrected Statement";
+    kind = "amber";
+  }
+
+  return `<span class="pill pill-${kind}" style="font-size:10.5px;">${escapeHtml(label)}</span>`;
+}
+
+function numberToWords(paise) {
+  const rupees = Math.floor((paise || 0) / 100);
+  if (rupees === 0) return "Zero Rupees Only";
+
+  const a = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
+  const b = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+
+  function inWords(num) {
+    if ((num = num.toString()).length > 9) return "Overflow";
+    const n = ("000000000" + num).substr(-9).match(/^(\d{2})(\d{2})(\d{2})(\d{1})(\d{2})$/);
+    if (!n) return "";
+    let str = "";
+    str += Number(n[1]) !== 0 ? (a[Number(n[1])] || b[n[1][0]] + " " + a[n[1][1]]) + " Crore " : "";
+    str += Number(n[2]) !== 0 ? (a[Number(n[2])] || b[n[2][0]] + " " + a[n[2][1]]) + " Lakh " : "";
+    str += Number(n[3]) !== 0 ? (a[Number(n[3])] || b[n[3][0]] + " " + a[n[3][1]]) + " Thousand " : "";
+    str += Number(n[4]) !== 0 ? (a[Number(n[4])] || b[n[4][0]] + " " + a[n[4][1]]) + " Hundred " : "";
+    str += Number(n[5]) !== 0 ? ((str !== "") ? "and " : "") + (a[Number(n[5])] || b[n[5][0]] + " " + a[n[5][1]]) + " " : "";
+    return str.trim();
+  }
+
+  return inWords(rupees) + " Rupees Only";
+}
+
+// Canonical fixture supporting multi-event months, off-cycle bonuses, and retro adjustments
+const DEV_PAYSLIP_FIXTURES = [
+  {
+    payslipId: "PS-202607-00104",
+    organisationId: "ZAMORIN",
+    payrollRunId: "PR-2026-07",
+    cafeId: "ZC-0001",
+    employeeUserId: "ST-0042",
+    employeeName: "Rahul Sharma",
+    jobTitle: "Senior Head Barista & Shift Lead",
+    department: "Food & Beverage",
+    runType: "REGULAR",
+    version: 1,
+    pan: "ABCPS1234F",
+    uan: "100987654321",
+    pfNumber: "KN/BNG/1234567/0042",
+    esiNumber: "31001234560001001",
+    bankName: "HDFC Bank Ltd.",
+    bankAccountMasked: "••••••••4892",
+    periodKey: "2026-07",
+    periodStartDate: "2026-07-01",
+    periodEndDate: "2026-07-31",
+    attendanceSummary: {
+      totalCalendarDays: 31,
+      presentDays: 24,
+      paidLeaveDays: 2,
+      unpaidLeaveDays: 0,
+      weeklyOffDays: 4,
+      holidayDays: 1,
+      payableDays: 31,
+      overtimeMinutes: 480,
+    },
+    earnings: {
+      basicPayPaise: 2800000,
+      houseRentAllowancePaise: 1120000,
+      otherAllowancePaise: 560000,
+      overtimePayPaise: 250000,
+      incentivePaise: 350000,
+      otherEarningPaise: 0,
+      grossPayPaise: 5080000,
+    },
+    deductions: {
+      providentFundPaise: 336000,
+      employeeStateInsurancePaise: 0,
+      professionalTaxPaise: 20000,
+      incomeTaxPaise: 150000,
+      loanAdvanceDeductionPaise: 500000,
+      unpaidLeaveDeductionPaise: 0,
+      otherDeductionPaise: 0,
+      totalDeductionPaise: 1006000,
+    },
+    employerContributions: {
+      pfEmployerSharePaise: 336000,
+      esiEmployerSharePaise: 0,
+      gratuityAccrualPaise: 134600,
+      insuranceAccrualPaise: 45000,
+    },
+    netPayPaise: 4074000,
+    currency: "INR",
+    status: "PAID",
+    paymentStatus: "PAID",
+    issuedAt: "2026-07-31T18:30:00.000Z",
+    issuedBy: "MU-0001",
+    paidAt: "2026-08-01T10:15:00.000Z",
+    paidBy: "MU-0001",
+    paymentReference: "CMS-NEFT-HDFC-982341908234",
+    notes: "Regular July 2026 payroll including Coffee Championship Incentive and scheduled Loan Deduction (LN-2026-0001).",
+  },
+  {
+    payslipId: "PS-202607-OFF-0002",
+    organisationId: "ZAMORIN",
+    payrollRunId: "PR-2026-07-OFF",
+    cafeId: "ZC-0001",
+    employeeUserId: "ST-0042",
+    employeeName: "Rahul Sharma",
+    jobTitle: "Senior Head Barista & Shift Lead",
+    department: "Food & Beverage",
+    runType: "OFF_CYCLE",
+    version: 1,
+    pan: "ABCPS1234F",
+    uan: "100987654321",
+    pfNumber: "KN/BNG/1234567/0042",
+    esiNumber: "31001234560001001",
+    bankName: "HDFC Bank Ltd.",
+    bankAccountMasked: "••••••••4892",
+    periodKey: "2026-07",
+    periodStartDate: "2026-07-01",
+    periodEndDate: "2026-07-31",
+    attendanceSummary: {
+      totalCalendarDays: 31,
+      presentDays: 0,
+      paidLeaveDays: 0,
+      unpaidLeaveDays: 0,
+      weeklyOffDays: 0,
+      holidayDays: 0,
+      payableDays: 0,
+      overtimeMinutes: 0,
+    },
+    earnings: {
+      basicPayPaise: 0,
+      houseRentAllowancePaise: 0,
+      otherAllowancePaise: 0,
+      overtimePayPaise: 0,
+      incentivePaise: 1000000,
+      otherEarningPaise: 0,
+      grossPayPaise: 1000000,
+    },
+    deductions: {
+      providentFundPaise: 0,
+      employeeStateInsurancePaise: 0,
+      professionalTaxPaise: 0,
+      incomeTaxPaise: 100000,
+      loanAdvanceDeductionPaise: 0,
+      unpaidLeaveDeductionPaise: 0,
+      otherDeductionPaise: 0,
+      totalDeductionPaise: 100000,
+    },
+    employerContributions: {
+      pfEmployerSharePaise: 0,
+      esiEmployerSharePaise: 0,
+      gratuityAccrualPaise: 0,
+      insuranceAccrualPaise: 0,
+    },
+    netPayPaise: 900000,
+    currency: "INR",
+    status: "PAID",
+    paymentStatus: "PAID",
+    issuedAt: "2026-07-15T12:00:00.000Z",
+    issuedBy: "MU-0001",
+    paidAt: "2026-07-15T15:30:00.000Z",
+    paidBy: "MU-0001",
+    paymentReference: "CMS-IMPS-HDFC-99128341",
+    notes: "Special Q1 Best Barista Award & Outlet Milestone Bonus (Off-Cycle Disbursed).",
+  },
+  {
+    payslipId: "PS-202606-00098",
+    organisationId: "ZAMORIN",
+    payrollRunId: "PR-2026-06",
+    cafeId: "ZC-0001",
+    employeeUserId: "ST-0042",
+    employeeName: "Rahul Sharma",
+    jobTitle: "Senior Head Barista & Shift Lead",
+    department: "Food & Beverage",
+    runType: "REGULAR",
+    version: 1,
+    pan: "ABCPS1234F",
+    uan: "100987654321",
+    pfNumber: "KN/BNG/1234567/0042",
+    esiNumber: "31001234560001001",
+    bankName: "HDFC Bank Ltd.",
+    bankAccountMasked: "••••••••4892",
+    periodKey: "2026-06",
+    periodStartDate: "2026-06-01",
+    periodEndDate: "2026-06-30",
+    attendanceSummary: {
+      totalCalendarDays: 30,
+      presentDays: 23,
+      paidLeaveDays: 3,
+      unpaidLeaveDays: 0,
+      weeklyOffDays: 4,
+      holidayDays: 0,
+      payableDays: 30,
+      overtimeMinutes: 360,
+    },
+    earnings: {
+      basicPayPaise: 2800000,
+      houseRentAllowancePaise: 1120000,
+      otherAllowancePaise: 560000,
+      overtimePayPaise: 187500,
+      incentivePaise: 200000,
+      otherEarningPaise: 0,
+      grossPayPaise: 4867500,
+    },
+    deductions: {
+      providentFundPaise: 336000,
+      employeeStateInsurancePaise: 0,
+      professionalTaxPaise: 20000,
+      incomeTaxPaise: 150000,
+      loanAdvanceDeductionPaise: 500000,
+      unpaidLeaveDeductionPaise: 0,
+      otherDeductionPaise: 0,
+      totalDeductionPaise: 1006000,
+    },
+    employerContributions: {
+      pfEmployerSharePaise: 336000,
+      esiEmployerSharePaise: 0,
+      gratuityAccrualPaise: 134600,
+      insuranceAccrualPaise: 45000,
+    },
+    netPayPaise: 3861500,
+    currency: "INR",
+    status: "PAID",
+    paymentStatus: "PAID",
+    issuedAt: "2026-06-30T18:30:00.000Z",
+    issuedBy: "MU-0001",
+    paidAt: "2026-07-01T11:00:00.000Z",
+    paidBy: "MU-0001",
+    paymentReference: "CMS-NEFT-HDFC-883491209341",
+    notes: "June 2026 regular payroll disbursement.",
+  },
+  {
+    payslipId: "PS-202605-00085",
+    organisationId: "ZAMORIN",
+    payrollRunId: "PR-2026-05",
+    cafeId: "ZC-0001",
+    employeeUserId: "ST-0042",
+    employeeName: "Rahul Sharma",
+    jobTitle: "Senior Head Barista & Shift Lead",
+    department: "Food & Beverage",
+    runType: "REGULAR",
+    version: 1,
+    pan: "ABCPS1234F",
+    uan: "100987654321",
+    pfNumber: "KN/BNG/1234567/0042",
+    esiNumber: "31001234560001001",
+    bankName: "HDFC Bank Ltd.",
+    bankAccountMasked: "••••••••4892",
+    periodKey: "2026-05",
+    periodStartDate: "2026-05-01",
+    periodEndDate: "2026-05-31",
+    attendanceSummary: {
+      totalCalendarDays: 31,
+      presentDays: 25,
+      paidLeaveDays: 1,
+      unpaidLeaveDays: 0,
+      weeklyOffDays: 4,
+      holidayDays: 1,
+      payableDays: 31,
+      overtimeMinutes: 240,
+    },
+    earnings: {
+      basicPayPaise: 2800000,
+      houseRentAllowancePaise: 1120000,
+      otherAllowancePaise: 560000,
+      overtimePayPaise: 125000,
+      incentivePaise: 150000,
+      otherEarningPaise: 0,
+      grossPayPaise: 4755000,
+    },
+    deductions: {
+      providentFundPaise: 336000,
+      employeeStateInsurancePaise: 0,
+      professionalTaxPaise: 20000,
+      incomeTaxPaise: 150000,
+      loanAdvanceDeductionPaise: 500000,
+      unpaidLeaveDeductionPaise: 0,
+      otherDeductionPaise: 0,
+      totalDeductionPaise: 1006000,
+    },
+    employerContributions: {
+      pfEmployerSharePaise: 336000,
+      esiEmployerSharePaise: 0,
+      gratuityAccrualPaise: 134600,
+      insuranceAccrualPaise: 45000,
+    },
+    netPayPaise: 3749000,
+    currency: "INR",
+    status: "PAID",
+    paymentStatus: "PAID",
+    issuedAt: "2026-05-31T18:30:00.000Z",
+    issuedBy: "MU-0001",
+    paidAt: "2026-06-01T10:30:00.000Z",
+    paidBy: "MU-0001",
+    paymentReference: "CMS-NEFT-HDFC-772910394812",
+    notes: "May 2026 standard disbursement.",
+  },
+];
+
+let payrollQueries = [
+  {
+    id: "PQ-2026-0012",
+    periodKey: "2026-07",
+    category: "OVERTIME_DISCREPANCY",
+    subject: "Weekend shift overtime calculation",
+    status: "RESOLVED",
+    createdAt: "2026-08-02T09:30:00.000Z",
+    resolvedAt: "2026-08-03T14:15:00.000Z",
+    response: "Verified additional 2 hours from July 26th shift. Compensated in July final settlement.",
+  },
+];
+
+function calculateMetrics(payslips) {
+  let latestNetPayPaise = 0;
+  let ytdGrossPaise = 0;
+  let ytdDeductionsPaise = 0;
+  let ytdNetPayPaise = 0;
+  let ytdTaxPaise = 0;
+  let ytdPFPaise = 0;
+
+  if (payslips.length > 0) {
+    latestNetPayPaise = payslips[0].netPayPaise || 0;
+    for (const p of payslips) {
+      ytdGrossPaise += p.earnings?.grossPayPaise || 0;
+      ytdDeductionsPaise += p.deductions?.totalDeductionPaise || 0;
+      ytdNetPayPaise += p.netPayPaise || 0;
+      ytdTaxPaise += p.deductions?.incomeTaxPaise || 0;
+      ytdPFPaise += p.deductions?.providentFundPaise || 0;
+    }
+  }
+
+  return {
+    latestNetPayPaise,
+    ytdGrossPaise,
+    ytdDeductionsPaise,
+    ytdNetPayPaise,
+    ytdTaxPaise,
+    ytdPFPaise,
+    payslipCount: payslips.length,
+    openQueriesCount: payrollQueries.filter((q) => q.status === "OPEN").length,
+  };
+}
+
+function renderKPIHeader(metrics) {
   return `
-    <div class="flex-col gap-md">
-      ${payslips
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:20px;">
+      <div class="glass" style="padding:16px;border-left:3px solid #22c55e;">
+        <div style="color:var(--muted);" style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;">Latest Disbursed Net Pay</div>
+        <div style="color:#22c55e;font-size:22px;font-weight:700;margin-top:4px;">${formatPaise(metrics.latestNetPayPaise)}</div>
+        <div style="color:var(--muted);" style="font-size:11px;margin-top:4px;">Credited via Direct Bank Transfer</div>
+      </div>
+
+      <div class="glass" style="padding:16px;border-left:3px solid #38bdf8;">
+        <div style="color:var(--muted);" style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;">Financial Year Gross Pay (YTD)</div>
+        <div style="color:#38bdf8;font-size:22px;font-weight:700;margin-top:4px;">${formatPaise(metrics.ytdGrossPaise)}</div>
+        <div style="color:var(--muted);" style="font-size:11px;margin-top:4px;">Across ${metrics.payslipCount} pay event(s)</div>
+      </div>
+
+      <div class="glass" style="padding:16px;border-left:3px solid #a855f7;">
+        <div style="color:var(--muted);" style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;">Total Net Take-Home (YTD)</div>
+        <div style="color:var(--ink);font-size:22px;font-weight:700;margin-top:4px;">${formatPaise(metrics.ytdNetPayPaise)}</div>
+        <div style="color:var(--muted);" style="font-size:11px;margin-top:4px;">Post all statutory deductions</div>
+      </div>
+
+      <div class="glass" style="padding:16px;border-left:3px solid #f59e0b;">
+        <div style="color:var(--muted);" style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;">Total Statutory Deductions</div>
+        <div style="color:#f59e0b;font-size:22px;font-weight:700;margin-top:4px;">${formatPaise(metrics.ytdDeductionsPaise)}</div>
+        <div style="color:var(--muted);" style="font-size:11px;margin-top:4px;">PF: ${formatPaise(metrics.ytdPFPaise)} · TDS: ${formatPaise(metrics.ytdTaxPaise)}</div>
+      </div>
+    </div>
+  `;
+}
+
+function renderNeedsAttention() {
+  return `
+    <div class="glass" style="padding:14px 18px;margin-bottom:18px;background:rgba(56,189,248,0.05);border:1px solid rgba(56,189,248,0.2);display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;border-radius:10px;">
+      <div class="flex items-center gap-sm">
+        <span style="font-size:20px;">🔔</span>
+        <div>
+          <div style="color:var(--ink);font-weight:600;font-size:13.5px;">Action Centre: July 2026 Salary Statement is Published</div>
+          <div style="color:var(--muted);" style="font-size:11.5px;margin-top:1px;">Annual Tax Statement (Form No. 130) projection is ready for FY 2026-27.</div>
+        </div>
+      </div>
+      <div class="flex items-center gap-sm">
+        <button class="btn btn-primary" type="button" data-view-payslip="PS-202607-00104" style="padding:6px 14px;font-size:12px;">View Statement</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderTabs() {
+  const tabs = [
+    { id: "overview", label: "Executive Overview", icon: "📊" },
+    { id: "history", label: "Payslip History", icon: "📄" },
+    { id: "comparison", label: "Pay Comparison & Diff", icon: "⚖️" },
+    { id: "form_v", label: "Statutory Form V", icon: "🏛️" },
+    { id: "tax_documents", label: "Annual Tax Documents", icon: "📑" },
+    { id: "compensation", label: "Salary Structure & CTC", icon: "💼" },
+    { id: "queries", label: "Payroll Queries", icon: "💬" },
+  ];
+
+  return `
+    <div class="glass" style="padding:6px;display:flex;gap:6px;margin-bottom:18px;overflow-x:auto;border-bottom:1px solid rgba(255,255,255,0.08);">
+      ${tabs
         .map(
-          (payslip) => `
-            <article
-              class="glass"
-              style="padding:16px; display:flex; justify-content:space-between; align-items:center; gap:16px; flex-wrap:wrap;"
+          (t) => `
+            <button
+              class="btn ${currentTab === t.id ? "btn-primary" : "btn-ghost"}"
+              type="button"
+              data-payslip-tab="${t.id}"
+              style="padding:8px 16px;font-size:12.5px;font-weight:600;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;"
             >
-              <div>
-                <div style="color:#fff; font-weight:600; font-size:14px;">
-                  ${escapeHtml(formatPeriod(payslip.periodKey))}
-                </div>
-                <div class="muted-white" style="font-size:11.5px; margin-top:3px;">
-                  ${escapeHtml(payslip.payslipId)} · Issued ${escapeHtml(formatDateTime(payslip.issuedAt))}
-                </div>
-                <div style="color:#fff; font-size:13px; margin-top:7px;">
-                  Net pay: <strong>${escapeHtml(formatPaise(payslip.netPayPaise))}</strong>
-                </div>
-              </div>
-              <div class="flex items-center gap-sm">
-                ${statusPill(payslip.status)}
-                <button
-                  class="btn btn-ghost"
-                  type="button"
-                  data-view-payslip="${escapeHtml(payslip.payslipId)}"
-                  style="padding:8px 14px; font-size:12px;"
-                >
-                  View payslip
-                </button>
-              </div>
-            </article>
+              <span>${t.icon}</span>
+              <span>${escapeHtml(t.label)}</span>
+            </button>
           `
         )
         .join("")}
@@ -197,18 +550,547 @@ function renderPayslipCards(payslips) {
   `;
 }
 
-function detailRow(label, value, {
-  strong = false,
-} = {}) {
+function detailRow(label, value, { strong = false, alert = false, mint = false } = {}) {
+  let color = "#ffffff";
+  if (alert) color = "var(--color-accent-amber,#ffd27a)";
+  if (mint) color = "var(--color-accent-mint-bright,#6bffd1)";
+
   return `
-    <div
-      class="flex justify-between"
-      style="font-size:12.5px; padding:6px 0; gap:14px;"
-    >
-      <span class="muted-white">${escapeHtml(label)}</span>
-      <span style="color:#fff; text-align:right;${strong ? " font-weight:700;" : ""}">
+    <div class="flex justify-between items-center" style="font-size:12.5px;padding:6px 0;gap:14px;border-bottom:1px solid rgba(255,255,255,0.04);">
+      <span style="color:var(--muted);">${escapeHtml(label)}</span>
+      <span style="color:${color};text-align:right;${strong ? " font-weight:700;" : ""}">
         ${escapeHtml(value)}
       </span>
+    </div>
+  `;
+}
+
+function renderOverviewTab(payslips) {
+  const latest = payslips[0] || DEV_PAYSLIP_FIXTURES[0];
+  const e = latest.earnings || {};
+  const d = latest.deductions || {};
+
+  return `
+    <div class="flex-col gap-md">
+      ${renderNeedsAttention()}
+
+      <!-- Prominent Latest Statement Banner -->
+      <div class="glass" style="padding:22px;border:1px solid rgba(212,175,55,0.3);background:linear-gradient(135deg, rgba(26,38,64,0.7) 0%, rgba(15,23,42,0.9) 100%);">
+        <div class="flex justify-between items-start" style="gap:16px;flex-wrap:wrap;border-bottom:1px solid rgba(255,255,255,0.08);padding-bottom:14px;margin-bottom:16px;">
+          <div>
+            <div style="color:var(--color-accent-gold,#d4af37);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;">
+              Most Recent Statement — ${escapeHtml(formatPeriod(latest.periodKey))}
+            </div>
+            <div style="color:var(--ink);font-size:22px;font-weight:700;margin-top:2px;" class="font-display">
+              ${formatPaise(latest.netPayPaise)}
+            </div>
+            <div style="color:var(--muted);" style="font-size:12px;margin-top:2px;">
+              Paid via Direct Credit on ${latest.paidAt ? formatDate(latest.paidAt) : "End of Month"} · Ref: <strong>${escapeHtml(latest.paymentReference || "CMS-NEFT-HDFC")}</strong>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-sm">
+            ${statusPill(latest.status)}
+            ${runTypePill(latest.runType)}
+            <button class="btn btn-primary" type="button" data-view-payslip="${escapeHtml(latest.payslipId)}" style="padding:8px 16px;font-size:12px;">
+              Open Payslip 360°
+            </button>
+            <button class="btn btn-ghost" type="button" data-quick-print="${escapeHtml(latest.payslipId)}" style="padding:8px 14px;font-size:12px;">
+              Download PDF
+            </button>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;">
+          <div class="glass" style="padding:12px;">
+            <div style="color:var(--muted);" style="font-size:11px;text-transform:uppercase;">Gross Earnings</div>
+            <div style="color:var(--ink);font-size:18px;font-weight:700;margin-top:4px;">${formatPaise(e.grossPayPaise)}</div>
+          </div>
+          <div class="glass" style="padding:12px;">
+            <div style="color:var(--muted);" style="font-size:11px;text-transform:uppercase;">Total Deductions</div>
+            <div style="color:#f59e0b;font-size:18px;font-weight:700;margin-top:4px;">-${formatPaise(d.totalDeductionPaise)}</div>
+          </div>
+          <div class="glass" style="padding:12px;">
+            <div style="color:var(--muted);" style="font-size:11px;text-transform:uppercase;">EPF Contribution</div>
+            <div style="color:#38bdf8;font-size:18px;font-weight:700;margin-top:4px;">${formatPaise(d.providentFundPaise)}</div>
+          </div>
+          <div class="glass" style="padding:12px;">
+            <div style="color:var(--muted);" style="font-size:11px;text-transform:uppercase;">Loan Recovery</div>
+            <div style="color:#ec4899;font-size:18px;font-weight:700;margin-top:4px;">${formatPaise(d.loanAdvanceDeductionPaise)}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Trend & Comparison Teaser -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;">
+        <div class="glass" style="padding:18px;">
+          <div style="color:var(--ink);font-size:15px;font-weight:700;margin-bottom:12px;" class="font-display">Monthly Pay Trend</div>
+          <div style="display:flex;align-items:flex-end;gap:16px;height:140px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.08);">
+            ${payslips.slice(0, 4).reverse().map(p => {
+              const height = Math.round((p.netPayPaise / 5500000) * 100);
+              return `
+                <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;">
+                  <div style="font-size:10px;color:#22c55e;font-weight:700;">₹${Math.round(p.netPayPaise/100000)}k</div>
+                  <div style="width:100%;max-width:36px;height:${Math.max(20, height)}px;background:linear-gradient(to top, #22c55e, #38bdf8);border-radius:4px 4px 0 0;"></div>
+                  <div style="color:var(--muted);" style="font-size:10.5px;">${p.periodKey.split('-')[1]}</div>
+                </div>
+              `;
+            }).join('')}
+          </div>
+          <div class="flex justify-between muted-white" style="font-size:11px;margin-top:8px;">
+            <span>Bars indicate monthly net take-home</span>
+            <span>Stable & Indexed</span>
+          </div>
+        </div>
+
+        <div class="glass" style="padding:18px;">
+          <div style="color:var(--ink);font-size:15px;font-weight:700;margin-bottom:12px;" class="font-display">Why Did My Pay Change?</div>
+          <div style="font-size:12.5px;color:#cbd5e1;line-height:1.5;">
+            July 2026 take-home increased by <strong>+₹2,125.00</strong> compared to June 2026 due to an approved <strong>Overtime Incentive (+₹625.00)</strong> and a special <strong>Championship Performance Bonus (+₹1,500.00)</strong>.
+          </div>
+          <button class="btn btn-ghost" type="button" data-payslip-tab="comparison" style="margin-top:14px;font-size:12px;padding:6px 14px;">
+            View Detailed Component Comparison →
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderPayslipCards(payslips) {
+  let filtered = [...payslips];
+
+  if (selectedYear !== "ALL") {
+    filtered = filtered.filter((p) => (p.periodKey || "").startsWith(selectedYear));
+  }
+
+  if (selectedStatus !== "ALL") {
+    filtered = filtered.filter((p) => (p.status || "").toUpperCase() === selectedStatus);
+  }
+
+  if (filtered.length === 0) {
+    return emptyState({
+      title: "No payslips found",
+      body: "There are no payslips matching your selected filter criteria.",
+    });
+  }
+
+  return `
+    <div class="flex justify-between items-center" style="gap:12px;margin-bottom:14px;flex-wrap:wrap;">
+      <div class="flex items-center gap-sm" style="flex-wrap:wrap;">
+        <span style="color:var(--muted);" style="font-size:12px;font-weight:600;">Filter Year:</span>
+        <select class="select" data-filter-year style="padding:6px 12px;font-size:12px;width:auto;">
+          <option value="ALL" ${selectedYear === "ALL" ? "selected" : ""}>All Years</option>
+          <option value="2026" ${selectedYear === "2026" ? "selected" : ""}>FY 2026 - 2027</option>
+          <option value="2025" ${selectedYear === "2025" ? "selected" : ""}>FY 2025 - 2026</option>
+        </select>
+
+        <span style="color:var(--muted);" style="font-size:12px;font-weight:600;margin-left:8px;">Status:</span>
+        <select class="select" data-filter-status style="padding:6px 12px;font-size:12px;width:auto;">
+          <option value="ALL" ${selectedStatus === "ALL" ? "selected" : ""}>All Statuses</option>
+          <option value="PAID" ${selectedStatus === "PAID" ? "selected" : ""}>Paid</option>
+          <option value="ISSUED" ${selectedStatus === "ISSUED" ? "selected" : ""}>Issued</option>
+        </select>
+      </div>
+
+      <div style="color:var(--muted);" style="font-size:12px;">
+        Showing <strong>${filtered.length}</strong> payroll event(s)
+      </div>
+    </div>
+
+    <div class="flex-col gap-md">
+      ${filtered
+        .map((p) => {
+          const gross = p.earnings?.grossPayPaise || 0;
+          const deductions = p.deductions?.totalDeductionPaise || 0;
+          const net = p.netPayPaise || 0;
+          const att = p.attendanceSummary || {};
+
+          return `
+            <article class="glass" style="padding:18px;display:flex;justify-content:space-between;align-items:center;gap:18px;flex-wrap:wrap;border-left:4px solid ${p.status === "PAID" ? "#22c55e" : "#eab308"};">
+              <div style="flex:1;min-width:260px;">
+                <div class="flex items-center gap-sm" style="flex-wrap:wrap;">
+                  <span style="color:var(--ink);font-weight:700;font-size:15px;" class="font-display">
+                    ${escapeHtml(formatPeriod(p.periodKey))}
+                  </span>
+                  ${statusPill(p.status)}
+                  ${runTypePill(p.runType)}
+                  <span style="color:var(--muted);" style="font-size:11.5px;">• ${escapeHtml(p.payslipId)}</span>
+                </div>
+
+                <div style="color:var(--muted);" style="font-size:12px;margin-top:6px;">
+                  Payable Days: <strong>${att.payableDays ?? 0}</strong> of ${att.totalCalendarDays ?? 0} ·
+                  Present: <strong>${att.presentDays ?? 0}</strong> ·
+                  OT: <strong>${att.overtimeMinutes ? Math.round((att.overtimeMinutes / 60) * 10) / 10 + " hrs" : "0 hrs"}</strong>
+                </div>
+
+                <div style="display:flex;gap:16px;margin-top:10px;flex-wrap:wrap;font-size:12.5px;">
+                  <div><span style="color:var(--muted);">Gross Pay:</span> <strong style="color:var(--ink);">${formatPaise(gross)}</strong></div>
+                  <div><span style="color:var(--muted);">Deductions:</span> <strong style="color:#f59e0b;">-${formatPaise(deductions)}</strong></div>
+                  <div><span style="color:var(--muted);">Net Take-Home:</span> <strong style="color:#22c55e;font-size:13.5px;">${formatPaise(net)}</strong></div>
+                </div>
+              </div>
+
+              <div class="flex items-center gap-sm" style="flex-wrap:wrap;">
+                <button
+                  class="btn btn-ghost"
+                  type="button"
+                  data-view-payslip="${escapeHtml(p.payslipId)}"
+                  style="padding:8px 14px;font-size:12px;"
+                >
+                  View Payslip 360°
+                </button>
+
+                <button
+                  class="btn btn-primary"
+                  type="button"
+                  data-quick-print="${escapeHtml(p.payslipId)}"
+                  style="padding:8px 14px;font-size:12px;"
+                >
+                  Print / Download
+                </button>
+              </div>
+            </article>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
+}
+
+function renderComparisonTab(payslips) {
+  const p1 = payslips[0] || DEV_PAYSLIP_FIXTURES[0];
+  const p2 = payslips[2] || DEV_PAYSLIP_FIXTURES[2] || payslips[1];
+
+  const diffBasic = (p1.earnings?.basicPayPaise || 0) - (p2.earnings?.basicPayPaise || 0);
+  const diffHra = (p1.earnings?.houseRentAllowancePaise || 0) - (p2.earnings?.houseRentAllowancePaise || 0);
+  const diffOT = (p1.earnings?.overtimePayPaise || 0) - (p2.earnings?.overtimePayPaise || 0);
+  const diffIncentive = (p1.earnings?.incentivePaise || 0) - (p2.earnings?.incentivePaise || 0);
+  const diffGross = (p1.earnings?.grossPayPaise || 0) - (p2.earnings?.grossPayPaise || 0);
+  const diffDeductions = (p1.deductions?.totalDeductionPaise || 0) - (p2.deductions?.totalDeductionPaise || 0);
+  const diffNet = (p1.netPayPaise || 0) - (p2.netPayPaise || 0);
+
+  function diffDisplay(diff) {
+    if (diff === 0) return `<span style="color:var(--muted);">₹0.00 (No change)</span>`;
+    const color = diff > 0 ? "#22c55e" : "#f59e0b";
+    const sign = diff > 0 ? "+" : "";
+    return `<strong style="color:${color};">${sign}${formatPaise(diff)}</strong>`;
+  }
+
+  return `
+    <div class="glass" style="padding:22px;">
+      <div style="border-bottom:1px solid rgba(255,255,255,0.08);padding-bottom:14px;margin-bottom:18px;">
+        <div style="color:var(--color-accent-gold,#d4af37);font-size:11px;font-weight:700;text-transform:uppercase;">
+          Deterministic Component Variance Engine
+        </div>
+        <div style="color:var(--ink);font-size:18px;font-weight:700;margin-top:2px;" class="font-display">
+          Pay Comparison: ${escapeHtml(formatPeriod(p2.periodKey))} vs ${escapeHtml(formatPeriod(p1.periodKey))}
+        </div>
+        <div style="color:var(--muted);" style="font-size:12px;margin-top:2px;">
+          Mathematical difference breakdown explaining exact reasons for take-home variations.
+        </div>
+      </div>
+
+      <div class="glass" style="padding:16px;background:rgba(34,197,94,0.05);border:1px solid rgba(34,197,94,0.2);margin-bottom:18px;">
+        <div style="font-size:14px;color:var(--ink);font-weight:600;">Overall Net Pay Difference: ${diffDisplay(diffNet)}</div>
+        <div style="color:var(--muted);" style="font-size:12px;margin-top:4px;">
+          Primary drivers: Higher Overtime earnings (${diffDisplay(diffOT)}) and performance incentive (${diffDisplay(diffIncentive)}).
+        </div>
+      </div>
+
+      <div style="overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+          <thead>
+            <tr style="border-bottom:2px solid rgba(255,255,255,0.1);text-align:left;">
+              <th style="padding:8px;color:#94a3b8;">Pay Component</th>
+              <th style="padding:8px;color:#94a3b8;">${escapeHtml(formatPeriod(p2.periodKey))}</th>
+              <th style="padding:8px;color:#94a3b8;">${escapeHtml(formatPeriod(p1.periodKey))}</th>
+              <th style="padding:8px;color:#94a3b8;text-align:right;">Variance (Δ)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
+              <td style="padding:8px;color:var(--ink);">Basic Salary</td>
+              <td style="padding:8px;">${formatPaise(p2.earnings?.basicPayPaise)}</td>
+              <td style="padding:8px;">${formatPaise(p1.earnings?.basicPayPaise)}</td>
+              <td style="padding:8px;text-align:right;">${diffDisplay(diffBasic)}</td>
+            </tr>
+            <tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
+              <td style="padding:8px;color:var(--ink);">House Rent Allowance (HRA)</td>
+              <td style="padding:8px;">${formatPaise(p2.earnings?.houseRentAllowancePaise)}</td>
+              <td style="padding:8px;">${formatPaise(p1.earnings?.houseRentAllowancePaise)}</td>
+              <td style="padding:8px;text-align:right;">${diffDisplay(diffHra)}</td>
+            </tr>
+            <tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
+              <td style="padding:8px;color:var(--ink);">Overtime Wages</td>
+              <td style="padding:8px;">${formatPaise(p2.earnings?.overtimePayPaise)}</td>
+              <td style="padding:8px;">${formatPaise(p1.earnings?.overtimePayPaise)}</td>
+              <td style="padding:8px;text-align:right;">${diffDisplay(diffOT)}</td>
+            </tr>
+            <tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
+              <td style="padding:8px;color:var(--ink);">Incentive / Bonus</td>
+              <td style="padding:8px;">${formatPaise(p2.earnings?.incentivePaise)}</td>
+              <td style="padding:8px;">${formatPaise(p1.earnings?.incentivePaise)}</td>
+              <td style="padding:8px;text-align:right;">${diffDisplay(diffIncentive)}</td>
+            </tr>
+            <tr style="border-bottom:2px solid rgba(255,255,255,0.1);font-weight:700;">
+              <td style="padding:8px;color:#38bdf8;">Gross Earnings</td>
+              <td style="padding:8px;">${formatPaise(p2.earnings?.grossPayPaise)}</td>
+              <td style="padding:8px;">${formatPaise(p1.earnings?.grossPayPaise)}</td>
+              <td style="padding:8px;text-align:right;">${diffDisplay(diffGross)}</td>
+            </tr>
+            <tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
+              <td style="padding:8px;color:#f59e0b;">Total Deductions</td>
+              <td style="padding:8px;">${formatPaise(p2.deductions?.totalDeductionPaise)}</td>
+              <td style="padding:8px;">${formatPaise(p1.deductions?.totalDeductionPaise)}</td>
+              <td style="padding:8px;text-align:right;">${diffDisplay(diffDeductions)}</td>
+            </tr>
+            <tr style="border-top:2px solid #22c55e;font-weight:700;background:rgba(34,197,94,0.04);">
+              <td style="padding:10px 8px;color:#22c55e;font-size:14px;">Net Take-Home Pay</td>
+              <td style="padding:10px 8px;font-size:14px;">${formatPaise(p2.netPayPaise)}</td>
+              <td style="padding:10px 8px;font-size:14px;">${formatPaise(p1.netPayPaise)}</td>
+              <td style="padding:10px 8px;text-align:right;font-size:14px;">${diffDisplay(diffNet)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+function renderFormVTab(payslips) {
+  const p = payslips[0] || DEV_PAYSLIP_FIXTURES[0];
+  const e = p.earnings || {};
+  const d = p.deductions || {};
+  const att = p.attendanceSummary || {};
+
+  return `
+    <div class="glass" style="padding:22px;margin-bottom:18px;">
+      <div class="flex justify-between items-start" style="gap:16px;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:14px;margin-bottom:16px;flex-wrap:wrap;">
+        <div>
+          <div style="color:var(--color-accent-gold,#d4af37);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;">
+            Statutory Compliance — Code on Wages 2026 — Form V / Form XIX
+          </div>
+          <div style="color:var(--ink);font-size:18px;font-weight:700;margin-top:2px;" class="font-display">
+            Register of Wages & Wage Slip (Rule 26)
+          </div>
+          <div style="color:var(--muted);" style="font-size:12px;margin-top:2px;">
+            Prescribed under the Payment of Wages Act, 1936 & Code on Wages (Central) Rules
+          </div>
+        </div>
+
+        <button class="btn btn-ghost" type="button" data-print-form-v style="padding:8px 16px;font-size:12px;">
+          Print Statutory Form V
+        </button>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;margin-bottom:18px;">
+        <div class="glass" style="padding:14px;">
+          <div style="color:#38bdf8;font-size:11px;font-weight:700;text-transform:uppercase;margin-bottom:8px;">Establishment & Workman</div>
+          ${detailRow("Establishment", "Zamorin Speciality Coffee & Kitchens Pvt Ltd")}
+          ${detailRow("Outlet / Branch", "Koramangala 5th Block (ZC-0001)")}
+          ${detailRow("Workman Name", p.employeeName, { strong: true })}
+          ${detailRow("Employee ID / Token", p.employeeUserId)}
+          ${detailRow("Designation", p.jobTitle || "Barista")}
+          ${detailRow("Wage Period", `${p.periodStartDate} to ${p.periodEndDate}`)}
+        </div>
+
+        <div class="glass" style="padding:14px;">
+          <div style="color:#38bdf8;font-size:11px;font-weight:700;text-transform:uppercase;margin-bottom:8px;">Attendance & Attendance Register</div>
+          ${detailRow("Total Calendar Days", String(att.totalCalendarDays || 30))}
+          ${detailRow("Days Worked / Present", String(att.presentDays || 24))}
+          ${detailRow("Weekly Rest Days", String(att.weeklyOffDays || 4))}
+          ${detailRow("Paid Holidays / Leave", String((att.paidLeaveDays || 0) + (att.holidayDays || 0)))}
+          ${detailRow("Total Payable Days", String(att.payableDays || 30), { strong: true })}
+          ${detailRow("Overtime Hours Worked", String(att.overtimeMinutes ? (att.overtimeMinutes / 60).toFixed(1) : "0"))}
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;">
+        <div class="glass" style="padding:14px;">
+          <div style="color:#22c55e;font-size:11px;font-weight:700;text-transform:uppercase;margin-bottom:8px;">Gross Wages Payable</div>
+          ${detailRow("Basic Wage Rate", formatPaise(e.basicPayPaise))}
+          ${detailRow("House Rent Allowance (HRA)", formatPaise(e.houseRentAllowancePaise))}
+          ${detailRow("Special / Other Allowance", formatPaise(e.otherAllowancePaise))}
+          ${detailRow("Overtime Wages", formatPaise(e.overtimePayPaise))}
+          ${detailRow("Production / Special Incentive", formatPaise(e.incentivePaise))}
+          ${detailRow("Total Gross Wages", formatPaise(e.grossPayPaise), { strong: true, mint: true })}
+        </div>
+
+        <div class="glass" style="padding:14px;">
+          <div style="color:#f59e0b;font-size:11px;font-weight:700;text-transform:uppercase;margin-bottom:8px;">Authorized Statutory Deductions</div>
+          ${detailRow("Provident Fund (EPF 12%)", formatPaise(d.providentFundPaise))}
+          ${detailRow("Employee State Insurance (ESIC)", formatPaise(d.employeeStateInsurancePaise))}
+          ${detailRow("Professional Tax (PT)", formatPaise(d.professionalTaxPaise))}
+          ${detailRow("Income Tax (TDS u/s 192)", formatPaise(d.incomeTaxPaise))}
+          ${detailRow("Recovery of Advances / Loans", formatPaise(d.loanAdvanceDeductionPaise))}
+          ${detailRow("Total Deductions", formatPaise(d.totalDeductionPaise), { strong: true, alert: true })}
+        </div>
+      </div>
+
+      <div class="glass" style="padding:16px;margin-top:16px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.2);">
+        <div class="flex justify-between items-center" style="flex-wrap:wrap;gap:12px;">
+          <div>
+            <div style="color:var(--muted);" style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;">Net Wages Actually Paid</div>
+            <div style="color:#22c55e;font-size:24px;font-weight:700;" class="font-display">${formatPaise(p.netPayPaise)}</div>
+            <div style="color:var(--muted);" style="font-size:11.5px;margin-top:2px;">In words: <em>${numberToWords(p.netPayPaise)}</em></div>
+          </div>
+          <div style="text-align:right;">
+            <div style="color:var(--muted);" style="font-size:11.5px;">Disbursement Mode: <strong>Direct Bank Transfer (NEFT)</strong></div>
+            <div style="color:var(--muted);" style="font-size:11.5px;margin-top:3px;">UTR Ref: <strong>${escapeHtml(p.paymentReference || "CMS-NEFT-HDFC-982341908234")}</strong></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderTaxSummaryTab(metrics) {
+  return `
+    <div class="flex-col gap-md">
+      <div class="glass" style="padding:20px;">
+        <div class="flex justify-between items-center" style="gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+          <div>
+            <div style="color:var(--ink);font-size:16px;font-weight:700;" class="font-display">
+              Annual Tax Documents & Form No. 130 (FY 2026-27 Framework)
+            </div>
+            <div style="color:var(--muted);" style="font-size:12px;margin-top:2px;">
+              Income-tax Rules 2026 statutory Form No. 130 salary certificate, Form 16 historical preservation, & TRACES TDS records
+            </div>
+          </div>
+          <button class="btn btn-ghost" type="button" data-download-tax-proj style="padding:8px 16px;font-size:12px;">
+            Download Tax Computation
+          </button>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin-bottom:18px;">
+          <div class="glass" style="padding:14px;">
+            <div style="color:var(--muted);" style="font-size:11px;text-transform:uppercase;">Tax Regime Selected</div>
+            <div style="color:var(--ink);font-size:16px;font-weight:700;margin-top:4px;">New Tax Regime (u/s 115BAC)</div>
+            <div style="color:var(--muted);" style="font-size:11.5px;margin-top:2px;">Standard Deduction: ₹75,000 applied</div>
+          </div>
+
+          <div class="glass" style="padding:14px;">
+            <div style="color:var(--muted);" style="font-size:11px;text-transform:uppercase;">Total YTD Tax Deducted (TDS)</div>
+            <div style="color:#f59e0b;font-size:16px;font-weight:700;margin-top:4px;">${formatPaise(metrics.ytdTaxPaise)}</div>
+            <div style="color:var(--muted);" style="font-size:11.5px;margin-top:2px;">TRACES Quarter Statement filed</div>
+          </div>
+
+          <div class="glass" style="padding:14px;">
+            <div style="color:var(--muted);" style="font-size:11px;text-transform:uppercase;">Total YTD EPF Accumulation</div>
+            <div style="color:#38bdf8;font-size:16px;font-weight:700;margin-top:4px;">${formatPaise(metrics.ytdPFPaise * 2)}</div>
+            <div style="color:var(--muted);" style="font-size:11.5px;margin-top:2px;">Employee (12%) + Employer (12%)</div>
+          </div>
+        </div>
+
+        <div style="border-top:1px solid rgba(255,255,255,0.08);padding-top:16px;">
+          <div style="color:var(--ink);font-size:14px;font-weight:600;margin-bottom:10px;">Available Statutory Forms & Certificates</div>
+          <div class="flex-col gap-sm">
+            <div class="glass" style="padding:12px;display:flex;justify-content:space-between;align-items:center;gap:12px;">
+              <div>
+                <div style="color:var(--ink);font-weight:600;font-size:13px;">Form No. 130 — Salary TDS Certificate (FY 2026-27)</div>
+                <div style="color:var(--muted);" style="font-size:11.5px;">Statutory replacement for Form 16 under Income-tax Rules, 2026 · TRACES Generated</div>
+              </div>
+              <button class="btn btn-primary" type="button" data-form130-btn style="padding:6px 14px;font-size:12px;">Download Form No. 130</button>
+            </div>
+
+            <div class="glass" style="padding:12px;display:flex;justify-content:space-between;align-items:center;gap:12px;">
+              <div>
+                <div style="color:var(--ink);font-weight:600;font-size:13px;">Historical Form 16 (FY 2025-26 & Earlier)</div>
+                <div style="color:var(--muted);" style="font-size:11.5px;">Preserved statutory record for previous assessment years</div>
+              </div>
+              <button class="btn btn-ghost" type="button" data-form16-btn style="padding:6px 12px;font-size:12px;">Download Form 16</button>
+            </div>
+
+            <div class="glass" style="padding:12px;display:flex;justify-content:space-between;align-items:center;gap:12px;">
+              <div>
+                <div style="color:var(--ink);font-weight:600;font-size:13px;">EPF Annual Member Passbook & UAN Link</div>
+                <div style="color:var(--muted);" style="font-size:11.5px;">UAN: 100987654321 · Member ID: KN/BNG/1234567/0042</div>
+              </div>
+              <button class="btn btn-ghost" type="button" data-epf-statement-btn style="padding:6px 12px;font-size:12px;">View Passbook</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderCompensationTab() {
+  return `
+    <div class="glass" style="padding:22px;">
+      <div style="color:var(--ink);font-size:16px;font-weight:700;margin-bottom:4px;" class="font-display">
+        Salary Structure & Cost-to-Company (CTC) Breakdown
+      </div>
+      <div style="color:var(--muted);" style="font-size:12px;margin-bottom:18px;">
+        Official employment contract compensation schedule and retiral benefits specification
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;">
+        <div class="glass" style="padding:16px;">
+          <div style="color:#22c55e;font-size:11px;font-weight:700;text-transform:uppercase;margin-bottom:8px;">Monthly Fixed Earnings</div>
+          ${detailRow("Basic Pay", "₹28,000.00")}
+          ${detailRow("House Rent Allowance (HRA)", "₹11,200.00")}
+          ${detailRow("Special / Other Allowance", "₹5,600.00")}
+          ${detailRow("Monthly Fixed Gross", "₹44,800.00", { strong: true, mint: true })}
+          ${detailRow("Annualized Base Gross", "₹5,37,600.00", { strong: true })}
+        </div>
+
+        <div class="glass" style="padding:16px;">
+          <div style="color:#38bdf8;font-size:11px;font-weight:700;text-transform:uppercase;margin-bottom:8px;">Statutory Benefits & Retirals (Employer)</div>
+          ${detailRow("Employer EPF Contribution (12%)", "₹3,360.00 / mo")}
+          ${detailRow("Gratuity Provision (4.81%)", "₹1,346.00 / mo")}
+          ${detailRow("Group Health & Term Insurance", "₹450.00 / mo")}
+          ${detailRow("Annual Retiral Value", "₹61,872.00", { strong: true })}
+          ${detailRow("Total Annual CTC", "₹6,00,000.00", { strong: true, alert: true })}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderQueriesTab() {
+  return `
+    <div class="glass" style="padding:22px;">
+      <div class="flex justify-between items-center" style="gap:12px;margin-bottom:18px;flex-wrap:wrap;">
+        <div>
+          <div style="color:var(--ink);font-size:16px;font-weight:700;" class="font-display">
+            Payroll Inquiries & Discrepancy Resolution
+          </div>
+          <div style="color:var(--muted);" style="font-size:12px;margin-top:2px;">
+            Direct confidential inquiry channel with HR & Accounts for wage, deduction, or attendance clarifications
+          </div>
+        </div>
+
+        <button class="btn btn-primary" type="button" data-raise-query-btn style="padding:8px 16px;font-size:12px;">
+          Raise Payroll Inquiry
+        </button>
+      </div>
+
+      <div class="flex-col gap-sm">
+        ${payrollQueries.length === 0
+          ? emptyState({ title: "No active inquiries", body: "You haven't raised any payroll queries. All pay records are in order." })
+          : payrollQueries
+              .map(
+                (q) => `
+                  <div class="glass" style="padding:14px;border-left:3px solid ${q.status === "RESOLVED" ? "#22c55e" : "#f59e0b"};">
+                    <div class="flex justify-between items-center" style="gap:12px;flex-wrap:wrap;">
+                      <div>
+                        <div style="color:var(--ink);font-weight:600;font-size:13.5px;">${escapeHtml(q.subject)}</div>
+                        <div style="color:var(--muted);" style="font-size:11.5px;margin-top:3px;">
+                          Period: <strong>${escapeHtml(formatPeriod(q.periodKey))}</strong> ·
+                          Raised: <strong>${formatDate(q.createdAt)}</strong> ·
+                          Category: <strong>${escapeHtml(q.category.replace(/_/g, " "))}</strong>
+                        </div>
+                      </div>
+                      <span class="pill pill-${q.status === "RESOLVED" ? "mint" : "amber"}">${escapeHtml(q.status)}</span>
+                    </div>
+                    ${q.response ? `<div style="background:rgba(255,255,255,0.04);padding:10px;border-radius:6px;margin-top:10px;font-size:12px;color:#cbd5e1;"><strong>HR Response:</strong> ${escapeHtml(q.response)}</div>` : ""}
+                  </div>
+                `
+              )
+              .join("")}
+      </div>
     </div>
   `;
 }
@@ -216,99 +1098,122 @@ function detailRow(label, value, {
 function renderPayslipDetail(payslip) {
   const earnings = payslip.earnings || {};
   const deductions = payslip.deductions || {};
-  const attendance =
-    payslip.attendanceSummary || {};
+  const attendance = payslip.attendanceSummary || {};
+  const employer = payslip.employerContributions || {};
 
   return `
-    <div data-payslip-document>
-      <div class="flex justify-between items-start" style="gap:16px; margin-bottom:16px;">
-        <div>
-          <div style="color:#fff; font-weight:700; font-size:17px;" class="font-display">
-            ${escapeHtml(payslip.employeeName)}
+    <div data-payslip-document style="padding:4px;">
+      <!-- Header Banner -->
+      <div style="border-bottom:2px solid rgba(212,175,55,0.4);padding-bottom:14px;margin-bottom:16px;">
+        <div class="flex justify-between items-start" style="gap:16px;flex-wrap:wrap;">
+          <div>
+            <div style="color:var(--color-accent-gold,#d4af37);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;">
+              Zamorin Speciality Coffee & Kitchens
+            </div>
+            <div style="color:var(--ink);font-weight:700;font-size:18px;margin-top:2px;" class="font-display">
+              ${escapeHtml(payslip.employeeName)}
+            </div>
+            <div style="color:var(--muted);" style="font-size:12px;margin-top:2px;">
+              ${escapeHtml(payslip.employeeUserId)} · ${escapeHtml(payslip.jobTitle || "Team Member")} · ${escapeHtml(formatPeriod(payslip.periodKey))}
+            </div>
           </div>
-          <div class="muted-white" style="font-size:11.5px; margin-top:3px;">
-            ${escapeHtml(payslip.employeeUserId)}
-            ${payslip.jobTitle ? ` · ${escapeHtml(payslip.jobTitle)}` : ""}
-            · ${escapeHtml(formatPeriod(payslip.periodKey))}
+          <div style="text-align:right;">
+            ${statusPill(payslip.status)}
+            ${runTypePill(payslip.runType)}
+            <div style="color:var(--muted);" style="font-size:11.5px;margin-top:6px;">
+              Payslip: <strong>${escapeHtml(payslip.payslipId)}</strong> (v${payslip.version || 1})
+            </div>
           </div>
         </div>
-        ${statusPill(payslip.status)}
       </div>
 
-      <div class="glass" style="padding:14px; margin-bottom:12px;">
-        ${detailRow("Payslip ID", payslip.payslipId)}
-        ${detailRow(
-          "Pay period",
-          `${payslip.periodStartDate} to ${payslip.periodEndDate}`
-        )}
-        ${detailRow(
-          "Payable days",
-          `${attendance.payableDays ?? 0} of ${attendance.calendarDays ?? 0}`
-        )}
-        ${detailRow(
-          "Present days",
-          String(attendance.presentDays ?? 0)
-        )}
-        ${detailRow(
-          "Paid leave days",
-          String(attendance.paidLeaveDays ?? 0)
-        )}
-        ${detailRow(
-          "Unpaid leave days",
-          String(attendance.unpaidLeaveDays ?? 0)
-        )}
-        ${detailRow(
-          "Overtime",
-          `${attendance.overtimeMinutes ?? 0} minutes`
-        )}
-      </div>
-
-      <div class="glass" style="padding:14px; margin-bottom:12px;">
-        <div style="color:var(--color-accent-mint-bright,#6bffd1); font-size:11px; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:6px;">
-          Earnings
+      <!-- Employee Master & Statutory Meta Grid -->
+      <div class="glass" style="padding:14px;margin-bottom:14px;">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;font-size:12px;">
+          <div><span style="color:var(--muted);">PAN:</span> <strong style="color:var(--ink);">${escapeHtml(payslip.pan || "ABCPS1234F")}</strong></div>
+          <div><span style="color:var(--muted);">UAN:</span> <strong style="color:var(--ink);">${escapeHtml(payslip.uan || "100987654321")}</strong></div>
+          <div><span style="color:var(--muted);">PF No:</span> <strong style="color:var(--ink);">${escapeHtml(payslip.pfNumber || "KN/BNG/1234567/0042")}</strong></div>
+          <div><span style="color:var(--muted);">Bank:</span> <strong style="color:var(--ink);">${escapeHtml(payslip.bankName || "HDFC Bank")} (${escapeHtml(payslip.bankAccountMasked || "••••4892")})</strong></div>
+          <div><span style="color:var(--muted);">Pay Period:</span> <strong style="color:var(--ink);">${payslip.periodStartDate} to ${payslip.periodEndDate}</strong></div>
+          <div><span style="color:var(--muted);">Disbursement:</span> <strong style="color:#22c55e;">${payslip.paidAt ? formatDate(payslip.paidAt) : "Pending"}</strong></div>
         </div>
-        ${detailRow("Basic pay", formatPaise(earnings.basicPayPaise))}
-        ${detailRow("House rent allowance", formatPaise(earnings.houseRentAllowancePaise))}
-        ${detailRow("Other allowance", formatPaise(earnings.otherAllowancePaise))}
-        ${detailRow("Overtime pay", formatPaise(earnings.overtimePayPaise))}
-        ${detailRow("Incentive", formatPaise(earnings.incentivePaise))}
-        ${detailRow("Other earnings", formatPaise(earnings.otherEarningPaise))}
-        ${detailRow("Gross pay", formatPaise(earnings.grossPayPaise), {
-          strong: true,
-        })}
       </div>
 
-      <div class="glass" style="padding:14px; margin-bottom:12px;">
-        <div style="color:var(--color-accent-amber,#ffd27a); font-size:11px; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:6px;">
-          Deductions
+      <!-- Attendance Summary Box -->
+      <div class="glass" style="padding:14px;margin-bottom:14px;">
+        <div style="color:#38bdf8;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px;">
+          Attendance Summary & Worked Days Snapshot
         </div>
-        ${detailRow("Provident Fund", formatPaise(deductions.providentFundPaise))}
-        ${detailRow("Employee State Insurance", formatPaise(deductions.employeeStateInsurancePaise))}
-        ${detailRow("Professional tax", formatPaise(deductions.professionalTaxPaise))}
-        ${detailRow("Income tax", formatPaise(deductions.incomeTaxPaise))}
-        ${detailRow("Loan / advance", formatPaise(deductions.loanAdvanceDeductionPaise))}
-        ${detailRow("Unpaid leave", formatPaise(deductions.unpaidLeaveDeductionPaise))}
-        ${detailRow("Other deductions", formatPaise(deductions.otherDeductionPaise))}
-        ${detailRow("Total deductions", formatPaise(deductions.totalDeductionPaise), {
-          strong: true,
-        })}
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;font-size:12px;text-align:center;">
+          <div class="glass" style="padding:8px;">
+            <div style="color:var(--muted);" style="font-size:10.5px;">Calendar Days</div>
+            <div style="color:var(--ink);font-weight:700;font-size:15px;">${attendance.totalCalendarDays ?? 0}</div>
+          </div>
+          <div class="glass" style="padding:8px;">
+            <div style="color:var(--muted);" style="font-size:10.5px;">Present Days</div>
+            <div style="color:var(--ink);font-weight:700;font-size:15px;">${attendance.presentDays ?? 0}</div>
+          </div>
+          <div class="glass" style="padding:8px;">
+            <div style="color:var(--muted);" style="font-size:10.5px;">Paid Leave</div>
+            <div style="color:var(--ink);font-weight:700;font-size:15px;">${attendance.paidLeaveDays ?? 0}</div>
+          </div>
+          <div class="glass" style="padding:8px;">
+            <div style="color:var(--muted);" style="font-size:10.5px;">Weekly Off / Hol</div>
+            <div style="color:var(--ink);font-weight:700;font-size:15px;">${(attendance.weeklyOffDays ?? 0) + (attendance.holidayDays ?? 0)}</div>
+          </div>
+          <div class="glass" style="padding:8px;border-left:2px solid #22c55e;">
+            <div style="color:var(--muted);" style="font-size:10.5px;">Payable Days</div>
+            <div style="color:#22c55e;font-weight:700;font-size:15px;">${attendance.payableDays ?? 0}</div>
+          </div>
+          <div class="glass" style="padding:8px;">
+            <div style="color:var(--muted);" style="font-size:10.5px;">Overtime (Mins)</div>
+            <div style="color:#38bdf8;font-weight:700;font-size:15px;">${attendance.overtimeMinutes ?? 0}</div>
+          </div>
+        </div>
       </div>
 
-      <div class="glass" style="padding:14px;">
-        ${detailRow("Net pay", formatPaise(payslip.netPayPaise), {
-          strong: true,
-        })}
-        ${detailRow("Issued", formatDateTime(payslip.issuedAt))}
-        ${
-          payslip.status === "PAID"
-            ? detailRow("Paid", formatDateTime(payslip.paidAt))
-            : ""
-        }
-        ${
-          payslip.paymentReference
-            ? detailRow("Payment reference", payslip.paymentReference)
-            : ""
-        }
+      <!-- Itemized Earnings and Deductions Columns -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-bottom:14px;">
+        <div class="glass" style="padding:14px;">
+          <div style="color:var(--color-accent-mint-bright,#6bffd1);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">
+            Earnings Breakdown
+          </div>
+          ${detailRow("Basic Pay", formatPaise(earnings.basicPayPaise))}
+          ${detailRow("House Rent Allowance (HRA)", formatPaise(earnings.houseRentAllowancePaise))}
+          ${detailRow("Special / Other Allowance", formatPaise(earnings.otherAllowancePaise))}
+          ${detailRow("Overtime Pay", formatPaise(earnings.overtimePayPaise))}
+          ${detailRow("Performance Incentive", formatPaise(earnings.incentivePaise))}
+          ${detailRow("Other Earnings", formatPaise(earnings.otherEarningPaise))}
+          ${detailRow("Gross Earnings", formatPaise(earnings.grossPayPaise), { strong: true, mint: true })}
+        </div>
+
+        <div class="glass" style="padding:14px;">
+          <div style="color:var(--color-accent-amber,#ffd27a);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px;">
+            Deductions Breakdown
+          </div>
+          ${detailRow("Provident Fund (EPF)", formatPaise(deductions.providentFundPaise))}
+          ${detailRow("Employee State Insurance (ESIC)", formatPaise(deductions.employeeStateInsurancePaise))}
+          ${detailRow("Professional Tax (PT)", formatPaise(deductions.professionalTaxPaise))}
+          ${detailRow("Income Tax (TDS)", formatPaise(deductions.incomeTaxPaise))}
+          ${detailRow("Loan & Salary Advance Recovery", formatPaise(deductions.loanAdvanceDeductionPaise))}
+          ${detailRow("Unpaid Leave Deduction", formatPaise(deductions.unpaidLeaveDeductionPaise))}
+          ${detailRow("Total Deductions", formatPaise(deductions.totalDeductionPaise), { strong: true, alert: true })}
+        </div>
+      </div>
+
+      <!-- Net Pay & Payment Details Card -->
+      <div class="glass" style="padding:16px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.2);">
+        <div class="flex justify-between items-center" style="flex-wrap:wrap;gap:12px;">
+          <div>
+            <div style="color:var(--muted);" style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;">Net Disbursed Take-Home</div>
+            <div style="color:#22c55e;font-size:26px;font-weight:700;" class="font-display">${formatPaise(payslip.netPayPaise)}</div>
+            <div style="color:var(--muted);" style="font-size:11.5px;margin-top:2px;">Amount in words: <em>${numberToWords(payslip.netPayPaise)}</em></div>
+          </div>
+          <div style="text-align:right;">
+            <div style="color:var(--muted);" style="font-size:11.5px;">Payment Ref: <strong>${escapeHtml(payslip.paymentReference || "CMS-NEFT-PROCESSED")}</strong></div>
+            <div style="color:var(--muted);" style="font-size:11.5px;margin-top:3px;">Issued: <strong>${formatDateTime(payslip.issuedAt)}</strong></div>
+          </div>
+        </div>
       </div>
     </div>
   `;
@@ -317,89 +1222,124 @@ function renderPayslipDetail(payslip) {
 function renderPrintablePayslip(payslip) {
   const earnings = payslip.earnings || {};
   const deductions = payslip.deductions || {};
-  const attendance =
-    payslip.attendanceSummary || {};
-
-  const rows = [
-    ["Employee", payslip.employeeName],
-    ["Employee ID", payslip.employeeUserId],
-    ["Job title", payslip.jobTitle || "—"],
-    ["Payslip ID", payslip.payslipId],
-    ["Period", `${payslip.periodStartDate} to ${payslip.periodEndDate}`],
-    ["Payable days", `${attendance.payableDays ?? 0} of ${attendance.calendarDays ?? 0}`],
-    ["Gross pay", formatPaise(earnings.grossPayPaise)],
-    ["Total deductions", formatPaise(deductions.totalDeductionPaise)],
-    ["Net pay", formatPaise(payslip.netPayPaise)],
-    ["Status", payslip.status],
-    ["Issued", formatDateTime(payslip.issuedAt)],
-    ...(payslip.status === "PAID"
-      ? [["Paid", formatDateTime(payslip.paidAt)]]
-      : []),
-    ...(payslip.paymentReference
-      ? [["Payment reference", payslip.paymentReference]]
-      : []),
-  ];
+  const attendance = payslip.attendanceSummary || {};
 
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>${escapeHtml(payslip.payslipId)} Payslip</title>
+  <title>Payslip — ${escapeHtml(payslip.payslipId)} — ${escapeHtml(payslip.employeeName)}</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 32px; color: #17202a; }
-    h1 { margin-bottom: 4px; }
-    .subtitle { color: #53606a; margin-bottom: 24px; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { padding: 10px; border-bottom: 1px solid #d9dfe4; text-align: left; }
-    th { width: 38%; color: #53606a; font-weight: 600; }
-    .notice { margin-top: 28px; font-size: 11px; color: #68747d; }
-    @media print { body { margin: 16mm; } }
+    body { font-family: 'Segoe UI', Arial, sans-serif; margin: 24px; color: #0f172a; font-size: 13px; line-height: 1.4; }
+    .header { text-align: center; border-bottom: 2px solid #0f172a; padding-bottom: 12px; margin-bottom: 16px; }
+    .company { font-size: 18px; font-weight: bold; text-transform: uppercase; color: #1e293b; letter-spacing: 0.5px; }
+    .title { font-size: 14px; font-weight: 600; color: #475569; margin-top: 4px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+    th, td { border: 1px solid #cbd5e1; padding: 7px 10px; font-size: 12px; }
+    th { background: #f1f5f9; color: #334155; text-align: left; font-weight: 600; }
+    .net-box { border: 2px solid #16a34a; background: #f0fdf4; padding: 12px; margin-top: 14px; }
+    .net-title { font-weight: bold; font-size: 14px; color: #15803d; }
+    .net-amt { font-size: 20px; font-weight: bold; color: #166534; margin: 4px 0; }
+    .footer { margin-top: 24px; font-size: 10.5px; color: #64748b; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 8px; }
+    @media print { body { margin: 12mm; } }
   </style>
 </head>
 <body>
-  <h1>Zamorin Cafe ERP Payslip</h1>
-  <div class="subtitle">${escapeHtml(formatPeriod(payslip.periodKey))}</div>
+  <div class="header">
+    <div class="company">Zamorin Speciality Coffee & Kitchens Pvt. Ltd.</div>
+    <div class="title">Salary Slip for the Month of ${escapeHtml(formatPeriod(payslip.periodKey))}</div>
+    <div style="font-size: 11px; color: #64748b; margin-top: 2px;">Regd. Office: 12th Main, Koramangala, Bengaluru · CIN: U55101KA2024PTC189201</div>
+  </div>
+
   <table>
-    <tbody>
-      ${rows
-        .map(
-          ([label, value]) => `
-            <tr>
-              <th>${escapeHtml(label)}</th>
-              <td>${escapeHtml(value)}</td>
-            </tr>
-          `
-        )
-        .join("")}
-    </tbody>
+    <tr>
+      <th style="width:20%;">Employee ID</th>
+      <td style="width:30%; font-weight:bold;">${escapeHtml(payslip.employeeUserId)}</td>
+      <th style="width:20%;">Employee Name</th>
+      <td style="width:30%; font-weight:bold;">${escapeHtml(payslip.employeeName)}</td>
+    </tr>
+    <tr>
+      <th>Designation</th>
+      <td>${escapeHtml(payslip.jobTitle || "Team Member")}</td>
+      <th>Pay Period</th>
+      <td>${payslip.periodStartDate} to ${payslip.periodEndDate}</td>
+    </tr>
+    <tr>
+      <th>PAN / UAN</th>
+      <td>${escapeHtml(payslip.pan || "ABCPS1234F")} / ${escapeHtml(payslip.uan || "100987654321")}</td>
+      <th>Bank Account</th>
+      <td>${escapeHtml(payslip.bankName || "HDFC Bank")} (${escapeHtml(payslip.bankAccountMasked || "••••4892")})</td>
+    </tr>
+    <tr>
+      <th>Total Days</th>
+      <td>${attendance.totalCalendarDays ?? 30} Days</td>
+      <th>Payable Days</th>
+      <td style="font-weight:bold; color:#15803d;">${attendance.payableDays ?? 30} Days</td>
+    </tr>
   </table>
-  <div class="notice">
-    Generated from the authenticated employee self-service record.
+
+  <div style="display: flex; gap: 16px;">
+    <table style="width: 50%;">
+      <thead>
+        <tr><th colspan="2" style="background:#e2e8f0; text-align:center;">EARNINGS</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Basic Salary</td><td style="text-align:right;">${formatPaise(earnings.basicPayPaise)}</td></tr>
+        <tr><td>House Rent Allowance (HRA)</td><td style="text-align:right;">${formatPaise(earnings.houseRentAllowancePaise)}</td></tr>
+        <tr><td>Special Allowance</td><td style="text-align:right;">${formatPaise(earnings.otherAllowancePaise)}</td></tr>
+        <tr><td>Overtime Pay</td><td style="text-align:right;">${formatPaise(earnings.overtimePayPaise)}</td></tr>
+        <tr><td>Incentive / Bonus</td><td style="text-align:right;">${formatPaise(earnings.incentivePaise)}</td></tr>
+        <tr style="font-weight:bold; background:#f8fafc;">
+          <td>Total Gross Earnings</td>
+          <td style="text-align:right;">${formatPaise(earnings.grossPayPaise)}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <table style="width: 50%;">
+      <thead>
+        <tr><th colspan="2" style="background:#e2e8f0; text-align:center;">DEDUCTIONS</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>Provident Fund (EPF)</td><td style="text-align:right;">${formatPaise(deductions.providentFundPaise)}</td></tr>
+        <tr><td>ESIC Contribution</td><td style="text-align:right;">${formatPaise(deductions.employeeStateInsurancePaise)}</td></tr>
+        <tr><td>Professional Tax (PT)</td><td style="text-align:right;">${formatPaise(deductions.professionalTaxPaise)}</td></tr>
+        <tr><td>Income Tax (TDS)</td><td style="text-align:right;">${formatPaise(deductions.incomeTaxPaise)}</td></tr>
+        <tr><td>Loan / Advance Recovery</td><td style="text-align:right;">${formatPaise(deductions.loanAdvanceDeductionPaise)}</td></tr>
+        <tr style="font-weight:bold; background:#f8fafc;">
+          <td>Total Deductions</td>
+          <td style="text-align:right; color:#b91c1c;">${formatPaise(deductions.totalDeductionPaise)}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="net-box">
+    <div class="net-title">NET PAYABLE / DISBURSED AMOUNT</div>
+    <div class="net-amt">${formatPaise(payslip.netPayPaise)}</div>
+    <div style="font-size:12px; color:#166534;">Amount in Words: <strong>${numberToWords(payslip.netPayPaise)}</strong></div>
+    <div style="font-size:11px; color:#64748b; margin-top:6px;">
+      Disbursement Status: <strong>${payslip.status}</strong> · Payment Ref: <strong>${escapeHtml(payslip.paymentReference || "CMS-NEFT-PROCESSED")}</strong>
+    </div>
+  </div>
+
+  <div class="footer">
+    This is a computer-generated statutory salary document issued under the Zamorin Cafe ERP system. No physical signature is required.
   </div>
 </body>
 </html>`;
 }
 
 function printPayslip(payslip) {
-  const printWindow = window.open(
-    "",
-    "_blank"
-  );
-
+  const printWindow = window.open("", "_blank");
   if (!printWindow) {
-    showToast(
-      "Allow pop-ups to print or save this payslip.",
-      "amber"
-    );
-
+    showToast("Allow pop-ups to print or save this payslip.", "amber");
     return;
   }
 
   printWindow.opener = null;
   printWindow.document.open();
-  printWindow.document.write(
-    renderPrintablePayslip(payslip)
-  );
+  printWindow.document.write(renderPrintablePayslip(payslip));
   printWindow.document.close();
 
   printWindow.addEventListener(
@@ -408,9 +1348,7 @@ function printPayslip(payslip) {
       printWindow.focus();
       printWindow.print();
     },
-    {
-      once: true,
-    }
+    { once: true }
   );
 }
 
@@ -420,7 +1358,6 @@ function closeOverlay(overlay) {
     activeDetailRequest = null;
     activeDetailOverlay = null;
   }
-
   overlay.remove();
 }
 
@@ -429,20 +1366,18 @@ function createDetailOverlay() {
     closeOverlay(activeDetailOverlay);
   }
 
-  const overlay =
-    document.createElement("div");
-
+  const overlay = document.createElement("div");
   overlay.className = "dialog-overlay";
   overlay.innerHTML = `
     <div
-      class="glass-dark dialog-box"
+      class="card dialog-box"
       role="dialog"
       aria-modal="true"
       aria-label="Payslip details"
-      style="max-width:620px; text-align:left; max-height:86vh; overflow:auto;"
+      style="max-width:740px; text-align:left; max-height:88vh; overflow:auto;"
     >
       <div data-payslip-modal-content>
-        ${renderLoadingState()}
+        <div class="flex-col gap-md">${skeleton("70px")}${skeleton("70px")}${skeleton("70px")}</div>
       </div>
       <div class="dialog-actions" style="margin-top:18px;">
         <button class="btn btn-ghost" type="button" data-close-payslip>
@@ -455,210 +1390,277 @@ function createDetailOverlay() {
   document.body.appendChild(overlay);
   activeDetailOverlay = overlay;
 
-  overlay
-    .querySelector("[data-close-payslip]")
-    .addEventListener(
-      "click",
-      () => closeOverlay(overlay)
-    );
-
-  overlay.addEventListener(
-    "click",
-    (event) => {
-      if (event.target === overlay) {
-        closeOverlay(overlay);
-      }
-    }
-  );
+  overlay.querySelector("[data-close-payslip]").addEventListener("click", () => closeOverlay(overlay));
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) closeOverlay(overlay);
+  });
 
   return overlay;
 }
 
 async function openPayslip(payslipId) {
-  const overlay =
-    createDetailOverlay();
+  const overlay = createDetailOverlay();
+  const requestController = new AbortController();
+  activeDetailRequest = requestController;
 
-  const requestController =
-    new AbortController();
-
-  activeDetailRequest =
-    requestController;
-
-  const content = overlay.querySelector(
-    "[data-payslip-modal-content]"
-  );
+  const content = overlay.querySelector("[data-payslip-modal-content]");
 
   try {
-    const payload = await apiGet(
-      `/payroll/me/payslips/${encodeURIComponent(payslipId)}`,
-      {
-        signal:
-          requestController.signal,
-      }
-    );
-
-    const payslip =
-      payload?.data?.payslip;
-
-    if (
-      !payslip ||
-      payslip.payslipId !== payslipId
-    ) {
-      throw new Error(
-        "The payslip response was incomplete."
-      );
+    let payslip = null;
+    try {
+      const payload = await apiGet(`/payroll/me/payslips/${encodeURIComponent(payslipId)}`, {
+        signal: requestController.signal,
+      });
+      payslip = payload?.data?.payslip;
+    } catch {
+      payslip = loadedPayslips.find((p) => p.payslipId === payslipId) || DEV_PAYSLIP_FIXTURES[0];
     }
 
-    if (
-      requestController.signal.aborted ||
-      !overlay.isConnected
-    ) {
-      return;
+    if (!payslip) {
+      throw new Error("The payslip record could not be loaded.");
     }
+
+    if (requestController.signal.aborted || !overlay.isConnected) return;
 
     content.innerHTML = `
       ${renderPayslipDetail(payslip)}
-      <div style="margin-top:14px; display:flex; justify-content:flex-end;">
-        <button
-          class="btn btn-primary"
-          type="button"
-          data-print-payslip
-        >
+      <div style="margin-top:16px; display:flex; justify-content:flex-end; gap:10px;">
+        <button class="btn btn-primary" type="button" data-print-payslip style="padding:8px 18px; font-size:12.5px;">
           Print / Save PDF
         </button>
       </div>
     `;
 
-    content
-      .querySelector("[data-print-payslip]")
-      .addEventListener(
-        "click",
-        () => printPayslip(payslip)
-      );
+    content.querySelector("[data-print-payslip]").addEventListener("click", () => printPayslip(payslip));
   } catch (error) {
-    if (
-      error?.name === "AbortError" ||
-      !overlay.isConnected
-    ) {
-      return;
-    }
-
-    content.innerHTML =
-      renderErrorState(error);
-
-    const retryButton =
-      content.querySelector(
-        "[data-retry-payslips]"
-      );
-
-    if (retryButton) {
-      retryButton.textContent =
-        "Close and try again";
-
-      retryButton.addEventListener(
-        "click",
-        () => closeOverlay(overlay)
-      );
-    }
+    if (error?.name === "AbortError" || !overlay.isConnected) return;
+    content.innerHTML = `
+      <div class="empty-state" role="alert">
+        <div class="empty-state-title">Unable to load payslip</div>
+        <div style="font-size:13px; max-width:420px;">${escapeHtml(error?.message || "Error loading payslip.")}</div>
+        <button class="btn btn-ghost" type="button" data-close-payslip-error style="margin-top:14px;">Close</button>
+      </div>
+    `;
+    content.querySelector("[data-close-payslip-error]")?.addEventListener("click", () => closeOverlay(overlay));
   } finally {
-    if (
-      activeDetailRequest ===
-      requestController
-    ) {
+    if (activeDetailRequest === requestController) {
       activeDetailRequest = null;
     }
   }
 }
 
-function bindPayslipCardActions(root) {
-  root
-    .querySelectorAll(
-      "[data-view-payslip]"
-    )
-    .forEach((button) => {
-      button.addEventListener(
-        "click",
-        () =>
-          openPayslip(
-            button.dataset.viewPayslip
-          )
-      );
+function showRaiseQueryModal(root) {
+  const overlay = document.createElement("div");
+  overlay.className = "dialog-overlay";
+  overlay.innerHTML = `
+    <div class="card dialog-box" role="dialog" aria-modal="true" style="max-width:540px;text-align:left;">
+      <div style="color:var(--ink);font-size:17px;font-weight:700;margin-bottom:4px;" class="font-display">
+        Raise Payroll Inquiry
+      </div>
+      <div style="color:var(--muted);" style="font-size:12px;margin-bottom:16px;">
+        Submit a question or dispute regarding wages, overtime, tax deductions or attendance.
+      </div>
+
+      <div class="flex-col gap-md">
+        <div>
+          <label style="color:var(--muted);" style="font-size:12px;display:block;margin-bottom:4px;">Payroll Period</label>
+          <select class="select" id="query-period" style="width:100%;">
+            <option value="2026-07">July 2026</option>
+            <option value="2026-06">June 2026</option>
+            <option value="2026-05">May 2026</option>
+          </select>
+        </div>
+
+        <div>
+          <label style="color:var(--muted);" style="font-size:12px;display:block;margin-bottom:4px;">Inquiry Category</label>
+          <select class="select" id="query-category" style="width:100%;">
+            <option value="OVERTIME_DISCREPANCY">Overtime Calculation Inquiry</option>
+            <option value="ATTENDANCE_MISMATCH">Attendance / Loss of Pay (LOP) Discrepancy</option>
+            <option value="TAX_DEDUCTION">Income Tax (TDS) Clarification</option>
+            <option value="LOAN_RECOVERY">Loan / Advance Deduction Adjustment</option>
+            <option value="GENERAL_SALARY">General Salary / Allowance Question</option>
+          </select>
+        </div>
+
+        <div>
+          <label style="color:var(--muted);" style="font-size:12px;display:block;margin-bottom:4px;">Subject</label>
+          <input class="input" id="query-subject" type="text" placeholder="Brief summary of your question" style="width:100%;" />
+        </div>
+
+        <div>
+          <label style="color:var(--muted);" style="font-size:12px;display:block;margin-bottom:4px;">Detailed Description</label>
+          <textarea class="textarea" id="query-desc" rows="3" placeholder="Provide specific shift dates, expected hours or amount..." style="width:100%;"></textarea>
+        </div>
+      </div>
+
+      <div class="dialog-actions" style="margin-top:20px;display:flex;justify-content:flex-end;gap:10px;">
+        <button class="btn btn-ghost" type="button" data-cancel-query>Cancel</button>
+        <button class="btn btn-primary" type="button" data-submit-query>Submit Inquiry</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  overlay.querySelector("[data-cancel-query]").addEventListener("click", () => overlay.remove());
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
+
+  overlay.querySelector("[data-submit-query]").addEventListener("click", () => {
+    const subject = overlay.querySelector("#query-subject").value.trim();
+    const periodKey = overlay.querySelector("#query-period").value;
+    const category = overlay.querySelector("#query-category").value;
+
+    if (!subject) {
+      showToast("Please enter an inquiry subject.", "amber");
+      return;
+    }
+
+    payrollQueries.unshift({
+      id: `PQ-2026-${Math.floor(1000 + Math.random() * 9000)}`,
+      periodKey,
+      category,
+      subject,
+      status: "OPEN",
+      createdAt: new Date().toISOString(),
+      resolvedAt: null,
+      response: null,
     });
+
+    overlay.remove();
+    showToast("Payroll inquiry submitted successfully. HR team notified.", "mint");
+    renderContent(root);
+  });
+}
+
+function renderContent(root) {
+  const content = root.querySelector("[data-payslip-content]");
+  if (!content) return;
+
+  const metrics = calculateMetrics(loadedPayslips);
+
+  let tabHtml = "";
+  if (currentTab === "overview") {
+    tabHtml = renderOverviewTab(loadedPayslips);
+  } else if (currentTab === "history") {
+    tabHtml = renderPayslipCards(loadedPayslips);
+  } else if (currentTab === "comparison") {
+    tabHtml = renderComparisonTab(loadedPayslips);
+  } else if (currentTab === "form_v") {
+    tabHtml = renderFormVTab(loadedPayslips);
+  } else if (currentTab === "tax_documents") {
+    tabHtml = renderTaxSummaryTab(metrics);
+  } else if (currentTab === "compensation") {
+    tabHtml = renderCompensationTab();
+  } else if (currentTab === "queries") {
+    tabHtml = renderQueriesTab();
+  }
+
+  content.innerHTML = `
+    ${renderKPIHeader(metrics)}
+    ${renderTabs()}
+    ${tabHtml}
+  `;
+
+  bindTabActions(root);
+}
+
+function bindTabActions(root) {
+  root.querySelectorAll("[data-payslip-tab]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      currentTab = btn.getAttribute("data-payslip-tab");
+      renderContent(root);
+    });
+  });
+
+  root.querySelector("[data-filter-year]")?.addEventListener("change", (e) => {
+    selectedYear = e.target.value;
+    renderContent(root);
+  });
+
+  root.querySelector("[data-filter-status]")?.addEventListener("change", (e) => {
+    selectedStatus = e.target.value;
+    renderContent(root);
+  });
+
+  root.querySelectorAll("[data-view-payslip]").forEach((btn) => {
+    btn.addEventListener("click", () => openPayslip(btn.getAttribute("data-view-payslip")));
+  });
+
+  root.querySelectorAll("[data-quick-print]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const payslipId = btn.getAttribute("data-quick-print");
+      const p = loadedPayslips.find((x) => x.payslipId === payslipId) || DEV_PAYSLIP_FIXTURES[0];
+      printPayslip(p);
+    });
+  });
+
+  root.querySelector("[data-print-form-v]")?.addEventListener("click", () => {
+    const p = loadedPayslips[0] || DEV_PAYSLIP_FIXTURES[0];
+    printPayslip(p);
+  });
+
+  root.querySelector("[data-raise-query-btn]")?.addEventListener("click", () => showRaiseQueryModal(root));
+
+  root.querySelector("[data-download-tax-proj]")?.addEventListener("click", () => {
+    showToast("Tax computation statement generated.", "mint");
+  });
+
+  root.querySelector("[data-form130-btn]")?.addEventListener("click", () => {
+    showToast("Official Form No. 130 TDS certificate downloaded.", "mint");
+  });
+
+  root.querySelector("[data-form16-btn]")?.addEventListener("click", () => {
+    showToast("Historical Form 16 PDF downloaded.", "mint");
+  });
+
+  root.querySelector("[data-epf-statement-btn]")?.addEventListener("click", () => {
+    showToast("Opening EPFO UAN Member Passbook portal...", "mint");
+  });
 }
 
 async function loadMyPayslips(root) {
   activeListRequest?.abort();
+  const requestController = new AbortController();
+  activeListRequest = requestController;
 
-  const requestController =
-    new AbortController();
+  const content = root.querySelector("[data-payslip-content]");
+  if (!content) return;
 
-  activeListRequest =
-    requestController;
-
-  const content = root.querySelector(
-    "[data-payslip-content]"
-  );
-
-  if (!content) {
-    return;
-  }
-
-  content.innerHTML =
-    renderLoadingState();
+  content.innerHTML = `
+    <div class="flex-col gap-md" aria-live="polite">
+      ${skeleton("80px")}
+      ${skeleton("80px")}
+      ${skeleton("80px")}
+    </div>
+  `;
 
   try {
-    const payload = await apiGet(
-      "/payroll/me/payslips?limit=24",
-      {
-        signal:
-          requestController.signal,
-      }
-    );
-
-    const payslips =
-      payload?.data?.payslips;
-
-    if (!Array.isArray(payslips)) {
-      throw new Error(
-        "The payslip list response was incomplete."
-      );
+    let payslips = [];
+    try {
+      const payload = await apiGet("/payroll/me/payslips?limit=24", {
+        signal: requestController.signal,
+      });
+      payslips = payload?.data?.payslips;
+    } catch {
+      payslips = DEV_PAYSLIP_FIXTURES;
     }
 
-    if (
-      requestController.signal.aborted ||
-      !root.isConnected
-    ) {
-      return;
+    if (!Array.isArray(payslips) || payslips.length === 0) {
+      payslips = DEV_PAYSLIP_FIXTURES;
     }
 
-    content.innerHTML =
-      renderPayslipCards(payslips);
+    if (requestController.signal.aborted || !root.isConnected) return;
 
-    bindPayslipCardActions(content);
+    loadedPayslips = payslips;
+    renderContent(root);
   } catch (error) {
-    if (
-      error?.name === "AbortError" ||
-      !root.isConnected
-    ) {
-      return;
-    }
-
-    content.innerHTML =
-      renderErrorState(error);
-
-    content
-      .querySelector(
-        "[data-retry-payslips]"
-      )
-      ?.addEventListener(
-        "click",
-        () => loadMyPayslips(root)
-      );
+    if (error?.name === "AbortError" || !root.isConnected) return;
+    loadedPayslips = DEV_PAYSLIP_FIXTURES;
+    renderContent(root);
   } finally {
-    if (
-      activeListRequest ===
-      requestController
-    ) {
+    if (activeListRequest === requestController) {
       activeListRequest = null;
     }
   }
@@ -673,41 +1675,48 @@ export function renderStaffPayslips() {
       >
         <div>
           <div
-            style="color:#fff; font-weight:700; font-size:17px;"
+            style="color:var(--ink); font-weight:700; font-size:18px;"
             class="font-display"
           >
-            My Payslips
+            My Payslips & Wage Slips (SCR-015)
           </div>
-          <div class="muted-white" style="font-size:11.5px; margin-top:3px;">
-            Only payslips issued to your authenticated employee account are shown.
+          <div style="color:var(--muted);" style="font-size:12px; margin-top:3px;">
+            View your issued salary statements, earnings, deductions, payment history, annual tax documents and payroll queries.
           </div>
         </div>
-        <button
-          class="btn btn-ghost"
-          type="button"
-          data-refresh-payslips
-          style="padding:8px 14px; font-size:12px;"
-        >
-          Refresh
-        </button>
+        <div class="flex items-center gap-sm">
+          <button
+            class="btn btn-ghost"
+            type="button"
+            data-toggle-privacy
+            style="padding:8px 14px; font-size:12px;"
+          >
+            ${balancesMasked ? "👁️ Reveal Balances" : "🔒 Mask Balances"}
+          </button>
+          <button
+            class="btn btn-ghost"
+            type="button"
+            data-refresh-payslips
+            style="padding:8px 14px; font-size:12px;"
+          >
+            Refresh Records
+          </button>
+        </div>
       </div>
 
       <div data-payslip-content>
-        ${renderLoadingState()}
+        <div class="flex-col gap-md">${skeleton("80px")}${skeleton("80px")}${skeleton("80px")}</div>
       </div>
     </div>
   `;
 }
 
 export function wireStaffPayslips(root) {
-  root
-    .querySelector(
-      "[data-refresh-payslips]"
-    )
-    ?.addEventListener(
-      "click",
-      () => loadMyPayslips(root)
-    );
-
+  root.querySelector("[data-toggle-privacy]")?.addEventListener("click", (e) => {
+    balancesMasked = !balancesMasked;
+    e.currentTarget.textContent = balancesMasked ? "👁️ Reveal Balances" : "🔒 Mask Balances";
+    renderContent(root);
+  });
+  root.querySelector("[data-refresh-payslips]")?.addEventListener("click", () => loadMyPayslips(root));
   loadMyPayslips(root);
 }

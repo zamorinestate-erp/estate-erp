@@ -1,14 +1,53 @@
 'use strict';
 
+/**
+ * STAFF LOAN & ADVANCE — MONGOOSE MODEL (SCR-014)
+ *
+ * Canonical model for Employee Loans and Salary Advances.
+ * Manages principal, interest policy, tenures, instalments, arrears,
+ * statutory deduction references, and comprehensive lifecycle states.
+ */
+
 const mongoose = require('mongoose');
 
 const LOAN_ADVANCE_TYPES = ['LOAN', 'SALARY_ADVANCE'];
-const LOAN_ADVANCE_STATUSES = ['REQUESTED', 'APPROVED', 'REJECTED'];
 
-function createPaiseField({ required = false, positive = false } = {}) {
+const LOAN_CATEGORIES = [
+  'WELFARE',
+  'EMERGENCY',
+  'MEDICAL',
+  'EDUCATION',
+  'HOUSING',
+  'GENERAL',
+  'SALARY_ADVANCE',
+];
+
+const LOAN_ADVANCE_STATUSES = [
+  'DRAFT',
+  'SUBMITTED',
+  'UNDER_REVIEW',
+  'MORE_INFO_REQUIRED',
+  'APPROVED',
+  'DISBURSEMENT_PENDING',
+  'DISBURSED',
+  'ACTIVE',
+  'PAUSED',
+  'IN_ARREARS',
+  'SETTLEMENT_PENDING',
+  'REPAID',
+  'CLOSED',
+  'REJECTED',
+  'WITHDRAWN',
+  'CANCELLED',
+];
+
+const INTEREST_METHODS = ['INTEREST_FREE', 'FIXED', 'REDUCING_BALANCE'];
+
+function createPaiseField({ required = false, positive = false, defaultValue = 0 } = {}) {
   return {
     type: Number,
     required,
+    default: defaultValue,
     min: 0,
     validate: {
       validator(value) {
@@ -28,16 +67,20 @@ const staffLoanAdvanceSchema = new mongoose.Schema(
       immutable: true,
       trim: true,
       uppercase: true,
-      match: /^LN-[0-9]{4,}$/,
+      match: /^(LN|ADV)-\d{4,}/,
+      index: true,
     },
+
     organisationId: {
       type: String,
       required: true,
       immutable: true,
       trim: true,
       uppercase: true,
+      default: 'ZAMORIN',
       index: true,
     },
+
     cafeId: {
       type: String,
       required: true,
@@ -46,49 +89,160 @@ const staffLoanAdvanceSchema = new mongoose.Schema(
       uppercase: true,
       index: true,
     },
+
     employeeUserId: {
       type: String,
       required: true,
       immutable: true,
       trim: true,
       uppercase: true,
-      match: /^(MU|OW|AD|ST)-[0-9]{4,}$/,
       index: true,
     },
+
+    employeeName: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+
     requestType: {
       type: String,
       required: true,
       immutable: true,
-      trim: true,
-      uppercase: true,
       enum: LOAN_ADVANCE_TYPES,
+      default: 'LOAN',
+      index: true,
     },
-    requestedAmountPaise:
-      createPaiseField({
-        required: true,
-        positive: true,
-      }),
+
+    loanCategory: {
+      type: String,
+      enum: LOAN_CATEGORIES,
+      default: 'WELFARE',
+    },
+
+    requestedAmountPaise: createPaiseField({ required: true, positive: true }),
+    approvedAmountPaise: createPaiseField({ defaultValue: 0 }),
+    disbursedAmountPaise: createPaiseField({ defaultValue: 0 }),
+
+    principalPaise: createPaiseField({ defaultValue: 0 }),
+    outstandingPrincipalPaise: createPaiseField({ defaultValue: 0 }),
+    outstandingInterestPaise: createPaiseField({ defaultValue: 0 }),
+    arrearsPaise: createPaiseField({ defaultValue: 0 }),
+    totalRepaidPaise: createPaiseField({ defaultValue: 0 }),
+
+    interestMethod: {
+      type: String,
+      enum: INTEREST_METHODS,
+      default: 'INTEREST_FREE',
+    },
+
+    annualInterestRatePercent: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 100,
+    },
+
+    tenureMonths: {
+      type: Number,
+      default: 1,
+      min: 1,
+      max: 60,
+    },
+
+    monthlyInstalmentPaise: createPaiseField({ defaultValue: 0 }),
+
     requestReason: {
       type: String,
       trim: true,
       maxlength: 2000,
       default: '',
     },
+
     status: {
       type: String,
       required: true,
-      trim: true,
-      uppercase: true,
       enum: LOAN_ADVANCE_STATUSES,
-      default: 'REQUESTED',
+      default: 'SUBMITTED',
       index: true,
     },
+
+    policyVersion: {
+      type: String,
+      default: 'POL-LOAN-2026-V1',
+    },
+
+    deductionReference: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: null,
+      index: true,
+    },
+
+    currency: {
+      type: String,
+      default: 'INR',
+      immutable: true,
+    },
+
     requestedAt: {
       type: Date,
-      required: true,
-      immutable: true,
       default: Date.now,
+      immutable: true,
     },
+
+    approvedAt: {
+      type: Date,
+      default: null,
+    },
+
+    disbursedAt: {
+      type: Date,
+      default: null,
+    },
+
+    closedAt: {
+      type: Date,
+      default: null,
+    },
+
+    approvedByUserId: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: null,
+    },
+
+    disbursedByUserId: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: null,
+    },
+
+    disbursementDetails: {
+      paymentMethod: { type: String, default: 'BANK_TRANSFER' },
+      bankTransactionRef: { type: String, default: null },
+      disbursementAccountRef: { type: String, default: null },
+    },
+
+    pauseDetails: {
+      isPaused: { type: Boolean, default: false },
+      pauseFromPeriod: { type: String, default: null },
+      resumePeriod: { type: String, default: null },
+      pauseReason: { type: String, default: null },
+      approvedByUserId: { type: String, default: null },
+    },
+
+    settlementDetails: {
+      isSettled: { type: Boolean, default: false },
+      settledAmountPaise: { type: Number, default: 0 },
+      settledAt: { type: Date, default: null },
+      paymentRef: { type: String, default: null },
+      noDueCertificateGenerated: { type: Boolean, default: false },
+    },
+
     createdByUserId: {
       type: String,
       required: true,
@@ -96,76 +250,31 @@ const staffLoanAdvanceSchema = new mongoose.Schema(
       trim: true,
       uppercase: true,
     },
+
     updatedByUserId: {
       type: String,
       trim: true,
       uppercase: true,
-      default: '',
-    },
-    decidedByUserId: {
-      type: String,
-      trim: true,
-      uppercase: true,
-      default: '',
-    },
-    decidedAt: {
-      type: Date,
       default: null,
-    },
-    decisionReason: {
-      type: String,
-      trim: true,
-      maxlength: 2000,
-      default: '',
-    },
-    currency: {
-      type: String,
-      immutable: true,
-      enum: ['INR'],
-      default: 'INR',
     },
   },
   {
     timestamps: true,
-    optimisticConcurrency: true,
     versionKey: 'version',
-    collection: 'staff_loan_advances',
+    optimisticConcurrency: true,
+    collection: 'staff_loans_advances',
   }
 );
 
-staffLoanAdvanceSchema.index(
-  {
-    organisationId: 1,
-    employeeUserId: 1,
-    status: 1,
-    createdAt: -1,
-  },
-  {
-    name: 'loan_advance_employee_status',
-  }
-);
-
-staffLoanAdvanceSchema.index(
-  {
-    organisationId: 1,
-    cafeId: 1,
-    status: 1,
-    createdAt: -1,
-  },
-  {
-    name: 'loan_advance_cafe_status',
-  }
-);
+staffLoanAdvanceSchema.index({ organisationId: 1, employeeUserId: 1, status: 1 });
 
 const StaffLoanAdvance =
-  mongoose.models.StaffLoanAdvance ||
-  mongoose.model(
-    'StaffLoanAdvance',
-    staffLoanAdvanceSchema
-  );
+  mongoose.models.StaffLoanAdvance || mongoose.model('StaffLoanAdvance', staffLoanAdvanceSchema);
 
 module.exports = {
   StaffLoanAdvance,
   LOAN_ADVANCE_TYPES,
+  LOAN_CATEGORIES,
   LOAN_ADVANCE_STATUSES,
+  INTEREST_METHODS,
 };

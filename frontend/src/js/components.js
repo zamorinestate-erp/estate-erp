@@ -2,24 +2,25 @@
 // ZAMORIN CAFE ERP — SHARED COMPONENTS (Design System v2: Ledger & Roastery)
 // =============================================================================
 
-import { NAVIGATION, ROLES } from "./navigation.js";
+import { NAVIGATION, ROLES, getGroupedNavItems } from "./navigation.js";
 import { icon } from "./icons.js";
 import { state, setState } from "./state.js";
 import { navigate } from "./router.js";
 import { forRole, unreadCount, markRead, markAllRead } from "./notifications.js";
 import { apiGet, apiPost } from "./apiClient.js";
+import { setSettingsActiveSection } from "./pages/settingsShared.js";
 
 const ROLE_LABELS = {
   [ROLES.MASTER]: "Master User",
   [ROLES.OWNER]: "Cafe Owner",
-  [ROLES.CAFE_ADMIN]: "Cafe Admin",
+  [ROLES.CAFE_ADMIN]: "Cafe Operations",
   [ROLES.STAFF]: "Staff",
 };
 
 const ROLE_INITIALS = {
   [ROLES.MASTER]: "MU",
   [ROLES.OWNER]: "BO",
-  [ROLES.CAFE_ADMIN]: "CA",
+  [ROLES.CAFE_ADMIN]: "OP",
   [ROLES.STAFF]: "SA",
 };
 
@@ -51,22 +52,46 @@ export function setSidebarCollapsed(collapsed) {
 }
 
 /* -------------------------------------------------------------------------
-   Sidebar — Design System v2 Navigation (Retractable & Accessible)
+   Sidebar — Design System v2 Navigation (Grouped, Retractable & Accessible)
    ------------------------------------------------------------------------- */
 export function renderSidebar() {
-  const nav = NAVIGATION[state.role] || { items: [], footnote: "" };
-  const user = state.auth?.user || {};
+  const isPrimary = Boolean(
+    state.auth?.user?.isPrimaryMaster ||
+    state.user?.isPrimaryMaster
+  );
   const currentRole = state.role || ROLES.MASTER;
+  const grouped = getGroupedNavItems(currentRole, isPrimary);
+  const user = state.auth?.user || state.user || {};
   const collapsed = isSidebarCollapsed();
 
-  const itemsHtml = nav.items
-    .map((item) => {
-      const active = state.route === item.route ? "active" : "";
+  let rolePillLabel = ROLE_LABELS[currentRole] || "Workspace";
+  if (currentRole === ROLES.MASTER) {
+    rolePillLabel = isPrimary ? "Primary Master" : "Master (Operational)";
+  }
+
+  const sectionsHtml = Object.entries(grouped)
+    .map(([groupName, items]) => {
+      const itemsHtml = items
+        .map((item) => {
+          const active = state.route === item.route ? "active" : "";
+          return `
+            <button class="nav-link ${active}" data-route="${item.route}" data-navid="${item.id}" title="${item.label}" type="button">
+              <span class="nav-icon">${icon(item.icon)}</span>
+              <span class="nav-label">${item.label}</span>
+            </button>`;
+        })
+        .join("");
+
       return `
-        <button class="nav-link ${active}" data-route="${item.route}" data-navid="${item.id}" title="${item.label}" type="button">
-          <span class="nav-icon">${icon(item.icon)}</span>
-          <span class="nav-label">${item.label}</span>
-        </button>`;
+        <div class="nav-group-section" style="margin-bottom:12px;">
+          ${
+            !collapsed && groupName !== "COMMAND"
+              ? `<div class="nav-group-heading" style="font-size:10.5px;font-weight:700;letter-spacing:0.08em;color:var(--muted);text-transform:uppercase;padding:6px 12px 2px;opacity:0.75;">${groupName}</div>`
+              : ""
+          }
+          <div class="nav-list">${itemsHtml}</div>
+        </div>
+      `;
     })
     .join("");
 
@@ -85,16 +110,16 @@ export function renderSidebar() {
     </div>
 
     <div class="sidebar-scope">
-      <span class="scope-pill">${ROLE_LABELS[currentRole] || "Workspace"}</span>
+      <span class="scope-pill" style="font-size:11px;font-weight:700;letter-spacing:0.04em;">${rolePillLabel}</span>
     </div>
 
-    <nav class="sidebar-nav" aria-label="Main Navigation">
-      <div class="nav-list">${itemsHtml}</div>
+    <nav class="sidebar-nav" aria-label="Main Navigation" style="overflow-y:auto;">
+      ${sectionsHtml}
     </nav>
 
     <div class="sidebar-footer">
       <div class="footer-user">
-        <div class="user-avatar" title="${user.name || "Master"} (${ROLE_LABELS[currentRole] || "Workspace"})">${ROLE_INITIALS[currentRole] || "ZU"}</div>
+        <div class="user-avatar" title="${user.name || "Master"} (${rolePillLabel})">${ROLE_INITIALS[currentRole] || "ZU"}</div>
         <div class="user-info">
           <div class="user-name">${user.name || "Master Administrator"}</div>
           <div class="user-role">${user.email || "master@zamorin.cafe"}</div>
@@ -102,6 +127,25 @@ export function renderSidebar() {
       </div>
     </div>
   `;
+}
+
+export function updateSidebarActive(currentRoute) {
+  const sb = document.getElementById("sidebar");
+  if (!sb) return;
+  const baseRoute = currentRoute ? currentRoute.split("/")[0] : "";
+  sb.querySelectorAll(".nav-link").forEach((btn) => {
+    const route = btn.dataset.route;
+    const isActive =
+      route === currentRoute ||
+      (route === "settings" && (baseRoute === "settings" || currentRoute === "profile" || currentRoute === "employment" || currentRoute === "my-profile" || currentRoute === "my-employment")) ||
+      (route === "cafe-ops-devices" && (baseRoute === "cafe-ops-devices" || baseRoute === "devices")) ||
+      (route === "devices" && (baseRoute === "cafe-ops-devices" || baseRoute === "devices")) ||
+      (route === "approvals" && (baseRoute === "approvals" || baseRoute === "tasks")) ||
+      (route === "tasks" && (baseRoute === "approvals" || baseRoute === "tasks")) ||
+      (route === "ledger" && (baseRoute === "ledger" || baseRoute === "personal-ledger")) ||
+      (route === baseRoute && baseRoute !== "dashboard" && baseRoute !== "");
+    btn.classList.toggle("active", Boolean(isActive));
+  });
 }
 
 export function wireSidebar(root) {
@@ -119,24 +163,69 @@ export function wireSidebar(root) {
       setSidebarCollapsed(!isSidebarCollapsed());
     });
   }
-
-  // Keyboard shortcut Ctrl + [ to toggle sidebar
-  window.addEventListener("keydown", (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key === "[") {
-      e.preventDefault();
-      setSidebarCollapsed(!isSidebarCollapsed());
-    }
-  });
 }
 
 /* -------------------------------------------------------------------------
-   Topbar — Design System v2 Header with Cafe switcher, Search & Popovers
+   Topbar — Design System v2 Header with Persistent Cafe Context Bar
    ------------------------------------------------------------------------- */
 export function renderTopbar({ scopeChip } = {}) {
   const currentTheme = document.documentElement.dataset.theme || "paper";
-  const user = state.auth?.user || {};
+  const user = state.auth?.user || state.user || {};
   const role = state.role || ROLES.MASTER;
   const initials = ROLE_INITIALS[role] || "MU";
+  const isStaff = role === ROLES.STAFF;
+  const isCafeOps = role === ROLES.CAFE_ADMIN;
+
+  // Dynamic online/offline badge for Cafe Operations Context Bar
+  function getConnectivityBadge() {
+    if (!navigator.onLine) {
+      return `<span id="cafe-ops-connectivity-badge" class="status error" style="font-size:10px; padding:2px 6px; font-weight:700;">🔴 Offline</span>`;
+    }
+    return `<span id="cafe-ops-connectivity-badge" class="status success" style="font-size:10px; padding:2px 6px; font-weight:700;">🟢 Live</span>`;
+  }
+
+  let cafeScopeHtml = '';
+  if (isCafeOps) {
+    const operatorName = user.name || "Rahul K (Operations Lead)";
+    const operatorId = user.userId || "AD-0001";
+    const cafeName = user.primaryCafeName || "Koramangala Main";
+    const cafeId = user.primaryCafeId || "ZC-0001";
+    const todayStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+
+    cafeScopeHtml = `
+      <div class="cafe-ops-context-bar" style="display:inline-flex; align-items:center; flex-wrap:wrap; gap:8px; padding:4px 10px; border-radius:var(--radius-md); background:var(--bg-surface-2); border:1px solid var(--border-subtle); font-size:12px; color:var(--ink);">
+        <span style="font-weight:700; display:inline-flex; align-items:center; gap:4px;"><span style="color:var(--color-accent-amber);">📍</span> ${cafeName} (${cafeId})</span>
+        <span style="color:var(--muted); opacity:0.6;">·</span>
+        <span style="color:var(--muted);">${todayStr}</span>
+        <span style="color:var(--muted); opacity:0.6;">·</span>
+        <span style="font-weight:600; color:var(--ink);">${operatorName} <span style="font-size:10.5px; color:var(--muted); font-family:var(--font-mono);">(${operatorId})</span></span>
+        <span style="color:var(--muted); opacity:0.6;">·</span>
+        ${getConnectivityBadge()}
+        <button class="btn btn-ghost" id="cafe-ops-switch-btn" type="button" style="font-size:11px; padding:2px 8px; margin-left:4px; font-weight:600; color:var(--color-accent-amber);" title="Switch to another authorized operator">Switch</button>
+        <button class="btn btn-ghost" id="cafe-ops-lock-btn" type="button" style="font-size:11px; padding:2px 8px; font-weight:600; color:var(--muted);" title="Temporarily lock terminal">Lock</button>
+      </div>
+    `;
+  } else if (isStaff) {
+    cafeScopeHtml = `<div class="cafe-scope-context" style="display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius:var(--radius-md); background:var(--bg-surface-2); border:1px solid var(--border-subtle); font-size:12px; font-weight:600; color:var(--text-primary);">
+        <span style="font-size:13px;">📍</span>
+        <span>${user.primaryCafeName || user.primaryCafeId || "ZC-0001"} · Koramangala</span>
+      </div>`;
+  } else {
+    cafeScopeHtml = `<div class="cafe-scope-dropdown">
+        <select id="global-cafe-selector" class="select-scope" aria-label="Selected Cafe Scope">
+          <option value="ALL">🏠 All Cafés (Global Portfolio)</option>
+          <option value="ZC-0001">☕ ZC-0001 · Koramangala Main</option>
+          <option value="ZC-0002">☕ ZC-0002 · Indiranagar Central</option>
+          <option value="ZC-0003">☕ ZC-0003 · Calicut Beach</option>
+        </select>
+      </div>`;
+  }
+
+  const searchPlaceholder = isStaff
+    ? "Search my attendance, payslips, requests... (Ctrl+K)"
+    : isCafeOps
+    ? "Search this café… (Ctrl+K)"
+    : "Search modules, records, employees... (Ctrl+K)";
 
   return `
     <div class="topbar-inner">
@@ -144,26 +233,24 @@ export function renderTopbar({ scopeChip } = {}) {
         <button class="topbar-action-btn sidebar-topbar-toggle" id="sidebar-toggle-btn" title="Toggle Navigation Sidebar (Ctrl+[)" aria-label="Toggle Sidebar" type="button">
           ${icon("menu")}
         </button>
-        <div class="cafe-scope-dropdown">
-          <select id="global-cafe-selector" class="select-scope" aria-label="Selected Cafe Scope">
-            <option value="ALL">🏠 All Cafés (Global Portfolio)</option>
-            <option value="ZC-0001">☕ ZC-0001 · Koramangala Main</option>
-            <option value="ZC-0002">☕ ZC-0002 · Indiranagar Central</option>
-            <option value="ZC-0003">☕ ZC-0003 · Calicut Beach</option>
-          </select>
-        </div>
+        ${cafeScopeHtml}
       </div>
 
       <div class="topbar-centre">
         <div class="global-search-wrap">
           <span class="search-icon">${icon("search")}</span>
-          <input type="text" id="topbar-search-input" placeholder="Search modules, records, employees... (Ctrl+K)" autocomplete="off" />
+          <input type="text" id="topbar-search-input" placeholder="${searchPlaceholder}" autocomplete="off" />
           <kbd class="search-kbd">Ctrl+K</kbd>
           <div id="topbar-search-results" class="search-results-dropdown" style="display:none;"></div>
         </div>
       </div>
 
       <div class="topbar-right">
+        <!-- Live System Status Indicator -->
+        <div class="system-status-indicator online" id="topbar-system-status" title="System Connected & Synced">
+          <span style="font-size:10px;">●</span> Online
+        </div>
+
         <!-- Theme Switcher Button -->
         <button class="topbar-action-btn" id="theme-btn" title="Change Appearance & Theme" type="button">
           ${icon("sun")}
@@ -223,12 +310,19 @@ export function renderTopbar({ scopeChip } = {}) {
 
     <div id="notifPopover" class="popover notif-popover" style="display:none;">
       <div class="popover-head">
-        <h4>Notifications</h4>
-        <button class="btn btn-sm btn-ghost" id="popover-mark-all">Mark all read</button>
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <h4 style="margin:0; font-size:14px; font-weight:700;">Notifications</h4>
+          <button class="btn btn-sm btn-ghost" id="popover-mark-all" style="font-size:11px; padding:2px 8px;">Mark all read</button>
+        </div>
+        <div class="notif-tabs">
+          <button class="notif-tab-btn active" data-notif-tab="all" type="button">All</button>
+          <button class="notif-tab-btn" data-notif-tab="unread" type="button">Unread</button>
+          <button class="notif-tab-btn" data-notif-tab="action" type="button">Action Required</button>
+        </div>
       </div>
       <div id="notif-popover-list" class="notif-list"></div>
-      <div class="popover-foot">
-        <button class="btn btn-sm btn-ghost btn-block" id="popover-view-all">Open Notification Centre</button>
+      <div class="popover-foot" style="padding:8px 12px; border-top:1px solid var(--line); background:var(--surface-sunken);">
+        <button class="btn btn-sm btn-ghost btn-block" id="popover-view-all" style="font-size:12px;">Open Notification Centre</button>
       </div>
     </div>
 
@@ -244,6 +338,9 @@ export function renderTopbar({ scopeChip } = {}) {
       <div class="popover-menu">
         <button class="popover-menu-item" data-profile-action="my-profile">
           ${icon("user")} My Profile
+        </button>
+        <button class="popover-menu-item" data-profile-action="my-employment">
+          ${icon("payslip")} My Employment
         </button>
         <button class="popover-menu-item" data-profile-action="settings">
           ${icon("settings")} Preferences &amp; Settings
@@ -293,24 +390,66 @@ export function wireBell(root) {
     });
   }
 
+  // Cafe Operations Context Bar actions
+  const switchBtn = root.querySelector("#cafe-ops-switch-btn");
+  if (switchBtn) {
+    switchBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openSwitchOperatorModal();
+    });
+  }
+
+  const lockBtn = root.querySelector("#cafe-ops-lock-btn");
+  if (lockBtn) {
+    lockBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openOperatorLockModal();
+    });
+  }
+
+  // Live online/offline badge update for CAFE_ADMIN Context Bar
+  if (state.role === ROLES.CAFE_ADMIN) {
+    const updateConnectivityBadge = () => {
+      const badge = document.getElementById('cafe-ops-connectivity-badge');
+      if (!badge) return;
+      if (navigator.onLine) {
+        badge.className = 'status success';
+        badge.style.cssText = 'font-size:10px; padding:2px 6px; font-weight:700;';
+        badge.textContent = '🟢 Live';
+      } else {
+        badge.className = 'status error';
+        badge.style.cssText = 'font-size:10px; padding:2px 6px; font-weight:700;';
+        badge.textContent = '🔴 Offline';
+      }
+    };
+    window.addEventListener('online', updateConnectivityBadge);
+    window.addEventListener('offline', updateConnectivityBadge);
+  }
+
   // Theme switcher
   const themeBtn = root.querySelector("#theme-btn");
   const themePop = root.querySelector("#themePopover");
   if (themeBtn && themePop) {
     themeBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      closeAllPopovers(themePop);
-      themePop.style.display = themePop.style.display === "block" ? "none" : "block";
+      const isVisible = themePop.classList.contains("open") || themePop.style.display === "block";
+      closeAllPopovers();
+      if (!isVisible) {
+        themePop.style.display = "block";
+        themePop.classList.add("open");
+      }
     });
 
     themePop.querySelectorAll("[data-theme-choice]").forEach((btn) => {
-      btn.addEventListener("click", () => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
         const theme = btn.dataset.themeChoice;
         document.documentElement.dataset.theme = theme;
         localStorage.setItem("zamorin-theme", theme);
         themePop.querySelectorAll("[data-theme-choice]").forEach((b) => b.classList.remove("selected"));
         btn.classList.add("selected");
         themePop.style.display = "none";
+        themePop.classList.remove("open");
         showToast(`Theme updated to ${theme.toUpperCase()}`);
       });
     });
@@ -319,33 +458,47 @@ export function wireBell(root) {
   // Notification Bell
   const notifBtn = root.querySelector("#notif-bell-btn");
   const notifPop = root.querySelector("#notifPopover");
+  let activeNotifTab = "all";
+
   if (notifBtn && notifPop) {
     notifBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      closeAllPopovers(notifPop);
-      const isVisible = notifPop.style.display === "block";
+      const isVisible = notifPop.classList.contains("open") || notifPop.style.display === "block";
+      closeAllPopovers();
       if (!isVisible) {
-        renderNotifList(notifPop);
+        renderNotifList(notifPop, activeNotifTab);
         notifPop.style.display = "block";
-      } else {
-        notifPop.style.display = "none";
+        notifPop.classList.add("open");
       }
+    });
+
+    notifPop.querySelectorAll(".notif-tab-btn").forEach((tabBtn) => {
+      tabBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        notifPop.querySelectorAll(".notif-tab-btn").forEach((b) => b.classList.remove("active"));
+        tabBtn.classList.add("active");
+        activeNotifTab = tabBtn.dataset.notifTab || "all";
+        renderNotifList(notifPop, activeNotifTab);
+      });
     });
 
     const markAllBtn = notifPop.querySelector("#popover-mark-all");
     if (markAllBtn) {
-      markAllBtn.addEventListener("click", () => {
+      markAllBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
         markAllRead(state.role);
         updateBellBadge();
-        renderNotifList(notifPop);
+        renderNotifList(notifPop, activeNotifTab);
         showToast("All notifications marked as read");
       });
     }
 
     const viewAllBtn = notifPop.querySelector("#popover-view-all");
     if (viewAllBtn) {
-      viewAllBtn.addEventListener("click", () => {
+      viewAllBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
         notifPop.style.display = "none";
+        notifPop.classList.remove("open");
         navigate("notifications");
       });
     }
@@ -357,37 +510,139 @@ export function wireBell(root) {
   if (profileBtn && profilePop) {
     profileBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      closeAllPopovers(profilePop);
-      profilePop.style.display = profilePop.style.display === "block" ? "none" : "block";
+      const isVisible = profilePop.classList.contains("open") || profilePop.style.display === "block";
+      closeAllPopovers();
+      if (!isVisible) {
+        profilePop.style.display = "block";
+        profilePop.classList.add("open");
+      }
     });
 
     profilePop.querySelectorAll("[data-profile-action]").forEach((btn) => {
-      btn.addEventListener("click", async () => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
         const action = btn.dataset.profileAction;
         profilePop.style.display = "none";
+        profilePop.classList.remove("open");
         if (action === "logout") {
           try {
             await apiPost("/auth/logout");
           } catch {}
           window.location.reload();
         } else if (action === "my-profile") {
-          navigate(state.role === ROLES.STAFF ? "profile" : "employees");
-        } else if (action === "settings" || action === "security") {
+          setSettingsActiveSection("profile");
+          navigate(state.role === ROLES.STAFF ? "staff-settings" : "settings");
+        } else if (action === "my-employment") {
+          setSettingsActiveSection("employment");
+          navigate(state.role === ROLES.STAFF ? "staff-settings" : "settings");
+        } else if (action === "security") {
+          setSettingsActiveSection("security");
+          navigate(state.role === ROLES.STAFF ? "staff-settings" : "settings");
+        } else if (action === "settings") {
+          setSettingsActiveSection("overview");
           navigate(state.role === ROLES.STAFF ? "staff-settings" : "settings");
         }
       });
     });
   }
 
-  // Global Search
+  // Global Smart Search with Grouped Recommendations & Keyboard Navigation
   const searchInput = root.querySelector("#topbar-search-input");
   const searchResults = root.querySelector("#topbar-search-results");
+  let highlightedSearchIndex = -1;
+
+  function renderDefaultSearchSuggestions() {
+    if (!searchResults) return;
+    const isStaff = state.role === ROLES.STAFF;
+    const isOwner = state.role === ROLES.OWNER;
+    const isCafeOps = state.role === ROLES.CAFE_ADMIN;
+
+    const frequentModules = isStaff
+      ? [
+          { title: "My Attendance & Shifts", subtitle: "Clock in/out & history", route: "staff-attendance" },
+          { title: "Leave & Time Off", subtitle: "Submit leave request", route: "staff-leave" },
+        ]
+      : isOwner
+      ? [
+          { title: "Tasks & Oversight", subtitle: "High-priority approvals", route: "tasks" },
+          { title: "Bills & Receipts", subtitle: "Financial document register", route: "bills" },
+          { title: "Multi-Cafe Summary", subtitle: "Aggregated financial overview", route: "finance-summary" },
+        ]
+      : isCafeOps
+      ? [
+          { title: "POS & Billing", subtitle: "Active till & order capture", route: "pos" },
+          { title: "Shift Attendance", subtitle: "Team shift clock-in", route: "attendance" },
+          { title: "Daily Cash Book", subtitle: "Cash movements & reconciliations", route: "cashbook" },
+        ]
+      : [
+          { title: "POS & Billing", subtitle: "Terminal operations", route: "pos" },
+          { title: "Inventory Master", subtitle: "Stock levels & transfers", route: "inventory" },
+          { title: "Procurement Orders", subtitle: "Purchase orders & approvals", route: "procurement" },
+          { title: "Finance & Accounts", subtitle: "General ledger & vouchers", route: "finance" },
+        ];
+
+    let html = `<div class="search-group-title">Frequently Accessed</div>`;
+    frequentModules.forEach((m) => {
+      html += `
+        <div class="search-item" data-search-route="${m.route}">
+          <div class="search-item-title">${m.title}</div>
+          <div class="search-item-sub">${m.subtitle}</div>
+        </div>`;
+    });
+
+    searchResults.innerHTML = html;
+    searchResults.style.display = "block";
+    highlightedSearchIndex = -1;
+
+    searchResults.querySelectorAll("[data-search-route]").forEach((el) => {
+      el.addEventListener("click", () => {
+        searchResults.style.display = "none";
+        if (searchInput) searchInput.value = "";
+        navigate(el.dataset.searchRoute);
+      });
+    });
+  }
+
   if (searchInput && searchResults) {
     window.addEventListener("keydown", (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         searchInput.focus();
         searchInput.select();
+        renderDefaultSearchSuggestions();
+      }
+    });
+
+    searchInput.addEventListener("focus", () => {
+      if (!searchInput.value.trim()) {
+        renderDefaultSearchSuggestions();
+      }
+    });
+
+    searchInput.addEventListener("keydown", (e) => {
+      const items = searchResults.querySelectorAll(".search-item");
+      if (!items.length || searchResults.style.display === "none") return;
+
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        highlightedSearchIndex = (highlightedSearchIndex + 1) % items.length;
+        items.forEach((it, idx) => it.classList.toggle("highlighted", idx === highlightedSearchIndex));
+        items[highlightedSearchIndex]?.scrollIntoView({ block: "nearest" });
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        highlightedSearchIndex = (highlightedSearchIndex - 1 + items.length) % items.length;
+        items.forEach((it, idx) => it.classList.toggle("highlighted", idx === highlightedSearchIndex));
+        items[highlightedSearchIndex]?.scrollIntoView({ block: "nearest" });
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        if (highlightedSearchIndex >= 0 && items[highlightedSearchIndex]) {
+          items[highlightedSearchIndex].click();
+        } else if (items[0]) {
+          items[0].click();
+        }
+      } else if (e.key === "Escape") {
+        searchResults.style.display = "none";
+        highlightedSearchIndex = -1;
       }
     });
 
@@ -396,7 +651,7 @@ export function wireBell(root) {
       clearTimeout(searchDebounce);
       const q = searchInput.value.trim();
       if (q.length < 1) {
-        searchResults.style.display = "none";
+        renderDefaultSearchSuggestions();
         return;
       }
       searchDebounce = setTimeout(async () => {
@@ -418,6 +673,8 @@ export function wireBell(root) {
           if (!html) html = `<div class="search-empty">No matching records found</div>`;
           searchResults.innerHTML = html;
           searchResults.style.display = "block";
+          highlightedSearchIndex = -1;
+
           searchResults.querySelectorAll("[data-search-route]").forEach((el) => {
             el.addEventListener("click", () => {
               searchResults.style.display = "none";
@@ -432,6 +689,24 @@ export function wireBell(root) {
     });
   }
 
+  // System Status Live Connectivity Monitor
+  const statusBadge = root.querySelector("#topbar-system-status");
+  if (statusBadge) {
+    const syncStatus = () => {
+      if (navigator.onLine) {
+        statusBadge.className = "system-status-indicator online";
+        statusBadge.innerHTML = `<span style="font-size:10px;">●</span> Online`;
+        statusBadge.title = "Backend API & Active Session Connected";
+      } else {
+        statusBadge.className = "system-status-indicator offline";
+        statusBadge.innerHTML = `<span style="font-size:10px;">●</span> Offline`;
+        statusBadge.title = "Network Disconnected — Retrying Connection";
+      }
+    };
+    window.addEventListener("online", syncStatus);
+    window.addEventListener("offline", syncStatus);
+  }
+
   document.addEventListener("click", (e) => {
     if (!e.target.closest(".popover") && !e.target.closest(".topbar-action-btn") && !e.target.closest(".profile-avatar-btn")) {
       closeAllPopovers();
@@ -442,19 +717,33 @@ export function wireBell(root) {
   });
 }
 
-function renderNotifList(popoverEl) {
+function renderNotifList(popoverEl, filter = "all") {
   const host = popoverEl.querySelector("#notif-popover-list");
   if (!host) return;
-  const items = forRole(state.role).sort((a, b) => b.createdAt - a.createdAt).slice(0, 5);
+
+  let items = forRole(state.role).sort((a, b) => b.createdAt - a.createdAt);
+
+  if (filter === "unread") {
+    items = items.filter((n) => !n.read);
+  } else if (filter === "action") {
+    items = items.filter((n) => n.priority === "CRITICAL" || n.priority === "HIGH" || n.category === "APPROVAL");
+  }
+
+  items = items.slice(0, 6);
+
   if (!items.length) {
-    host.innerHTML = `<div class="notif-empty">No notifications yet</div>`;
+    host.innerHTML = `<div class="notif-empty">${filter === "unread" ? "No unread notifications" : filter === "action" ? "No pending actions required" : "No notifications yet"}</div>`;
     return;
   }
+
   host.innerHTML = items
     .map(
       (n) => `
       <div class="notif-row ${n.read ? "read" : "unread"}" data-notif-id="${n.id}" data-deeplink="${n.deepLink || ""}">
-        <div class="notif-title">${n.title}</div>
+        <div class="notif-row-header">
+          <span class="notif-title">${n.title}</span>
+          <span class="notif-time">${n.createdAt ? new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Just now"}</span>
+        </div>
         <div class="notif-desc">${n.message}</div>
       </div>`
     )
@@ -472,7 +761,10 @@ function renderNotifList(popoverEl) {
 
 function closeAllPopovers(exceptEl = null) {
   document.querySelectorAll(".popover").forEach((p) => {
-    if (p !== exceptEl) p.style.display = "none";
+    if (p !== exceptEl) {
+      p.style.display = "none";
+      p.classList.remove("open");
+    }
   });
 }
 
@@ -485,81 +777,113 @@ function closeMobileDrawer() {
    ------------------------------------------------------------------------- */
 let currentModalResolve = null;
 
-export function openModal({
-  title = "Action",
-  body = "",
-  saveLabel = "Save Changes",
-  cancelLabel = "Cancel",
-  onSave = null,
-  onCancel = null,
-  maxWidth = "560px",
-} = {}) {
+export function openModal(options = {}) {
   closeModal();
+
+  let root = document.getElementById("modal-root");
+  if (!root) {
+    root = document.createElement("div");
+    root.id = "modal-root";
+    document.body.appendChild(root);
+  }
 
   const modalEl = document.createElement("div");
   modalEl.className = "modal-backdrop open";
   modalEl.id = "zamorin-global-modal";
 
-  modalEl.innerHTML = `
-    <div class="modal-window" style="max-width:${maxWidth}">
-      <div class="modal-header">
-        <h3 class="modal-title">${title}</h3>
-        <button class="modal-close-btn" data-modal-cancel type="button" aria-label="Close">
+  if (typeof options === "string") {
+    modalEl.innerHTML = `
+      <div class="modal-window" style="max-width:760px; max-height:85vh; overflow-y:auto; padding:24px; position:relative;">
+        <button class="modal-close-btn" data-modal-cancel type="button" aria-label="Close"
+          style="position:absolute; top:16px; right:16px; background:none; border:none; color:var(--muted); cursor:pointer; font-size:18px;">
           ${icon("x")}
         </button>
+        ${options}
       </div>
-      <div class="modal-content">
-        ${body}
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-ghost" data-modal-cancel type="button">${cancelLabel}</button>
-        <button class="btn btn-primary" data-modal-save type="button">${saveLabel}</button>
-      </div>
-    </div>
-  `;
+    `;
+  } else {
+    const {
+      title = "Action",
+      body = options.body || options.content || "",
+      saveLabel = "Save Changes",
+      cancelLabel = "Cancel",
+      onSave = null,
+      onCancel = null,
+      maxWidth = "560px",
+    } = options;
 
-  document.body.appendChild(modalEl);
+    modalEl.innerHTML = `
+      <div class="modal-window" style="max-width:${maxWidth}">
+        <div class="modal-header">
+          <h3 class="modal-title">${title}</h3>
+          <button class="modal-close-btn" data-modal-cancel type="button" aria-label="Close">
+            ${icon("x")}
+          </button>
+        </div>
+        <div class="modal-content">
+          ${body}
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-ghost" data-modal-cancel type="button">${cancelLabel}</button>
+          <button class="btn btn-primary" data-modal-save type="button">${saveLabel}</button>
+        </div>
+      </div>
+    `;
 
-  const saveBtn = modalEl.querySelector("[data-modal-save]");
+    const saveBtn = modalEl.querySelector("[data-modal-save]");
+    if (saveBtn) {
+      saveBtn.addEventListener("click", async () => {
+        saveBtn.disabled = true;
+        saveBtn.textContent = "Saving...";
+        try {
+          if (typeof onSave === "function") {
+            const result = await onSave(modalEl);
+            if (result !== false) closeModal();
+          } else {
+            closeModal();
+          }
+        } catch (err) {
+          showToast(err?.message || "Operation failed", "coral");
+        } finally {
+          saveBtn.disabled = false;
+          saveBtn.textContent = saveLabel;
+        }
+      });
+    }
+  }
+
+  root.appendChild(modalEl);
+
   const cancelBtns = modalEl.querySelectorAll("[data-modal-cancel]");
-
   cancelBtns.forEach((b) =>
     b.addEventListener("click", () => {
       closeModal();
-      if (typeof onCancel === "function") onCancel();
+      if (typeof options.onCancel === "function") options.onCancel();
     })
   );
 
   modalEl.addEventListener("click", (e) => {
     if (e.target === modalEl) {
       closeModal();
-      if (typeof onCancel === "function") onCancel();
+      if (typeof options.onCancel === "function") options.onCancel();
     }
   });
 
-  if (saveBtn) {
-    saveBtn.addEventListener("click", async () => {
-      saveBtn.disabled = true;
-      saveBtn.textContent = "Saving...";
-      try {
-        if (typeof onSave === "function") {
-          const result = await onSave(modalEl);
-          if (result !== false) closeModal();
-        } else {
-          closeModal();
-        }
-      } catch (err) {
-        showToast(err?.message || "Operation failed", "coral");
-      } finally {
-        saveBtn.disabled = false;
-        saveBtn.textContent = saveLabel;
-      }
-    });
-  }
+  // Escape key listener
+  const escHandler = (e) => {
+    if (e.key === "Escape") {
+      closeModal();
+      document.removeEventListener("keydown", escHandler);
+      if (typeof options.onCancel === "function") options.onCancel();
+    }
+  };
+  document.addEventListener("keydown", escHandler);
+
+  modalEl.close = closeModal;
 
   // Focus first input
   setTimeout(() => {
-    modalEl.querySelector("input, select, textarea")?.focus();
+    modalEl.querySelector("input, select, textarea, button.btn-primary")?.focus();
   }, 100);
 
   return modalEl;
@@ -593,9 +917,9 @@ export function confirmAction({
 }
 
 /* -------------------------------------------------------------------------
-   Toast Notifications (Top Right Stack)
+   Toast Notifications (Bottom Right Stack) — Premium Micro-Interactions
    ------------------------------------------------------------------------- */
-export function showToast(message, type = "mint") {
+export function showToast(message, type = "mint", title = "") {
   let stack = document.getElementById("toast-root");
   if (!stack) {
     stack = document.createElement("div");
@@ -605,35 +929,71 @@ export function showToast(message, type = "mint") {
   }
 
   const toast = document.createElement("div");
-  toast.className = `toast-pill ${type}`;
+  const normalizedType = type === "success" ? "mint" : type === "error" || type === "danger" ? "coral" : type === "warning" ? "amber" : type === "info" ? "cobalt" : type;
+  toast.className = `toast-card toast-${normalizedType}`;
+
+  const iconMap = {
+    mint: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent-mint, #10b981); flex-shrink:0;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`,
+    coral: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent-coral, #ef4444); flex-shrink:0;"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`,
+    amber: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent-amber, #f59e0b); flex-shrink:0;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
+    cobalt: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent-cobalt, #3b82f6); flex-shrink:0;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`,
+  };
+
+function escapeHtml(str) {
+  if (typeof str !== 'string') return '';
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+  const defaultTitles = {
+    mint: "Success",
+    coral: "Error",
+    amber: "Attention",
+    cobalt: "Information",
+  };
+
+  const displayTitle = title || defaultTitles[normalizedType] || "Notification";
+  const iconSvg = iconMap[normalizedType] || iconMap.cobalt;
+
   toast.innerHTML = `
-    <span class="toast-dot"></span>
-    <span class="toast-msg">${message}</span>
-    <button class="toast-x" type="button">×</button>
+    <div class="toast-icon-wrap">${iconSvg}</div>
+    <div class="toast-content-wrap">
+      <div class="toast-header-row">
+        <span class="toast-title-text">${displayTitle}</span>
+        <span class="toast-time-text">Just now</span>
+      </div>
+      <div class="toast-body-text">${escapeHtml(message)}</div>
+    </div>
+    <button class="toast-close-btn" type="button" aria-label="Close notification">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
   `;
 
   stack.appendChild(toast);
-  toast.querySelector(".toast-x").addEventListener("click", () => toast.remove());
+  const closeBtn = toast.querySelector(".toast-close-btn");
+  const dismiss = () => {
+    toast.classList.add("toast-leaving");
+    setTimeout(() => toast.remove(), 280);
+  };
+  if (closeBtn) closeBtn.addEventListener("click", dismiss);
 
-  setTimeout(() => {
-    toast.style.opacity = "0";
-    toast.style.transform = "translateY(-8px)";
-    toast.style.transition = "all 0.25s ease";
-    setTimeout(() => toast.remove(), 260);
-  }, 3500);
+  setTimeout(dismiss, 4200);
 }
 
 /* -------------------------------------------------------------------------
    Helper Components (KPI card, Empty state, Skeleton)
    ------------------------------------------------------------------------- */
 export function kpiCard({ label, value, trend = "", trendType = "up", onClick }) {
-  const trendArrow = trendType === "up" ? "↑" : trendType === "down" ? "↓" : "";
-  const trendClass = trendType === "up" ? "trend-up" : trendType === "down" ? "trend-down" : "";
+  const trendClass = trendType === "up" ? "" : trendType === "down" ? " down" : "";
   return `
     <article class="card kpi-card ${onClick ? "interactive" : ""}" ${onClick ? `data-action="${onClick}"` : ""}>
       <div class="kpi-label">${label}</div>
       <div class="kpi-value">${value}</div>
-      ${trend ? `<div class="kpi-trend ${trendClass}">${trendArrow} ${trend}</div>` : ""}
+      ${trend ? `<div class="trend${trendClass}"><small>${trend}</small></div>` : ""}
     </article>
   `;
 }
@@ -649,5 +1009,1125 @@ export function emptyState({ title = "No records found", body = "" }) {
 }
 
 export function skeleton(height = "80px") {
-  return `<div class="skeleton-shimmer" style="height:${height};border-radius:var(--radius-md);"></div>`;
+  return `<div class="skeleton" style="height:${height};border-radius:var(--radius-md);"></div>`;
 }
+
+/* -------------------------------------------------------------------------
+   Cafe Operations Modal Handlers (Lock & Switch Operator)
+   ------------------------------------------------------------------------- */
+export function openOperatorLockModal() {
+  const user = state.auth?.user || state.user || {};
+  const operatorName = user.name || "Rahul K (Operations Lead)";
+  const operatorId = user.userId || "AD-0001";
+  const cafeName = user.primaryCafeName || "Koramangala Main";
+  const cafeId = user.primaryCafeId || "ZC-0001";
+
+  const content = `
+    <div style="max-width:440px; margin:0 auto; padding:10px 0; text-align:center;">
+      <div style="width:56px; height:56px; border-radius:50%; background:var(--bg-surface-2); display:flex; align-items:center; justify-content:center; margin:0 auto 16px; font-size:24px; border:1px solid var(--border-subtle);">
+        🔒
+      </div>
+      <h3 style="font-size:18px; font-weight:800; color:var(--ink); margin:0 0 6px;">Terminal Locked</h3>
+      <p style="font-size:12.5px; color:var(--muted); margin:0 0 20px;">
+        Zamorin Cafe Operations · <strong>${cafeName} (${cafeId})</strong>
+      </p>
+
+      <div style="background:var(--bg-subtle, #faf8f5); border:1px solid var(--border-subtle); border-radius:var(--radius-md); padding:14px; margin-bottom:20px; display:flex; align-items:center; justify-content:space-between; text-align:left;">
+        <div>
+          <div style="font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase;">Active Operator</div>
+          <div style="font-size:14px; font-weight:700; color:var(--ink);">${operatorName}</div>
+        </div>
+        <span class="status info" style="font-family:var(--font-mono); font-size:11px; font-weight:700;">${operatorId}</span>
+      </div>
+
+      <div class="form-group" style="text-align:left; margin-bottom:20px;">
+        <label class="label" style="font-weight:700;">Enter 6-Digit Operator PIN*</label>
+        <input type="password" id="lock-pin-input" class="input" placeholder="••••••" maxlength="6" inputmode="numeric" style="font-size:22px; letter-spacing:8px; text-align:center; font-family:var(--font-mono); height:48px;" autofocus required />
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:10px;">
+        <button class="btn btn-primary" id="lock-unlock-btn" type="button" style="height:44px; font-weight:700; font-size:14px;">Unlock Terminal</button>
+        <button class="btn btn-ghost" id="lock-switch-btn" type="button" style="font-size:12.5px; color:var(--muted);">Switch to Different Operator</button>
+      </div>
+    </div>
+  `;
+
+  openModal(content);
+  const modalEl = document.getElementById("zamorin-global-modal");
+  const pinInput = modalEl?.querySelector("#lock-pin-input");
+
+  modalEl?.querySelector("#lock-unlock-btn")?.addEventListener("click", async () => {
+    const pin = pinInput?.value?.trim();
+    if (!pin || pin.length !== 6) {
+      showToast("Please enter your 6-digit Operator PIN.", "error");
+      return;
+    }
+    try {
+      await apiPost("/cafe-operations/operator/unlock", { pin });
+      showToast("Terminal unlocked.", "success");
+      closeModal();
+    } catch (err) {
+      showToast(err.message || "Operator code not recognised.", "error");
+      if (pinInput) pinInput.value = "";
+    }
+  });
+
+  modalEl?.querySelector("#lock-switch-btn")?.addEventListener("click", () => {
+    closeModal();
+    openSwitchOperatorModal();
+  });
+}
+
+export function openSwitchOperatorModal() {
+  const user = state.auth?.user || state.user || {};
+  const currentOperatorName = user.name || "Rahul K (Operations Lead)";
+  const cafeName = user.primaryCafeName || "Koramangala Main";
+  const cafeId = user.primaryCafeId || "ZC-0001";
+
+  const content = `
+    <div style="max-width:500px; margin:0 auto; padding:10px 0;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; border-bottom:1px solid var(--border-subtle); padding-bottom:12px;">
+        <div>
+          <h3 style="font-size:17px; font-weight:800; margin:0; color:var(--ink);">Switch Cafe Operator</h3>
+          <p style="font-size:12px; color:var(--muted); margin:0;">Zamorin Cafe Operations · ${cafeName} (${cafeId})</p>
+        </div>
+        <span class="status warning" style="font-size:10.5px; font-weight:700;">HANDOVER</span>
+      </div>
+
+      <div style="background:var(--bg-subtle, #faf8f5); border:1px solid var(--border-subtle); border-radius:var(--radius-md); padding:12px; margin-bottom:16px; font-size:12.5px; color:var(--ink);">
+        Outgoing Operator: <strong>${currentOperatorName}</strong>. Please ensure all active transactions or till floats are acknowledged before switching.
+      </div>
+
+      <div class="form-group">
+        <label class="label">Incoming Operator User ID*</label>
+        <input type="text" id="sw-operator-id" class="input" placeholder="e.g. AD-0002" required />
+      </div>
+
+      <div class="form-group">
+        <label class="label">Incoming Operator 6-Digit PIN*</label>
+        <input type="password" id="sw-pin" class="input" placeholder="••••••" maxlength="6" inputmode="numeric" style="font-size:18px; letter-spacing:6px; font-family:var(--font-mono);" required />
+      </div>
+
+      <div class="form-group">
+        <label class="label">Shift / Handover Note (Optional)</label>
+        <textarea id="sw-handover-note" class="input" rows="2" placeholder="e.g. Milk delivery received 12 cartons, till cash float counted ₹3,500"></textarea>
+      </div>
+
+      <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px; border-top:1px solid var(--border-subtle); padding-top:14px;">
+        <button class="btn btn-ghost" id="sw-cancel-btn" type="button">Cancel</button>
+        <button class="btn btn-primary" id="sw-submit-btn" type="button">Authenticate &amp; Switch</button>
+      </div>
+    </div>
+  `;
+
+  openModal(content);
+  const modalEl = document.getElementById("zamorin-global-modal");
+
+  modalEl?.querySelector("#sw-cancel-btn")?.addEventListener("click", () => closeModal());
+  modalEl?.querySelector("#sw-submit-btn")?.addEventListener("click", async () => {
+    const newOperatorUserId = modalEl.querySelector("#sw-operator-id")?.value?.trim();
+    const newPin = modalEl.querySelector("#sw-pin")?.value?.trim();
+    const handoverNote = modalEl.querySelector("#sw-handover-note")?.value?.trim();
+
+    if (!newOperatorUserId || !newPin || newPin.length !== 6) {
+      showToast("Please enter valid operator ID and 6-digit PIN.", "error");
+      return;
+    }
+
+    try {
+      const res = await apiPost("/cafe-operations/operator/switch", {
+        newOperatorUserId,
+        newPin,
+        handoverNote,
+        deviceId: "ZC-DEV-0001",
+      });
+
+      showToast(`Switched operator to ${res?.operatorSession?.operatorName || newOperatorUserId}`, "success");
+      closeModal();
+
+      // Update local state and refresh shell
+      if (res?.operatorSession) {
+        state.user = {
+          ...state.user,
+          userId: res.operatorSession.operatorUserId,
+          name: res.operatorSession.operatorName,
+        };
+        const tb = document.getElementById("topbar");
+        if (tb) {
+          tb.innerHTML = renderTopbar();
+          wireBell(tb);
+        }
+      }
+    } catch (err) {
+      showToast(err.message || "Operator code not recognised.", "error");
+    }
+  });
+}
+
+/* -------------------------------------------------------------------------
+   Standardized Single-Café & Multi-Café Context Strip (Design System v2)
+   ------------------------------------------------------------------------- */
+export function renderCafeContextStrip({
+  title = "",
+  badge = "",
+  selectedCafe = "ALL",
+  onCafeChange = null,
+  actionsHtml = "",
+} = {}) {
+  const isCafeOps = state.role === ROLES.CAFE_ADMIN;
+  const user = state.auth?.user || state.user || {};
+  const cafeName = user.primaryCafeName || "Koramangala Flagship";
+  const cafeId = user.primaryCafeId || "ZC-0001";
+  const terminalId = user.terminalId || "TERM-01";
+  const operatorName = user.name || "Rahul K";
+  const operatorId = user.userId || "EMP-0042";
+
+  if (isCafeOps) {
+    return `
+      <div class="glass-card" style="padding:12px 16px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; border-left:4px solid var(--gold-accent, #c9933e);">
+        <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:16px;">📍</span>
+            <div>
+              <div style="font-size:13.5px; font-weight:800; color:var(--ink);">${cafeName}</div>
+              <div style="font-size:11px; color:var(--muted); font-family:var(--font-mono);">${cafeId} · Single-Café Terminal Scope</div>
+            </div>
+          </div>
+          <div style="height:24px; width:1px; background:var(--border-subtle);"></div>
+          <div style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--ink);">
+            <span style="color:var(--muted);">Terminal:</span>
+            <strong style="font-family:var(--font-mono);">${terminalId}</strong>
+          </div>
+          <div style="height:24px; width:1px; background:var(--border-subtle);"></div>
+          <div style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--ink);">
+            <span style="color:var(--muted);">Operator:</span>
+            <strong>${operatorName}</strong>
+            <span class="status info" style="font-size:10px; font-weight:700; padding:1px 6px;">${operatorId}</span>
+          </div>
+        </div>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <span class="status success" style="font-size:11px; font-weight:700; display:flex; align-items:center; gap:4px;">
+            <span style="width:6px; height:6px; border-radius:50%; background:#10b981; display:inline-block;"></span>
+            Device Bound &amp; Synced
+          </span>
+          ${actionsHtml}
+        </div>
+      </div>
+    `;
+  }
+
+  // Master / Owner Multi-Café Switcher Header
+  return `
+    <div class="glass-card" style="padding:12px 16px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+      <div style="display:flex; align-items:center; gap:12px;">
+        <span style="font-size:16px;">🏢</span>
+        <div>
+          <div style="font-size:13.5px; font-weight:800; color:var(--ink);">Global Portfolio Control</div>
+          <div style="font-size:11px; color:var(--muted);">Master Governance Across All Outlets</div>
+        </div>
+      </div>
+      <div style="display:flex; align-items:center; gap:12px;">
+        <select id="ctx-cafe-selector" class="input" style="height:36px; font-size:12.5px; padding:4px 10px; min-width:200px;">
+          <option value="ALL" ${selectedCafe === "ALL" ? "selected" : ""}>🌐 All Cafés (Global Portfolio)</option>
+          <option value="ZC-0001" ${selectedCafe === "ZC-0001" ? "selected" : ""}>📍 Koramangala Flagship (ZC-0001)</option>
+          <option value="ZC-0002" ${selectedCafe === "ZC-0002" ? "selected" : ""}>📍 Indiranagar Roastery (ZC-0002)</option>
+          <option value="ZC-0003" ${selectedCafe === "ZC-0003" ? "selected" : ""}>📍 Whitefield Tech Park (ZC-0003)</option>
+          <option value="ZC-0004" ${selectedCafe === "ZC-0004" ? "selected" : ""}>📍 MG Road Express (ZC-0004)</option>
+        </select>
+        ${actionsHtml}
+      </div>
+    </div>
+  `;
+}
+
+/* -------------------------------------------------------------------------
+   Universal Select / Dropdown Component Primitive (ZamorinSelect)
+   ------------------------------------------------------------------------- */
+export function createSelect(container, {
+  options = [],
+  value = "",
+  placeholder = "Select an option...",
+  searchable = false,
+  onChange = null,
+} = {}) {
+  const host = typeof container === "string" ? document.querySelector(container) : container;
+  if (!host) return null;
+
+  let currentValue = value;
+  let highlightedIndex = -1;
+  let isOpen = false;
+
+  const wrap = document.createElement("div");
+  wrap.className = "zamorin-select-wrap";
+
+  const selectedOpt = options.find((o) => o.value === currentValue) || null;
+  const initialLabel = selectedOpt ? selectedOpt.label : placeholder;
+
+  wrap.innerHTML = `
+    <button class="zamorin-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false">
+      <span class="zamorin-select-label">${initialLabel}</span>
+      <span class="zamorin-select-chevron" style="font-size:10px; color:var(--muted); transition:transform 0.15s ease;">▼</span>
+    </button>
+    <div class="zamorin-select-menu" role="listbox">
+      ${searchable ? `<div style="padding:4px;"><input type="text" class="form-input form-control-sm zamorin-select-search" placeholder="Search..." style="width:100%; font-size:12px; margin-bottom:4px;" /></div>` : ""}
+      <div class="zamorin-select-options-list"></div>
+    </div>
+  `;
+
+  const trigger = wrap.querySelector(".zamorin-select-trigger");
+  const labelEl = wrap.querySelector(".zamorin-select-label");
+  const chevron = wrap.querySelector(".zamorin-select-chevron");
+  const menu = wrap.querySelector(".zamorin-select-menu");
+  const optionsList = wrap.querySelector(".zamorin-select-options-list");
+  const searchInput = wrap.querySelector(".zamorin-select-search");
+
+  function renderOptions(filterText = "") {
+    const filtered = options.filter((opt) => {
+      if (!filterText) return true;
+      return opt.label.toLowerCase().includes(filterText.toLowerCase()) ||
+        (opt.subtitle && opt.subtitle.toLowerCase().includes(filterText.toLowerCase()));
+    });
+
+    if (!filtered.length) {
+      optionsList.innerHTML = `<div style="padding:8px 12px; font-size:12px; color:var(--muted); text-align:center;">No options found</div>`;
+      return;
+    }
+
+    optionsList.innerHTML = filtered
+      .map(
+        (opt, idx) => `
+        <div class="zamorin-select-option ${opt.value === currentValue ? "selected" : ""} ${opt.disabled ? "disabled" : ""}"
+             data-select-value="${opt.value}"
+             data-select-index="${idx}"
+             role="option"
+             aria-selected="${opt.value === currentValue}">
+          <span>${opt.label}</span>
+          ${opt.subtitle ? `<span style="font-size:11px; color:var(--muted);">${opt.subtitle}</span>` : ""}
+        </div>`
+      )
+      .join("");
+
+    optionsList.querySelectorAll(".zamorin-select-option:not(.disabled)").forEach((optEl) => {
+      optEl.addEventListener("click", (e) => {
+        e.stopPropagation();
+        setValue(optEl.dataset.selectValue);
+        close();
+      });
+    });
+  }
+
+  function setValue(val) {
+    currentValue = val;
+    const opt = options.find((o) => o.value === val);
+    if (opt) {
+      labelEl.textContent = opt.label;
+    } else {
+      labelEl.textContent = placeholder;
+    }
+    renderOptions();
+    if (typeof onChange === "function") {
+      onChange(val);
+    }
+  }
+
+  function open() {
+    closeAllSelects();
+    isOpen = true;
+    wrap.classList.add("open");
+    trigger.setAttribute("aria-expanded", "true");
+    chevron.style.transform = "rotate(180deg)";
+
+    // Viewport bounds check — open upward if near bottom
+    const rect = wrap.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    if (spaceBelow < 280 && rect.top > 280) {
+      wrap.classList.add("open-up");
+    } else {
+      wrap.classList.remove("open-up");
+    }
+
+    renderOptions();
+    if (searchInput) {
+      searchInput.value = "";
+      setTimeout(() => searchInput.focus(), 50);
+    }
+  }
+
+  function close() {
+    isOpen = false;
+    wrap.classList.remove("open");
+    wrap.classList.remove("open-up");
+    trigger.setAttribute("aria-expanded", "false");
+    chevron.style.transform = "rotate(0deg)";
+    highlightedIndex = -1;
+  }
+
+  trigger.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (isOpen) close();
+    else open();
+  });
+
+  if (searchInput) {
+    searchInput.addEventListener("input", () => {
+      renderOptions(searchInput.value.trim());
+    });
+    searchInput.addEventListener("click", (e) => e.stopPropagation());
+  }
+
+  wrap.addEventListener("keydown", (e) => {
+    const optEls = optionsList.querySelectorAll(".zamorin-select-option:not(.disabled)");
+    if (!optEls.length) return;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      if (!isOpen) {
+        open();
+        return;
+      }
+      highlightedIndex = (highlightedIndex + 1) % optEls.length;
+      optEls.forEach((el, idx) => el.classList.toggle("highlighted", idx === highlightedIndex));
+      optEls[highlightedIndex]?.scrollIntoView({ block: "nearest" });
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      if (!isOpen) {
+        open();
+        return;
+      }
+      highlightedIndex = (highlightedIndex - 1 + optEls.length) % optEls.length;
+      optEls.forEach((el, idx) => el.classList.toggle("highlighted", idx === highlightedIndex));
+      optEls[highlightedIndex]?.scrollIntoView({ block: "nearest" });
+    } else if (e.key === "Enter") {
+      if (isOpen && highlightedIndex >= 0 && optEls[highlightedIndex]) {
+        e.preventDefault();
+        optEls[highlightedIndex].click();
+      }
+    } else if (e.key === "Escape") {
+      if (isOpen) {
+        e.preventDefault();
+        close();
+        trigger.focus();
+      }
+    }
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!wrap.contains(e.target) && isOpen) {
+      close();
+    }
+  });
+
+  host.innerHTML = "";
+  host.appendChild(wrap);
+
+  return {
+    getValue: () => currentValue,
+    setValue,
+    open,
+    close,
+  };
+}
+
+function closeAllSelects() {
+  document.querySelectorAll(".zamorin-select-wrap.open").forEach((w) => {
+    w.classList.remove("open", "open-up");
+  });
+}
+
+/* -------------------------------------------------------------------------
+   Universal Date Picker Component Primitive (ZamorinDatePicker)
+   ------------------------------------------------------------------------- */
+export function createDatePicker(container, {
+  value = new Date().toISOString().slice(0, 10),
+  placeholder = "YYYY-MM-DD",
+  onChange = null,
+  min = null,
+  max = null,
+} = {}) {
+  const host = typeof container === "string" ? document.querySelector(container) : container;
+  if (!host) return null;
+
+  let currentDateStr = value;
+  let viewDate = value ? new Date(value + "T00:00:00") : new Date();
+  if (isNaN(viewDate.getTime())) viewDate = new Date();
+
+  let isOpen = false;
+
+  const wrap = document.createElement("div");
+  wrap.className = "zamorin-datepicker-wrap";
+
+  wrap.innerHTML = `
+    <div style="position:relative; display:flex; align-items:center;">
+      <input type="text" class="form-input zamorin-date-input" value="${currentDateStr || ""}" placeholder="${placeholder}" style="padding-right:32px; width:100%;" />
+      <span class="zamorin-date-icon" style="position:absolute; right:10px; cursor:pointer; font-size:14px; color:var(--muted); user-select:none;">📅</span>
+    </div>
+    <div class="zamorin-calendar-popup">
+      <div class="zamorin-cal-header">
+        <button class="zamorin-cal-nav-btn" data-cal-nav="prev" type="button" title="Previous Month">◀</button>
+        <div class="zamorin-cal-month-title"></div>
+        <button class="zamorin-cal-nav-btn" data-cal-nav="next" type="button" title="Next Month">▶</button>
+      </div>
+      <div class="zamorin-cal-grid zamorin-cal-days-header">
+        <span class="zamorin-cal-day-label">Su</span>
+        <span class="zamorin-cal-day-label">Mo</span>
+        <span class="zamorin-cal-day-label">Tu</span>
+        <span class="zamorin-cal-day-label">We</span>
+        <span class="zamorin-cal-day-label">Th</span>
+        <span class="zamorin-cal-day-label">Fr</span>
+        <span class="zamorin-cal-day-label">Sa</span>
+      </div>
+      <div class="zamorin-cal-grid zamorin-cal-dates-body"></div>
+      <div class="zamorin-cal-footer">
+        <button class="btn btn-sm btn-ghost" data-cal-action="today" type="button" style="font-size:11px; padding:2px 8px;">Today</button>
+        <button class="btn btn-sm btn-ghost" data-cal-action="clear" type="button" style="font-size:11px; padding:2px 8px;">Clear</button>
+      </div>
+    </div>
+  `;
+
+  const input = wrap.querySelector(".zamorin-date-input");
+  const iconEl = wrap.querySelector(".zamorin-date-icon");
+  const monthTitle = wrap.querySelector(".zamorin-cal-month-title");
+  const datesBody = wrap.querySelector(".zamorin-cal-dates-body");
+  const prevBtn = wrap.querySelector('[data-cal-nav="prev"]');
+  const nextBtn = wrap.querySelector('[data-cal-nav="next"]');
+  const todayBtn = wrap.querySelector('[data-cal-action="today"]');
+  const clearBtn = wrap.querySelector('[data-cal-action="clear"]');
+
+  function renderCalendar() {
+    const year = viewDate.getFullYear();
+    const month = viewDate.getMonth();
+
+    const monthNames = [
+      "January", "February", "March", "April", "May", "June",
+      "July", "August", "September", "October", "November", "December"
+    ];
+
+    monthTitle.textContent = `${monthNames[month]} ${year}`;
+
+    const firstDayIndex = new Date(year, month, 1).getDay();
+    const lastDate = new Date(year, month + 1, 0).getDate();
+    const prevLastDate = new Date(year, month, 0).getDate();
+
+    const todayStr = new Date().toISOString().slice(0, 10);
+
+    let daysHtml = "";
+
+    // Previous month filler days
+    for (let x = firstDayIndex; x > 0; x--) {
+      daysHtml += `<div class="zamorin-cal-day-cell other-month">${prevLastDate - x + 1}</div>`;
+    }
+
+    // Current month days
+    for (let i = 1; i <= lastDate; i++) {
+      const dayStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(i).padStart(2, "0")}`;
+      const isSelected = dayStr === currentDateStr;
+      const isToday = dayStr === todayStr;
+
+      daysHtml += `
+        <div class="zamorin-cal-day-cell ${isSelected ? "selected" : ""} ${isToday ? "today" : ""}" data-date="${dayStr}">
+          ${i}
+        </div>`;
+    }
+
+    // Next month filler days to complete 35/42 grid
+    const totalCells = firstDayIndex + lastDate;
+    const nextDays = totalCells <= 35 ? 35 - totalCells : 42 - totalCells;
+    for (let j = 1; j <= nextDays; j++) {
+      daysHtml += `<div class="zamorin-cal-day-cell other-month">${j}</div>`;
+    }
+
+    datesBody.innerHTML = daysHtml;
+
+    datesBody.querySelectorAll(".zamorin-cal-day-cell[data-date]").forEach((cell) => {
+      cell.addEventListener("click", (e) => {
+        e.stopPropagation();
+        setDate(cell.dataset.date);
+        close();
+      });
+    });
+  }
+
+  function setDate(dateStr) {
+    currentDateStr = dateStr;
+    input.value = dateStr || "";
+    if (dateStr) {
+      viewDate = new Date(dateStr + "T00:00:00");
+    }
+    renderCalendar();
+    if (typeof onChange === "function") {
+      onChange(dateStr);
+    }
+  }
+
+  function open() {
+    closeAllDatePickers();
+    isOpen = true;
+    wrap.classList.add("open");
+
+    // Viewport bounds check — open upward if near bottom
+    const rect = wrap.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    if (spaceBelow < 320 && rect.top > 320) {
+      wrap.classList.add("open-up");
+    } else {
+      wrap.classList.remove("open-up");
+    }
+
+    renderCalendar();
+  }
+
+  function close() {
+    isOpen = false;
+    wrap.classList.remove("open", "open-up");
+  }
+
+  input.addEventListener("focus", open);
+  input.addEventListener("change", () => {
+    setDate(input.value.trim());
+  });
+
+  iconEl.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (isOpen) close();
+    else open();
+  });
+
+  prevBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    viewDate.setMonth(viewDate.getMonth() - 1);
+    renderCalendar();
+  });
+
+  nextBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    viewDate.setMonth(viewDate.getMonth() + 1);
+    renderCalendar();
+  });
+
+  todayBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const today = new Date().toISOString().slice(0, 10);
+    setDate(today);
+    close();
+  });
+
+  clearBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    setDate("");
+    close();
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!wrap.contains(e.target) && isOpen) {
+      close();
+    }
+  });
+
+  host.innerHTML = "";
+  host.appendChild(wrap);
+
+  return {
+    getDate: () => currentDateStr,
+    setDate,
+    open,
+    close,
+  };
+}
+
+function closeAllDatePickers() {
+  document.querySelectorAll(".zamorin-datepicker-wrap.open").forEach((w) => {
+    w.classList.remove("open", "open-up");
+  });
+}
+
+/* -------------------------------------------------------------------------
+   Global Standard Page Header (Stage 3)
+   ------------------------------------------------------------------------- */
+export function renderPageHeader({
+  title = "",
+  subtitle = "",
+  icon = "",
+  badge = "",
+  actionsHtml = "",
+  metaHtml = "",
+} = {}) {
+  return `
+    <header class="page-header-standard">
+      <div class="page-title-group">
+        <h1 class="page-title">
+          ${icon ? `<span style="font-size:22px; display:inline-flex; align-items:center;">${icon}</span>` : ""}
+          <span>${title}</span>
+          ${badge ? `<span class="status info" style="font-size:11px; padding:2px 8px; border-radius:999px;">${badge}</span>` : ""}
+        </h1>
+        ${subtitle ? `<p class="page-subtitle">${subtitle}</p>` : ""}
+        ${metaHtml ? `<div style="margin-top:4px;">${metaHtml}</div>` : ""}
+      </div>
+      ${actionsHtml ? `<div class="page-actions-cluster">${actionsHtml}</div>` : ""}
+    </header>
+  `;
+}
+
+/* -------------------------------------------------------------------------
+   Universal Control-Centre Module Hub Component (Stage 3)
+   ------------------------------------------------------------------------- */
+export function renderModuleHub({
+  title = "",
+  subtitle = "",
+  icon = "",
+  scopeHtml = "",
+  actionsHtml = "",
+  sections = [], // array of { title, tiles: [{ id, route, title, subtitle, icon, badge, badgeType, onClick }] }
+  kpis = [], // array of { label, value, delta, status }
+  attentionHtml = "",
+  contentHtml = "",
+} = {}) {
+  const headerHtml = renderPageHeader({
+    title,
+    subtitle,
+    icon,
+    actionsHtml,
+  });
+
+  const kpiGridHtml = kpis && kpis.length > 0 ? `
+    <div class="kpi-metric-grid" style="margin-bottom:20px;">
+      ${kpis.map((k) => `
+        <div class="kpi-metric-card">
+          <div class="kpi-label">${k.label}</div>
+          <div class="kpi-value">${k.value}</div>
+          ${k.delta || k.status ? `<div class="kpi-footer"><span>${k.delta || ""}</span> ${k.status ? `<strong>${k.status}</strong>` : ""}</div>` : ""}
+        </div>
+      `).join("")}
+    </div>
+  ` : "";
+
+  const sectionsHtml = sections && sections.length > 0 ? sections.map((sec) => `
+    <div class="module-hub-section">
+      ${sec.title ? `<h3 class="module-hub-section-title">${sec.title}</h3>` : ""}
+      <div class="module-tile-grid">
+        ${sec.tiles.map((t) => `
+          <a class="module-hub-tile" href="#${t.route || t.id}" data-hub-route="${t.route || t.id}" role="button" tabindex="0">
+            <div class="module-tile-icon-box">
+              ${t.icon || "📁"}
+            </div>
+            <div class="module-tile-content">
+              <div class="module-tile-title-row">
+                <span class="module-tile-title">${t.title}</span>
+                ${t.badge ? `<span class="module-tile-badge ${t.badgeType || ""}">${t.badge}</span>` : ""}
+              </div>
+              ${t.subtitle ? `<span class="module-tile-sub">${t.subtitle}</span>` : ""}
+            </div>
+          </a>
+        `).join("")}
+      </div>
+    </div>
+  `).join("") : "";
+
+  return `
+    <div class="module-hub-container">
+      ${scopeHtml ? `<div style="margin-bottom:4px;">${scopeHtml}</div>` : ""}
+      ${headerHtml}
+      ${kpiGridHtml}
+      ${attentionHtml ? `<div style="margin-bottom:20px;">${attentionHtml}</div>` : ""}
+      ${sectionsHtml}
+      ${contentHtml ? `<div style="margin-top:16px;">${contentHtml}</div>` : ""}
+    </div>
+  `;
+}
+
+/* -------------------------------------------------------------------------
+   Universal Dedicated Child Page Header (Visual Corrective Standard)
+   ------------------------------------------------------------------------- */
+export function renderChildHeader({
+  parentTitle = "Module Overview",
+  parentRoute = "",
+  childTitle = "",
+  childSubtitle = "",
+  icon = "",
+  badge = "",
+  badgeType = "info",
+  actionsHtml = "",
+  backBtnId = "",
+} = {}) {
+  const cleanRoute = parentRoute.replace(/^#/, "");
+  const defaultId = cleanRoute === "inventory" ? "inv-back-to-hub-btn" : `${cleanRoute}-back-to-hub-btn`;
+  const primaryId = backBtnId || defaultId;
+  return `
+    <div class="child-page-header" style="margin-bottom: 20px;">
+      <div class="child-breadcrumb" style="display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--muted); margin-bottom:8px;">
+        <a href="#${cleanRoute}" class="breadcrumb-parent-link" id="${primaryId}" data-${cleanRoute}-back-to-hub="true" data-inv-back-to-hub="true" data-back-to-hub="true" style="color:var(--muted); text-decoration:none; font-weight:600; display:inline-flex; align-items:center; gap:5px; transition:color 0.15s ease;">
+          <span style="font-size:13px;">←</span> ${parentTitle}
+        </a>
+        <span style="opacity:0.4;">/</span>
+        <span style="color:var(--ink); font-weight:600;">${childTitle}</span>
+      </div>
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px;">
+        <div>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <h1 class="page-title child-h1" style="font-size:24px; font-weight:800; color:var(--ink); margin:0;">
+              ${icon ? `<span style="font-size:22px; margin-right:6px;">${icon}</span>` : ""}
+              ${childTitle}
+            </h1>
+            ${badge ? `<span class="badge ${badgeType ? `badge-${badgeType}` : "badge-accent"}" style="font-size:11px; padding:2px 8px; font-weight:700;">${badge}</span>` : ""}
+          </div>
+          ${childSubtitle ? `<p class="page-subtitle child-sub" style="font-size:13.5px; color:var(--muted); margin:4px 0 0;">${childSubtitle}</p>` : ""}
+        </div>
+        ${actionsHtml ? `<div class="child-header-actions" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">${actionsHtml}</div>` : ""}
+      </div>
+    </div>
+  `;
+}
+
+/* -------------------------------------------------------------------------
+   Universal Error & Recovery State Component
+   ------------------------------------------------------------------------- */
+export function renderModuleErrorState({
+  title = "Unable to Load Data",
+  message = "An error occurred while communicating with the service.",
+  error = null,
+  retryActionId = "btn-retry-module-action",
+  retryLabel = "Retry",
+  type = "generic",
+} = {}) {
+  let iconEmoji = "⚠️";
+  let resolvedTitle = title;
+  let resolvedMsg = message;
+  let showSignIn = false;
+  let showRetry = true;
+
+  const errMsg = (error?.message || "").toLowerCase();
+  const errCode = (error?.code || "").toLowerCase();
+  const isSessionError =
+    type === "session" ||
+    errCode.includes("auth") ||
+    errCode.includes("session") ||
+    errMsg.includes("session") ||
+    errMsg.includes("expired") ||
+    errMsg.includes("unauthenticated") ||
+    error?.status === 401;
+
+  const isPermError =
+    type === "permission" ||
+    errCode.includes("forbidden") ||
+    errCode.includes("permission") ||
+    errMsg.includes("permission") ||
+    error?.status === 403;
+
+  const isNetworkError =
+    type === "network" ||
+    errCode.includes("network") ||
+    errMsg.includes("network") ||
+    errMsg.includes("fetch") ||
+    errMsg.includes("connect");
+
+  if (isSessionError) {
+    iconEmoji = "🔒";
+    resolvedTitle = "Session Expired";
+    resolvedMsg = "Your sign-in session needs to be refreshed before data can be loaded.";
+    showSignIn = true;
+    showRetry = true;
+  } else if (isPermError) {
+    iconEmoji = "🚫";
+    resolvedTitle = "Access Restricted";
+    resolvedMsg = "You do not have the required permissions to view or manage this workspace.";
+    showSignIn = false;
+    showRetry = false;
+  } else if (isNetworkError) {
+    iconEmoji = "📡";
+    resolvedTitle = "Network Unavailable";
+    resolvedMsg = "Could not reach the Zamorin ERP service. Please check your connection.";
+    showSignIn = false;
+    showRetry = true;
+  } else if (type === "server" || error?.status >= 500) {
+    iconEmoji = "⚙️";
+    resolvedTitle = "Service Temporarily Unavailable";
+    resolvedMsg = "The ERP service encountered an unexpected error. Please try again.";
+    showSignIn = false;
+    showRetry = true;
+  }
+
+  return `
+    <div class="card card-pad module-error-state" style="padding: 36px 24px; text-align: center; max-width: 560px; margin: 24px auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md, 12px);">
+      <div style="font-size: 36px; margin-bottom: 12px; line-height: 1;">${iconEmoji}</div>
+      <h3 style="font-size: 18px; font-weight: 700; color: var(--ink); margin: 0 0 8px 0;">${resolvedTitle}</h3>
+      <p style="font-size: 13.5px; color: var(--muted); margin: 0 0 20px 0; line-height: 1.5;">${resolvedMsg}</p>
+      <div style="display: flex; gap: 10px; justify-content: center; align-items: center; flex-wrap: wrap;">
+        ${showSignIn ? `
+          <button class="btn btn-primary" data-error-signin type="button" style="font-weight: 700;">
+            Sign In Again
+          </button>
+        ` : ""}
+        ${showRetry ? `
+          <button class="btn ${showSignIn ? "btn-secondary" : "btn-primary"}" ${retryActionId ? `id="${retryActionId}"` : ""} data-error-retry type="button" style="font-weight: 700;">
+            ${retryLabel}
+          </button>
+        ` : ""}
+      </div>
+    </div>
+  `;
+}
+
+/* -------------------------------------------------------------------------
+   Universal Document & File Uploader Component (Design System v2)
+   ------------------------------------------------------------------------- */
+export function renderFileUploadZone({
+  id = "document-file-upload",
+  label = "Upload Document, Invoice or Receipt",
+  acceptedTypes = ".pdf,.png,.jpg,.jpeg,.xlsx,.csv",
+  maxSizeBytes = 15728640, // 15MB
+  helpText = "Supported: PDF, PNG, JPG, XLSX (Max 15MB)",
+  required = false,
+  compact = false,
+} = {}) {
+  const zoneHeight = compact ? "100px" : "140px";
+  return `
+    <div class="file-upload-wrapper" id="${id}-wrapper" style="width:100%;">
+      ${label ? `<label class="form-label" style="font-size:12px; font-weight:700; color:var(--ink); margin-bottom:6px; display:block;">${label} ${required ? '<span style="color:var(--color-accent-coral, #e05252)">*</span>' : ""}</label>` : ""}
+      <div class="file-dropzone" id="${id}-dropzone" tabindex="0" role="button" aria-label="${label}"
+        style="border:2px dashed var(--line-strong, rgba(200,157,92,0.35)); border-radius:var(--radius-md, 10px); padding:16px 14px; text-align:center; background:var(--surface-sunken, rgba(0,0,0,0.02)); cursor:pointer; transition:border-color 0.2s ease, background 0.2s ease; display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:${zoneHeight}; position:relative;">
+        <input type="file" id="${id}-input" accept="${acceptedTypes}" style="display:none;" />
+        <div class="dropzone-empty-state" id="${id}-empty-state">
+          <div style="font-size:26px; line-height:1; margin-bottom:6px; opacity:0.9;">📤</div>
+          <div style="font-size:13px; font-weight:700; color:var(--ink); margin-bottom:4px;">
+            Drag &amp; drop file here, or <span style="color:var(--brand-gold, #c89d5c); text-decoration:underline;">browse files</span>
+          </div>
+          <div style="font-size:11px; color:var(--muted);">${helpText}</div>
+        </div>
+        <div class="dropzone-file-preview" id="${id}-preview-state" style="display:none; width:100%; align-items:center; justify-content:space-between; gap:12px; padding:8px 12px; background:var(--surface); border:1px solid var(--line); border-radius:8px;">
+          <div style="display:flex; align-items:center; gap:10px; overflow:hidden; text-align:left;">
+            <div id="${id}-file-icon" style="font-size:22px; flex-shrink:0;">📄</div>
+            <div style="overflow:hidden;">
+              <div id="${id}-file-name" style="font-size:12.5px; font-weight:700; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:280px;">filename.pdf</div>
+              <div id="${id}-file-size" style="font-size:11px; color:var(--muted);">0 KB · Ready to submit</div>
+            </div>
+          </div>
+          <button type="button" id="${id}-remove-btn" class="btn btn-xs btn-ghost" style="color:var(--color-accent-coral, #e05252); font-weight:700; padding:4px 8px;" title="Remove file">
+            ✕ Remove
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+export function wireFileUploadZone(rootEl, {
+  id = "document-file-upload",
+  maxSizeBytes = 15728640,
+  onFileSelected = null,
+  onFileRemoved = null,
+} = {}) {
+  const root = rootEl || document;
+  const dropzone = root.querySelector(`#${id}-dropzone`);
+  const fileInput = root.querySelector(`#${id}-input`);
+  const emptyState = root.querySelector(`#${id}-empty-state`);
+  const previewState = root.querySelector(`#${id}-preview-state`);
+  const fileNameEl = root.querySelector(`#${id}-file-name`);
+  const fileSizeEl = root.querySelector(`#${id}-file-size`);
+  const fileIconEl = root.querySelector(`#${id}-file-icon`);
+  const removeBtn = root.querySelector(`#${id}-remove-btn`);
+
+  if (!dropzone || !fileInput) return;
+
+  function handleFile(file) {
+    if (!file) return;
+    if (file.size > maxSizeBytes) {
+      showToast(`File is too large (${(file.size / (1024 * 1024)).toFixed(1)} MB). Max limit is ${(maxSizeBytes / (1024 * 1024)).toFixed(0)} MB.`, "coral");
+      return;
+    }
+
+    let iconEmoji = "📄";
+    const ext = (file.name.split('.').pop() || "").toLowerCase();
+    if (["png", "jpg", "jpeg", "webp", "gif"].includes(ext)) iconEmoji = "🖼️";
+    else if (["pdf"].includes(ext)) iconEmoji = "📑";
+    else if (["xlsx", "xls", "csv"].includes(ext)) iconEmoji = "📊";
+    else if (["zip", "tar", "gz"].includes(ext)) iconEmoji = "🗜️";
+
+    if (fileIconEl) fileIconEl.textContent = iconEmoji;
+    if (fileNameEl) fileNameEl.textContent = file.name;
+    if (fileSizeEl) fileSizeEl.textContent = `${(file.size / 1024).toFixed(1)} KB · Ready to submit`;
+
+    if (emptyState) emptyState.style.display = "none";
+    if (previewState) previewState.style.display = "flex";
+
+    dropzone.dataset.hasFile = "true";
+    dropzone.selectedFile = file;
+
+    if (typeof onFileSelected === "function") {
+      onFileSelected(file);
+    }
+  }
+
+  function clearFile() {
+    fileInput.value = "";
+    if (emptyState) emptyState.style.display = "block";
+    if (previewState) previewState.style.display = "none";
+    dropzone.dataset.hasFile = "false";
+    delete dropzone.selectedFile;
+
+    if (typeof onFileRemoved === "function") {
+      onFileRemoved();
+    }
+  }
+
+  dropzone.addEventListener("click", (e) => {
+    if (e.target === removeBtn || removeBtn?.contains(e.target)) {
+      e.stopPropagation();
+      clearFile();
+      return;
+    }
+    fileInput.click();
+  });
+
+  dropzone.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      fileInput.click();
+    }
+  });
+
+  fileInput.addEventListener("change", () => {
+    if (fileInput.files && fileInput.files[0]) {
+      handleFile(fileInput.files[0]);
+    }
+  });
+
+  ["dragenter", "dragover"].forEach((eventName) => {
+    dropzone.addEventListener(eventName, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropzone.style.borderColor = "var(--brand-gold, #c89d5c)";
+      dropzone.style.background = "var(--surface-raised, rgba(200,157,92,0.08))";
+    });
+  });
+
+  ["dragleave", "drop"].forEach((eventName) => {
+    dropzone.addEventListener(eventName, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropzone.style.borderColor = "";
+      dropzone.style.background = "";
+    });
+  });
+
+  dropzone.addEventListener("drop", (e) => {
+    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) {
+      handleFile(e.dataTransfer.files[0]);
+    }
+  });
+}
+
+export function openUniversalDocumentModal({
+  title = "Upload Document / Receipt",
+  subtitle = "Attach digital proofs, invoices, receipts or compliance certificates.",
+  documentType = "INVOICE", // 'INVOICE' | 'RECEIPT' | 'CHALLAN' | 'CERTIFICATE' | 'KYC'
+  allowedCategories = [
+    { value: "INVOICE", label: "Vendor Tax Invoice" },
+    { value: "RECEIPT", label: "Payment / Expense Receipt" },
+    { value: "CHALLAN", label: "Delivery Challan / GRN Proof" },
+    { value: "CERTIFICATE", label: "Compliance / FSSAI / Lab Certificate" },
+    { value: "UTILITY_BILL", label: "Electricity / Water / Rent Bill" },
+  ],
+  onUploadSuccess = null,
+} = {}) {
+  const categoryOptions = allowedCategories
+    .map((c) => `<option value="${c.value}" ${c.value === documentType ? "selected" : ""}>${c.label}</option>`)
+    .join("");
+
+  const modalContent = `
+    <div style="display:flex; flex-direction:column; gap:16px;">
+      <div style="font-size:12.5px; color:var(--muted); line-height:1.5;">${subtitle}</div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+        <div>
+          <label style="font-size:12px; font-weight:700; color:var(--ink); display:block; margin-bottom:4px;">Document Category *</label>
+          <select id="u-doc-category" class="select" style="width:100%; font-size:12.5px;">
+            ${categoryOptions}
+          </select>
+        </div>
+        <div>
+          <label style="font-size:12px; font-weight:700; color:var(--ink); display:block; margin-bottom:4px;">Document / Invoice #</label>
+          <input type="text" id="u-doc-ref" class="input" placeholder="e.g. INV-2026-8841" style="width:100%; font-size:12.5px;" />
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+        <div>
+          <label style="font-size:12px; font-weight:700; color:var(--ink); display:block; margin-bottom:4px;">Vendor / Payee Name</label>
+          <input type="text" id="u-doc-vendor" class="input" placeholder="e.g. Blue Tokai Coffee" style="width:100%; font-size:12.5px;" />
+        </div>
+        <div>
+          <label style="font-size:12px; font-weight:700; color:var(--ink); display:block; margin-bottom:4px;">Total Amount (₹)</label>
+          <input type="number" id="u-doc-amount" class="input" placeholder="0.00" step="0.01" style="width:100%; font-size:12.5px;" />
+        </div>
+      </div>
+
+      <div>
+        ${renderFileUploadZone({
+          id: "u-doc-file",
+          label: "Select Document File *",
+          required: true,
+          helpText: "PDF, PNG, JPG, JPEG, XLSX (Max 15MB)",
+        })}
+      </div>
+
+      <div>
+        <label style="font-size:12px; font-weight:700; color:var(--ink); display:block; margin-bottom:4px;">Notes / Description</label>
+        <textarea id="u-doc-notes" class="input" rows="2" placeholder="Optional reference notes or line item details..." style="width:100%; font-size:12.5px; resize:none;"></textarea>
+      </div>
+    </div>
+  `;
+
+  const modal = openModal({
+    title: `📤 ${title}`,
+    body: modalContent,
+    saveLabel: "Upload & Register Document",
+    cancelLabel: "Cancel",
+    maxWidth: "540px",
+    onSave: async (modalEl) => {
+      const dropzone = modalEl.querySelector("#u-doc-file-dropzone");
+      const file = dropzone?.selectedFile;
+      const ref = modalEl.querySelector("#u-doc-ref")?.value?.trim();
+      const vendor = modalEl.querySelector("#u-doc-vendor")?.value?.trim();
+      const amount = modalEl.querySelector("#u-doc-amount")?.value;
+      const category = modalEl.querySelector("#u-doc-category")?.value;
+      const notes = modalEl.querySelector("#u-doc-notes")?.value?.trim();
+
+      if (!file) {
+        showToast("Please choose or drag a document file to upload.", "coral");
+        return false;
+      }
+
+      showToast("Document uploaded and recorded successfully!", "success");
+      if (typeof onUploadSuccess === "function") {
+        onUploadSuccess({
+          file,
+          fileName: file.name,
+          fileSize: file.size,
+          category,
+          refNumber: ref || `DOC-${Date.now().toString().slice(-6)}`,
+          vendor: vendor || "Direct Upload",
+          amount: parseFloat(amount) || 0,
+          notes,
+          uploadedAt: new Date().toISOString(),
+        });
+      }
+      return true;
+    },
+  });
+
+  wireFileUploadZone(modal, {
+    id: "u-doc-file",
+    onFileSelected: (file) => {
+      // Auto-extract ref from filename if ref is empty
+      const refInput = modal.querySelector("#u-doc-ref");
+      if (refInput && !refInput.value) {
+        const baseName = file.name.replace(/\.[^/.]+$/, "");
+        if (baseName.length >= 3) {
+          refInput.value = baseName.toUpperCase().slice(0, 20);
+        }
+      }
+    },
+  });
+
+  return modal;
+}
+

@@ -1,9 +1,6 @@
 // =============================================================================
 // ZAMORIN CAFE ERP — APP STATE
-// A deliberately tiny store: current role, current route, current settings.
-// No framework needed for something this small — but the shape mirrors what
-// a real state layer (Redux/Zustand/Context) would hold, so porting this to
-// React later is a mechanical exercise, not a redesign.
+// A deliberately tiny store: current role, current route, session, settings.
 // =============================================================================
 
 import { ROLES } from "./navigation.js";
@@ -16,6 +13,12 @@ export const state = {
     loading: true,
     user: null,
     error: null,
+  },
+  session: {
+    state: "AUTHENTICATED", // INITIALISING | AUTHENTICATED | REFRESHING | EXPIRED | SIGNED_OUT | DEV_PREVIEW
+    deviceId: null,
+    isOnline: typeof navigator !== "undefined" ? navigator.onLine : true,
+    lastSync: Date.now(),
   },
   role: null, // Derived from backend authenticated identity (/auth/me)
   route: "dashboard",

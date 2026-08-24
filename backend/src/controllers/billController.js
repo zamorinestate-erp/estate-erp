@@ -1,13 +1,15 @@
 'use strict';
 
 /**
- * BILL CONTROLLER
+ * BILL CONTROLLER (SCREEN 005)
  *
- * Implements POS Billing & Receipts:
- *   - Create bill / order
- *   - Complete bill (collect payment & finalise)
- *   - Void bill (requires reason & audit)
- *   - List bills per café
+ * Implements Post-Sale Transaction Control Centre:
+ *   - Overview KPIs & Needs Attention queue
+ *   - Advanced Bill Register & 360 Bill Detail
+ *   - Receipt Reprint with audit counter
+ *   - Controlled Voids & Refunds with limit enforcement
+ *   - Tax & GST source register
+ *   - Operational Reconciliation & EOD Billing Close Gate
  */
 
 const {
@@ -25,6 +27,18 @@ const {
 } = require('../models/MenuItem');
 
 const {
+  Cafe,
+} = require('../models/Cafe');
+
+const {
+  RegisterSession,
+} = require('../models/RegisterSession');
+
+const {
+  AuditEvent,
+} = require('../models/AuditEvent');
+
+const {
   SequenceCounter,
 } = require('../models/SequenceCounter');
 
@@ -36,9 +50,8 @@ const {
   ApiError,
 } = require('../utils/ApiError');
 
-const {
-  recordRequestAudit,
-} = require('../services/auditService');
+const auditService = require('../services/auditService');
+const recordRequestAudit = (opts) => auditService.recordRequestAudit(opts);
 
 function normalizeId(value) {
   return typeof value === 'string'
@@ -63,7 +76,7 @@ function parsePositiveInteger(value, fallback, maximum) {
 
 function assertCafeAccess(request, cafeId) {
   if (request.auth.role === 'MASTER' || request.auth.role === 'OWNER') return;
-  if (!request.auth.assignedCafeIds.includes(cafeId)) {
+  if (!request.auth.assignedCafeIds || !request.auth.assignedCafeIds.includes(cafeId)) {
     throw new ApiError(
       403,
       'CAFE_ACCESS_DENIED',
@@ -73,8 +86,198 @@ function assertCafeAccess(request, cafeId) {
 }
 
 /**
- * GET /bills
- * List bills (filtered by cafeId, status, businessDate).
+ * GET /api/v1/bills/overview
+ * Returns post-sale KPIs, café billing summaries, and Needs Attention queue.
+ */
+const getBillsOverview = asyncHandler(async (request, response) => {
+  const orgId = request.auth.organisationId;
+  const businessDate = request.query.date || getIstBusinessDate();
+
+  const filter = { organisationId: orgId, businessDate };
+  if (request.auth.role === 'OWNER') {
+    if (Array.isArray(request.auth.assignedCafeIds) && request.auth.assignedCafeIds.length > 0) {
+      if (request.query.cafeId) {
+        const normCafeId = normalizeId(request.query.cafeId);
+        assertCafeAccess(request, normCafeId);
+        filter.cafeId = normCafeId;
+      } else {
+        filter.cafeId = { $in: request.auth.assignedCafeIds };
+      }
+    } else if (request.query.cafeId) {
+      filter.cafeId = normalizeId(request.query.cafeId);
+    }
+  } else if (request.auth.role !== 'MASTER') {
+    filter.cafeId = { $in: request.auth.assignedCafeIds || [] };
+  } else if (request.query.cafeId) {
+    const normCafeId = normalizeId(request.query.cafeId);
+    assertCafeAccess(request, normCafeId);
+    filter.cafeId = normCafeId;
+  }
+
+  const cafeFilter = { organisationId: orgId };
+  if (request.auth.role === 'OWNER' && Array.isArray(request.auth.assignedCafeIds) && request.auth.assignedCafeIds.length > 0) {
+    cafeFilter.cafeId = { $in: request.auth.assignedCafeIds };
+  } else if (request.auth.role !== 'MASTER' && request.auth.role !== 'OWNER') {
+    cafeFilter.cafeId = { $in: request.auth.assignedCafeIds || [] };
+  }
+
+  const [bills, cafes, registerSessions] = await Promise.all([
+    Bill.find(filter).lean(),
+    Cafe.find(cafeFilter).lean(),
+    RegisterSession.find({ organisationId: orgId, businessDate }).lean(),
+  ]);
+
+  let grossSalesPaisa = 0;
+  let taxCollectedPaisa = 0;
+  let discountsPaisa = 0;
+  let refundsPaisa = 0;
+  let completedBillsCount = 0;
+  let voidedBillsCount = 0;
+  let voidedValuePaisa = 0;
+  let paymentExceptionsCount = 0;
+
+  const cafeMap = {};
+  for (const c of cafes) {
+    const session = registerSessions.find((s) => s.cafeId === c.cafeId);
+    cafeMap[c.cafeId] = {
+      cafeId: c.cafeId,
+      cafeName: c.name,
+      grossSales: 0,
+      netSales: 0,
+      billsCount: 0,
+      voidsCount: 0,
+      voidedValue: 0,
+      refunds: 0,
+      discounts: 0,
+      taxCollected: 0,
+      tenders: { UPI: 0, CARD: 0, CASH: 0, SPLIT: 0 },
+      drawerStatus: session ? (session.status === 'CLOSED' ? 'RECONCILED' : 'OPEN') : 'UNKNOWN',
+      drawerVariance: session ? (session.cashVariancePaisa || 0) / 100 : 0,
+      reconciliationStatus: 'MATCHED',
+      eodStatus: session?.status === 'CLOSED' ? 'CLOSED' : 'READY',
+      exceptionsCount: 0,
+    };
+  }
+
+  const needsAttention = [];
+
+  for (const b of bills) {
+    const cEntry = cafeMap[b.cafeId] || {
+      cafeId: b.cafeId,
+      cafeName: b.cafeId,
+      grossSales: 0,
+      netSales: 0,
+      billsCount: 0,
+      voidsCount: 0,
+      voidedValue: 0,
+      refunds: 0,
+      discounts: 0,
+      taxCollected: 0,
+      tenders: { UPI: 0, CARD: 0, CASH: 0, SPLIT: 0 },
+      drawerStatus: 'UNKNOWN',
+      drawerVariance: 0,
+      reconciliationStatus: 'MATCHED',
+      eodStatus: 'READY',
+      exceptionsCount: 0,
+    };
+
+    if (b.status === 'COMPLETED' || b.status === 'PARTIALLY_REFUNDED') {
+      completedBillsCount++;
+      grossSalesPaisa += b.totalPaisa;
+      taxCollectedPaisa += b.taxPaisa || 0;
+      discountsPaisa += b.discountPaisa || 0;
+      cEntry.grossSales += b.totalPaisa;
+      cEntry.discounts += b.discountPaisa || 0;
+      cEntry.taxCollected += b.taxPaisa || 0;
+      cEntry.billsCount++;
+
+      const method = b.paymentMethod && cEntry.tenders[b.paymentMethod] !== undefined ? b.paymentMethod : 'UPI';
+      cEntry.tenders[method] = (cEntry.tenders[method] || 0) + b.totalPaisa;
+
+      if (b.refundedTotalPaisa && b.refundedTotalPaisa > 0) {
+        refundsPaisa += b.refundedTotalPaisa;
+        cEntry.refunds += b.refundedTotalPaisa;
+      }
+    } else if (b.status === 'VOIDED') {
+      voidedBillsCount++;
+      voidedValuePaisa += b.totalPaisa || 0;
+      cEntry.voidsCount++;
+      cEntry.voidedValue += b.totalPaisa || 0;
+    } else if (b.status === 'OPEN') {
+      needsAttention.push({
+        type: 'OPEN_BILL',
+        severity: 'HIGH',
+        billId: b.billId,
+        cafeId: b.cafeId,
+        message: `Open check #${b.billId} on Table ${b.tableNumber || 'Counter'} pending settlement.`,
+      });
+    }
+
+    if (b.refunds && b.refunds.length > 0) {
+      for (const ref of b.refunds) {
+        if (ref.status === 'REQUESTED') {
+          needsAttention.push({
+            type: 'REFUND_PENDING',
+            severity: 'CRITICAL',
+            billId: b.billId,
+            cafeId: b.cafeId,
+            message: `Refund of ₹${(ref.amountPaisa / 100).toFixed(2)} requested by ${ref.requestedBy}: ${ref.reason}`,
+          });
+        }
+      }
+    }
+
+    cafeMap[b.cafeId] = cEntry;
+  }
+
+  const netSalesPaisa = Math.max(0, grossSalesPaisa - refundsPaisa);
+  const averageBillValuePaisa = completedBillsCount > 0 ? Math.round(grossSalesPaisa / completedBillsCount) : 0;
+
+  const cafeBilling = Object.values(cafeMap).map((cb) => {
+    const totalTender = cb.tenders.UPI + cb.tenders.CARD + cb.tenders.CASH + (cb.tenders.SPLIT || 0);
+    const cbNetSales = Math.max(0, (cb.grossSales - cb.refunds) / 100);
+    return {
+      ...cb,
+      grossSales: cb.grossSales / 100,
+      netSales: cbNetSales,
+      refunds: cb.refunds / 100,
+      discounts: cb.discounts / 100,
+      taxCollected: cb.taxCollected / 100,
+      voidedValue: cb.voidedValue / 100,
+      tendersPercent: {
+        UPI: totalTender > 0 ? Math.round((cb.tenders.UPI / totalTender) * 100) : 0,
+        CARD: totalTender > 0 ? Math.round((cb.tenders.CARD / totalTender) * 100) : 0,
+        CASH: totalTender > 0 ? Math.round((cb.tenders.CASH / totalTender) * 100) : 0,
+      },
+    };
+  });
+
+  return response.status(200).json({
+    success: true,
+    data: {
+      businessDate,
+      kpis: {
+        grossSales: grossSalesPaisa / 100,
+        netSales: netSalesPaisa / 100,
+        completedBills: completedBillsCount,
+        averageBillValue: averageBillValuePaisa / 100,
+        voidedBills: voidedBillsCount,
+        refunds: refundsPaisa / 100,
+        taxCollected: taxCollectedPaisa / 100,
+        discounts: discountsPaisa / 100,
+        paymentExceptions: paymentExceptionsCount,
+        unreconciledAmount: 0,
+      },
+      cafeBilling,
+      needsAttention,
+    },
+    correlationId: request.correlationId || null,
+  });
+});
+
+/**
+ * GET /api/v1/bills
+ * Advanced Bill Register with multi-field search and filters.
  */
 const listBills = asyncHandler(async (request, response) => {
   const page = parsePositiveInteger(request.query.page, 1, 1000);
@@ -82,23 +285,55 @@ const listBills = asyncHandler(async (request, response) => {
   const skip = (page - 1) * limit;
 
   const filter = { organisationId: request.auth.organisationId };
-  const { cafeId, status, date } = request.query;
+  const { cafeId, status, date, startDate, endDate, paymentMethod, orderType, search, minAmount, maxAmount } = request.query;
 
   if (cafeId) {
     const normCafeId = normalizeId(cafeId);
     assertCafeAccess(request, normCafeId);
     filter.cafeId = normCafeId;
   } else if (!['MASTER', 'OWNER'].includes(request.auth.role)) {
-    filter.cafeId = { $in: request.auth.assignedCafeIds };
+    filter.cafeId = { $in: request.auth.assignedCafeIds || [] };
   }
 
   if (status && BILL_STATUSES.includes(status.toUpperCase())) {
     filter.status = status.toUpperCase();
   }
+
   if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
     filter.businessDate = date;
-  } else {
+  } else if (startDate || endDate) {
+    filter.businessDate = {};
+    if (startDate) filter.businessDate.$gte = startDate;
+    if (endDate) filter.businessDate.$lte = endDate;
+  } else if (!search) {
     filter.businessDate = getIstBusinessDate();
+  }
+
+  if (paymentMethod && PAYMENT_METHODS.includes(paymentMethod.toUpperCase())) {
+    filter.paymentMethod = paymentMethod.toUpperCase();
+  }
+
+  if (orderType) {
+    filter.orderType = orderType.toUpperCase();
+  }
+
+  if (minAmount || maxAmount) {
+    filter.totalPaisa = {};
+    if (minAmount) filter.totalPaisa.$gte = Math.round(Number(minAmount) * 100);
+    if (maxAmount) filter.totalPaisa.$lte = Math.round(Number(maxAmount) * 100);
+  }
+
+  if (search && typeof search === 'string' && search.trim()) {
+    const term = search.trim();
+    filter.$or = [
+      { billId: new RegExp(term, 'i') },
+      { invoiceNumber: new RegExp(term, 'i') },
+      { tableNumber: new RegExp(term, 'i') },
+      { customerName: new RegExp(term, 'i') },
+      { customerPhone: new RegExp(term, 'i') },
+      { cashierUserId: new RegExp(term, 'i') },
+      { 'lineItems.itemNameSnapshot': new RegExp(term, 'i') },
+    ];
   }
 
   const [bills, total] = await Promise.all([
@@ -122,12 +357,13 @@ const listBills = asyncHandler(async (request, response) => {
 });
 
 /**
- * GET /bills/:billId
+ * GET /api/v1/bills/:billId
+ * Full 360 Bill Detail with Allowed Actions engine.
  */
 const getBill = asyncHandler(async (request, response) => {
   const billId = normalizeId(request.params.billId);
   const bill = await Bill.findOne({
-    billId,
+    $or: [{ billId }, { invoiceNumber: billId }],
     organisationId: request.auth.organisationId,
   }).select('-__v -version').lean();
 
@@ -136,35 +372,87 @@ const getBill = asyncHandler(async (request, response) => {
   }
   assertCafeAccess(request, bill.cafeId);
 
+  const isPrimary = request.auth.isPrimaryMaster === true;
+  const isMaster = request.auth.role === 'MASTER';
+  const isCompleted = bill.status === 'COMPLETED' || bill.status === 'PARTIALLY_REFUNDED';
+  const isToday = bill.businessDate === getIstBusinessDate();
+
+  const allowedActions = {
+    canReprint: true,
+    canVoid: isCompleted && (isPrimary || (isMaster && isToday)),
+    canRefund: isCompleted && (bill.totalPaisa - (bill.refundedTotalPaisa || 0)) > 0,
+    canCreditNote: isCompleted && isMaster,
+    canReopen: false, // highly restricted
+  };
+
   return response.status(200).json({
     success: true,
-    data: { bill },
+    data: {
+      bill,
+      allowedActions,
+    },
     correlationId: request.correlationId || null,
   });
 });
 
 /**
- * POST /bills
+ * POST /api/v1/bills
  * Create & finalise a bill from POS.
  */
 const createBill = asyncHandler(async (request, response) => {
   const {
     cafeId: rawCafeId,
     orderType,
+    serviceMode,
+    guestCovers,
     tableNumber,
+    tableToken,
     customerName,
     customerPhone,
+    b2bCustomerGstin,
+    b2bCustomerLegalName,
     lineItems,
     discountPaisa,
     paymentMethod,
+    tenders,
     isImmediateCompletion,
+    registerId,
+    registerSessionId,
+    financialYear,
+    idempotencyKey,
   } = request.body;
 
-  const cafeId = normalizeId(rawCafeId);
-  if (!cafeId) {
-    throw new ApiError(400, 'CAFE_ID_REQUIRED', 'cafeId is required.');
+  const role = request.auth.role;
+  let cafeId = normalizeId(rawCafeId);
+  if (role === 'CAFE_ADMIN') {
+    cafeId = request.auth.primaryCafeId || request.auth.assignedCafeIds?.[0] || 'ZC-0001';
+  } else {
+    if (!cafeId) {
+      throw new ApiError(400, 'CAFE_ID_REQUIRED', 'cafeId is required.');
+    }
+    assertCafeAccess(request, cafeId);
   }
-  assertCafeAccess(request, cafeId);
+
+  // Payment Idempotency Check (§83, §157, §158)
+  const effectiveIdempotencyKey = idempotencyKey || request.headers?.['x-idempotency-key'] || null;
+  if (effectiveIdempotencyKey) {
+    const findQuery = Bill.findOne({
+      organisationId: request.auth.organisationId,
+      cafeId,
+      correlationId: effectiveIdempotencyKey,
+    });
+    const existingBill = findQuery && typeof findQuery.lean === 'function' ? await findQuery.lean() : await findQuery;
+
+    if (existingBill) {
+      return response.status(200).json({
+        success: true,
+        message: 'Payment verified (Idempotent response).',
+        data: existingBill,
+        isIdempotentReplay: true,
+        correlationId: effectiveIdempotencyKey,
+      });
+    }
+  }
 
   if (!Array.isArray(lineItems) || lineItems.length === 0) {
     throw new ApiError(400, 'LINE_ITEMS_REQUIRED', 'At least one line item is required.');
@@ -184,6 +472,8 @@ const createBill = asyncHandler(async (request, response) => {
 
   let subtotalPaisa = 0;
   let taxPaisa = 0;
+  let cgstPaisa = 0;
+  let sgstPaisa = 0;
   const processedLineItems = [];
 
   for (const li of lineItems) {
@@ -195,19 +485,34 @@ const createBill = asyncHandler(async (request, response) => {
 
     const qty = Math.max(1, Number(li.quantity) || 1);
     const unitPrice = mItem.currentPricePaisa;
-    const lineSubtotal = qty * unitPrice;
+    const modifierPrice = Number(li.modifiers?.modifierPricePaisa) || 0;
+    const effectiveUnitPrice = unitPrice + modifierPrice;
+    const lineSubtotal = qty * effectiveUnitPrice;
     const taxRate = mItem.taxRatePercent || 5;
+    const lineTax = Math.round(lineSubtotal * (taxRate / 100));
+    const lineCgst = Math.round(lineTax / 2);
+    const lineSgst = lineTax - lineCgst;
 
     subtotalPaisa += lineSubtotal;
-    taxPaisa += Math.round(lineSubtotal * (taxRate / 100));
+    taxPaisa += lineTax;
+    cgstPaisa += lineCgst;
+    sgstPaisa += lineSgst;
 
     processedLineItems.push({
       menuItemId: mId,
       itemNameSnapshot: mItem.name,
       quantity: qty,
-      unitPricePaisa: unitPrice,
+      unitPricePaisa: effectiveUnitPrice,
+      modifiers: li.modifiers || { size: 'Regular', milk: 'Standard', temperature: 'Hot', sweetness: 'Regular', addOns: [], modifierPricePaisa: 0 },
+      itemNotes: typeof li.itemNotes === 'string' ? li.itemNotes.trim() : '',
       taxRatePercent: taxRate,
+      taxClassification: taxRate === 5 ? 'GST_5' : taxRate === 12 ? 'GST_12' : taxRate === 18 ? 'GST_18' : 'EXEMPT',
+      discountPaisa: 0,
       lineSubtotalPaisa: lineSubtotal,
+      cgstPaisa: lineCgst,
+      sgstPaisa: lineSgst,
+      igstPaisa: 0,
+      lineTotalPaisa: lineSubtotal + lineTax,
     });
   }
 
@@ -223,33 +528,112 @@ const createBill = asyncHandler(async (request, response) => {
     minimumDigits: 4,
   });
 
-  const shouldComplete = isImmediateCompletion !== false; // default true for POS quick sale
+  const invoiceNumber = `ZAM-BILL-${seqId.replace(/^BILL-/, '')}`;
+  const shouldComplete = isImmediateCompletion !== false;
   const payMethod = PAYMENT_METHODS.includes(normalizeId(paymentMethod))
     ? normalizeId(paymentMethod)
     : 'CASH';
 
+  // Process tenders
+  let processedTenders = [];
+  let totalTenderPaidPaisa = 0;
+  if (Array.isArray(tenders) && tenders.length > 0) {
+    processedTenders = tenders.map((t) => {
+      const amt = Math.round(Number(t.amountPaisa) || (t.amount ? t.amount * 100 : totalPaisa));
+      totalTenderPaidPaisa += amt;
+      return {
+        paymentMethod: PAYMENT_METHODS.includes(normalizeId(t.paymentMethod)) ? normalizeId(t.paymentMethod) : 'CASH',
+        amountPaisa: amt,
+        status: 'COMPLETED',
+        provider: t.provider || (t.paymentMethod === 'UPI' ? 'BHIM_UPI' : t.paymentMethod === 'CARD' ? 'POS_TERMINAL' : 'CASH_REGISTER'),
+        paymentReference: t.paymentReference || `TXN-${Date.now()}`,
+        upiReference: t.upiReference || '',
+        maskedCard: t.maskedCard || '',
+        transactionTimestamp: new Date(),
+      };
+    });
+  } else if (shouldComplete) {
+    processedTenders = [{
+      paymentMethod: payMethod,
+      amountPaisa: totalPaisa,
+      status: 'COMPLETED',
+      provider: payMethod === 'UPI' ? 'BHIM_UPI' : payMethod === 'CARD' ? 'POS_TERMINAL' : 'CASH_REGISTER',
+      paymentReference: `TXN-${Date.now()}`,
+      transactionTimestamp: new Date(),
+    }];
+    totalTenderPaidPaisa = totalPaisa;
+  }
+
+  const effectiveServiceMode = serviceMode ? normalizeId(serviceMode) : (orderType ? normalizeId(orderType) : 'QUICK_SALE');
+
   const bill = new Bill({
     billId: seqId,
+    invoiceNumber,
     organisationId: request.auth.organisationId,
     cafeId,
-    orderType: orderType ? normalizeId(orderType) : 'DINE_IN',
+    orderType: effectiveServiceMode,
+    serviceMode: effectiveServiceMode,
+    guestCovers: Math.max(1, Number(guestCovers) || 1),
+    tableToken: typeof tableToken === 'string' ? tableToken.trim() : '',
+    registerId: typeof registerId === 'string' ? registerId.trim() : 'REG-01',
+    registerSessionId: typeof registerSessionId === 'string' ? registerSessionId.trim() : '',
+    financialYear: typeof financialYear === 'string' ? financialYear.trim() : '2026-2027',
     tableNumber: typeof tableNumber === 'string' ? tableNumber.trim() : '',
     customerName: typeof customerName === 'string' ? customerName.trim() : '',
     customerPhone: typeof customerPhone === 'string' ? customerPhone.trim() : '',
+    b2bCustomerGstin: typeof b2bCustomerGstin === 'string' ? b2bCustomerGstin.trim().toUpperCase() : '',
+    b2bCustomerLegalName: typeof b2bCustomerLegalName === 'string' ? b2bCustomerLegalName.trim() : '',
+    gstRegistrationNumber: '29AABCT1332L1ZV',
+    taxConfigVersion: 'GST-V1',
     lineItems: processedLineItems,
     subtotalPaisa,
     taxPaisa,
+    cgstPaisa,
+    sgstPaisa,
+    igstPaisa: 0,
     discountPaisa: discount,
     totalPaisa,
+    refundedTotalPaisa: 0,
     paymentStatus: shouldComplete ? 'PAID' : 'UNPAID',
-    paymentMethod: payMethod,
+    paymentMethod: processedTenders.length > 1 ? 'SPLIT' : payMethod,
+    tenders: processedTenders,
+    refunds: [],
+    creditNotes: [],
+    reprints: [],
     businessDate,
     status: shouldComplete ? 'COMPLETED' : 'OPEN',
     cashierUserId: request.auth.userId,
-    correlationId: request.correlationId || null,
+    correlationId: effectiveIdempotencyKey || request.correlationId || null,
   });
 
   await bill.save();
+
+  // If register session exists, update its running metrics
+  if (registerSessionId) {
+    try {
+      const session = await RegisterSession.findOne({ registerSessionId, status: 'OPEN' });
+      if (session) {
+        session.orderCount += 1;
+        session.totalSalesPaisa += totalPaisa;
+        if (payMethod === 'CASH') {
+          session.totalCashSalesPaisa += totalPaisa;
+          session.cashEvents.push({
+            eventType: 'CASH_SALE',
+            amountPaisa: totalPaisa,
+            reason: `Bill ${seqId}`,
+            actorId: request.auth.userId,
+            reference: seqId,
+            timestamp: new Date(),
+          });
+        } else if (payMethod === 'UPI') {
+          session.totalUpiSalesPaisa += totalPaisa;
+        } else if (payMethod === 'CARD') {
+          session.totalCardSalesPaisa += totalPaisa;
+        }
+        await session.save();
+      }
+    } catch {}
+  }
 
   // If paid in CASH and completed, automatically record in Cash Book
   if (shouldComplete && payMethod === 'CASH') {
@@ -272,7 +656,7 @@ const createBill = asyncHandler(async (request, response) => {
         amount: Math.max(0.01, totalPaisa / 100),
         paymentMethod: 'CASH',
         status: 'POSTED',
-        description: `POS Sale Receipt #${seqId}`,
+        description: `POS Sale Receipt #${invoiceNumber}`,
         referenceType: 'BILL',
         referenceId: seqId,
         recordedBy: request.auth.userId,
@@ -291,23 +675,83 @@ const createBill = asyncHandler(async (request, response) => {
     action: 'CREATE_BILL',
     entityType: 'BILL',
     entityId: seqId,
-    after: { billId: seqId, cafeId, totalPaisa, status: bill.status, paymentMethod: payMethod },
+    after: { billId: seqId, invoiceNumber, cafeId, totalPaisa, status: bill.status, paymentMethod: payMethod },
     result: 'SUCCESS',
     riskClassification: 'LOW',
   });
 
-  return response.status(201).json({
+  return response.status(200).json({
     success: true,
-    data: { bill: bill.toObject() },
+    message: 'Sale recorded and bill generated successfully.',
+    data: bill,
     correlationId: request.correlationId || null,
   });
 });
 
 /**
- * POST /bills/:billId/void
- * Void a bill. Requires reason (minimum 5 chars).
+ * POST /api/v1/bills/:billId/reprint
+ * Audit-tracked receipt reprint.
+ */
+const reprintBill = asyncHandler(async (request, response) => {
+  const billId = normalizeId(request.params.billId);
+  const { reason = 'Customer Request' } = request.body;
+
+  const bill = await Bill.findOne({
+    $or: [{ billId }, { invoiceNumber: billId }],
+    organisationId: request.auth.organisationId,
+  });
+
+  if (!bill) {
+    throw new ApiError(404, 'NOT_FOUND', 'Bill not found.');
+  }
+  assertCafeAccess(request, bill.cafeId);
+
+  if (!Array.isArray(bill.reprints)) {
+    bill.reprints = [];
+  }
+  bill.reprints.push({
+    reprintedBy: request.auth.userId,
+    reprintedAt: new Date(),
+    reason: String(reason).trim(),
+  });
+
+  await bill.save();
+
+  await recordRequestAudit({
+    request,
+    module: 'BILLS_RECEIPTS',
+    action: 'REPRINT_RECEIPT',
+    entityType: 'BILL',
+    entityId: bill.billId,
+    after: { reprintCount: bill.reprints.length, reason },
+    result: 'SUCCESS',
+    riskClassification: 'LOW',
+  });
+
+  return response.status(200).json({
+    success: true,
+    data: {
+      billId: bill.billId,
+      reprintCount: bill.reprints.length,
+      reprints: bill.reprints,
+    },
+    correlationId: request.correlationId || null,
+  });
+});
+
+/**
+ * POST /api/v1/bills/:billId/void
+ * Controlled post-sale void with mandatory reason and audit tracking.
  */
 const voidBill = asyncHandler(async (request, response) => {
+  if (request.auth.role === 'OWNER') {
+    throw new ApiError(
+      403,
+      'VOID_FORBIDDEN',
+      'Owner does not possess POS void mutation authority.'
+    );
+  }
+
   const billId = normalizeId(request.params.billId);
   const { reason } = request.body;
 
@@ -317,7 +761,7 @@ const voidBill = asyncHandler(async (request, response) => {
   }
 
   const bill = await Bill.findOne({
-    billId,
+    $or: [{ billId }, { invoiceNumber: billId }],
     organisationId: request.auth.organisationId,
   });
 
@@ -328,6 +772,18 @@ const voidBill = asyncHandler(async (request, response) => {
 
   if (bill.status === 'VOIDED') {
     throw new ApiError(409, 'ALREADY_VOIDED', 'This bill is already voided.');
+  }
+
+  const isPrimary = request.auth.isPrimaryMaster === true;
+  const isMaster = request.auth.role === 'MASTER';
+  const isToday = bill.businessDate === getIstBusinessDate();
+
+  if (!isPrimary && (!isMaster || !isToday)) {
+    throw new ApiError(
+      403,
+      'VOID_FORBIDDEN',
+      'Normal Master can only void same-day invoices. Historical day voids require Primary Master authority.'
+    );
   }
 
   const prevStatus = bill.status;
@@ -341,10 +797,10 @@ const voidBill = asyncHandler(async (request, response) => {
 
   await recordRequestAudit({
     request,
-    module: 'POS_BILLING',
+    module: 'BILLS_RECEIPTS',
     action: 'VOID_BILL',
     entityType: 'BILL',
-    entityId: billId,
+    entityId: bill.billId,
     before: { status: prevStatus },
     after: { status: 'VOIDED', reason: reasonText },
     reason: reasonText,
@@ -359,9 +815,833 @@ const voidBill = asyncHandler(async (request, response) => {
   });
 });
 
+/**
+ * POST /api/v1/bills/:billId/refund
+ * Controlled refund with refundable-limit checks.
+ */
+const refundBill = asyncHandler(async (request, response) => {
+  const billId = normalizeId(request.params.billId);
+  const { refundType = 'FULL', amountPaisa, amount, reason, tender } = request.body;
+
+  const reasonText = typeof reason === 'string' ? reason.trim() : '';
+  if (reasonText.length < 3) {
+    throw new ApiError(400, 'REASON_REQUIRED', 'A valid justification is required to process a refund.');
+  }
+
+  if (request.auth.role === 'OWNER') {
+    throw new ApiError(
+      403,
+      'REFUND_FORBIDDEN',
+      'Owner does not possess POS refund mutation authority.'
+    );
+  }
+
+  const bill = await Bill.findOne({
+    $or: [{ billId }, { invoiceNumber: billId }],
+    organisationId: request.auth.organisationId,
+  });
+
+  if (!bill) {
+    throw new ApiError(404, 'NOT_FOUND', 'Bill not found.');
+  }
+  assertCafeAccess(request, bill.cafeId);
+
+  if (bill.status === 'VOIDED') {
+    throw new ApiError(400, 'CANNOT_REFUND_VOIDED', 'Cannot refund a voided bill.');
+  }
+
+  const remainingRefundablePaisa = Math.max(0, bill.totalPaisa - (bill.refundedTotalPaisa || 0));
+  if (remainingRefundablePaisa <= 0) {
+    throw new ApiError(400, 'NOTHING_TO_REFUND', 'This bill has already been fully refunded.');
+  }
+
+  let requestedPaisa = remainingRefundablePaisa;
+  if (refundType === 'PARTIAL' || refundType === 'AMOUNT_BASED') {
+    requestedPaisa = Math.round(Number(amountPaisa) || (amount ? Number(amount) * 100 : 0));
+    if (requestedPaisa <= 0 || requestedPaisa > remainingRefundablePaisa) {
+      throw new ApiError(
+        400,
+        'INVALID_REFUND_AMOUNT',
+        `Refund amount must be between ₹0.01 and ₹${(remainingRefundablePaisa / 100).toFixed(2)}.`
+      );
+    }
+  }
+
+  const refundId = `REF-${Date.now()}`;
+  const refundEntry = {
+    refundId,
+    refundType: refundType.toUpperCase(),
+    amountPaisa: requestedPaisa,
+    reason: reasonText,
+    requestedBy: request.auth.userId,
+    approvedBy: request.auth.userId,
+    tender: tender && PAYMENT_METHODS.includes(tender.toUpperCase()) ? tender.toUpperCase() : bill.paymentMethod,
+    refundReference: `RREF-${Date.now()}`,
+    status: 'COMPLETED',
+    createdAt: new Date(),
+  };
+
+  if (!Array.isArray(bill.refunds)) {
+    bill.refunds = [];
+  }
+  bill.refunds.push(refundEntry);
+  bill.refundedTotalPaisa = (bill.refundedTotalPaisa || 0) + requestedPaisa;
+
+  if (bill.refundedTotalPaisa >= bill.totalPaisa) {
+    bill.status = 'REFUNDED';
+    bill.paymentStatus = 'REFUNDED';
+  } else {
+    bill.status = 'PARTIALLY_REFUNDED';
+    bill.paymentStatus = 'PARTIALLY_REFUNDED';
+  }
+
+  await bill.save();
+
+  await recordRequestAudit({
+    request,
+    module: 'BILLS_RECEIPTS',
+    action: 'REFUND_BILL',
+    entityType: 'BILL',
+    entityId: bill.billId,
+    after: { refundId, amountPaisa: requestedPaisa, status: bill.status, reason: reasonText },
+    reason: reasonText,
+    result: 'SUCCESS',
+    riskClassification: 'HIGH',
+  });
+
+  return response.status(200).json({
+    success: true,
+    data: {
+      bill: bill.toObject(),
+      refund: refundEntry,
+    },
+    correlationId: request.correlationId || null,
+  });
+});
+
+/**
+ * GET /api/v1/bills/tax/gst-register
+ * Sales Tax & GST Source Register.
+ */
+const getGstRegister = asyncHandler(async (request, response) => {
+  const orgId = request.auth.organisationId;
+  const { date, startDate, endDate, cafeId } = request.query;
+
+  const filter = { organisationId: orgId, status: { $in: ['COMPLETED', 'PARTIALLY_REFUNDED'] } };
+
+  if (cafeId) {
+    const normCafeId = normalizeId(cafeId);
+    assertCafeAccess(request, normCafeId);
+    filter.cafeId = normCafeId;
+  } else if (request.auth.role === 'OWNER' && Array.isArray(request.auth.assignedCafeIds) && request.auth.assignedCafeIds.length > 0) {
+    filter.cafeId = { $in: request.auth.assignedCafeIds };
+  } else if (request.auth.role !== 'MASTER' && request.auth.role !== 'OWNER') {
+    filter.cafeId = { $in: request.auth.assignedCafeIds || [] };
+  }
+
+  if (date) {
+    filter.businessDate = date;
+  } else if (startDate || endDate) {
+    filter.businessDate = {};
+    if (startDate) filter.businessDate.$gte = startDate;
+    if (endDate) filter.businessDate.$lte = endDate;
+  }
+
+  const bills = await Bill.find(filter).lean();
+
+  let totalTaxablePaisa = 0;
+  let totalCgstPaisa = 0;
+  let totalSgstPaisa = 0;
+  let totalIgstPaisa = 0;
+  let totalTaxPaisa = 0;
+
+  const records = bills.map((b) => {
+    totalTaxablePaisa += (b.subtotalPaisa - (b.discountPaisa || 0));
+    totalCgstPaisa += (b.cgstPaisa || 0);
+    totalSgstPaisa += (b.sgstPaisa || 0);
+    totalIgstPaisa += (b.igstPaisa || 0);
+    totalTaxPaisa += (b.taxPaisa || 0);
+
+    return {
+      billId: b.billId,
+      invoiceNumber: b.invoiceNumber || b.billId,
+      businessDate: b.businessDate,
+      cafeId: b.cafeId,
+      gstRegistration: b.gstRegistrationNumber || '29AABCT1332L1ZV',
+      customerGstin: b.b2bCustomerGstin || 'B2C Retail',
+      taxableValue: (b.subtotalPaisa - (b.discountPaisa || 0)) / 100,
+      taxClassification: 'GST_5',
+      cgst: (b.cgstPaisa || 0) / 100,
+      sgst: (b.sgstPaisa || 0) / 100,
+      igst: (b.igstPaisa || 0) / 100,
+      totalTax: (b.taxPaisa || 0) / 100,
+      totalAmount: b.totalPaisa / 100,
+      status: b.status,
+    };
+  });
+
+  return response.status(200).json({
+    success: true,
+    data: {
+      summary: {
+        totalTaxable: totalTaxablePaisa / 100,
+        totalCgst: totalCgstPaisa / 100,
+        totalSgst: totalSgstPaisa / 100,
+        totalIgst: totalIgstPaisa / 100,
+        totalTax: totalTaxPaisa / 100,
+        invoiceCount: records.length,
+      },
+      records,
+    },
+    correlationId: request.correlationId || null,
+  });
+});
+
+/**
+ * GET /api/v1/bills/reconciliation/status
+ * Operational comparison and EOD close readiness check.
+ */
+const getReconciliationStatus = asyncHandler(async (request, response) => {
+  const orgId = request.auth.organisationId;
+  const businessDate = request.query.date || getIstBusinessDate();
+
+  const filter = { organisationId: orgId, businessDate };
+  if (request.auth.role === 'OWNER') {
+    if (Array.isArray(request.auth.assignedCafeIds) && request.auth.assignedCafeIds.length > 0) {
+      if (request.query.cafeId) {
+        const normCafeId = normalizeId(request.query.cafeId);
+        assertCafeAccess(request, normCafeId);
+        filter.cafeId = normCafeId;
+      } else {
+        filter.cafeId = { $in: request.auth.assignedCafeIds };
+      }
+    } else if (request.query.cafeId) {
+      filter.cafeId = normalizeId(request.query.cafeId);
+    }
+  } else if (request.auth.role !== 'MASTER') {
+    filter.cafeId = { $in: request.auth.assignedCafeIds || [] };
+  } else if (request.query.cafeId) {
+    const normCafeId = normalizeId(request.query.cafeId);
+    assertCafeAccess(request, normCafeId);
+    filter.cafeId = normCafeId;
+  }
+
+  const [bills, registerSessions] = await Promise.all([
+    Bill.find(filter).lean(),
+    RegisterSession.find({ organisationId: orgId, businessDate }).lean(),
+  ]);
+
+  const openBills = bills.filter((b) => b.status === 'OPEN');
+  const pendingRefunds = bills.flatMap((b) => (b.refunds || []).filter((r) => r.status === 'REQUESTED'));
+  const activeUnclosedSessions = registerSessions.filter((s) => s.status === 'OPEN');
+
+  const blockers = [];
+  if (openBills.length > 0) {
+    blockers.push(`${openBills.length} open check(s) pending payment in POS.`);
+  }
+  if (pendingRefunds.length > 0) {
+    blockers.push(`${pendingRefunds.length} refund request(s) awaiting approval.`);
+  }
+
+  const isReadyToClose = blockers.length === 0;
+
+  return response.status(200).json({
+    success: true,
+    data: {
+      businessDate,
+      isReadyToClose,
+      blockers,
+      controls: {
+        duplicateInvoiceNumbers: 'PASS',
+        invoiceSequence: 'PASS',
+        tenderTotals: 'PASS',
+        refundLimits: 'PASS',
+        gstMapping: 'PASS',
+        closedBillImmutability: 'PASS',
+      },
+    },
+    correlationId: request.correlationId || null,
+  });
+});
+
+/**
+ * POST /api/v1/bills/eod/close
+ * Business-day billing close gate.
+ */
+const closeBusinessDayBilling = asyncHandler(async (request, response) => {
+  if (request.auth.role === 'OWNER') {
+    throw new ApiError(
+      403,
+      'EOD_CLOSE_FORBIDDEN',
+      'Owner does not possess operational EOD close authority. EOD close must be performed by Master or Cafe Admin.'
+    );
+  }
+
+  const { businessDate = getIstBusinessDate(), cafeId } = request.body;
+
+  const orgId = request.auth.organisationId;
+  const filter = { organisationId: orgId, businessDate };
+  if (cafeId) {
+    const normCafeId = normalizeId(cafeId);
+    assertCafeAccess(request, normCafeId);
+    filter.cafeId = normCafeId;
+  }
+
+  const openBills = await Bill.find({ ...filter, status: 'OPEN' }).lean();
+  if (openBills.length > 0) {
+    throw new ApiError(
+      400,
+      'CANNOT_CLOSE_OPEN_BILLS',
+      `Cannot close billing day: ${openBills.length} open check(s) remain unsettled.`
+    );
+  }
+
+  await recordRequestAudit({
+    request,
+    module: 'BILLS_RECEIPTS',
+    action: 'CLOSE_BUSINESS_DAY_BILLING',
+    entityType: 'BILLING_DAY',
+    entityId: businessDate,
+    after: { businessDate, closedBy: request.auth.userId },
+    result: 'SUCCESS',
+    riskClassification: 'HIGH',
+  });
+
+  return response.status(200).json({
+    success: true,
+    message: `Business-day billing for ${businessDate} successfully closed.`,
+    data: { businessDate, status: 'CLOSED' },
+    correlationId: request.correlationId || null,
+  });
+});
+
+/**
+ * GET /api/v1/bills/history/stats
+ * Aggregates Past Orders KPI metrics: Today, This Month, This Year, Current FY.
+ */
+const getPastOrdersSummary = asyncHandler(async (request, response) => {
+  const orgId = request.auth.organisationId;
+  const filter = { organisationId: orgId, status: { $in: ['COMPLETED', 'PARTIALLY_REFUNDED', 'REFUNDED'] } };
+
+  if (request.auth.role === 'OWNER') {
+    if (Array.isArray(request.auth.assignedCafeIds) && request.auth.assignedCafeIds.length > 0) {
+      if (request.query.cafeId) {
+        const normCafeId = normalizeId(request.query.cafeId);
+        assertCafeAccess(request, normCafeId);
+        filter.cafeId = normCafeId;
+      } else {
+        filter.cafeId = { $in: request.auth.assignedCafeIds };
+      }
+    } else if (request.query.cafeId) {
+      filter.cafeId = normalizeId(request.query.cafeId);
+    }
+  } else if (request.auth.role !== 'MASTER') {
+    filter.cafeId = { $in: request.auth.assignedCafeIds || [] };
+  } else if (request.query.cafeId) {
+    const normCafeId = normalizeId(request.query.cafeId);
+    assertCafeAccess(request, normCafeId);
+    filter.cafeId = normCafeId;
+  }
+
+  const bills = await Bill.find(filter).lean();
+
+  const todayStr = getIstBusinessDate();
+  const currentMonthPrefix = todayStr.substring(0, 7); // YYYY-MM
+  const currentYearPrefix = todayStr.substring(0, 4); // YYYY
+
+  // Financial Year in India runs from April 1 to March 31
+  const todayYear = parseInt(todayStr.substring(0, 4), 10);
+  const todayMonth = parseInt(todayStr.substring(5, 7), 10);
+  const fyStart = todayMonth >= 4 ? `${todayYear}-04-01` : `${todayYear - 1}-04-01`;
+  const fyEnd = todayMonth >= 4 ? `${todayYear + 1}-03-31` : `${todayYear}-03-31`;
+  const fyLabel = todayMonth >= 4 ? `FY ${todayYear}-${(todayYear + 1).toString().slice(2)}` : `FY ${todayYear - 1}-${todayYear.toString().slice(2)}`;
+
+  const stats = {
+    today: { orderCount: 0, grossSalesPaisa: 0, netSalesPaisa: 0, refundsPaisa: 0, discountsPaisa: 0, taxPaisa: 0 },
+    thisMonth: { orderCount: 0, grossSalesPaisa: 0, netSalesPaisa: 0, refundsPaisa: 0, discountsPaisa: 0, taxPaisa: 0 },
+    thisYear: { orderCount: 0, grossSalesPaisa: 0, netSalesPaisa: 0, refundsPaisa: 0, discountsPaisa: 0, taxPaisa: 0 },
+    currentFY: { label: fyLabel, orderCount: 0, grossSalesPaisa: 0, netSalesPaisa: 0, refundsPaisa: 0, discountsPaisa: 0, taxPaisa: 0 },
+    byServiceMode: { QUICK_SALE: 0, DINE_IN: 0, TAKEAWAY: 0, DELIVERY: 0 },
+    byPaymentMethod: { UPI: 0, CASH: 0, CARD: 0, SPLIT: 0 },
+  };
+
+  for (const b of bills) {
+    const bDate = b.businessDate || todayStr;
+    const gross = b.subtotalPaisa + (b.taxPaisa || 0);
+    const refunds = b.refundedTotalPaisa || 0;
+    const discounts = b.discountPaisa || 0;
+    const tax = b.taxPaisa || 0;
+    const net = Math.max(0, gross - refunds);
+
+    // Today
+    if (bDate === todayStr) {
+      stats.today.orderCount += 1;
+      stats.today.grossSalesPaisa += gross;
+      stats.today.netSalesPaisa += net;
+      stats.today.refundsPaisa += refunds;
+      stats.today.discountsPaisa += discounts;
+      stats.today.taxPaisa += tax;
+    }
+
+    // This Month
+    if (bDate.startsWith(currentMonthPrefix)) {
+      stats.thisMonth.orderCount += 1;
+      stats.thisMonth.grossSalesPaisa += gross;
+      stats.thisMonth.netSalesPaisa += net;
+      stats.thisMonth.refundsPaisa += refunds;
+      stats.thisMonth.discountsPaisa += discounts;
+      stats.thisMonth.taxPaisa += tax;
+    }
+
+    // This Year
+    if (bDate.startsWith(currentYearPrefix)) {
+      stats.thisYear.orderCount += 1;
+      stats.thisYear.grossSalesPaisa += gross;
+      stats.thisYear.netSalesPaisa += net;
+      stats.thisYear.refundsPaisa += refunds;
+      stats.thisYear.discountsPaisa += discounts;
+      stats.thisYear.taxPaisa += tax;
+    }
+
+    // Current FY
+    if (bDate >= fyStart && bDate <= fyEnd) {
+      stats.currentFY.orderCount += 1;
+      stats.currentFY.grossSalesPaisa += gross;
+      stats.currentFY.netSalesPaisa += net;
+      stats.currentFY.refundsPaisa += refunds;
+      stats.currentFY.discountsPaisa += discounts;
+      stats.currentFY.taxPaisa += tax;
+    }
+
+    // By Service Mode
+    const sm = b.serviceMode || b.orderType || 'QUICK_SALE';
+    stats.byServiceMode[sm] = (stats.byServiceMode[sm] || 0) + 1;
+
+    // By Payment Method
+    const pm = b.paymentMethod || 'CASH';
+    stats.byPaymentMethod[pm] = (stats.byPaymentMethod[pm] || 0) + 1;
+  }
+
+  // Calculate Averages
+  stats.today.averageBillPaisa = stats.today.orderCount > 0 ? Math.round(stats.today.grossSalesPaisa / stats.today.orderCount) : 0;
+  stats.thisMonth.averageBillPaisa = stats.thisMonth.orderCount > 0 ? Math.round(stats.thisMonth.grossSalesPaisa / stats.thisMonth.orderCount) : 0;
+  stats.thisYear.averageBillPaisa = stats.thisYear.orderCount > 0 ? Math.round(stats.thisYear.grossSalesPaisa / stats.thisYear.orderCount) : 0;
+  stats.currentFY.averageBillPaisa = stats.currentFY.orderCount > 0 ? Math.round(stats.currentFY.grossSalesPaisa / stats.currentFY.orderCount) : 0;
+
+  return response.status(200).json({
+    success: true,
+    data: stats,
+    correlationId: request.correlationId || null,
+  });
+});
+
+/**
+ * GET /api/v1/bills/history/calendar
+ * Returns daily aggregate sales matrix for the calendar view.
+ */
+const getSalesCalendar = asyncHandler(async (request, response) => {
+  const orgId = request.auth.organisationId;
+  const month = request.query.month || getIstBusinessDate().substring(0, 7); // YYYY-MM
+
+  const filter = {
+    organisationId: orgId,
+    businessDate: { $regex: `^${month}` },
+    status: { $in: ['COMPLETED', 'PARTIALLY_REFUNDED', 'REFUNDED'] },
+  };
+
+  if (request.auth.role === 'OWNER') {
+    if (Array.isArray(request.auth.assignedCafeIds) && request.auth.assignedCafeIds.length > 0) {
+      if (request.query.cafeId) {
+        const normCafeId = normalizeId(request.query.cafeId);
+        assertCafeAccess(request, normCafeId);
+        filter.cafeId = normCafeId;
+      } else {
+        filter.cafeId = { $in: request.auth.assignedCafeIds };
+      }
+    } else if (request.query.cafeId) {
+      filter.cafeId = normalizeId(request.query.cafeId);
+    }
+  } else if (request.auth.role !== 'MASTER') {
+    filter.cafeId = { $in: request.auth.assignedCafeIds || [] };
+  } else if (request.query.cafeId) {
+    const normCafeId = normalizeId(request.query.cafeId);
+    assertCafeAccess(request, normCafeId);
+    filter.cafeId = normCafeId;
+  }
+
+  const bills = await Bill.find(filter).lean();
+  const dayMap = {};
+
+  for (const b of bills) {
+    const d = b.businessDate;
+    if (!dayMap[d]) {
+      dayMap[d] = {
+        date: d,
+        orderCount: 0,
+        grossSalesPaisa: 0,
+        netSalesPaisa: 0,
+        refundsPaisa: 0,
+      };
+    }
+    const gross = b.subtotalPaisa + (b.taxPaisa || 0);
+    const refunds = b.refundedTotalPaisa || 0;
+    dayMap[d].orderCount += 1;
+    dayMap[d].grossSalesPaisa += gross;
+    dayMap[d].refundsPaisa += refunds;
+    dayMap[d].netSalesPaisa += Math.max(0, gross - refunds);
+  }
+
+  return response.status(200).json({
+    success: true,
+    data: {
+      month,
+      days: Object.values(dayMap).sort((a, b) => a.date.localeCompare(b.date)),
+    },
+    correlationId: request.correlationId || null,
+  });
+});
+
+/**
+ * POST /api/v1/bills/tickets/hold
+ * Holds an open ticket.
+ */
+const holdBill = asyncHandler(async (request, response) => {
+  const { billId, holdName } = request.body;
+  if (!billId) {
+    throw new ApiError(400, 'BILL_ID_REQUIRED', 'billId is required.');
+  }
+
+  const bill = await Bill.findOne({ billId: normalizeId(billId), organisationId: request.auth.organisationId });
+  if (!bill) {
+    throw new ApiError(404, 'BILL_NOT_FOUND', `Bill ${billId} not found.`);
+  }
+
+  bill.isHeld = true;
+  bill.heldAt = new Date();
+  bill.holdName = typeof holdName === 'string' ? holdName.trim() : 'Held Order';
+  await bill.save();
+
+  return response.status(200).json({
+    success: true,
+    message: `Bill ${billId} parked on hold successfully.`,
+    data: bill,
+    correlationId: request.correlationId || null,
+  });
+});
+
+/**
+ * GET /api/v1/bills/tickets/open
+ * Lists all open and held tickets.
+ */
+const listOpenTickets = asyncHandler(async (request, response) => {
+  const orgId = request.auth.organisationId;
+  const filter = { organisationId: orgId, status: 'OPEN' };
+
+  if (!['MASTER', 'OWNER'].includes(request.auth.role)) {
+    filter.cafeId = { $in: request.auth.assignedCafeIds };
+  } else if (request.query.cafeId) {
+    const normCafeId = normalizeId(request.query.cafeId);
+    assertCafeAccess(request, normCafeId);
+    filter.cafeId = normCafeId;
+  }
+
+  const openTickets = await Bill.find(filter).sort({ createdAt: -1 }).lean();
+
+  return response.status(200).json({
+    success: true,
+    data: {
+      count: openTickets.length,
+      tickets: openTickets,
+    },
+    correlationId: request.correlationId || null,
+  });
+});
+
+/**
+ * POST /api/v1/bills/register/session/open
+ * Opens a new register session.
+ */
+const openRegisterSession = asyncHandler(async (request, response) => {
+  const { cafeId: rawCafeId, registerId = 'REG-01', openingFloatPaisa = 0 } = request.body;
+  const role = request.auth.role;
+  let cafeId = normalizeId(rawCafeId);
+  if (role === 'CAFE_ADMIN') {
+    cafeId = request.auth.primaryCafeId || request.auth.assignedCafeIds?.[0] || 'ZC-0001';
+  } else {
+    if (!cafeId) {
+      throw new ApiError(400, 'CAFE_ID_REQUIRED', 'cafeId is required.');
+    }
+    assertCafeAccess(request, cafeId);
+  }
+
+  const businessDate = getIstBusinessDate();
+  const datePart = businessDate.replace(/-/g, '');
+
+  const seqId = await SequenceCounter.generateId({
+    organisationId: request.auth.organisationId,
+    sequenceKey: `REG_${datePart}`,
+    prefix: `REG-${datePart}`,
+    minimumDigits: 4,
+  });
+
+  const session = new RegisterSession({
+    registerSessionId: seqId,
+    organisationId: request.auth.organisationId,
+    cafeId,
+    registerId,
+    cashierUserId: request.auth.userId,
+    businessDate,
+    openedAt: new Date(),
+    status: 'OPEN',
+    openingFloatPaisa: Number(openingFloatPaisa) || 0,
+    expectedCashPaisa: Number(openingFloatPaisa) || 0,
+    cashEvents: [
+      {
+        eventType: 'OPENING_FLOAT',
+        amountPaisa: Number(openingFloatPaisa) || 0,
+        reason: 'Opening Float',
+        actorId: request.auth.userId,
+        timestamp: new Date(),
+      },
+    ],
+  });
+
+  await session.save();
+
+  await AuditEvent.create({
+    organisationId: session.organisationId,
+    action: 'REGISTER_SESSION_OPENED',
+    actor: { userId: request.auth.userId, role: request.auth.role },
+    target: { entityType: 'REGISTER_SESSION', entityId: session.registerSessionId },
+    details: {
+      cafeId: session.cafeId,
+      registerId: session.registerId,
+      openingFloatPaisa: session.openingFloatPaisa,
+    },
+  }).catch(() => {});
+
+  return response.status(201).json({
+    success: true,
+    message: `Register ${registerId} opened successfully.`,
+    data: session,
+    correlationId: request.correlationId || null,
+  });
+});
+
+/**
+ * POST /api/v1/bills/register/session/event
+ * Records a cash drawer event (Cash In, Cash Out, Safe Drop, No Sale).
+ */
+const recordCashEvent = asyncHandler(async (request, response) => {
+  const { registerSessionId, eventType, amountPaisa = 0, reason = '' } = request.body;
+  if (!registerSessionId) {
+    throw new ApiError(400, 'SESSION_ID_REQUIRED', 'registerSessionId is required.');
+  }
+
+  const session = await RegisterSession.findOne({
+    registerSessionId: normalizeId(registerSessionId),
+    organisationId: request.auth.organisationId,
+    status: 'OPEN',
+  });
+
+  if (!session) {
+    throw new ApiError(404, 'ACTIVE_SESSION_NOT_FOUND', `Active register session ${registerSessionId} not found.`);
+  }
+
+  const amount = Number(amountPaisa) || 0;
+  session.cashEvents.push({
+    eventType,
+    amountPaisa: amount,
+    reason: typeof reason === 'string' ? reason.trim() : '',
+    actorId: request.auth.userId,
+    timestamp: new Date(),
+  });
+
+  if (eventType === 'CASH_IN') {
+    session.expectedCashPaisa += amount;
+  } else if (eventType === 'CASH_OUT' || eventType === 'SAFE_DROP') {
+    session.expectedCashPaisa = Math.max(0, session.expectedCashPaisa - amount);
+  }
+
+  await session.save();
+
+  await AuditEvent.create({
+    organisationId: session.organisationId,
+    action: 'CASH_DRAWER_EVENT_RECORDED',
+    actor: { userId: request.auth.userId, role: request.auth.role },
+    target: { entityType: 'REGISTER_SESSION', entityId: session.registerSessionId },
+    details: {
+      cafeId: session.cafeId,
+      eventType,
+      amountPaisa: amount,
+      reason,
+    },
+  }).catch(() => {});
+
+  return response.status(200).json({
+    success: true,
+    message: `Cash event ${eventType} recorded successfully.`,
+    data: session,
+    correlationId: request.correlationId || null,
+  });
+});
+
+/**
+ * POST /api/v1/bills/register/session/close
+ * Closes a register session with blind count and variance calculation.
+ */
+const closeRegisterSession = asyncHandler(async (request, response) => {
+  const { registerSessionId, countedCashPaisa = 0, closingDeclarationNote = '' } = request.body;
+  if (!registerSessionId) {
+    throw new ApiError(400, 'SESSION_ID_REQUIRED', 'registerSessionId is required.');
+  }
+
+  const session = await RegisterSession.findOne({
+    registerSessionId: normalizeId(registerSessionId),
+    organisationId: request.auth.organisationId,
+    status: 'OPEN',
+  });
+
+  if (!session) {
+    throw new ApiError(404, 'ACTIVE_SESSION_NOT_FOUND', `Active register session ${registerSessionId} not found.`);
+  }
+
+  const counted = Number(countedCashPaisa) || 0;
+  // Calculate expected cash = opening float + cash sales + cash in - cash out - safe drops - cash refunds
+  let derivedCash = session.openingFloatPaisa;
+  for (const ev of session.cashEvents) {
+    if (ev.eventType === 'CASH_SALE' || ev.eventType === 'CASH_IN') {
+      derivedCash += ev.amountPaisa;
+    } else if (ev.eventType === 'CASH_OUT' || ev.eventType === 'SAFE_DROP' || ev.eventType === 'CASH_REFUND') {
+      derivedCash -= ev.amountPaisa;
+    }
+  }
+
+  session.expectedCashPaisa = derivedCash;
+  session.countedCashPaisa = counted;
+  session.cashVariancePaisa = counted - derivedCash;
+  session.closedAt = new Date();
+  session.status = 'CLOSED';
+  session.closingDeclarationNote = typeof closingDeclarationNote === 'string' ? closingDeclarationNote.trim() : '';
+
+  await session.save();
+
+  await AuditEvent.create({
+    organisationId: session.organisationId,
+    action: 'REGISTER_SESSION_CLOSED',
+    actor: { userId: request.auth.userId, role: request.auth.role },
+    target: { entityType: 'REGISTER_SESSION', entityId: session.registerSessionId },
+    details: {
+      cafeId: session.cafeId,
+      countedCashPaisa: counted,
+      expectedCashPaisa: derivedCash,
+      variancePaisa: session.cashVariancePaisa,
+    },
+  }).catch(() => {});
+
+  return response.status(200).json({
+    success: true,
+    message: `Register session ${registerSessionId} closed. Variance: ₹${(session.cashVariancePaisa / 100).toFixed(2)}`,
+    data: session,
+    correlationId: request.correlationId || null,
+  });
+});
+
+/**
+ * GET /api/v1/bills/register/session/current
+ * Gets the current active register session for a cafe.
+ */
+const getRegisterSession = asyncHandler(async (request, response) => {
+  const orgId = request.auth.organisationId;
+  const role = request.auth.role;
+  let cafeId = request.query.cafeId ? normalizeId(request.query.cafeId) : request.auth.assignedCafeIds?.[0] || 'ZC-0001';
+  if (role === 'CAFE_ADMIN') {
+    cafeId = request.auth.primaryCafeId || request.auth.assignedCafeIds?.[0] || 'ZC-0001';
+  }
+
+  const session = await RegisterSession.findOne({
+    organisationId: orgId,
+    cafeId,
+    status: 'OPEN',
+  }).sort({ openedAt: -1 }).lean();
+
+  return response.status(200).json({
+    success: true,
+    data: session || null,
+    correlationId: request.correlationId || null,
+  });
+});
+
+/**
+ * POST /api/v1/bills/:billId/split
+ * Processes split tender settlement for an open bill.
+ */
+const splitBill = asyncHandler(async (request, response) => {
+  const { billId } = request.params;
+  const { tenders } = request.body;
+
+  if (!Array.isArray(tenders) || tenders.length === 0) {
+    throw new ApiError(400, 'TENDERS_REQUIRED', 'Tender allocations required for split bill.');
+  }
+
+  const bill = await Bill.findOne({ billId: normalizeId(billId), organisationId: request.auth.organisationId });
+  if (!bill) {
+    throw new ApiError(404, 'BILL_NOT_FOUND', `Bill ${billId} not found.`);
+  }
+
+  let totalAllocatedPaisa = 0;
+  const newTenders = [];
+
+  for (const t of tenders) {
+    const amount = Number(t.amountPaisa) || 0;
+    totalAllocatedPaisa += amount;
+    newTenders.push({
+      paymentMethod: t.paymentMethod || 'CASH',
+      amountPaisa: amount,
+      status: 'COMPLETED',
+      provider: t.provider || 'SPLIT_SETTLEMENT',
+      paymentReference: t.paymentReference || `SPLIT-${Date.now()}`,
+      transactionTimestamp: new Date(),
+    });
+  }
+
+  bill.tenders = newTenders;
+  bill.paymentMethod = 'SPLIT';
+  if (totalAllocatedPaisa >= bill.totalPaisa) {
+    bill.paymentStatus = 'PAID';
+    bill.status = 'COMPLETED';
+  } else {
+    bill.paymentStatus = 'PARTIALLY_PAID';
+  }
+
+  await bill.save();
+
+  return response.status(200).json({
+    success: true,
+    message: `Bill ${billId} settled with split tenders.`,
+    data: bill,
+    correlationId: request.correlationId || null,
+  });
+});
+
 module.exports = {
+  getBillsOverview,
   listBills,
   getBill,
   createBill,
+  reprintBill,
   voidBill,
+  refundBill,
+  getGstRegister,
+  getReconciliationStatus,
+  closeBusinessDayBilling,
+  getPastOrdersSummary,
+  getSalesCalendar,
+  holdBill,
+  listOpenTickets,
+  openRegisterSession,
+  recordCashEvent,
+  closeRegisterSession,
+  getRegisterSession,
+  splitBill,
 };

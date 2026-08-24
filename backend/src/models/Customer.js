@@ -1,9 +1,16 @@
 'use strict';
 
 /**
- * CUSTOMER — MONGOOSE MODEL
+ * CUSTOMER — MONGOOSE MODEL (SCREEN 006)
  *
- * Tracks customer profile, total spend, points balance, and loyalty tier.
+ * Implements Customer Master, 360 Profile & Loyalty:
+ *   - Basic identity (name, phone, email, membershipId).
+ *   - Customer types (INDIVIDUAL, BUSINESS) with B2B GSTIN support.
+ *   - Loyalty tiering (BRONZE, SILVER, GOLD, PLATINUM) and points ledger balance.
+ *   - Atomic reserved vs available points.
+ *   - Lifetime visit count, spend metrics, and preferred café.
+ *   - Consent & privacy tracking (transactional, loyalty, marketing email/sms).
+ *   - Account merging support.
  */
 
 const mongoose = require('mongoose');
@@ -14,6 +21,37 @@ const LOYALTY_TIERS = [
   'GOLD',
   'PLATINUM',
 ];
+
+const CUSTOMER_TYPES = [
+  'INDIVIDUAL',
+  'BUSINESS',
+];
+
+const CUSTOMER_STATUSES = [
+  'ACTIVE',
+  'INACTIVE',
+  'LAPSED',
+  'CLOSED',
+  'MERGED',
+  'ARCHIVED',
+];
+
+const LOYALTY_STATUSES = [
+  'ACTIVE',
+  'HELD',
+  'SUSPENDED',
+  'CLOSED',
+];
+
+const customerNoteSchema = new mongoose.Schema(
+  {
+    noteId: { type: String, required: true, trim: true },
+    authorUserId: { type: String, required: true, trim: true, uppercase: true },
+    content: { type: String, required: true, trim: true, maxlength: 2000 },
+    createdAt: { type: Date, default: Date.now },
+  },
+  { _id: true }
+);
 
 const customerSchema = new mongoose.Schema(
   {
@@ -26,6 +64,14 @@ const customerSchema = new mongoose.Schema(
       uppercase: true,
       match: /^CUST-\d{4,}$/,
       index: true,
+    },
+
+    membershipId: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      index: true,
+      default: '',
     },
 
     organisationId: {
@@ -61,13 +107,77 @@ const customerSchema = new mongoose.Schema(
       default: '',
     },
 
+    isPhoneVerified: {
+      type: Boolean,
+      default: false,
+    },
+
+    isEmailVerified: {
+      type: Boolean,
+      default: false,
+    },
+
+    customerType: {
+      type: String,
+      enum: CUSTOMER_TYPES,
+      default: 'INDIVIDUAL',
+    },
+
+    b2bLegalName: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+
+    b2bGstin: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: '',
+    },
+
+    preferredCafeId: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: 'ZC-0001',
+    },
+
+    preferredLanguage: {
+      type: String,
+      trim: true,
+      default: 'English',
+    },
+
     totalSpendPaisa: {
       type: Number,
       min: 0,
       default: 0,
     },
 
+    totalVisits: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+
+    firstVisitAt: {
+      type: Date,
+      default: null,
+    },
+
+    lastVisitAt: {
+      type: Date,
+      default: null,
+    },
+
     pointsBalance: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+
+    reservedPoints: {
       type: Number,
       min: 0,
       default: 0,
@@ -79,18 +189,48 @@ const customerSchema = new mongoose.Schema(
       default: 'BRONZE',
     },
 
+    tierQualifiedAt: {
+      type: Date,
+      default: Date.now,
+    },
+
     status: {
       type: String,
-      enum: ['ACTIVE', 'INACTIVE', 'ARCHIVED'],
+      enum: CUSTOMER_STATUSES,
       default: 'ACTIVE',
       index: true,
     },
 
+    loyaltyStatus: {
+      type: String,
+      enum: LOYALTY_STATUSES,
+      default: 'ACTIVE',
+    },
+
+    tags: {
+      type: [String],
+      default: [],
+    },
+
+    consent: {
+      transactionalReceipt: { type: Boolean, default: true },
+      loyaltyCommunications: { type: Boolean, default: true },
+      marketingEmail: { type: Boolean, default: false },
+      marketingSms: { type: Boolean, default: false },
+      updatedAt: { type: Date, default: Date.now },
+      source: { type: String, default: 'PORTAL_ENROLMENT' },
+    },
+
     notes: {
+      type: [customerNoteSchema],
+      default: [],
+    },
+
+    mergedIntoCustomerId: {
       type: String,
       trim: true,
-      maxlength: 2000,
-      default: '',
+      uppercase: true,
+      default: null,
     },
 
     createdByUserId: {
@@ -109,21 +249,24 @@ const customerSchema = new mongoose.Schema(
   }
 );
 
+customerSchema.virtual('availablePoints').get(function () {
+  return Math.max(0, (this.pointsBalance || 0) - (this.reservedPoints || 0));
+});
+
 customerSchema.index(
   { organisationId: 1, phone: 1 },
-  { unique: true, name: 'org_phone_unique' }
+  { name: 'org_phone_idx' }
 );
 
-customerSchema.pre('validate', function normaliseCustomerFields() {
-  const upperFields = ['customerId', 'organisationId', 'createdByUserId'];
-  for (const field of upperFields) {
-    if (this[field] && typeof this[field] === 'string') {
-      this[field] = this[field].trim().toUpperCase();
-    }
-  }
-  if (this.tier) this.tier = this.tier.trim().toUpperCase();
-  if (this.status) this.status = this.status.trim().toUpperCase();
-});
+customerSchema.index(
+  { organisationId: 1, email: 1 },
+  { name: 'org_email_idx' }
+);
+
+customerSchema.index(
+  { organisationId: 1, tier: 1, status: 1 },
+  { name: 'org_tier_status_idx' }
+);
 
 const Customer =
   mongoose.models.Customer ||
@@ -132,4 +275,7 @@ const Customer =
 module.exports = {
   Customer,
   LOYALTY_TIERS,
+  CUSTOMER_TYPES,
+  CUSTOMER_STATUSES,
+  LOYALTY_STATUSES,
 };

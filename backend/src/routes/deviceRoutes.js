@@ -8,6 +8,15 @@ const { authorize } = require('../middleware/authorize');
 const { attachDeviceContext } = require('../middleware/deviceContext');
 const deviceController = require('../controllers/deviceController');
 
+// List devices for cafe / fleet management
+router.get(
+  '/',
+  authenticate,
+  authorize('CAFE:MANAGE', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  attachDeviceContext,
+  (req, res, next) => deviceController.listDevices(req, res, next)
+);
+
 // 1. Device Enrollment Initialization (Tablet creates pending enrollment)
 router.post('/enrollment/start', (req, res, next) => deviceController.startEnrollment(req, res, next));
 
@@ -27,6 +36,33 @@ router.post(
   authorize('USER:MANAGE'),
   attachDeviceContext,
   (req, res, next) => deviceController.revokeDevice(req, res, next)
+);
+
+// 3b. Mark Device as Lost
+router.post(
+  '/:deviceId/lost',
+  authenticate,
+  authorize('USER:MANAGE'),
+  attachDeviceContext,
+  (req, res, next) => deviceController.reportDeviceLost(req, res, next)
+);
+
+// 3c. Retire Device
+router.post(
+  '/:deviceId/retire',
+  authenticate,
+  authorize('USER:MANAGE'),
+  attachDeviceContext,
+  (req, res, next) => deviceController.retireDevice(req, res, next)
+);
+
+// 3d. Replace Device
+router.post(
+  '/:deviceId/replace',
+  authenticate,
+  authorize('USER:MANAGE'),
+  attachDeviceContext,
+  (req, res, next) => deviceController.replaceDevice(req, res, next)
 );
 
 // 4. Issue Rotating QR Challenge (CAFE_OWNED device capability)

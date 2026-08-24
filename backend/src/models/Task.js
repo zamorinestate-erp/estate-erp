@@ -7,7 +7,28 @@
 const mongoose = require('mongoose');
 
 const TASK_PRIORITIES = ['LOW', 'NORMAL', 'HIGH', 'URGENT'];
-const TASK_STATUSES = ['PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'];
+const TASK_STATUSES = [
+  'PENDING',
+  'IN_PROGRESS',
+  'SUBMITTED',
+  'AWAITING_VERIFICATION',
+  'COMPLETED',
+  'RETURNED_FOR_CORRECTION',
+  'BLOCKED',
+  'CANCELLED',
+  'MISSED',
+];
+const TASK_CATEGORIES = [
+  'EQUIPMENT_MAINTENANCE',
+  'INVENTORY_RECEIVING',
+  'SAFETY_COMPLIANCE',
+  'HYGIENE_INSPECTION',
+  'CASH_CONTROL_AUDIT',
+  'MANAGEMENT_DELEGATION',
+  'GENERAL_OPERATIONS',
+];
+const TASK_RISK_LEVELS = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
+const VERIFICATION_STATUSES = ['NONE', 'PENDING_VERIFICATION', 'VERIFIED', 'RETURNED_FOR_CORRECTION'];
 
 const taskSchema = new mongoose.Schema(
   {
@@ -54,6 +75,26 @@ const taskSchema = new mongoose.Schema(
       default: '',
     },
 
+    category: {
+      type: String,
+      enum: TASK_CATEGORIES,
+      default: 'GENERAL_OPERATIONS',
+      index: true,
+    },
+
+    risk: {
+      type: String,
+      enum: TASK_RISK_LEVELS,
+      default: 'LOW',
+      index: true,
+    },
+
+    isCriticalControl: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+
     assignedRole: {
       type: String,
       enum: ['MASTER', 'OWNER', 'CAFE_ADMIN', 'STAFF'],
@@ -61,6 +102,13 @@ const taskSchema = new mongoose.Schema(
     },
 
     assignedUserId: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: null,
+    },
+
+    responsibleUserId: {
       type: String,
       trim: true,
       uppercase: true,
@@ -85,6 +133,109 @@ const taskSchema = new mongoose.Schema(
       trim: true,
       match: /^\d{4}-\d{2}-\d{2}$/,
       default: null,
+    },
+
+    dueTime: {
+      type: String,
+      trim: true,
+      default: '23:59',
+    },
+
+    verificationRequired: {
+      type: Boolean,
+      default: false,
+    },
+
+    verificationStatus: {
+      type: String,
+      enum: VERIFICATION_STATUSES,
+      default: 'NONE',
+    },
+
+    verifiedByUserId: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: null,
+    },
+
+    verifiedAt: {
+      type: Date,
+      default: null,
+    },
+
+    verificationRemarks: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+
+    returnReason: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+
+    returnHistory: [
+      {
+        returnedByUserId: String,
+        returnedAt: { type: Date, default: Date.now },
+        reason: String,
+        remarks: String,
+      },
+    ],
+
+    blockedReason: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+
+    blockedAt: {
+      type: Date,
+      default: null,
+    },
+
+    cancellationReason: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+
+    checklist: [
+      {
+        item: { type: String, required: true },
+        status: { type: String, enum: ['PASS', 'FAIL', 'NA', 'PENDING'], default: 'PENDING' },
+        failureReason: { type: String, default: '' },
+      },
+    ],
+
+    evidence: [
+      {
+        fileId: String,
+        fileName: String,
+        fileUrl: String,
+        uploadedByUserId: String,
+        uploadedAt: { type: Date, default: Date.now },
+      },
+    ],
+
+    sopReference: {
+      title: { type: String, default: '' },
+      version: { type: String, default: '' },
+      docUrl: { type: String, default: '' },
+    },
+
+    recurrence: {
+      isRecurring: { type: Boolean, default: false },
+      frequency: { type: String, enum: ['DAILY', 'WEEKLY', 'MONTHLY'], default: 'DAILY' },
+      occurrenceIndex: { type: Number, default: 1 },
+    },
+
+    source: {
+      type: String,
+      enum: ['MANUAL', 'RECURRING_TEMPLATE', 'FAILED_CHECKLIST', 'INCIDENT', 'SYSTEM_RULE'],
+      default: 'MANUAL',
     },
 
     completedByUserId: {
@@ -139,4 +290,7 @@ module.exports = {
   Task,
   TASK_PRIORITIES,
   TASK_STATUSES,
+  TASK_CATEGORIES,
+  TASK_RISK_LEVELS,
+  VERIFICATION_STATUSES,
 };

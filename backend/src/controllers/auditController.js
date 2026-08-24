@@ -73,11 +73,36 @@ function parseDate(value, fieldName) {
   return parsedDate;
 }
 
+/**
+ * Modules whose audit events are restricted to Primary Master only.
+ * Normal Master receives operational audit events but not these sensitive categories.
+ */
+const SENSITIVE_AUDIT_MODULES = [
+  'PERSONAL_LEDGER',
+  'LOANS_ADVANCES',
+  'PAYROLL',
+  'MASTER_AUTHORITY',
+  'SECURITY',
+  'USER_GOVERNANCE',
+  'AUDIT_EXPORT',
+];
+
 function buildAuditFilter(request) {
   const filter = {
     organisationId:
       request.auth.organisationId,
   };
+
+  // Normal Master: exclude sensitive modules entirely.
+  const isNormalMaster =
+    request.auth.role === 'MASTER' &&
+    !request.auth.isPrimaryMaster;
+
+  if (isNormalMaster) {
+    filter.module = {
+      $nin: SENSITIVE_AUDIT_MODULES,
+    };
+  }
 
   const identifierFilters = {
     cafeId: request.query.cafeId,
@@ -98,6 +123,15 @@ function buildAuditFilter(request) {
       normalizeIdentifier(value);
 
     if (normalizedValue) {
+      // For Normal Master, silently ignore any module filter that tries
+      // to access sensitive modules to prevent probing.
+      if (
+        field === 'module' &&
+        isNormalMaster &&
+        SENSITIVE_AUDIT_MODULES.includes(normalizedValue)
+      ) {
+        return;
+      }
       filter[field] =
         normalizedValue;
     }

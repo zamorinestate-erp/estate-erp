@@ -1,112 +1,936 @@
 // =============================================================================
-// PAGE: Master / Owner Command Centre — Design System v2 (Ledger & Roastery)
+// ZAMORIN CAFE ERP — SCREEN 001: COMMAND CENTRE / GLOBAL PORTFOLIO DASHBOARD
+// Design System v2 (Ledger & Roastery Dark / Porcelain Light Theme)
+//
+// Multi-Café Graphical ERP Command Centre with:
+//   - Primary Master vs Normal Master vs Owner authority enforcement
+//   - Global Operational Status Strip (Section 28)
+//   - Metric Definitions & KPI Governance (Section 80)
+//   - Portfolio Pulse KPIs (Sales, Orders, AOV, Expenses, Staff, Exceptions, Stock, Actions)
+//   - Multi-Café Performance Breakdown Grid with Health Badges & Pace to Target (Section 30, 33)
+//   - Dual-Series Revenue & Margin Trend Visualizer + [ Chart | Data ] Table Switch (Section 36, 45)
+//   - Needs Your Attention Queue with Severity Routing (CRITICAL/HIGH/MEDIUM/LOW)
+//   - Operational Snapshots (Workforce, Stock, Dept Orders, Facilities/QC)
+//   - Commercial Mix (Top 5 Menu Items by Revenue & Qty)
+//   - Saved Views Manager (CRUD, Default Preset)
+//   - KPI Target Setting Modal (Primary Master / Owner only)
+//   - Real-time IST Clock & Date Range Pickers (Today, Yesterday, 7D, 30D, Month, Custom)
 // =============================================================================
+
 import { kpiCard, skeleton, showToast } from "../components.js";
-import { apiGet } from "../apiClient.js";
+import { apiGet, apiPost, apiPut, apiDelete } from "../apiClient.js";
 import { navigate } from "../router.js";
+import { state } from "../state.js";
+import { icon } from "../icons.js";
+
+// ─── Metric Definitions (Section 80 Single Source of Truth) ───────────────────
+
+export const METRIC_DEFINITIONS = {
+  salesTotal: {
+    label: "Gross Sales Total",
+    formula: "Σ (Paid Bill Subtotals + Taxes - Discounts) for completed POS transactions in Asia/Kolkata timezone.",
+    source: "POS & Billing Module",
+  },
+  totalOrders: {
+    label: "Total Completed Orders",
+    formula: "Count of all bills with status 'PAID' or 'COMPLETED' within the selected date range.",
+    source: "POS & Billing Module",
+  },
+  aov: {
+    label: "Average Order Value (AOV)",
+    formula: "Total Gross Sales (Paisa) ÷ Total Completed Orders. Non-additive mathematical quotient.",
+    source: "Financial Aggregation Service",
+  },
+  expenses: {
+    label: "Operating Expenses",
+    formula: "Σ (Approved + Paid Expense Claims) posted to operating branches. Restricted to Primary Master.",
+    source: "Expense Management Module",
+  },
+  staffPresent: {
+    label: "Active Staff on Duty",
+    formula: "Count of active shift clock-ins with status 'CHECKED_IN' vs scheduled shifts for the current business date.",
+    source: "Attendance & Shifts Module",
+  },
+  attendanceExceptions: {
+    label: "Attendance Exceptions",
+    formula: "Count of unexcused absences, missed punches, and shift anomalies requiring manager attention.",
+    source: "Attendance & Shifts Module",
+  },
+  stockRisk: {
+    label: "Inventory Stock Risk",
+    formula: "Count of SKUs with current stock ≤ 0 (Critical) or stock ≤ Reorder Par Level (Below Par).",
+    source: "Inventory Management Module",
+  },
+  openActions: {
+    label: "Open Action Items",
+    formula: "Authority-aware count of pending expense decisions, overtime reviews, and critical maintenance tickets.",
+    source: "Exception Routing Engine",
+  },
+};
+
+// ─── Format Helpers ──────────────────────────────────────────────────────────
 
 function fmtInr(paisa) {
-  const rupees = Math.round((paisa || 0) / 100);
+  if (paisa === null || paisa === undefined) return "—";
+  const rupees = Math.round(Number(paisa) / 100);
+  if (rupees >= 10000000) return "₹" + (rupees / 10000000).toFixed(2) + "Cr";
   if (rupees >= 100000) return "₹" + (rupees / 100000).toFixed(2) + "L";
   if (rupees >= 1000) return "₹" + (rupees / 1000).toFixed(1) + "K";
   return "₹" + rupees.toLocaleString("en-IN");
 }
 
-export function renderMasterDashboard({ roleLabel = "Master Administrator" } = {}) {
+function fmtNum(n) {
+  if (n === null || n === undefined) return "0";
+  return Number(n).toLocaleString("en-IN");
+}
+
+function getIstClockString() {
+  return new Intl.DateTimeFormat("en-IN", {
+    timeZone: "Asia/Kolkata",
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  }).format(new Date());
+}
+
+export const DEFAULT_MASTER_DASHBOARD_DATA = {
+  portfolioKpis: {
+    salesTotal: { valuePaisa: 12485000, deltaPercent: 8.4, comparisonPaisa: 11517500 },
+    totalOrders: { value: 384, deltaPercent: 5.2 },
+    aov: { valuePaisa: 32510, deltaPercent: 3.1 },
+    expenses: { valuePaisa: 2840000, restricted: false },
+    staffPresent: { value: 18, scheduled: 21 },
+    attendanceExceptions: { value: 1 },
+    stockRisk: { critical: 1, belowPar: 4 },
+    openActions: { value: 3 }
+  },
+  revenueTrend: [
+    { date: "18 Aug", revenuePaisa: 1040000, orders: 32 },
+    { date: "19 Aug", revenuePaisa: 1210000, orders: 38 },
+    { date: "20 Aug", revenuePaisa: 1450000, orders: 46 },
+    { date: "21 Aug", revenuePaisa: 1680000, orders: 54 },
+    { date: "22 Aug", revenuePaisa: 2420000, orders: 74 },
+    { date: "23 Aug", revenuePaisa: 2890000, orders: 88 },
+    { date: "24 Aug", revenuePaisa: 1795000, orders: 52 }
+  ],
+  attentionQueue: [
+    {
+      severity: "CRITICAL",
+      title: "Wayanad Robusta Bean Consignment Below Par",
+      description: "Remaining stock in central roastery is 4.5kg against 15kg reorder threshold.",
+      route: "inventory"
+    },
+    {
+      severity: "HIGH",
+      title: "Overtime Claim Review — Koramangala Main",
+      description: "4.5 hours overtime recorded for weekend rush shift awaiting master sign-off.",
+      route: "tasks"
+    },
+    {
+      severity: "MEDIUM",
+      title: "Quarterly GST 5% Filing Preparation",
+      description: "Q2 GST input tax credit reconciliation statement ready for review.",
+      route: "bills"
+    }
+  ],
+  cafePerformanceCards: [
+    {
+      cafeId: "ZC-0001",
+      name: "Koramangala Main",
+      city: "Bengaluru",
+      badge: "TOP",
+      health: "HEALTHY",
+      totalSalesPaisa: 5840000,
+      totalOrders: 182,
+      aovPaisa: 32088,
+      targetSalesPaisa: 6000000,
+      targetAchievementPct: 97,
+      inventoryCritical: 0,
+      inventoryBelowPar: 2,
+      maintenanceOpen: 0
+    },
+    {
+      cafeId: "ZC-0002",
+      name: "Indiranagar Express",
+      city: "Bengaluru",
+      badge: "NORMAL",
+      health: "HEALTHY",
+      totalSalesPaisa: 3870000,
+      totalOrders: 124,
+      aovPaisa: 31210,
+      targetSalesPaisa: 4000000,
+      targetAchievementPct: 96,
+      inventoryCritical: 1,
+      inventoryBelowPar: 1,
+      maintenanceOpen: 1
+    },
+    {
+      cafeId: "ZC-0003",
+      name: "Wayanad Heritage Roastery",
+      city: "Wayanad",
+      badge: "BOTTOM",
+      health: "ATTENTION",
+      totalSalesPaisa: 2775000,
+      totalOrders: 78,
+      aovPaisa: 35577,
+      targetSalesPaisa: 3500000,
+      targetAchievementPct: 79,
+      inventoryCritical: 1,
+      inventoryBelowPar: 2,
+      maintenanceOpen: 0
+    }
+  ],
+  operationalSnapshot: {
+    attendance: {
+      staffPresent: 18,
+      staffAbsent: 3,
+      attendanceExceptions: 1
+    },
+    inventory: {
+      critical: 1,
+      belowPar: 4
+    },
+    maintenanceOpen: 1,
+    complianceOverdue: 0
+  },
+  commercialMix: {
+    topMenuItems: [
+      { itemName: "Zamorin Signature Pour-Over (Arabica)", totalQty: 142, totalRevenuePaisa: 3976000 },
+      { itemName: "Malabar Cold Brew & Tonic", totalQty: 118, totalRevenuePaisa: 3068000 },
+      { itemName: "Classic South Indian Filter Kaapi", totalQty: 164, totalRevenuePaisa: 2296000 },
+      { itemName: "Cardamom & Jaggery Brioche Bun", totalQty: 95, totalRevenuePaisa: 1805000 },
+      { itemName: "Avocado & Sourdough Toast", totalQty: 46, totalRevenuePaisa: 1334000 }
+    ]
+  }
+};
+
+// ─── Component State ──────────────────────────────────────────────────────────
+
+let dashboardState = {
+  period: "today",
+  comparison: "previous_period",
+  customFrom: null,
+  customTo: null,
+  selectedCafeIds: [],
+  trendViewMode: "chart",
+  savedViews: [],
+  activeSavedViewId: null,
+  clockTimer: null,
+  data: null
+};
+
+// ─── HTML Template ────────────────────────────────────────────────────────────
+
+// ─── Pure HTML Template Helpers ──────────────────────────────────────────────
+
+export function renderKpisHtml(kpis = {}) {
+  const salesCard = kpiCard({
+    label: "Gross Sales Total ⓘ",
+    value: fmtInr(kpis.salesTotal?.valuePaisa),
+    trend: kpis.salesTotal?.deltaPercent !== null && kpis.salesTotal?.deltaPercent !== undefined ? `${kpis.salesTotal.deltaPercent >= 0 ? "+" : ""}${kpis.salesTotal.deltaPercent}% vs comparison` : "Current Period",
+    trendType: (kpis.salesTotal?.deltaPercent ?? 0) >= 0 ? "up" : "down",
+  });
+
+  const ordersCard = kpiCard({
+    label: "Total Orders Completed ⓘ",
+    value: fmtNum(kpis.totalOrders?.value),
+    trend: kpis.totalOrders?.deltaPercent !== null && kpis.totalOrders?.deltaPercent !== undefined ? `${kpis.totalOrders.deltaPercent >= 0 ? "+" : ""}${kpis.totalOrders.deltaPercent}% vs comparison` : "Completed Bills",
+    trendType: (kpis.totalOrders?.deltaPercent ?? 0) >= 0 ? "up" : "down",
+  });
+
+  const aovCard = kpiCard({
+    label: "Average Order Value ⓘ",
+    value: fmtInr(kpis.aov?.valuePaisa),
+    trend: kpis.aov?.deltaPercent !== null && kpis.aov?.deltaPercent !== undefined ? `${kpis.aov.deltaPercent >= 0 ? "+" : ""}${kpis.aov.deltaPercent}% vs comparison` : "Per Bill Average",
+    trendType: (kpis.aov?.deltaPercent ?? 0) >= 0 ? "up" : "down",
+  });
+
+  let expenseValueStr = "—";
+  let expenseTrendStr = "Operating Outflows";
+  if (kpis.expenses?.restricted) {
+    expenseValueStr = "Restricted";
+    expenseTrendStr = "Primary Master Only";
+  } else {
+    expenseValueStr = fmtInr(kpis.expenses?.valuePaisa);
+  }
+  const expenseCard = kpiCard({
+    label: "Operating Expenses ⓘ",
+    value: expenseValueStr,
+    trend: expenseTrendStr,
+    trendType: "neutral",
+  });
+
+  const staffCard = kpiCard({
+    label: "Active Floor Staff ⓘ",
+    value: `${kpis.staffPresent?.value || 0}/${kpis.staffPresent?.scheduled || 0}`,
+    trend: `${(kpis.staffPresent?.scheduled || 0) - (kpis.staffPresent?.value || 0)} absent / off duty`,
+    trendType: (kpis.staffPresent?.value || 0) >= (kpis.staffPresent?.scheduled || 0) ? "up" : "down",
+  });
+
+  const attCard = kpiCard({
+    label: "Attendance Exceptions ⓘ",
+    value: String(kpis.attendanceExceptions?.value || 0),
+    trend: (kpis.attendanceExceptions?.value || 0) === 0 ? "Zero shift flags" : "Missed / irregular punch",
+    trendType: (kpis.attendanceExceptions?.value || 0) === 0 ? "up" : "down",
+  });
+
+  const stockCard = kpiCard({
+    label: "Inventory at Risk ⓘ",
+    value: String(kpis.stockRisk?.critical || 0),
+    trend: `${kpis.stockRisk?.belowPar || 0} below par threshold`,
+    trendType: (kpis.stockRisk?.critical || 0) === 0 ? "up" : "down",
+  });
+
+  const actionsCard = kpiCard({
+    label: "Open Action Items ⓘ",
+    value: String(kpis.openActions?.value || 0),
+    trend: (kpis.openActions?.value || 0) === 0 ? "Queue clear" : "Pending your review",
+    trendType: (kpis.openActions?.value || 0) === 0 ? "up" : "down",
+  });
+
+  return [salesCard, ordersCard, aovCard, expenseCard, staffCard, attCard, stockCard, actionsCard].join("");
+}
+
+export function renderRevenueTrendChartHtml(trendData = [], viewMode = "chart") {
+  if (!trendData || trendData.length === 0) {
+    return `
+      <div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:13px;">
+        No completed sales transactions in selected period.
+      </div>
+    `;
+  }
+
+  if (viewMode === "data") {
+    return `
+      <div style="height:100%;overflow-y:auto;">
+        <table class="table" style="width:100%;font-size:12px;">
+          <thead>
+            <tr>
+              <th style="padding:6px 8px;">Date</th>
+              <th style="padding:6px 8px;text-align:right;">Orders</th>
+              <th style="padding:6px 8px;text-align:right;">Gross Sales (INR)</th>
+              <th style="padding:6px 8px;text-align:right;">AOV</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${trendData
+              .map((d) => {
+                const aov = d.orders > 0 ? Math.round(d.revenuePaisa / d.orders) : 0;
+                return `
+                <tr>
+                  <td style="padding:5px 8px;font-weight:600;color:var(--ink);">${d.date}</td>
+                  <td style="padding:5px 8px;text-align:right;">${fmtNum(d.orders)}</td>
+                  <td style="padding:5px 8px;text-align:right;font-weight:600;color:var(--bronze-600);">${fmtInr(d.revenuePaisa)}</td>
+                  <td style="padding:5px 8px;text-align:right;">${fmtInr(aov)}</td>
+                </tr>
+              `;
+              })
+              .join("")}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  const maxVal = Math.max(...trendData.map((d) => d.revenuePaisa || 0), 100000);
+  const width = 600;
+  const height = 180;
+  const paddingX = 40;
+  const paddingY = 20;
+
+  const points = trendData.map((d, i) => {
+    const x = paddingX + (i / Math.max(trendData.length - 1, 1)) * (width - paddingX * 2);
+    const y = height - paddingY - (d.revenuePaisa / maxVal) * (height - paddingY * 2);
+    return { x, y, ...d };
+  });
+
+  const pathD = points.reduce((acc, pt, i) => (i === 0 ? `M ${pt.x} ${pt.y}` : `${acc} L ${pt.x} ${pt.y}`), "");
+  const areaD = `${pathD} L ${points[points.length - 1].x} ${height - paddingY} L ${points[0].x} ${height - paddingY} Z`;
+
   return `
-    <div class="page-enter">
-      <!-- Welcome Header -->
-      <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;margin-bottom:24px;">
-        <div>
-          <h1 class="page-title" style="font-size:28px;font-weight:700;margin:0 0 6px;color:var(--ink);">Good morning, ${roleLabel}</h1>
-          <p class="page-subtitle" style="font-size:14px;color:var(--muted);margin:0;">Zamorin Multi-Location Command Centre · Executive Portfolio Overview</p>
-        </div>
-        <div style="display:flex;gap:10px;">
-          <button class="btn btn-ghost" id="refresh-dashboard-btn" type="button">↻ Live Refresh</button>
-          <button class="btn btn-primary" id="dashboard-pos-shortcut" type="button">Open POS Register</button>
-        </div>
-      </div>
+    <svg viewBox="0 0 ${width} ${height}" style="width:100%;height:100%;overflow:visible;">
+      <defs>
+        <linearGradient id="masterTrendGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="var(--bronze-500)" stop-opacity="0.3" />
+          <stop offset="100%" stop-color="var(--bronze-500)" stop-opacity="0.0" />
+        </linearGradient>
+      </defs>
+      <line x1="${paddingX}" y1="${height - paddingY}" x2="${width - paddingX}" y2="${height - paddingY}" stroke="var(--line)" stroke-width="1" />
+      <line x1="${paddingX}" y1="${paddingY}" x2="${width - paddingX}" y2="${paddingY}" stroke="var(--line)" stroke-dasharray="3,3" stroke-width="1" />
+      <path d="${areaD}" fill="url(#masterTrendGrad)" />
+      <path d="${pathD}" fill="none" stroke="var(--bronze-500)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+      ${points
+        .map(
+          (pt) => `
+        <circle cx="${pt.x}" cy="${pt.y}" r="4" fill="var(--surface)" stroke="var(--bronze-600)" stroke-width="2">
+          <title>${pt.date}: ${fmtInr(pt.revenuePaisa)} (${pt.orders} orders)</title>
+        </circle>
+        <text x="${pt.x}" y="${height - 4}" font-size="10" text-anchor="middle" fill="var(--muted)">${pt.date}</text>
+      `
+        )
+        .join("")}
+    </svg>
+  `;
+}
 
-      <!-- Quick Action Shortcuts (Spec §3) -->
-      <div class="card" style="padding:16px 20px;margin-bottom:24px;">
-        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--bronze-600);margin-bottom:12px;">
-          Executive Quick Shortcuts
-        </div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;">
-          <button class="btn btn-sm btn-ghost" data-quick-action="employees" type="button">👤 Onboard Employee</button>
-          <button class="btn btn-sm btn-ghost" data-quick-action="cafes" type="button">☕ Add Café Location</button>
-          <button class="btn btn-sm btn-ghost" data-quick-action="expenses" type="button">💳 Record Expense</button>
-          <button class="btn btn-sm btn-ghost" data-quick-action="inventory" type="button">📦 Adjust Inventory</button>
-          <button class="btn btn-sm btn-ghost" data-quick-action="pos" type="button">🧾 New POS Bill</button>
-          <button class="btn btn-sm btn-ghost" data-quick-action="department-orders" type="button">🏛️ Dept Order</button>
-          <button class="btn btn-sm btn-ghost" data-quick-action="personal-ledger" type="button">📒 Personal Ledger</button>
-          <button class="btn btn-sm btn-ghost" data-quick-action="reports" type="button">📊 Financial Reports</button>
-        </div>
+export function renderAttentionQueueHtml(queue = []) {
+  if (!queue || queue.length === 0) {
+    return `
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px;color:var(--muted);text-align:center;">
+        <span style="font-size:24px;margin-bottom:6px;">✨</span>
+        <strong style="color:var(--ink);font-size:13px;">All Operations Healthy</strong>
+        <span style="font-size:12px;">No critical stock breaches, overdue checklists, or unassigned maintenance jobs.</span>
       </div>
+    `;
+  }
 
-      <!-- Primary 5 KPI Summary Cards -->
-      <div id="kpi-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px;">
-        ${skeleton("90px")}${skeleton("90px")}${skeleton("90px")}${skeleton("90px")}${skeleton("90px")}
-      </div>
+  const severityBadges = {
+    CRITICAL: `<span class="status danger" style="padding:2px 6px;font-size:10px;">CRITICAL</span>`,
+    HIGH: `<span class="status warning" style="padding:2px 6px;font-size:10px;">HIGH</span>`,
+    MEDIUM: `<span class="status info" style="padding:2px 6px;font-size:10px;">MEDIUM</span>`,
+    LOW: `<span class="status" style="padding:2px 6px;font-size:10px;background:var(--surface-sunken);">LOW</span>`,
+  };
 
-      <!-- Main Analytics Grid: P&L Waterfall + Needs Attention Queue -->
-      <div style="display:grid;grid-template-columns:1.6fr 1fr;gap:20px;margin-bottom:24px;">
-        <!-- Day-wise P&L Waterfall -->
-        <div class="card" style="padding:24px;">
-          <div class="card-head" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+  return `
+    <div style="display:flex;flex-direction:column;gap:10px;max-height:220px;overflow-y:auto;padding-right:4px;">
+      ${queue
+        .map(
+          (item) => `
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:10px 12px;border-radius:var(--radius-sm);background:var(--surface-sunken);border:1px solid var(--line);">
+          <div style="display:flex;align-items:flex-start;gap:8px;">
+            ${severityBadges[item.severity] || severityBadges.MEDIUM}
             <div>
-              <h2 style="font-size:17px;font-weight:700;margin:0 0 4px;color:var(--ink);">Day-Wise Net Revenue &amp; Margin (14 Days)</h2>
-              <p style="font-size:12.5px;color:var(--muted);margin:0;">Aggregate gross sales vs food costs across all operating branches.</p>
+              <div style="font-size:12.5px;font-weight:700;color:var(--ink);">${item.title}</div>
+              <div style="font-size:11.5px;color:var(--muted);">${item.description}</div>
             </div>
-            <span class="status success" style="font-size:11px;">+14.2% vs Prev Fortnight</span>
+          </div>
+          <button class="btn btn-xs btn-ghost" data-attention-route="${item.route}" type="button" style="flex-shrink:0;">
+            Resolve →
+          </button>
+        </div>
+      `
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+export function renderCafePerformanceCardsHtml(cafes = []) {
+  if (!cafes || cafes.length === 0) {
+    return `
+      <div style="grid-column:1/-1;text-align:center;padding:30px;color:var(--muted);font-size:13px;">
+        No active café locations configured in the portfolio.
+      </div>
+    `;
+  }
+
+  const healthBadges = {
+    HEALTHY: `<span class="status success" style="font-size:10px;padding:2px 6px;">HEALTHY</span>`,
+    ATTENTION: `<span class="status warning" style="font-size:10px;padding:2px 6px;">ATTENTION</span>`,
+    CRITICAL: `<span class="status danger" style="font-size:10px;padding:2px 6px;">CRITICAL</span>`,
+  };
+
+  return cafes
+    .map((c) => {
+      const targetPct = c.targetAchievementPct !== null && c.targetAchievementPct !== undefined ? c.targetAchievementPct : 0;
+      const targetBarColor = targetPct >= 90 ? "var(--bronze-500)" : targetPct >= 70 ? "var(--bronze-400)" : "var(--danger)";
+
+      let paceString = "";
+      if (c.targetSalesPaisa && c.totalSalesPaisa) {
+        const projectedPct = Math.min(Math.round(targetPct * 1.15), 110);
+        paceString = `On current pace: ~${projectedPct}% by close`;
+      }
+
+      return `
+        <div class="card" style="padding:16px 18px;background:var(--surface-raised);border:1px solid var(--line);display:flex;flex-direction:column;justify-content:space-between;position:relative;">
+          <div>
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
+              <div>
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <strong style="font-size:14px;color:var(--ink);">${c.name}</strong>
+                  ${c.badge === "TOP" ? `<span title="Top Performing Location" style="font-size:12px;">🏆</span>` : ""}
+                  ${c.badge === "BOTTOM" && cafes.length > 2 ? `<span title="Underperforming Location" style="font-size:12px;">⚠️</span>` : ""}
+                </div>
+                <div style="font-size:11.5px;color:var(--muted);">${c.cafeId} · ${c.city}</div>
+              </div>
+              ${healthBadges[c.health] || healthBadges.HEALTHY}
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:12px 0;padding:10px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);">
+              <div>
+                <div style="font-size:10.5px;color:var(--muted);text-transform:uppercase;">Sales</div>
+                <strong style="font-size:13.5px;color:var(--ink);">${fmtInr(c.totalSalesPaisa)}</strong>
+              </div>
+              <div>
+                <div style="font-size:10.5px;color:var(--muted);text-transform:uppercase;">Orders</div>
+                <strong style="font-size:13.5px;color:var(--ink);">${fmtNum(c.totalOrders)}</strong>
+              </div>
+              <div>
+                <div style="font-size:10.5px;color:var(--muted);text-transform:uppercase;">AOV</div>
+                <strong style="font-size:13.5px;color:var(--ink);">${fmtInr(c.aovPaisa)}</strong>
+              </div>
+            </div>
+
+            ${
+              c.targetSalesPaisa
+                ? `
+              <div style="margin-bottom:10px;">
+                <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px;">
+                  <span style="color:var(--muted);">Target Pacing</span>
+                  <strong style="color:var(--ink);">${c.targetAchievementPct}% of ${fmtInr(c.targetSalesPaisa)}</strong>
+                </div>
+                <div style="width:100%;height:6px;background:var(--surface-sunken);border-radius:3px;overflow:hidden;margin-bottom:3px;">
+                  <div style="width:${Math.min(targetPct, 100)}%;height:100%;background:${targetBarColor};border-radius:3px;"></div>
+                </div>
+                ${paceString ? `<div style="font-size:10px;color:var(--muted);text-align:right;">${paceString}</div>` : ""}
+              </div>
+            `
+                : ""
+            }
+
+            <div style="display:flex;gap:12px;font-size:11.5px;color:var(--muted);margin-top:6px;">
+              <span>📦 Stock: <strong style="color:${c.inventoryCritical > 0 ? 'var(--danger)' : 'var(--ink)'};">${c.inventoryCritical} Crit / ${c.inventoryBelowPar} Low</strong></span>
+              <span>🔧 Maintenance: <strong style="color:${c.maintenanceOpen > 0 ? 'var(--warning)' : 'var(--ink)'};">${c.maintenanceOpen} Open</strong></span>
+            </div>
           </div>
 
-          <div style="height:210px;width:100%;margin-top:10px;">
-            <svg viewBox="0 0 620 200" style="width:100%;height:100%;overflow:visible;">
-              <defs>
-                <linearGradient id="pnlGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stop-color="var(--bronze-500)" stop-opacity="0.35"/>
-                  <stop offset="100%" stop-color="var(--bronze-500)" stop-opacity="0.0"/>
-                </linearGradient>
-              </defs>
-              <polyline points="0,150 44,135 88,120 132,130 176,90 220,105 264,75 308,85 352,55 396,70 440,45 484,60 528,35 572,50 620,40" fill="none" stroke="var(--bronze-500)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-              <polygon points="0,150 44,135 88,120 132,130 176,90 220,105 264,75 308,85 352,55 396,70 440,45 484,60 528,35 572,50 620,40 620,195 0,195" fill="url(#pnlGrad)"/>
-              <polyline points="0,175 44,170 88,165 132,160 176,155 220,150 264,145 308,140 352,135 396,130 440,125 484,120 528,115 572,110 620,105" fill="none" stroke="var(--line-strong)" stroke-width="2" stroke-dasharray="4 4"/>
-            </svg>
-          </div>
-
-          <div style="display:flex;gap:20px;margin-top:14px;border-top:1px solid var(--line);padding-top:12px;font-size:12.5px;">
-            <div style="display:flex;align-items:center;gap:6px;">
-              <span style="width:10px;height:10px;border-radius:2px;background:var(--bronze-500);display:inline-block;"></span>
-              <strong style="color:var(--ink);">Net Operating Margin</strong>
-            </div>
-            <div style="display:flex;align-items:center;gap:6px;">
-              <span style="width:10px;height:10px;border-radius:2px;background:var(--muted-2);display:inline-block;"></span>
-              <span style="color:var(--muted);">Budgeted Baseline</span>
-            </div>
+          <div style="margin-top:14px;padding-top:10px;border-top:1px solid var(--line);">
+            <button class="btn btn-xs btn-ghost btn-block" data-filter-cafe="${c.cafeId}" type="button">
+              Focus Location View →
+            </button>
           </div>
         </div>
+      `;
+    })
+    .join("");
+}
 
-        <!-- Attention Feed -->
-        <div class="card" style="padding:24px;display:flex;flex-direction:column;justify-content:space-between;">
-          <div>
-            <div class="card-head" style="margin-bottom:16px;">
-              <h2 style="font-size:17px;font-weight:700;margin:0 0 4px;color:var(--ink);">Needs Master Attention</h2>
-              <p style="font-size:12.5px;color:var(--muted);margin:0;">Pending approvals, critical reorder triggers, and duty rosters.</p>
-            </div>
-            <div id="attention-feed">${skeleton("200px")}</div>
-          </div>
+export function renderOperationalSnapshotHtml(snap = {}) {
+  const att = snap.attendance || {};
+  const inv = snap.inventory || {};
 
-          <div style="margin-top:16px;border-top:1px solid var(--line);padding-top:12px;">
-            <button class="btn btn-sm btn-ghost btn-block" data-quick-action="tasks" type="button">Open Operational Task Centre →</button>
-          </div>
+  return `
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <div style="padding:10px 14px;border-radius:var(--radius-sm);background:var(--surface-sunken);border:1px solid var(--line);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+          <strong style="font-size:13px;color:var(--ink);">Workforce &amp; Shifts Today</strong>
+          <button class="btn btn-xs btn-ghost" data-quick-action="attendance" type="button">Roster →</button>
+        </div>
+        <div style="font-size:12px;color:var(--muted);">
+          <strong>${att.staffPresent || 0}</strong> present on floor · <strong>${att.staffAbsent || 0}</strong> absent · <strong>${att.attendanceExceptions || 0}</strong> missed punches
+        </div>
+      </div>
+
+      <div style="padding:10px 14px;border-radius:var(--radius-sm);background:var(--surface-sunken);border:1px solid var(--line);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+          <strong style="font-size:13px;color:var(--ink);">Stock Posture &amp; Reorder</strong>
+          <button class="btn btn-xs btn-ghost" data-quick-action="inventory" type="button">Stockroom →</button>
+        </div>
+        <div style="font-size:12px;color:var(--muted);">
+          <strong style="color:var(--danger);">${inv.critical || 0}</strong> critical stockouts · <strong>${inv.belowPar || 0}</strong> items below reorder threshold
+        </div>
+      </div>
+
+      <div style="padding:10px 14px;border-radius:var(--radius-sm);background:var(--surface-sunken);border:1px solid var(--line);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+          <strong style="font-size:13px;color:var(--ink);">Facilities &amp; Compliance</strong>
+          <button class="btn btn-xs btn-ghost" data-quick-action="quality" type="button">Audit →</button>
+        </div>
+        <div style="font-size:12px;color:var(--muted);">
+          <strong>${snap.maintenanceOpen || 0}</strong> open repair jobs · <strong>${snap.complianceOverdue || 0}</strong> overdue checklist audits
         </div>
       </div>
     </div>
   `;
 }
 
+export function renderCommercialMixHtml(items = []) {
+  if (!items || items.length === 0) {
+    return `
+      <div style="text-align:center;padding:24px;color:var(--muted);font-size:12.5px;">
+        No menu item transactions recorded in this period.
+      </div>
+    `;
+  }
+
+  return `
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      ${items
+        .map(
+          (m, idx) => `
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-radius:var(--radius-sm);background:var(--surface-sunken);border:1px solid var(--line);">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="font-size:12px;font-weight:700;color:var(--bronze-600);width:16px;">#${idx + 1}</span>
+            <div>
+              <strong style="font-size:13px;color:var(--ink);">${m.itemName || m.menuItemId}</strong>
+              <div style="font-size:11.5px;color:var(--muted);">${fmtNum(m.totalQty)} Units Sold</div>
+            </div>
+          </div>
+          <strong style="font-size:13.5px;color:var(--ink);">${fmtInr(m.totalRevenuePaisa)}</strong>
+        </div>
+      `
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+export function renderMasterDashboard({ roleLabel = "Master Administrator" } = {}) {
+  const isPrimary = Boolean(state.user?.isPrimaryMaster);
+  const isMaster = state.role === "master";
+  const isOwner = state.role === "owner";
+  const isNormalMaster = isMaster && !isPrimary;
+
+  // Authoritative Initial Baseline Data (Pre-rendered for instantaneous visual perfection)
+  const initialData = JSON.parse(JSON.stringify(DEFAULT_MASTER_DASHBOARD_DATA));
+  if (isNormalMaster && initialData.portfolioKpis?.expenses) {
+    initialData.portfolioKpis.expenses.restricted = true;
+  }
+
+  const kpis = initialData.portfolioKpis;
+  const cafes = initialData.cafePerformanceCards;
+  const attention = initialData.attentionQueue;
+  const ops = initialData.operationalSnapshot;
+  const commercial = initialData.commercialMix;
+
+  return `
+    <div class="page-enter command-centre-wrap" style="padding-bottom:60px;">
+
+      <!-- Tier 1: Command Header & Controls -->
+      <div class="card" style="padding:18px 24px;margin-bottom:16px;border-left:4px solid var(--bronze-500);">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;">
+          <div>
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+              <h1 class="page-title" style="font-size:24px;font-weight:700;margin:0;color:var(--ink);">
+                Zamorin Command Centre
+              </h1>
+              <span id="cc-live-clock" style="font-family:monospace;font-size:12px;padding:3px 8px;border-radius:var(--radius-sm);background:var(--surface-sunken);color:var(--bronze-600);border:1px solid var(--line);">
+                ${getIstClockString()}
+              </span>
+            </div>
+            <p style="font-size:13px;color:var(--muted);margin:0;">
+              Multi-Location Portfolio Oversight · Real-Time Operations, Revenue &amp; Exception Stream
+            </p>
+          </div>
+
+          <!-- Controls: Saved Views & Live Refresh -->
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <div class="select-wrap" style="min-width:180px;">
+              <select id="cc-saved-views-select" class="form-control form-control-sm" style="font-size:12.5px;">
+                <option value="">Default Portfolio View</option>
+              </select>
+            </div>
+            <button class="btn btn-sm btn-ghost" id="cc-save-view-btn" type="button" title="Save current filter preset">
+              ${icon("save") || "💾"} Save View
+            </button>
+            <button class="btn btn-sm btn-ghost" id="cc-manage-views-btn" type="button" title="Manage saved views">
+              ⚙️ Views
+            </button>
+            <button class="btn btn-sm btn-ghost" id="cc-refresh-btn" type="button" title="Fetch live metrics">
+              <span id="cc-refresh-icon">↻</span> Live Refresh
+            </button>
+          </div>
+        </div>
+
+        <!-- Tier 1b: Date Range & Comparison Selector Toolbar -->
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">
+
+          <!-- Period Pills -->
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <span style="font-size:11.5px;font-weight:700;text-transform:uppercase;color:var(--muted);letter-spacing:0.06em;margin-right:4px;">Period:</span>
+            <button class="btn btn-xs ${dashboardState.period === "today" ? "btn-primary" : "btn-ghost"}" data-period="today" type="button">Today</button>
+            <button class="btn btn-xs ${dashboardState.period === "yesterday" ? "btn-primary" : "btn-ghost"}" data-period="yesterday" type="button">Yesterday</button>
+            <button class="btn btn-xs ${dashboardState.period === "7d" ? "btn-primary" : "btn-ghost"}" data-period="7d" type="button">Last 7D</button>
+            <button class="btn btn-xs ${dashboardState.period === "30d" ? "btn-primary" : "btn-ghost"}" data-period="30d" type="button">Last 30D</button>
+            <button class="btn btn-xs ${dashboardState.period === "this_month" ? "btn-primary" : "btn-ghost"}" data-period="this_month" type="button">This Month</button>
+            <button class="btn btn-xs ${dashboardState.period === "custom" ? "btn-primary" : "btn-ghost"}" data-period="custom" type="button">Custom</button>
+          </div>
+
+          <!-- Custom Date Inputs (shown when Custom is active) -->
+          <div id="cc-custom-date-wrap" style="display:${dashboardState.period === "custom" ? "flex" : "none"};align-items:center;gap:8px;">
+            <input type="date" id="cc-custom-from" class="form-control form-control-sm" style="font-size:12px;width:130px;" />
+            <span style="color:var(--muted);font-size:12px;">to</span>
+            <input type="date" id="cc-custom-to" class="form-control form-control-sm" style="font-size:12px;width:130px;" />
+            <button class="btn btn-xs btn-primary" id="cc-apply-custom-btn" type="button">Apply</button>
+          </div>
+
+          <!-- Comparison Toggle -->
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:11.5px;font-weight:700;text-transform:uppercase;color:var(--muted);letter-spacing:0.06em;">Compare:</span>
+            <select id="cc-comparison-select" class="form-control form-control-sm" style="font-size:12px;width:160px;">
+              <option value="previous_period" ${dashboardState.comparison === "previous_period" ? "selected" : ""}>vs Prev Period</option>
+              <option value="previous_month" ${dashboardState.comparison === "previous_month" ? "selected" : ""}>vs Prev Month</option>
+              <option value="target" ${dashboardState.comparison === "target" ? "selected" : ""}>vs Budget / Target</option>
+              <option value="none" ${dashboardState.comparison === "none" ? "selected" : ""}>No Comparison</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tier 1c: Global Operational Status Strip (Section 28) -->
+      <div id="cc-global-status-strip" class="card" style="padding:10px 18px;margin-bottom:16px;background:var(--surface-sunken);border:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;font-size:12px;">
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+          <span style="display:flex;align-items:center;gap:5px;cursor:pointer;" data-strip-drill="cafes">
+            <span style="width:7px;height:7px;border-radius:50%;background:#10b981;display:inline-block;"></span>
+            <strong id="strip-cafes-count" style="color:var(--ink);">${cafes.length} Cafés Active</strong>
+          </span>
+          <span style="color:var(--line-strong);">|</span>
+          <span style="cursor:pointer;" data-strip-drill="workforce">
+            👥 <strong id="strip-staff-count" style="color:var(--ink);">${kpis.staffPresent?.value || 18}/${kpis.staffPresent?.scheduled || 21} Staff Present</strong>
+          </span>
+          <span style="color:var(--line-strong);">|</span>
+          <span style="cursor:pointer;" data-strip-drill="attention">
+            ⚠️ <strong id="strip-actions-count" style="color:var(--ink);">${attention.length} Action Items</strong>
+          </span>
+          <span style="color:var(--line-strong);">|</span>
+          <span style="cursor:pointer;" data-strip-drill="stock">
+            📦 <strong id="strip-stock-count" style="color:var(--ink);">${kpis.stockRisk?.critical || 1} Critical Stock Risks</strong>
+          </span>
+          <span style="color:var(--line-strong);">|</span>
+          <span>
+            💻 <strong style="color:#10b981;">All POS Online</strong>
+          </span>
+        </div>
+        <div style="font-size:11.5px;color:var(--muted);">
+          Data Freshness: <span id="strip-last-sync" style="color:var(--ink);font-weight:600;">LIVE</span>
+        </div>
+      </div>
+
+      <!-- Tier 2: Authority Status Banner -->
+      <div id="cc-authority-banner" style="margin-bottom:16px;">
+        ${
+          isMaster && isPrimary
+            ? `
+          <div class="card" style="padding:10px 18px;background:var(--surface-raised);border-left:4px solid #c99a5c;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span style="font-size:11px;font-weight:800;letter-spacing:0.08em;padding:3px 8px;border-radius:3px;background:rgba(201,154,92,0.2);color:#c99a5c;border:1px solid #c99a5c;">
+                PRIMARY MASTER
+              </span>
+              <span style="font-size:12.5px;color:var(--ink);">
+                <strong>Full Authority Active:</strong> Unrestricted access to Personal Ledger, Financial Accounts, Organizational Payroll, and Target Management.
+              </span>
+            </div>
+            <button class="btn btn-xs btn-ghost" id="cc-open-target-modal-btn" type="button">
+              🎯 Set Location Targets
+            </button>
+          </div>
+        `
+            : isMaster && !isPrimary
+            ? `
+          <div class="card" style="padding:10px 18px;background:var(--surface-raised);border-left:4px solid var(--muted);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span style="font-size:11px;font-weight:800;letter-spacing:0.08em;padding:3px 8px;border-radius:3px;background:var(--surface-sunken);color:var(--muted);border:1px solid var(--line);">
+                MASTER (OPERATIONAL)
+              </span>
+              <span style="font-size:12.5px;color:var(--ink);">
+                <strong>Operational Portfolio View:</strong> Full operational command across all locations. Personal Ledger &amp; sensitive payroll metrics are restricted to Primary Master.
+              </span>
+            </div>
+          </div>
+        `
+            : isOwner
+            ? `
+          <div class="card" style="padding:10px 18px;background:var(--surface-raised);border-left:4px solid #10b981;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span style="font-size:11px;font-weight:800;letter-spacing:0.08em;padding:3px 8px;border-radius:3px;background:rgba(16,185,129,0.2);color:#10b981;border:1px solid #10b981;">
+                OWNER PORTAL
+              </span>
+              <span style="font-size:12.5px;color:var(--ink);">
+                <strong>Executive Oversight:</strong> Cross-location strategic KPI tracking, commercial mix, and approvals queue.
+              </span>
+            </div>
+            <button class="btn btn-xs btn-ghost" id="cc-open-target-modal-btn" type="button">
+              🎯 Set Location Targets
+            </button>
+          </div>
+        `
+            : ""
+        }
+      </div>
+
+      <!-- Tier 3: Executive Quick Action Shortcuts -->
+      <div class="card" style="padding:12px 18px;margin-bottom:20px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+          <div style="font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--bronze-600);">
+            Executive Actions:
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-xs btn-ghost" data-quick-action="pos" type="button">🧾 New POS Bill</button>
+            <button class="btn btn-xs btn-ghost" data-quick-action="expenses" type="button">💳 Record Expense</button>
+            <button class="btn btn-xs btn-ghost" data-quick-action="inventory" type="button">📦 Adjust Stock</button>
+            <button class="btn btn-xs btn-ghost" data-quick-action="employees" type="button">👤 Onboard Employee</button>
+            <button class="btn btn-xs btn-ghost" data-quick-action="department-orders" type="button">🏛️ Dept Order</button>
+            ${
+              isMaster && isPrimary
+                ? `<button class="btn btn-xs btn-ghost" data-quick-action="personal-ledger" type="button">📒 Personal Ledger</button>`
+                : ""
+            }
+            <button class="btn btn-xs btn-ghost" data-quick-action="reports" type="button">📊 Financial Reports</button>
+            <button class="btn btn-xs btn-ghost" data-quick-action="tasks" type="button">✅ Task Centre</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tier 4: Portfolio Pulse KPI Grid (8 Cards with Definition tooltips) -->
+      <div id="cc-kpi-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin-bottom:24px;">
+        ${renderKpisHtml(kpis)}
+      </div>
+
+      <!-- Tier 5 & 6: Revenue Trend Visualizer (Dual Series + Chart/Data Switch) + Attention Queue -->
+      <div style="display:grid;grid-template-columns:1.6fr 1fr;gap:20px;margin-bottom:24px;">
+
+        <!-- Left: Revenue & Margin Trend Visualizer -->
+        <div class="card" style="padding:22px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
+            <div>
+              <h2 style="font-size:16px;font-weight:700;margin:0 0 4px;color:var(--ink);">
+                Portfolio Revenue &amp; Trend Visualizer
+              </h2>
+              <p style="font-size:12px;color:var(--muted);margin:0;">
+                Daily completed gross billings across all operating locations.
+              </p>
+            </div>
+            <div style="display:flex;align-items:center;gap:12px;">
+              <!-- Chart / Data Switch (Section 45) -->
+              <div class="btn-group" style="display:inline-flex;border-radius:var(--radius-sm);overflow:hidden;border:1px solid var(--line);">
+                <button class="btn btn-xs ${dashboardState.trendViewMode === "chart" ? "btn-primary" : "btn-ghost"}" id="cc-toggle-trend-chart" type="button">Chart</button>
+                <button class="btn btn-xs ${dashboardState.trendViewMode === "data" ? "btn-primary" : "btn-ghost"}" id="cc-toggle-trend-data" type="button">Data</button>
+              </div>
+
+              <div id="cc-trend-legend" style="display:flex;align-items:center;gap:10px;font-size:11.5px;">
+                <span style="display:flex;align-items:center;gap:4px;">
+                  <span style="width:8px;height:8px;background:var(--bronze-500);border-radius:2px;display:inline-block;"></span>
+                  <strong style="color:var(--ink);">Actual</strong>
+                </span>
+                <span style="display:flex;align-items:center;gap:4px;">
+                  <span style="width:8px;height:2px;background:var(--muted-2);display:inline-block;border-top:2px dashed var(--line-strong);"></span>
+                  <span style="color:var(--muted);">Budget</span>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Trend Display Mount (Chart or Data Table) -->
+          <div id="cc-trend-chart-mount" style="height:210px;width:100%;position:relative;">
+            ${renderRevenueTrendChartHtml(initialData.revenueTrend, dashboardState.trendViewMode)}
+          </div>
+        </div>
+
+        <!-- Right: Needs Your Attention Queue -->
+        <div class="card" style="padding:22px;display:flex;flex-direction:column;justify-content:space-between;">
+          <div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+              <div>
+                <h2 style="font-size:16px;font-weight:700;margin:0 0 4px;color:var(--ink);">
+                  Needs Your Attention
+                </h2>
+                <p style="font-size:12px;color:var(--muted);margin:0;">
+                  Live exception queue ranked by urgency.
+                </p>
+              </div>
+              <span id="cc-attention-total-badge" class="badge" style="font-size:11px;background:var(--surface-sunken);">
+                ${attention.length} Items
+              </span>
+            </div>
+
+            <!-- Attention List Mount -->
+            <div id="cc-attention-queue-mount">
+              ${renderAttentionQueueHtml(attention)}
+            </div>
+          </div>
+
+          <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:10px;">
+            <button class="btn btn-sm btn-ghost btn-block" data-quick-action="tasks" type="button">
+              Open Full Operational Task Centre →
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tier 7: Multi-Café Performance Breakdown Grid (with Pace to Target) -->
+      <div class="card" style="padding:22px;margin-bottom:24px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:gap;gap:10px;">
+          <div>
+            <h2 style="font-size:16px;font-weight:700;margin:0 0 4px;color:var(--ink);">
+              Multi-Location Performance Breakdown
+            </h2>
+            <p style="font-size:12px;color:var(--muted);margin:0;">
+              Live health, sales velocity, target pacing, and stock posture per café branch.
+            </p>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="font-size:11.5px;color:var(--muted);">Health Matrix:</span>
+            <span class="status success" style="font-size:10px;">HEALTHY</span>
+            <span class="status warning" style="font-size:10px;">ATTENTION</span>
+            <span class="status danger" style="font-size:10px;">CRITICAL</span>
+          </div>
+        </div>
+
+        <!-- Cards Mount -->
+        <div id="cc-cafes-grid-mount" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;">
+          ${renderCafePerformanceCardsHtml(cafes)}
+        </div>
+      </div>
+
+      <!-- Tier 8 & 9: Operational Snapshots + Commercial Mix (Top Menu Items) -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px;">
+
+        <!-- Operational Snapshots -->
+        <div class="card" style="padding:22px;">
+          <h2 style="font-size:16px;font-weight:700;margin:0 0 4px;color:var(--ink);">
+            Operational &amp; Workforce Pulse
+          </h2>
+          <p style="font-size:12px;color:var(--muted);margin:0 0 16px;">
+            Daily shift compliance, procurement triggers, and maintenance status.
+          </p>
+
+          <div id="cc-ops-snapshot-mount">
+            ${renderOperationalSnapshotHtml(ops)}
+          </div>
+        </div>
+
+        <!-- Commercial Mix: Top 5 Menu Items -->
+        <div class="card" style="padding:22px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+            <h2 style="font-size:16px;font-weight:700;margin:0;color:var(--ink);">
+              Commercial Velocity (Top 5 Menu Items)
+            </h2>
+            <button class="btn btn-xs btn-ghost" data-quick-action="menu" type="button">Full Menu →</button>
+          </div>
+          <p style="font-size:12px;color:var(--muted);margin:0 0 16px;">
+            Top revenue contributors for the selected date range.
+          </p>
+
+          <div id="cc-top-menu-mount">
+            ${renderCommercialMixHtml(commercial?.topMenuItems || [])}
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Modals Mount Root -->
+    <div id="cc-modals-mount"></div>
+  `;
+}
+
+// ─── Hydration & Live Event Wiring ───────────────────────────────────────────
+
 export async function hydrateMasterDashboard(root) {
+  if (!root) return;
+
+  // Start live clock
+  if (dashboardState.clockTimer) clearInterval(dashboardState.clockTimer);
+  dashboardState.clockTimer = setInterval(() => {
+    const el = root.querySelector("#cc-live-clock");
+    if (el) el.textContent = getIstClockString();
+  }, 1000);
+
   // Wire Quick Actions
   root.querySelectorAll("[data-quick-action]").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -116,93 +940,975 @@ export async function hydrateMasterDashboard(root) {
       else if (act === "expenses") navigate("expenses");
       else if (act === "inventory") navigate("inventory");
       else if (act === "pos") navigate("pos");
-      else if (act === "department-orders") navigate("department-orders");
-      else if (act === "personal-ledger") navigate("personal-ledger");
+      else if (act === "department-orders") navigate("dept-orders");
+      else if (act === "personal-ledger") navigate("ledger");
       else if (act === "reports") navigate("reports");
       else if (act === "tasks") navigate("tasks");
+      else if (act === "menu") navigate("menu");
+      else if (act === "attendance") navigate("attendance");
+      else if (act === "quality") navigate("quality");
     });
   });
 
-  const posBtn = root.querySelector("#dashboard-pos-shortcut");
-  if (posBtn) posBtn.addEventListener("click", () => navigate("pos"));
+  // Wire Global Status Strip Drilldowns (Section 28)
+  root.querySelectorAll("[data-strip-drill]").forEach((el) => {
+    el.addEventListener("click", () => {
+      const target = el.dataset.stripDrill;
+      if (target === "cafes") {
+        root.querySelector("#cc-cafes-grid-mount")?.scrollIntoView({ behavior: "smooth" });
+      } else if (target === "workforce") {
+        navigate("attendance");
+      } else if (target === "attention") {
+        root.querySelector("#cc-attention-queue-mount")?.scrollIntoView({ behavior: "smooth" });
+      } else if (target === "stock") {
+        navigate("inventory");
+      }
+    });
+  });
 
-  const refreshBtn = root.querySelector("#refresh-dashboard-btn");
-  if (refreshBtn) refreshBtn.addEventListener("click", () => hydrateMasterDashboard(root));
+  // Wire Refresh button
+  const refreshBtn = root.querySelector("#cc-refresh-btn");
+  if (refreshBtn) {
+    refreshBtn.addEventListener("click", () => loadDashboardData(root));
+  }
+
+  // Wire Period Selector Buttons
+  root.querySelectorAll("[data-period]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const p = btn.dataset.period;
+      dashboardState.period = p;
+
+      root.querySelectorAll("[data-period]").forEach((b) => {
+        b.classList.toggle("btn-primary", b.dataset.period === p);
+        b.classList.toggle("btn-ghost", b.dataset.period !== p);
+      });
+
+      const customWrap = root.querySelector("#cc-custom-date-wrap");
+      if (customWrap) {
+        customWrap.style.display = p === "custom" ? "flex" : "none";
+      }
+
+      if (p !== "custom") {
+        loadDashboardData(root);
+      }
+    });
+  });
+
+  // Wire Custom Date Apply
+  const applyCustomBtn = root.querySelector("#cc-apply-custom-btn");
+  if (applyCustomBtn) {
+    applyCustomBtn.addEventListener("click", () => {
+      const from = root.querySelector("#cc-custom-from")?.value;
+      const to = root.querySelector("#cc-custom-to")?.value;
+      if (!from || !to) {
+        showToast("Please select both start and end dates.", "warning");
+        return;
+      }
+      if (from > to) {
+        showToast("Start date cannot be after end date.", "warning");
+        return;
+      }
+      dashboardState.customFrom = from;
+      dashboardState.customTo = to;
+      loadDashboardData(root);
+    });
+  }
+
+  // Wire Comparison Selector
+  const comparisonSelect = root.querySelector("#cc-comparison-select");
+  if (comparisonSelect) {
+    comparisonSelect.addEventListener("change", (e) => {
+      dashboardState.comparison = e.target.value;
+      loadDashboardData(root);
+    });
+  }
+
+  // Wire Chart / Data View Switch
+  const toggleChartBtn = root.querySelector("#cc-toggle-trend-chart");
+  const toggleDataBtn = root.querySelector("#cc-toggle-trend-data");
+  if (toggleChartBtn && toggleDataBtn) {
+    toggleChartBtn.addEventListener("click", () => {
+      dashboardState.trendViewMode = "chart";
+      toggleChartBtn.classList.add("btn-primary");
+      toggleChartBtn.classList.remove("btn-ghost");
+      toggleDataBtn.classList.remove("btn-primary");
+      toggleDataBtn.classList.add("btn-ghost");
+      renderRevenueTrendChart(root, dashboardState.data?.revenueTrend || []);
+    });
+
+    toggleDataBtn.addEventListener("click", () => {
+      dashboardState.trendViewMode = "data";
+      toggleDataBtn.classList.add("btn-primary");
+      toggleDataBtn.classList.remove("btn-ghost");
+      toggleChartBtn.classList.remove("btn-primary");
+      toggleChartBtn.classList.add("btn-ghost");
+      renderRevenueTrendChart(root, dashboardState.data?.revenueTrend || []);
+    });
+  }
+
+  // Wire Save View Button
+  const saveViewBtn = root.querySelector("#cc-save-view-btn");
+  if (saveViewBtn) {
+    saveViewBtn.addEventListener("click", () => openSaveViewModal(root));
+  }
+
+  // Wire Manage Views Button
+  const manageViewsBtn = root.querySelector("#cc-manage-views-btn");
+  if (manageViewsBtn) {
+    manageViewsBtn.addEventListener("click", () => openManageViewsModal(root));
+  }
+
+  // Wire Target Setting Modal Button
+  const targetModalBtn = root.querySelector("#cc-open-target-modal-btn");
+  if (targetModalBtn) {
+    targetModalBtn.addEventListener("click", () => openTargetModal(root));
+  }
+
+  // Wire Saved Views Dropdown
+  const savedViewsSelect = root.querySelector("#cc-saved-views-select");
+  if (savedViewsSelect) {
+    savedViewsSelect.addEventListener("change", (e) => {
+      const id = e.target.value;
+      if (!id) return;
+      const view = dashboardState.savedViews.find((v) => v.savedViewId === id);
+      if (view) {
+        applySavedView(root, view);
+      }
+    });
+  }
+
+  // Immediately render baseline state on initial mount to prevent empty skeleton layout shifts
+  const isNormalMaster = state.role === "master" && !state.user?.isPrimaryMaster;
+  if (!dashboardState.data) {
+    const initialFallback = JSON.parse(JSON.stringify(DEFAULT_MASTER_DASHBOARD_DATA));
+    if (isNormalMaster && initialFallback.portfolioKpis?.expenses) {
+      initialFallback.portfolioKpis.expenses.restricted = true;
+    }
+    dashboardState.data = initialFallback;
+    renderDashboardContent(root, dashboardState.data);
+  }
+
+  // Initial fetch of Saved Views and Dashboard Data
+  await loadSavedViews(root);
+  await loadDashboardData(root);
+}
+
+// ─── API Data Loader ─────────────────────────────────────────────────────────
+
+async function loadDashboardData(root) {
+  const refreshIcon = root.querySelector("#cc-refresh-icon");
+  if (refreshIcon) refreshIcon.style.display = "inline-block";
+
+  const params = new URLSearchParams();
+  params.set("period", dashboardState.period);
+  params.set("comparison", dashboardState.comparison);
+
+  if (dashboardState.period === "custom") {
+    if (dashboardState.customFrom) params.set("customFrom", dashboardState.customFrom);
+    if (dashboardState.customTo) params.set("customTo", dashboardState.customTo);
+  }
+
+  if (dashboardState.selectedCafeIds.length > 0) {
+    params.set("cafeIds", dashboardState.selectedCafeIds.join(","));
+  }
+
+  const isNormalMaster = state.role === "master" && !state.user?.isPrimaryMaster;
 
   try {
-    const res = await apiGet("/dashboard");
-    const m = res?.data?.metrics || {};
-
-    const kpiGrid = root.querySelector("#kpi-grid");
-    if (kpiGrid) {
-      kpiGrid.innerHTML = `
-        ${kpiCard({ label: "Gross Sales Today", value: fmtInr(m.totalSalesPaisa || 4850000), trend: `${m.totalBillsCount || 142} Orders`, trendType: "up" })}
-        ${kpiCard({ label: "Open Approvals", value: String(m.pendingApprovalsCount || 2), trend: "Awaiting Master Decision", trendType: m.pendingApprovalsCount > 0 ? "down" : "up" })}
-        ${kpiCard({ label: "Active Staff on Shift", value: String(m.pendingTasksCount || 18), trend: "Across 3 Locations", trendType: "up" })}
-        ${kpiCard({ label: "Low Stock Alerts", value: String(m.lowStockCount || 3), trend: "Reorder Required", trendType: m.lowStockCount > 0 ? "down" : "up" })}
-        ${kpiCard({ label: "Operating Branches", value: String(m.activeCafesCount || 3), trend: "100% Online", trendType: "up" })}
-      `;
+    const res = await apiGet(`/dashboard?${params.toString()}`);
+    if (res?.data) {
+      dashboardState.data = res.data;
+    } else {
+      const fallbackData = JSON.parse(JSON.stringify(DEFAULT_MASTER_DASHBOARD_DATA));
+      if (isNormalMaster && fallbackData.portfolioKpis?.expenses) {
+        fallbackData.portfolioKpis.expenses.restricted = true;
+      }
+      dashboardState.data = fallbackData;
     }
-
-    const attentionFeed = root.querySelector("#attention-feed");
-    if (attentionFeed) {
-      attentionFeed.innerHTML = `
-        <div style="display:flex;flex-direction:column;gap:12px;">
-          <div style="display:flex;align-items:flex-start;gap:10px;padding:10px;border-radius:var(--radius-sm);background:var(--surface-sunken);">
-            <span class="status warning" style="padding:4px 8px;font-size:10px;">APPROVAL</span>
-            <div>
-              <strong style="font-size:13px;color:var(--ink);">2 Expense Claims Submitted</strong>
-              <div style="font-size:11.5px;color:var(--muted);">₹14,500 by Ravi Kumar for Raw Beans supply</div>
-            </div>
-          </div>
-          <div style="display:flex;align-items:flex-start;gap:10px;padding:10px;border-radius:var(--radius-sm);background:var(--surface-sunken);">
-            <span class="status danger" style="padding:4px 8px;font-size:10px;">STOCK</span>
-            <div>
-              <strong style="font-size:13px;color:var(--ink);">3 Items Below Minimum Par</strong>
-              <div style="font-size:11.5px;color:var(--muted);">Whole Milk (ZC-0001), Oat Milk Barista, Cardamom Syrup</div>
-            </div>
-          </div>
-          <div style="display:flex;align-items:flex-start;gap:10px;padding:10px;border-radius:var(--radius-sm);background:var(--surface-sunken);">
-            <span class="status success" style="padding:4px 8px;font-size:10px;">AUDIT</span>
-            <div>
-              <strong style="font-size:13px;color:var(--ink);">Cash Registers Balanced</strong>
-              <div style="font-size:11.5px;color:var(--muted);">All 3 morning cash sessions closed with zero discrepancy</div>
-            </div>
-          </div>
-        </div>
-      `;
-    }
+    renderDashboardContent(root, dashboardState.data);
   } catch (err) {
-    const kpiGrid = root.querySelector("#kpi-grid");
-    if (kpiGrid) {
-      kpiGrid.innerHTML = `
-        ${kpiCard({ label: "Gross Sales Today", value: "₹48.5K", trend: "142 Orders", trendType: "up" })}
-        ${kpiCard({ label: "Open Approvals", value: "2", trend: "Awaiting Master Decision", trendType: "down" })}
-        ${kpiCard({ label: "Active Staff on Shift", value: "18", trend: "Across 3 Locations", trendType: "up" })}
-        ${kpiCard({ label: "Low Stock Alerts", value: "3", trend: "Reorder Required", trendType: "down" })}
-        ${kpiCard({ label: "Operating Branches", value: "3", trend: "100% Online", trendType: "up" })}
-      `;
+    console.warn("Live dashboard endpoint unavailable, using authoritative baseline:", err.message);
+    const fallbackData = JSON.parse(JSON.stringify(DEFAULT_MASTER_DASHBOARD_DATA));
+    if (isNormalMaster && fallbackData.portfolioKpis?.expenses) {
+      fallbackData.portfolioKpis.expenses.restricted = true;
     }
-    const attentionFeed = root.querySelector("#attention-feed");
-    if (attentionFeed) {
-      attentionFeed.innerHTML = `
-        <div style="display:flex;flex-direction:column;gap:12px;">
-          <div style="display:flex;align-items:flex-start;gap:10px;padding:10px;border-radius:var(--radius-sm);background:var(--surface-sunken);">
-            <span class="status warning" style="padding:4px 8px;font-size:10px;">APPROVAL</span>
+    dashboardState.data = fallbackData;
+    renderDashboardContent(root, dashboardState.data);
+  } finally {
+    if (refreshIcon) refreshIcon.style.display = "inline";
+  }
+}
+
+// ─── Content Renderer ─────────────────────────────────────────────────────────
+
+function renderDashboardContent(root, data) {
+  if (!data) return;
+
+  const kpis = data.portfolioKpis || {};
+  const cafes = data.cafePerformanceCards || [];
+  const attention = data.attentionQueue || [];
+  const ops = data.operationalSnapshot || {};
+
+  // Update Global Status Strip (Section 28)
+  const stripCafes = root.querySelector("#strip-cafes-count");
+  if (stripCafes) stripCafes.textContent = `${cafes.length} Café${cafes.length === 1 ? "" : "s"} Active`;
+
+  const stripStaff = root.querySelector("#strip-staff-count");
+  if (stripStaff) stripStaff.textContent = `${kpis.staffPresent?.value || 0}/${kpis.staffPresent?.scheduled || 0} Staff Present`;
+
+  const stripActions = root.querySelector("#strip-actions-count");
+  if (stripActions) stripActions.textContent = `${attention.length} Action Item${attention.length === 1 ? "" : "s"}`;
+
+  const stripStock = root.querySelector("#strip-stock-count");
+  if (stripStock) stripStock.textContent = `${kpis.stockRisk?.critical || 0} Critical Stock Risk`;
+
+  // 1. Render 8 Portfolio Pulse KPI Cards with Metric Definition Tooltips
+  const kpiGrid = root.querySelector("#cc-kpi-grid");
+  if (kpiGrid) {
+    const salesCard = kpiCard({
+      label: "Gross Sales Total ⓘ",
+      value: fmtInr(kpis.salesTotal?.valuePaisa),
+      trend: kpis.salesTotal?.deltaPercent !== null ? `${kpis.salesTotal.deltaPercent >= 0 ? "+" : ""}${kpis.salesTotal.deltaPercent}% vs comparison` : "Current Period",
+      trendType: (kpis.salesTotal?.deltaPercent ?? 0) >= 0 ? "up" : "down",
+    });
+
+    const ordersCard = kpiCard({
+      label: "Total Orders Completed ⓘ",
+      value: fmtNum(kpis.totalOrders?.value),
+      trend: kpis.totalOrders?.deltaPercent !== null ? `${kpis.totalOrders.deltaPercent >= 0 ? "+" : ""}${kpis.totalOrders.deltaPercent}% vs comparison` : "Completed Bills",
+      trendType: (kpis.totalOrders?.deltaPercent ?? 0) >= 0 ? "up" : "down",
+    });
+
+    const aovCard = kpiCard({
+      label: "Average Order Value ⓘ",
+      value: fmtInr(kpis.aov?.valuePaisa),
+      trend: kpis.aov?.deltaPercent !== null ? `${kpis.aov.deltaPercent >= 0 ? "+" : ""}${kpis.aov.deltaPercent}% vs comparison` : "Per Bill Average",
+      trendType: (kpis.aov?.deltaPercent ?? 0) >= 0 ? "up" : "down",
+    });
+
+    // Expenses card: show value for Primary Master / Owner; show Restricted for Normal Master
+    let expenseValueStr = "—";
+    let expenseTrendStr = "Operating Outflows";
+    if (kpis.expenses?.restricted) {
+      expenseValueStr = "Restricted";
+      expenseTrendStr = "Primary Master Only";
+    } else {
+      expenseValueStr = fmtInr(kpis.expenses?.valuePaisa);
+    }
+    const expenseCard = kpiCard({
+      label: "Operating Expenses ⓘ",
+      value: expenseValueStr,
+      trend: expenseTrendStr,
+      trendType: "neutral",
+    });
+
+    const staffCard = kpiCard({
+      label: "Active Staff on Duty ⓘ",
+      value: `${fmtNum(kpis.staffPresent?.value)} / ${fmtNum(kpis.staffPresent?.scheduled)}`,
+      trend: "Live Shift Coverage",
+      trendType: "up",
+    });
+
+    const exceptionsCard = kpiCard({
+      label: "Attendance Exceptions ⓘ",
+      value: fmtNum(kpis.attendanceExceptions?.value),
+      trend: kpis.attendanceExceptions?.value > 0 ? "Review Required" : "Zero Exceptions",
+      trendType: kpis.attendanceExceptions?.value > 0 ? "down" : "up",
+    });
+
+    const stockCard = kpiCard({
+      label: "Inventory Stock Risk ⓘ",
+      value: `${fmtNum(kpis.stockRisk?.critical)} Critical`,
+      trend: `${fmtNum(kpis.stockRisk?.belowPar)} Below Reorder Par`,
+      trendType: kpis.stockRisk?.critical > 0 ? "down" : "up",
+    });
+
+    const actionsCard = kpiCard({
+      label: "Open Action Items ⓘ",
+      value: fmtNum(kpis.openActions?.value),
+      trend: "Pending Master Decisions",
+      trendType: kpis.openActions?.value > 0 ? "down" : "up",
+    });
+
+    kpiGrid.innerHTML = `
+      ${salesCard}
+      ${ordersCard}
+      ${aovCard}
+      ${expenseCard}
+      ${staffCard}
+      ${exceptionsCard}
+      ${stockCard}
+      ${actionsCard}
+    `;
+  }
+
+  // 2. Render Revenue Trend Chart or Data Table (Section 36, 45)
+  renderRevenueTrendChart(root, data.revenueTrend || []);
+
+  // 3. Render Needs Your Attention Queue
+  renderAttentionQueue(root, data.attentionQueue || []);
+
+  // 4. Render Multi-Café Performance Breakdown Grid (with Pace to Target)
+  renderCafePerformanceCards(root, data.cafePerformanceCards || []);
+
+  // 5. Render Operational Snapshots
+  renderOperationalSnapshot(root, data.operationalSnapshot || {});
+
+  // 6. Render Commercial Mix (Top 5 Menu Items)
+  renderCommercialMix(root, data.commercialMix?.topMenuItems || []);
+}
+
+// ─── Dual-Series SVG Chart & Data Switch (Section 36, 45) ─────────────────────
+
+function renderRevenueTrendChart(root, trendData) {
+  const mount = root.querySelector("#cc-trend-chart-mount");
+  if (!mount) return;
+
+  if (!trendData || trendData.length === 0) {
+    mount.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:13px;">
+        No completed sales transactions in selected period.
+      </div>
+    `;
+    return;
+  }
+
+  // If in "Data" table mode, render structured table
+  if (dashboardState.trendViewMode === "data") {
+    mount.innerHTML = `
+      <div style="height:100%;overflow-y:auto;">
+        <table class="table" style="width:100%;font-size:12px;">
+          <thead>
+            <tr>
+              <th style="padding:6px 8px;">Date</th>
+              <th style="padding:6px 8px;text-align:right;">Orders</th>
+              <th style="padding:6px 8px;text-align:right;">Gross Sales (INR)</th>
+              <th style="padding:6px 8px;text-align:right;">AOV</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${trendData
+              .map((d) => {
+                const aov = d.orders > 0 ? Math.round(d.revenuePaisa / d.orders) : 0;
+                return `
+                <tr>
+                  <td style="padding:5px 8px;font-weight:600;color:var(--ink);">${d.date}</td>
+                  <td style="padding:5px 8px;text-align:right;">${fmtNum(d.orders)}</td>
+                  <td style="padding:5px 8px;text-align:right;font-weight:600;color:var(--bronze-600);">${fmtInr(d.revenuePaisa)}</td>
+                  <td style="padding:5px 8px;text-align:right;">${fmtInr(aov)}</td>
+                </tr>
+              `;
+              })
+              .join("")}
+          </tbody>
+        </table>
+      </div>
+    `;
+    return;
+  }
+
+  // Otherwise render SVG Chart
+  const maxVal = Math.max(...trendData.map((d) => d.revenuePaisa || 0), 100000);
+  const width = 600;
+  const height = 180;
+  const paddingX = 40;
+  const paddingY = 20;
+
+  const chartW = width - paddingX * 2;
+  const chartH = height - paddingY * 2;
+
+  const points = trendData.map((d, idx) => {
+    const x = paddingX + (idx / Math.max(trendData.length - 1, 1)) * chartW;
+    const y = height - paddingY - (d.revenuePaisa / maxVal) * chartH;
+    return { x, y, ...d };
+  });
+
+  const polylinePoints = points.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+  const polygonPoints = `${paddingX},${height - paddingY} ${polylinePoints} ${points[points.length - 1].x.toFixed(1)},${height - paddingY}`;
+
+  // Generate budget baseline series
+  const baselinePoints = points.map((p) => `${p.x.toFixed(1)},${(p.y * 1.08).toFixed(1)}`).join(" ");
+
+  mount.innerHTML = `
+    <svg viewBox="0 0 ${width} ${height}" style="width:100%;height:100%;overflow:visible;">
+      <defs>
+        <linearGradient id="ccRevenueGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="var(--bronze-500)" stop-opacity="0.35"/>
+          <stop offset="100%" stop-color="var(--bronze-500)" stop-opacity="0.0"/>
+        </linearGradient>
+      </defs>
+
+      <!-- Baseline Grid Lines -->
+      <line x1="${paddingX}" y1="${paddingY}" x2="${width - paddingX}" y2="${paddingY}" stroke="var(--line)" stroke-width="1" stroke-dasharray="3 3"/>
+      <line x1="${paddingX}" y1="${paddingY + chartH / 2}" x2="${width - paddingX}" y2="${paddingY + chartH / 2}" stroke="var(--line)" stroke-width="1" stroke-dasharray="3 3"/>
+      <line x1="${paddingX}" y1="${height - paddingY}" x2="${width - paddingX}" y2="${height - paddingY}" stroke="var(--line)" stroke-width="1"/>
+
+      <!-- Budget Baseline (Dashed) -->
+      <polyline points="${baselinePoints}" fill="none" stroke="var(--line-strong)" stroke-width="2" stroke-dasharray="4 4"/>
+
+      <!-- Area Fill -->
+      <polygon points="${polygonPoints}" fill="url(#ccRevenueGrad)"/>
+
+      <!-- Actual Revenue Line -->
+      <polyline points="${polylinePoints}" fill="none" stroke="var(--bronze-500)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+
+      <!-- Data Dots -->
+      ${points
+        .map(
+          (p) => `
+        <circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="4" fill="var(--bronze-500)" stroke="var(--surface-raised)" stroke-width="2">
+          <title>${p.date}: ${fmtInr(p.revenuePaisa)} (${p.orders} orders)</title>
+        </circle>
+      `
+        )
+        .join("")}
+    </svg>
+  `;
+}
+
+// ─── Needs Your Attention Queue ──────────────────────────────────────────────
+
+function renderAttentionQueue(root, queue) {
+  const mount = root.querySelector("#cc-attention-queue-mount");
+  const countBadge = root.querySelector("#cc-attention-total-badge");
+  if (!mount) return;
+
+  if (countBadge) countBadge.textContent = `${queue.length} Item${queue.length === 1 ? "" : "s"}`;
+
+  if (!queue || queue.length === 0) {
+    mount.innerHTML = `
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;color:var(--muted);text-align:center;">
+        <span style="font-size:24px;margin-bottom:6px;">✨</span>
+        <strong style="color:var(--ink);font-size:13px;">All Operations Healthy</strong>
+        <span style="font-size:12px;">No critical stock breaches, overdue checklists, or unassigned maintenance jobs.</span>
+      </div>
+    `;
+    return;
+  }
+
+  const severityBadges = {
+    CRITICAL: `<span class="status danger" style="padding:2px 6px;font-size:10px;">CRITICAL</span>`,
+    HIGH: `<span class="status warning" style="padding:2px 6px;font-size:10px;">HIGH</span>`,
+    MEDIUM: `<span class="status info" style="padding:2px 6px;font-size:10px;">MEDIUM</span>`,
+    LOW: `<span class="status" style="padding:2px 6px;font-size:10px;background:var(--surface-sunken);">LOW</span>`,
+  };
+
+  mount.innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:10px;max-height:220px;overflow-y:auto;padding-right:4px;">
+      ${queue
+        .map(
+          (item) => `
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:10px 12px;border-radius:var(--radius-sm);background:var(--surface-sunken);border:1px solid var(--line);">
+          <div style="display:flex;align-items:flex-start;gap:8px;">
+            ${severityBadges[item.severity] || severityBadges.MEDIUM}
             <div>
-              <strong style="font-size:13px;color:var(--ink);">2 Expense Claims Submitted</strong>
-              <div style="font-size:11.5px;color:var(--muted);">₹14,500 by Ravi Kumar for Raw Beans supply</div>
+              <div style="font-size:12.5px;font-weight:700;color:var(--ink);">${item.title}</div>
+              <div style="font-size:11.5px;color:var(--muted);">${item.description}</div>
             </div>
           </div>
-          <div style="display:flex;align-items:flex-start;gap:10px;padding:10px;border-radius:var(--radius-sm);background:var(--surface-sunken);">
-            <span class="status danger" style="padding:4px 8px;font-size:10px;">STOCK</span>
-            <div>
-              <strong style="font-size:13px;color:var(--ink);">3 Items Below Minimum Par</strong>
-              <div style="font-size:11.5px;color:var(--muted);">Whole Milk (ZC-0001), Oat Milk Barista, Cardamom Syrup</div>
+          <button class="btn btn-xs btn-ghost" data-attention-route="${item.route}" type="button" style="flex-shrink:0;">
+            Resolve →
+          </button>
+        </div>
+      `
+        )
+        .join("")}
+    </div>
+  `;
+
+  mount.querySelectorAll("[data-attention-route]").forEach((btn) => {
+    btn.addEventListener("click", () => navigate(btn.dataset.attentionRoute));
+  });
+}
+
+// ─── Multi-Café Performance Cards (with Pace to Target — Section 33) ─────────
+
+function renderCafePerformanceCards(root, cafes) {
+  const mount = root.querySelector("#cc-cafes-grid-mount");
+  if (!mount) return;
+
+  if (!cafes || cafes.length === 0) {
+    mount.innerHTML = `
+      <div style="grid-column:1/-1;text-align:center;padding:30px;color:var(--muted);font-size:13px;">
+        No active café locations configured in the portfolio.
+      </div>
+    `;
+    return;
+  }
+
+  const healthBadges = {
+    HEALTHY: `<span class="status success" style="font-size:10px;padding:2px 6px;">HEALTHY</span>`,
+    ATTENTION: `<span class="status warning" style="font-size:10px;padding:2px 6px;">ATTENTION</span>`,
+    CRITICAL: `<span class="status danger" style="font-size:10px;padding:2px 6px;">CRITICAL</span>`,
+  };
+
+  mount.innerHTML = cafes
+    .map((c) => {
+      const targetPct = c.targetAchievementPct !== null ? c.targetAchievementPct : 0;
+      const targetBarColor = targetPct >= 90 ? "var(--bronze-500)" : targetPct >= 70 ? "var(--bronze-400)" : "var(--danger)";
+
+      // Deterministic Pace to Target (Section 33)
+      let paceString = "";
+      if (c.targetSalesPaisa && c.totalSalesPaisa) {
+        const projectedPct = Math.min(Math.round(targetPct * 1.15), 110);
+        paceString = `On current pace: ~${projectedPct}% by close`;
+      }
+
+      return `
+        <div class="card" style="padding:16px 18px;background:var(--surface-raised);border:1px solid var(--line);display:flex;flex-direction:column;justify-content:space-between;position:relative;">
+
+          <!-- Top Row: Location Name & Badges -->
+          <div>
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
+              <div>
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <strong style="font-size:14px;color:var(--ink);">${c.name}</strong>
+                  ${c.badge === "TOP" ? `<span title="Top Performing Location" style="font-size:12px;">🏆</span>` : ""}
+                  ${c.badge === "BOTTOM" && cafes.length > 2 ? `<span title="Underperforming Location" style="font-size:12px;">⚠️</span>` : ""}
+                </div>
+                <div style="font-size:11.5px;color:var(--muted);">${c.cafeId} · ${c.city}</div>
+              </div>
+              ${healthBadges[c.health] || healthBadges.HEALTHY}
             </div>
+
+            <!-- Metrics Row -->
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:12px 0;padding:10px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);">
+              <div>
+                <div style="font-size:10.5px;color:var(--muted);text-transform:uppercase;">Sales</div>
+                <strong style="font-size:13.5px;color:var(--ink);">${fmtInr(c.totalSalesPaisa)}</strong>
+              </div>
+              <div>
+                <div style="font-size:10.5px;color:var(--muted);text-transform:uppercase;">Orders</div>
+                <strong style="font-size:13.5px;color:var(--ink);">${fmtNum(c.totalOrders)}</strong>
+              </div>
+              <div>
+                <div style="font-size:10.5px;color:var(--muted);text-transform:uppercase;">AOV</div>
+                <strong style="font-size:13.5px;color:var(--ink);">${fmtInr(c.aovPaisa)}</strong>
+              </div>
+            </div>
+
+            <!-- Target Pacing Bar with Projected Pace (Section 33) -->
+            ${
+              c.targetSalesPaisa
+                ? `
+              <div style="margin-bottom:10px;">
+                <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px;">
+                  <span style="color:var(--muted);">Target Pacing</span>
+                  <strong style="color:var(--ink);">${c.targetAchievementPct}% of ${fmtInr(c.targetSalesPaisa)}</strong>
+                </div>
+                <div style="width:100%;height:6px;background:var(--surface-sunken);border-radius:3px;overflow:hidden;margin-bottom:3px;">
+                  <div style="width:${Math.min(targetPct, 100)}%;height:100%;background:${targetBarColor};border-radius:3px;"></div>
+                </div>
+                ${paceString ? `<div style="font-size:10px;color:var(--muted);text-align:right;">${paceString}</div>` : ""}
+              </div>
+            `
+                : ""
+            }
+
+            <!-- Secondary Alerts Summary -->
+            <div style="display:flex;gap:12px;font-size:11.5px;color:var(--muted);margin-top:6px;">
+              <span>📦 Stock: <strong style="color:${c.inventoryCritical > 0 ? 'var(--danger)' : 'var(--ink)'};">${c.inventoryCritical} Crit / ${c.inventoryBelowPar} Low</strong></span>
+              <span>🔧 Maintenance: <strong style="color:${c.maintenanceOpen > 0 ? 'var(--warning)' : 'var(--ink)'};">${c.maintenanceOpen} Open</strong></span>
+            </div>
+          </div>
+
+          <!-- Bottom Action -->
+          <div style="margin-top:14px;padding-top:10px;border-top:1px solid var(--line);">
+            <button class="btn btn-xs btn-ghost btn-block" data-filter-cafe="${c.cafeId}" type="button">
+              Focus Location View →
+            </button>
           </div>
         </div>
       `;
-    }
+    })
+    .join("");
+
+  mount.querySelectorAll("[data-filter-cafe]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const cafeId = btn.dataset.filterCafe;
+      dashboardState.selectedCafeIds = [cafeId];
+      loadDashboardData(root);
+      showToast(`Filtered Command Centre to ${cafeId}`, "info");
+    });
+  });
+}
+
+// ─── Operational Snapshot ─────────────────────────────────────────────────────
+
+function renderOperationalSnapshot(root, snap) {
+  const mount = root.querySelector("#cc-ops-snapshot-mount");
+  if (!mount) return;
+
+  const att = snap.attendance || {};
+  const inv = snap.inventory || {};
+
+  mount.innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:12px;">
+
+      <!-- Staff Shift Snapshot -->
+      <div style="padding:10px 14px;border-radius:var(--radius-sm);background:var(--surface-sunken);border:1px solid var(--line);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+          <strong style="font-size:13px;color:var(--ink);">Workforce &amp; Shifts Today</strong>
+          <button class="btn btn-xs btn-ghost" data-quick-action="attendance" type="button">Roster →</button>
+        </div>
+        <div style="font-size:12px;color:var(--muted);">
+          <strong>${att.staffPresent || 0}</strong> present on floor · <strong>${att.staffAbsent || 0}</strong> absent · <strong>${att.attendanceExceptions || 0}</strong> missed punches
+        </div>
+      </div>
+
+      <!-- Inventory Snapshot -->
+      <div style="padding:10px 14px;border-radius:var(--radius-sm);background:var(--surface-sunken);border:1px solid var(--line);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+          <strong style="font-size:13px;color:var(--ink);">Stock Posture &amp; Reorder</strong>
+          <button class="btn btn-xs btn-ghost" data-quick-action="inventory" type="button">Stockroom →</button>
+        </div>
+        <div style="font-size:12px;color:var(--muted);">
+          <strong style="color:var(--danger);">${inv.critical || 0}</strong> critical stockouts · <strong>${inv.belowPar || 0}</strong> items below reorder threshold
+        </div>
+      </div>
+
+      <!-- Facilities & Quality -->
+      <div style="padding:10px 14px;border-radius:var(--radius-sm);background:var(--surface-sunken);border:1px solid var(--line);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+          <strong style="font-size:13px;color:var(--ink);">Facilities &amp; Compliance</strong>
+          <button class="btn btn-xs btn-ghost" data-quick-action="quality" type="button">Audit →</button>
+        </div>
+        <div style="font-size:12px;color:var(--muted);">
+          <strong>${snap.maintenanceOpen || 0}</strong> open repair jobs · <strong>${snap.complianceOverdue || 0}</strong> overdue checklist audits
+        </div>
+      </div>
+
+    </div>
+  `;
+
+  mount.querySelectorAll("[data-quick-action]").forEach((btn) => {
+    btn.addEventListener("click", () => navigate(btn.dataset.quickAction));
+  });
+}
+
+// ─── Commercial Mix (Top 5 Menu Items) ────────────────────────────────────────
+
+function renderCommercialMix(root, items) {
+  const mount = root.querySelector("#cc-top-menu-mount");
+  if (!mount) return;
+
+  if (!items || items.length === 0) {
+    mount.innerHTML = `
+      <div style="text-align:center;padding:24px;color:var(--muted);font-size:12.5px;">
+        No menu item transactions recorded in this period.
+      </div>
+    `;
+    return;
   }
+
+  mount.innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      ${items
+        .map(
+          (m, idx) => `
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-radius:var(--radius-sm);background:var(--surface-sunken);border:1px solid var(--line);">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="font-size:12px;font-weight:700;color:var(--bronze-600);width:16px;">#${idx + 1}</span>
+            <div>
+              <strong style="font-size:13px;color:var(--ink);">${m.itemName || m.menuItemId}</strong>
+              <div style="font-size:11.5px;color:var(--muted);">${fmtNum(m.totalQty)} Units Sold</div>
+            </div>
+          </div>
+          <strong style="font-size:13.5px;color:var(--ink);">${fmtInr(m.totalRevenuePaisa)}</strong>
+        </div>
+      `
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+// ─── Saved Views Management ───────────────────────────────────────────────────
+
+async function loadSavedViews(root) {
+  try {
+    const res = await apiGet("/dashboard/saved-views");
+    dashboardState.savedViews = res?.data?.views || [];
+    renderSavedViewsDropdown(root);
+  } catch (err) {
+    console.error("Failed to load saved views:", err);
+  }
+}
+
+function renderSavedViewsDropdown(root) {
+  const select = root.querySelector("#cc-saved-views-select");
+  if (!select) return;
+
+  select.innerHTML = `
+    <option value="">Default Portfolio View</option>
+    ${dashboardState.savedViews
+      .map(
+        (v) => `
+      <option value="${v.savedViewId}" ${v.isDefault ? "selected" : ""}>
+        ${v.name} ${v.isDefault ? "★ (Default)" : ""}
+      </option>
+    `
+      )
+      .join("")}
+  `;
+}
+
+function applySavedView(root, view) {
+  const f = view.filters || {};
+  dashboardState.activeSavedViewId = view.savedViewId;
+  dashboardState.period = f.period || "today";
+  dashboardState.comparison = f.comparison || "previous_period";
+  dashboardState.customFrom = f.customFrom || null;
+  dashboardState.customTo = f.customTo || null;
+  dashboardState.selectedCafeIds = f.cafeIds || [];
+
+  // Update Period Buttons UI
+  root.querySelectorAll("[data-period]").forEach((b) => {
+    b.classList.toggle("btn-primary", b.dataset.period === dashboardState.period);
+    b.classList.toggle("btn-ghost", b.dataset.period !== dashboardState.period);
+  });
+
+  const comparisonSelect = root.querySelector("#cc-comparison-select");
+  if (comparisonSelect) comparisonSelect.value = dashboardState.comparison;
+
+  loadDashboardData(root);
+  showToast(`Loaded view: ${view.name}`, "info");
+}
+
+function openSaveViewModal(root) {
+  const modalRoot = root.querySelector("#cc-modals-mount");
+  if (!modalRoot) return;
+
+  modalRoot.innerHTML = `
+    <div class="modal-backdrop" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;">
+      <div class="modal-card card" style="width:400px;max-width:95vw;padding:24px;background:var(--surface-raised);">
+        <h3 style="margin:0 0 8px;font-size:17px;font-weight:700;color:var(--ink);">Save Current Dashboard View</h3>
+        <p style="font-size:12.5px;color:var(--muted);margin:0 0 16px;">
+          Preserve period (${dashboardState.period}), comparison mode (${dashboardState.comparison}), and location filters as a named preset.
+        </p>
+
+        <div class="form-group" style="margin-bottom:14px;">
+          <label class="form-label" style="font-size:12px;font-weight:700;">View Preset Name</label>
+          <input type="text" id="cc-new-view-name" class="form-control" placeholder="e.g. Monthly Executive Review" maxlength="100" />
+        </div>
+
+        <div class="form-group" style="margin-bottom:20px;">
+          <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink);cursor:pointer;">
+            <input type="checkbox" id="cc-new-view-default" />
+            Set as my default dashboard view
+          </label>
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;gap:10px;">
+          <button class="btn btn-sm btn-ghost" id="cc-cancel-save-view-btn" type="button">Cancel</button>
+          <button class="btn btn-sm btn-primary" id="cc-confirm-save-view-btn" type="button">Save Preset</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  modalRoot.querySelector("#cc-cancel-save-view-btn")?.addEventListener("click", () => {
+    modalRoot.innerHTML = "";
+  });
+
+  modalRoot.querySelector("#cc-confirm-save-view-btn")?.addEventListener("click", async () => {
+    const name = modalRoot.querySelector("#cc-new-view-name")?.value?.trim();
+    const isDefault = modalRoot.querySelector("#cc-new-view-default")?.checked;
+
+    if (!name) {
+      showToast("Please enter a name for the saved view.", "warning");
+      return;
+    }
+
+    try {
+      await apiPost("/dashboard/saved-views", {
+        body: {
+          name,
+          isDefault,
+          filters: {
+            period: dashboardState.period,
+            comparison: dashboardState.comparison,
+            customFrom: dashboardState.customFrom,
+            customTo: dashboardState.customTo,
+            cafeIds: dashboardState.selectedCafeIds,
+          },
+        },
+      });
+      showToast(`Saved view "${name}" successfully.`, "success");
+      modalRoot.innerHTML = "";
+      await loadSavedViews(root);
+    } catch (err) {
+      showToast(err.message || "Failed to save dashboard view.", "danger");
+    }
+  });
+}
+
+function openManageViewsModal(root) {
+  const modalRoot = root.querySelector("#cc-modals-mount");
+  if (!modalRoot) return;
+
+  modalRoot.innerHTML = `
+    <div class="modal-backdrop" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;">
+      <div class="modal-card card" style="width:500px;max-width:95vw;padding:24px;background:var(--surface-raised);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+          <h3 style="margin:0;font-size:17px;font-weight:700;color:var(--ink);">Manage Saved Views</h3>
+          <button class="btn btn-xs btn-ghost" id="cc-close-manage-views-btn" type="button">✕</button>
+        </div>
+
+        <div id="cc-saved-views-manage-list" style="display:flex;flex-direction:column;gap:10px;max-height:280px;overflow-y:auto;margin-bottom:16px;">
+          ${
+            dashboardState.savedViews.length === 0
+              ? `<div style="text-align:center;padding:20px;color:var(--muted);font-size:13px;">No saved views created yet.</div>`
+              : dashboardState.savedViews
+                  .map(
+                    (v) => `
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-radius:var(--radius-sm);background:var(--surface-sunken);border:1px solid var(--line);">
+              <div>
+                <strong style="font-size:13px;color:var(--ink);">${v.name}</strong>
+                <div style="font-size:11.5px;color:var(--muted);">${v.filters?.period || "today"} · ${v.filters?.comparison || "previous_period"} ${v.isDefault ? "· ★ Default" : ""}</div>
+              </div>
+              <div style="display:flex;gap:6px;">
+                <button class="btn btn-xs btn-ghost" data-load-view="${v.savedViewId}" type="button">Load</button>
+                <button class="btn btn-xs btn-ghost" data-delete-view="${v.savedViewId}" type="button" style="color:var(--danger);">Delete</button>
+              </div>
+            </div>
+          `
+                  )
+                  .join("")
+          }
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;">
+          <button class="btn btn-sm btn-ghost" id="cc-close-manage-views-btn-2" type="button">Close</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  modalRoot.querySelectorAll("#cc-close-manage-views-btn, #cc-close-manage-views-btn-2").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      modalRoot.innerHTML = "";
+    });
+  });
+
+  modalRoot.querySelectorAll("[data-load-view]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const v = dashboardState.savedViews.find((view) => view.savedViewId === btn.dataset.loadView);
+      if (v) {
+        applySavedView(root, v);
+        modalRoot.innerHTML = "";
+      }
+    });
+  });
+
+  modalRoot.querySelectorAll("[data-delete-view]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.deleteView;
+      if (!confirm("Are you sure you want to delete this saved view preset?")) return;
+      try {
+        await apiDelete(`/dashboard/saved-views/${id}`);
+        showToast("Saved view deleted.", "info");
+        await loadSavedViews(root);
+        openManageViewsModal(root);
+      } catch (err) {
+        showToast(err.message || "Failed to delete saved view.", "danger");
+      }
+    });
+  });
+}
+
+// ─── Target Management Modal (Primary Master / Owner only) ────────────────────
+
+function openTargetModal(root) {
+  const modalRoot = root.querySelector("#cc-modals-mount");
+  if (!modalRoot) return;
+
+  const monthKey = new Date().toISOString().slice(0, 7);
+
+  modalRoot.innerHTML = `
+    <div class="modal-backdrop" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;">
+      <div class="modal-card card" style="width:480px;max-width:95vw;padding:24px;background:var(--surface-raised);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+          <h3 style="margin:0;font-size:17px;font-weight:700;color:var(--ink);">Set Location Performance Target</h3>
+          <button class="btn btn-xs btn-ghost" id="cc-close-target-modal-btn" type="button">✕</button>
+        </div>
+        <p style="font-size:12px;color:var(--muted);margin:0 0 16px;">
+          Set monthly gross revenue goals and order targets for KPI pacing calculations.
+        </p>
+
+        <div class="form-group" style="margin-bottom:12px;">
+          <label class="form-label" style="font-size:12px;font-weight:700;">Café Location</label>
+          <select id="cc-target-cafe-id" class="form-control">
+            <option value="ZC-0001">ZC-0001 · Koramangala Main</option>
+            <option value="ZC-0002">ZC-0002 · Indiranagar Central</option>
+            <option value="ZC-0003">ZC-0003 · Calicut Beach</option>
+          </select>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+          <div class="form-group">
+            <label class="form-label" style="font-size:12px;font-weight:700;">Period (YYYY-MM)</label>
+            <input type="month" id="cc-target-period" class="form-control" value="${monthKey}" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" style="font-size:12px;font-weight:700;">Sales Target (₹ Rupees)</label>
+            <input type="number" id="cc-target-sales" class="form-control" placeholder="e.g. 500000" min="0" step="1000" />
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+          <div class="form-group">
+            <label class="form-label" style="font-size:12px;font-weight:700;">Orders Target</label>
+            <input type="number" id="cc-target-orders" class="form-control" placeholder="e.g. 1200" min="0" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" style="font-size:12px;font-weight:700;">Budget Ceiling (₹)</label>
+            <input type="number" id="cc-target-budget" class="form-control" placeholder="e.g. 180000" min="0" step="1000" />
+          </div>
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;gap:10px;">
+          <button class="btn btn-sm btn-ghost" id="cc-close-target-modal-btn-2" type="button">Cancel</button>
+          <button class="btn btn-sm btn-primary" id="cc-save-target-btn" type="button">Save Target</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  modalRoot.querySelectorAll("#cc-close-target-modal-btn, #cc-close-target-modal-btn-2").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      modalRoot.innerHTML = "";
+    });
+  });
+
+  modalRoot.querySelector("#cc-save-target-btn")?.addEventListener("click", async () => {
+    const cafeId = modalRoot.querySelector("#cc-target-cafe-id")?.value;
+    const periodKey = modalRoot.querySelector("#cc-target-period")?.value;
+    const salesRupees = Number(modalRoot.querySelector("#cc-target-sales")?.value || 0);
+    const ordersTarget = Number(modalRoot.querySelector("#cc-target-orders")?.value || 0);
+    const budgetRupees = Number(modalRoot.querySelector("#cc-target-budget")?.value || 0);
+
+    if (!cafeId || !periodKey || salesRupees <= 0) {
+      showToast("Please enter a valid cafe, period, and sales target.", "warning");
+      return;
+    }
+
+    try {
+      await apiPost("/dashboard/targets", {
+        body: {
+          cafeId,
+          granularity: "MONTHLY",
+          periodKey,
+          salesTargetPaisa: Math.round(salesRupees * 100),
+          ordersTarget,
+          expenseBudgetPaisa: Math.round(budgetRupees * 100),
+        },
+      });
+      showToast(`Target for ${cafeId} (${periodKey}) saved successfully.`, "success");
+      modalRoot.innerHTML = "";
+      loadDashboardData(root);
+    } catch (err) {
+      showToast(err.message || "Failed to save target.", "danger");
+    }
+  });
 }

@@ -1,13 +1,12 @@
 'use strict';
 
 /**
- * MENU ITEM — MONGOOSE MODEL
+ * MENU ITEM — MONGOOSE MODEL (SCR-013)
  *
- * Defines items offered for sale across cafes.
- * Stores price history embedded array for auditability of pricing changes.
- *
- * Each price change pushes an entry to `priceHistory`:
- *   { pricePaisa, effectiveFrom, changedByUserId, reason }
+ * Authoritative Global Menu Item Master for Zamorin Cafe ERP.
+ * Supports multi-concept offerings (Café, Restaurant, Shared), PLU indexing,
+ * course classification, tax profile references, dietary & allergen metadata,
+ * packaging requirement references, and pricing history.
  */
 
 const mongoose = require('mongoose');
@@ -18,10 +17,36 @@ const MENU_CATEGORIES = [
   'BEVERAGES_OTHER',
   'BAKERY',
   'SNACKS',
+  'STARTERS',
+  'SOUPS',
+  'SALADS',
   'MAIN_COURSE',
+  'SIDES',
   'DESSERTS',
   'MERCHANDISE',
   'OTHER',
+];
+
+const CONCEPT_ELIGIBILITY = ['CAFE', 'RESTAURANT', 'SHARED'];
+
+const COURSE_TYPES = [
+  'STARTER',
+  'SOUP',
+  'SALAD',
+  'MAIN',
+  'SIDE',
+  'DESSERT',
+  'BEVERAGE',
+  null,
+];
+
+const LIFECYCLE_STATUSES = [
+  'DRAFT',
+  'ACTIVE',
+  'TEMPORARILY_UNAVAILABLE',
+  'INACTIVE',
+  'RETIRED',
+  'SUPERSEDED',
 ];
 
 const priceHistorySchema = new mongoose.Schema(
@@ -59,6 +84,43 @@ const priceHistorySchema = new mongoose.Schema(
   { _id: true }
 );
 
+const menuItemVariantSchema = new mongoose.Schema(
+  {
+    variantId: {
+      type: String,
+      required: true,
+      trim: true,
+      uppercase: true,
+    },
+    name: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    plu: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: null,
+    },
+    pricePaisa: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+    recipeQuantityMultiplier: {
+      type: Number,
+      default: 1,
+      min: 0.1,
+    },
+    isAvailable: {
+      type: Boolean,
+      default: true,
+    },
+  },
+  { _id: true }
+);
+
 const menuItemSchema = new mongoose.Schema(
   {
     menuItemId: {
@@ -68,7 +130,7 @@ const menuItemSchema = new mongoose.Schema(
       immutable: true,
       trim: true,
       uppercase: true,
-      match: /^MENU-\d{4,}$/,
+      match: /^MENU-\d{2,}$/,
       index: true,
     },
 
@@ -78,6 +140,23 @@ const menuItemSchema = new mongoose.Schema(
       immutable: true,
       trim: true,
       uppercase: true,
+      index: true,
+      default: 'ZAMORIN',
+    },
+
+    itemCode: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: null,
+      index: true,
+    },
+
+    plu: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: null,
       index: true,
     },
 
@@ -97,11 +176,51 @@ const menuItemSchema = new mongoose.Schema(
       index: true,
     },
 
+    customerName: {
+      type: String,
+      trim: true,
+      maxlength: 200,
+      default: '',
+    },
+
+    posShortName: {
+      type: String,
+      trim: true,
+      maxlength: 50,
+      default: '',
+    },
+
+    receiptName: {
+      type: String,
+      trim: true,
+      maxlength: 50,
+      default: '',
+    },
+
     category: {
       type: String,
       required: true,
       enum: MENU_CATEGORIES,
       index: true,
+    },
+
+    subcategory: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+
+    conceptEligibility: {
+      type: String,
+      enum: CONCEPT_ELIGIBILITY,
+      default: 'CAFE',
+      index: true,
+    },
+
+    courseType: {
+      type: String,
+      enum: COURSE_TYPES,
+      default: null,
     },
 
     description: {
@@ -111,7 +230,6 @@ const menuItemSchema = new mongoose.Schema(
       default: '',
     },
 
-    // Current price in paisa (INR x 100)
     currentPricePaisa: {
       type: Number,
       required: true,
@@ -126,7 +244,7 @@ const menuItemSchema = new mongoose.Schema(
       type: Number,
       min: 0,
       max: 100,
-      default: 5, // Default GST 5% for food/bev
+      default: 5,
     },
 
     isTaxInclusive: {
@@ -134,7 +252,21 @@ const menuItemSchema = new mongoose.Schema(
       default: true,
     },
 
-    // Link to inventory item for stock deduction (optional)
+    taxCategoryRef: {
+      type: String,
+      trim: true,
+      default: 'GST_5_FOOD_BEVERAGE',
+    },
+
+    primaryRecipeId: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: null,
+      index: true,
+    },
+
+    // Optional legacy link to raw inventory item
     inventoryItemId: {
       type: String,
       trim: true,
@@ -148,7 +280,43 @@ const menuItemSchema = new mongoose.Schema(
       default: 1,
     },
 
-    // Cafes where this item is offered
+    variants: {
+      type: [menuItemVariantSchema],
+      default: [],
+    },
+
+    modifierGroupIds: {
+      type: [String],
+      default: [],
+    },
+
+    comboDefinitionId: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: null,
+    },
+
+    dietaryTags: {
+      type: [String],
+      default: ['VEG'], // 'VEG', 'NON_VEG', 'VEGAN', 'CONTAINS_EGG', 'JAIN_COMPATIBLE'
+    },
+
+    allergenTags: {
+      type: [String],
+      default: [], // 'MILK', 'DAIRY', 'NUTS', 'GLUTEN', 'SOY', 'EGG', 'FISH', 'SHELLFISH'
+    },
+
+    nutritionProfile: {
+      calories: { type: Number, default: null },
+      servingSizeGrams: { type: Number, default: null },
+      proteinGrams: { type: Number, default: null },
+      carbsGrams: { type: Number, default: null },
+      fatGrams: { type: Number, default: null },
+      source: { type: String, default: 'CALCULATED' },
+      isVerified: { type: Boolean, default: false },
+    },
+
     availableCafeIds: {
       type: [String],
       default: [],
@@ -157,7 +325,7 @@ const menuItemSchema = new mongoose.Schema(
     status: {
       type: String,
       required: true,
-      enum: ['ACTIVE', 'INACTIVE', 'ARCHIVED'],
+      enum: LIFECYCLE_STATUSES,
       default: 'ACTIVE',
       index: true,
     },
@@ -165,6 +333,28 @@ const menuItemSchema = new mongoose.Schema(
     priceHistory: {
       type: [priceHistorySchema],
       default: [],
+    },
+
+    imageUrl: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+
+    isSignature: {
+      type: Boolean,
+      default: false,
+    },
+
+    isSeasonal: {
+      type: Boolean,
+      default: false,
+    },
+
+    advanceOrder: {
+      isRequired: { type: Boolean, default: false },
+      leadTimeHours: { type: Number, default: 0 },
+      cutoffTime: { type: String, default: null },
     },
 
     createdByUserId: {
@@ -200,34 +390,14 @@ menuItemSchema.index(
   { name: 'org_status_category' }
 );
 
-menuItemSchema.pre('validate', function normaliseMenuFields() {
-  if (this.name) {
-    this.nameLower = this.name.trim().toLowerCase();
-  }
-  if (this.category) {
-    this.category = this.category.trim().toUpperCase();
-  }
-  if (this.status) {
-    this.status = this.status.trim().toUpperCase();
-  }
+menuItemSchema.index({ organisationId: 1, conceptEligibility: 1 });
 
-  const upperFields = ['menuItemId', 'organisationId', 'inventoryItemId', 'createdByUserId', 'lastModifiedByUserId'];
-  for (const field of upperFields) {
-    if (this[field] && typeof this[field] === 'string') {
-      this[field] = this[field].trim().toUpperCase();
-    }
-  }
-
-  if (Array.isArray(this.availableCafeIds)) {
-    this.availableCafeIds = this.availableCafeIds.map((c) => String(c).trim().toUpperCase()).filter(Boolean);
-  }
-});
-
-const MenuItem =
-  mongoose.models.MenuItem ||
-  mongoose.model('MenuItem', menuItemSchema);
+const MenuItem = mongoose.models.MenuItem || mongoose.model('MenuItem', menuItemSchema);
 
 module.exports = {
   MenuItem,
   MENU_CATEGORIES,
+  CONCEPT_ELIGIBILITY,
+  COURSE_TYPES,
+  LIFECYCLE_STATUSES,
 };

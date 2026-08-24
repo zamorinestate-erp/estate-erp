@@ -43,93 +43,70 @@ function parsePositiveInteger(
 
 function buildNotificationFilter(request) {
   const filter = {
-    organisationId:
-      request.auth.organisationId,
-
-    recipientUserId:
-      request.auth.userId,
-
-    archivedAt: null,
+    organisationId: request.auth.organisationId,
+    recipientUserId: request.auth.userId,
   };
 
-  const priority =
-    normalizeIdentifier(
-      request.query.priority
-    );
+  const filterTab = String(request.query.filterTab || request.query.tab || '').trim().toUpperCase();
 
+  if (filterTab === 'ARCHIVED') {
+    filter.archivedAt = { $ne: null };
+  } else {
+    filter.archivedAt = null;
+  }
+
+  if (filterTab === 'UNREAD') {
+    filter.readAt = null;
+  } else if (filterTab === 'IMPORTANT') {
+    filter.priority = { $in: ['HIGH', 'CRITICAL'] };
+  } else if (filterTab === 'ACTION_REQUIRED') {
+    filter.acknowledgementRequired = true;
+    filter.acknowledgedAt = null;
+  } else if (filterTab === 'ACKNOWLEDGED') {
+    filter.acknowledgedAt = { $ne: null };
+  }
+
+  const priority = normalizeIdentifier(request.query.priority);
   if (priority) {
-    if (
-      !NOTIFICATION_PRIORITIES.includes(
-        priority
-      )
-    ) {
-      throw new ApiError(
-        400,
-        'INVALID_NOTIFICATION_PRIORITY',
-        'The requested notification priority is invalid.'
-      );
+    if (!NOTIFICATION_PRIORITIES.includes(priority)) {
+      throw new ApiError(400, 'INVALID_NOTIFICATION_PRIORITY', 'The requested notification priority is invalid.');
     }
-
     filter.priority = priority;
   }
 
-  const status =
-    normalizeIdentifier(
-      request.query.status
-    );
-
+  const status = normalizeIdentifier(request.query.status);
   if (status) {
-    if (
-      !NOTIFICATION_STATUSES.includes(
-        status
-      )
-    ) {
-      throw new ApiError(
-        400,
-        'INVALID_NOTIFICATION_STATUS',
-        'The requested notification status is invalid.'
-      );
+    if (!NOTIFICATION_STATUSES.includes(status)) {
+      throw new ApiError(400, 'INVALID_NOTIFICATION_STATUS', 'The requested notification status is invalid.');
     }
-
     filter.status = status;
   }
 
-  const category =
-    normalizeIdentifier(
-      request.query.category
-    );
-
+  const category = normalizeIdentifier(request.query.category);
   if (category) {
     filter.category = category;
   }
 
-  const cafeId =
-    normalizeIdentifier(
-      request.query.cafeId
-    );
-
+  const cafeId = normalizeIdentifier(request.query.cafeId);
   if (cafeId) {
-    if (
-      request.auth.role !== 'MASTER' &&
-      !request.auth.assignedCafeIds.includes(
-        cafeId
-      )
-    ) {
-      throw new ApiError(
-        403,
-        'CAFE_ACCESS_DENIED',
-        'You do not have access to this café.'
-      );
+    if (request.auth.role !== 'MASTER' && (!request.auth.assignedCafeIds || !request.auth.assignedCafeIds.includes(cafeId))) {
+      throw new ApiError(403, 'CAFE_ACCESS_DENIED', 'You do not have access to this café.');
     }
-
     filter.cafeId = cafeId;
   }
 
-  if (
-    request.query.unreadOnly ===
-    'true'
-  ) {
+  if (request.query.unreadOnly === 'true') {
     filter.readAt = null;
+  }
+
+  const search = String(request.query.search || request.query.q || '').trim();
+  if (search) {
+    const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    filter.$or = [
+      { title: { $regex: escaped, $options: 'i' } },
+      { message: { $regex: escaped, $options: 'i' } },
+      { category: { $regex: escaped, $options: 'i' } },
+    ];
   }
 
   return filter;
@@ -199,6 +176,7 @@ const listNotifications = asyncHandler(
       notifications,
       total,
       unreadCount,
+      actionRequiredCount,
     ] = await Promise.all([
       Notification.find(filter)
         .sort({
@@ -208,18 +186,20 @@ const listNotifications = asyncHandler(
         .skip(skip)
         .limit(limit),
 
-      Notification.countDocuments(
-        filter
-      ),
+      Notification.countDocuments(filter),
 
       Notification.countDocuments({
-        organisationId:
-          request.auth.organisationId,
-
-        recipientUserId:
-          request.auth.userId,
-
+        organisationId: request.auth.organisationId,
+        recipientUserId: request.auth.userId,
         readAt: null,
+        archivedAt: null,
+      }),
+
+      Notification.countDocuments({
+        organisationId: request.auth.organisationId,
+        recipientUserId: request.auth.userId,
+        acknowledgementRequired: true,
+        acknowledgedAt: null,
         archivedAt: null,
       }),
     ]);
@@ -229,21 +209,18 @@ const listNotifications = asyncHandler(
 
       data: {
         notifications,
-
         unreadCount,
+        actionRequiredCount,
 
         pagination: {
           page,
           limit,
           total,
-
-          totalPages:
-            Math.ceil(total / limit),
+          totalPages: Math.ceil(total / limit),
         },
       },
 
-      correlationId:
-        request.correlationId || null,
+      correlationId: request.correlationId || null,
     });
   }
 );

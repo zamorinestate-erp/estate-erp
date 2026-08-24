@@ -1,18 +1,30 @@
 'use strict';
 
 /**
- * ASSET & MAINTENANCE CONTROLLER
+ * ASSET & EQUIPMENT MAINTENANCE CONTROLLER (SCREEN 003)
  */
 
 const {
   Asset,
   ASSET_CATEGORIES,
-  ASSET_STATUSES,
+  ASSET_CONDITIONS,
+  ASSET_OPERATIONAL_STATUSES,
+  ASSET_CRITICALITIES,
 } = require('../models/Asset');
 
 const {
+  WorkOrder,
+  WORK_ORDER_TYPES,
+  WORK_ORDER_STATUSES,
+  WORK_ORDER_PRIORITIES,
+} = require('../models/WorkOrder');
+
+const {
+  MaintenancePlan,
+} = require('../models/MaintenancePlan');
+
+const {
   MaintenanceJob,
-  MAINTENANCE_STATUSES,
 } = require('../models/MaintenanceJob');
 
 const {
@@ -31,6 +43,8 @@ const {
   recordRequestAudit,
 } = require('../services/auditService');
 
+const { resolveEffectiveCafeScope, assertResourceCafeOwnership } = require('../utils/cafeScope');
+
 function normalizeId(value) {
   return typeof value === 'string'
     ? value.trim().toUpperCase()
@@ -44,8 +58,10 @@ function parsePositiveInteger(value, fallback, maximum) {
 }
 
 function assertCafeAccess(request, cafeId) {
+  if (!cafeId) return;
   if (request.auth.role === 'MASTER' || request.auth.role === 'OWNER') return;
-  if (!request.auth.assignedCafeIds.includes(cafeId)) {
+  const effectiveCafe = resolveEffectiveCafeScope(request);
+  if (effectiveCafe && effectiveCafe !== cafeId.trim().toUpperCase()) {
     throw new ApiError(
       403,
       'CAFE_ACCESS_DENIED',
@@ -54,13 +70,114 @@ function assertCafeAccess(request, cafeId) {
   }
 }
 
+// 1. GET /api/v1/assets/overview
+const getAssetOverview = asyncHandler(async (request, response) => {
+  const { organisationId } = request.auth;
+  const effectiveCafe = resolveEffectiveCafeScope(request);
+  const filter = { organisationId };
+
+  if (effectiveCafe) {
+    filter.cafeId = effectiveCafe;
+  } else if (request.query.cafeId && request.query.cafeId !== 'ALL') {
+    const normCafeId = normalizeId(request.query.cafeId);
+    assertCafeAccess(request, normCafeId);
+    filter.cafeId = normCafeId;
+  }
+
+  const allAssets = await Asset.find(filter).lean();
+  const todayStr = new Date().toISOString().split('T')[0];
+  const next30Days = new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0];
+
+  const totalAssets = allAssets.length;
+  let inService = 0;
+  let underMaintenance = 0;
+  let outOfService = 0;
+  let dueSoon = 0;
+  let overdue = 0;
+  let criticalIssues = 0;
+  let warrantyExpiring = 0;
+  let calibrationOverdue = 0;
+
+  const needsAttention = [];
+
+  for (const asset of allAssets) {
+    const opStatus = asset.operationalStatus || asset.status;
+    if (opStatus === 'IN_SERVICE' || opStatus === 'OPERATIONAL') inService++;
+    else if (opStatus === 'UNDER_MAINTENANCE') underMaintenance++;
+    else if (opStatus === 'OUT_OF_SERVICE' || opStatus === 'DISCARDED') outOfService++;
+
+    if (asset.nextMaintenanceDue) {
+      if (asset.nextMaintenanceDue < todayStr && opStatus !== 'RETIRED') {
+        overdue++;
+        needsAttention.push({
+          type: 'OVERDUE_MAINTENANCE',
+          severity: asset.criticality === 'CRITICAL' ? 'CRITICAL' : 'HIGH',
+          assetId: asset.assetId,
+          name: asset.name,
+          cafeId: asset.cafeId,
+          due: asset.nextMaintenanceDue,
+          message: `Preventive maintenance overdue since ${asset.nextMaintenanceDue}`,
+        });
+      } else if (asset.nextMaintenanceDue <= next30Days) {
+        dueSoon++;
+      }
+    }
+
+    if (asset.safetyHold?.isSafetyHoldActive) {
+      criticalIssues++;
+      needsAttention.push({
+        type: 'SAFETY_HOLD',
+        severity: 'CRITICAL',
+        assetId: asset.assetId,
+        name: asset.name,
+        cafeId: asset.cafeId,
+        message: `Safety Hold: ${asset.safetyHold.holdReason || 'Equipment out of service'}`,
+      });
+    }
+
+    if (asset.warrantyExpiryDate && asset.warrantyExpiryDate >= todayStr && asset.warrantyExpiryDate <= next30Days) {
+      warrantyExpiring++;
+    }
+
+    if (asset.calibrationRequired && asset.nextCalibrationDue && asset.nextCalibrationDue < todayStr) {
+      calibrationOverdue++;
+    }
+  }
+
+  const openWorkOrders = await WorkOrder.find({
+    organisationId,
+    status: { $in: ['OPEN', 'TRIAGED', 'PLANNED', 'SCHEDULED', 'IN_PROGRESS', 'WAITING_PARTS'] },
+  }).lean();
+
+  return response.status(200).json({
+    success: true,
+    data: {
+      kpis: {
+        totalAssets,
+        inService,
+        underMaintenance,
+        outOfService,
+        dueSoon,
+        overdue,
+        criticalIssues,
+        warrantyExpiring,
+        calibrationOverdue,
+        activeWorkOrders: openWorkOrders.length,
+      },
+      needsAttention: needsAttention.slice(0, 10),
+    },
+    correlationId: request.correlationId || null,
+  });
+});
+
+// 2. GET /api/v1/assets
 const listAssets = asyncHandler(async (request, response) => {
   const page = parsePositiveInteger(request.query.page, 1, 1000);
   const limit = parsePositiveInteger(request.query.limit, 25, 100);
   const skip = (page - 1) * limit;
 
   const filter = { organisationId: request.auth.organisationId };
-  const { cafeId, status, category } = request.query;
+  const { cafeId, status, operationalStatus, category, condition, criticality, search } = request.query;
 
   if (cafeId) {
     const normCafeId = normalizeId(cafeId);
@@ -70,13 +187,28 @@ const listAssets = asyncHandler(async (request, response) => {
     filter.cafeId = { $in: request.auth.assignedCafeIds };
   }
 
-  if (status && ASSET_STATUSES.includes(status.toUpperCase())) filter.status = status.toUpperCase();
-  if (category && ASSET_CATEGORIES.includes(category.toUpperCase())) filter.category = category.toUpperCase();
+  if (operationalStatus) filter.operationalStatus = operationalStatus.toUpperCase();
+  else if (status && ASSET_OPERATIONAL_STATUSES.includes(status.toUpperCase())) filter.operationalStatus = status.toUpperCase();
+
+  if (category) filter.category = category.toUpperCase();
+  if (condition) filter.condition = condition.toUpperCase();
+  if (criticality) filter.criticality = criticality.toUpperCase();
+
+  if (search) {
+    const regex = new RegExp(search.trim(), 'i');
+    filter.$or = [
+      { name: regex },
+      { assetId: regex },
+      { serialNumber: regex },
+      { manufacturer: regex },
+      { model: regex },
+    ];
+  }
 
   const [assets, total] = await Promise.all([
     Asset.find(filter)
       .select('-__v -version')
-      .sort({ name: 1 })
+      .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
       .lean(),
@@ -93,113 +225,581 @@ const listAssets = asyncHandler(async (request, response) => {
   });
 });
 
+// 3. POST /api/v1/assets
 const createAsset = asyncHandler(async (request, response) => {
-  const { cafeId: rawCafeId, name, category, serialNumber, purchaseDate, warrantyExpiryDate, notes } = request.body;
+  const {
+    cafeId: rawCafeId,
+    name,
+    category = 'BREWING_EQUIPMENT',
+    manufacturer = '',
+    model = '',
+    serialNumber = '',
+    placementArea = 'Main Counter',
+    condition = 'GOOD',
+    criticality = 'MEDIUM',
+    operationalStatus = 'IN_SERVICE',
+    acquisitionType = 'PURCHASED',
+    purchaseDate = null,
+    purchaseVendorId = '',
+    invoiceReference = '',
+    installationDate = null,
+    commissioningDate = null,
+    acquisitionCostPaisa = 0,
+    warrantyProvider = '',
+    warrantyStartDate = null,
+    warrantyExpiryDate = null,
+    serviceProviderId = '',
+    serviceFrequency = 'Quarterly',
+    maintenanceStrategy = 'PREVENTIVE_TIME_BASED',
+    nextMaintenanceDue = null,
+    calibrationRequired = false,
+    calibrationFrequency = 'Annually',
+    notes = '',
+  } = request.body || {};
 
   const cafeId = normalizeId(rawCafeId);
   if (!cafeId) throw new ApiError(400, 'CAFE_ID_REQUIRED', 'cafeId is required.');
   assertCafeAccess(request, cafeId);
 
-  const nameText = typeof name === 'string' ? name.trim() : '';
-  if (!nameText) throw new ApiError(400, 'NAME_REQUIRED', 'Asset name is required.');
+  if (!name || typeof name !== 'string' || !name.trim()) {
+    throw new ApiError(400, 'ASSET_NAME_REQUIRED', 'Asset name is required.');
+  }
 
-  const seqId = await SequenceCounter.generateId({
+  // Duplicate serial check within organisation
+  if (serialNumber && serialNumber.trim()) {
+    const existingSerial = await Asset.findOne({
+      organisationId: request.auth.organisationId,
+      serialNumber: serialNumber.trim(),
+    }).lean();
+
+    if (existingSerial) {
+      throw new ApiError(409, 'DUPLICATE_SERIAL_NUMBER', `Asset with serial number ${serialNumber} already exists (${existingSerial.assetId}).`);
+    }
+  }
+
+  const assetId = await SequenceCounter.generateId({
     organisationId: request.auth.organisationId,
     sequenceKey: 'ASSET',
     prefix: 'AST',
-    minimumDigits: 4,
+    minimumDigits: 3,
   });
 
-  const asset = new Asset({
-    assetId: seqId,
+  const asset = await Asset.create({
+    assetId,
     organisationId: request.auth.organisationId,
     cafeId,
-    name: nameText,
-    category: category ? normalizeId(category) : 'KITCHEN_EQUIPMENT',
-    serialNumber: typeof serialNumber === 'string' ? serialNumber.trim() : '',
-    purchaseDate: purchaseDate && /^\d{4}-\d{2}-\d{2}$/.test(purchaseDate) ? purchaseDate : null,
-    warrantyExpiryDate: warrantyExpiryDate && /^\d{4}-\d{2}-\d{2}$/.test(warrantyExpiryDate) ? warrantyExpiryDate : null,
-    notes: typeof notes === 'string' ? notes.trim() : '',
+    name: name.trim(),
+    category: category.toUpperCase(),
+    manufacturer: manufacturer.trim(),
+    model: model.trim(),
+    serialNumber: serialNumber.trim(),
+    placementArea: placementArea.trim(),
+    condition: condition.toUpperCase(),
+    operationalStatus: operationalStatus.toUpperCase(),
+    status: operationalStatus.toUpperCase() === 'IN_SERVICE' ? 'OPERATIONAL' : operationalStatus.toUpperCase(),
+    criticality: criticality.toUpperCase(),
+    acquisitionType: acquisitionType.toUpperCase(),
+    purchaseDate,
+    purchaseVendorId,
+    invoiceReference,
+    installationDate,
+    commissioningDate,
+    acquisitionCostPaisa: Math.max(0, Number(acquisitionCostPaisa) || 0),
+    warrantyProvider,
+    warrantyStartDate,
+    warrantyExpiryDate,
+    serviceProviderId,
+    serviceFrequency,
+    maintenanceStrategy,
+    nextMaintenanceDue,
+    calibrationRequired: Boolean(calibrationRequired),
+    calibrationFrequency,
+    calibrationStatus: calibrationRequired ? 'CURRENT' : 'NOT_REQUIRED',
+    notes: notes.trim(),
     createdByUserId: request.auth.userId,
+    locationHistory: [
+      {
+        toCafeId: cafeId,
+        transferredAt: new Date(),
+        transferredByUserId: request.auth.userId,
+        reason: 'Initial Registration & Deployment',
+        conditionAtTransfer: condition.toUpperCase(),
+      },
+    ],
   });
-
-  await asset.save();
 
   await recordRequestAudit({
     request,
     module: 'ASSETS',
-    action: 'CREATE_ASSET',
-    entityType: 'ASSET',
-    entityId: seqId,
-    after: { assetId: seqId, cafeId, name: nameText },
-    result: 'SUCCESS',
-    riskClassification: 'LOW',
+    action: 'ASSET_REGISTERED',
+    entityType: 'Asset',
+    entityId: asset.assetId,
+    metadata: { name: asset.name, cafeId: asset.cafeId, category: asset.category },
   });
 
   return response.status(201).json({
     success: true,
-    data: { asset: asset.toObject() },
+    message: 'Asset registered successfully.',
+    data: { asset },
     correlationId: request.correlationId || null,
   });
 });
 
-const logMaintenanceJob = asyncHandler(async (request, response) => {
-  const assetId = normalizeId(request.params.assetId);
-  const { issueDescription } = request.body;
-
-  const issueText = typeof issueDescription === 'string' ? issueDescription.trim() : '';
-  if (!issueText) throw new ApiError(400, 'ISSUE_REQUIRED', 'issueDescription is required.');
-
+// 4. GET /api/v1/assets/:assetId
+const getAssetDetail = asyncHandler(async (request, response) => {
+  const normAssetId = normalizeId(request.params.assetId);
   const asset = await Asset.findOne({
-    assetId,
+    assetId: normAssetId,
     organisationId: request.auth.organisationId,
-  });
+  }).lean();
 
-  if (!asset) throw new ApiError(404, 'NOT_FOUND', 'Asset not found.');
+  if (!asset) {
+    throw new ApiError(404, 'ASSET_NOT_FOUND', 'Asset not found.');
+  }
+
   assertCafeAccess(request, asset.cafeId);
 
-  const seqId = await SequenceCounter.generateId({
+  const workOrders = await WorkOrder.find({
+    assetId: normAssetId,
     organisationId: request.auth.organisationId,
-    sequenceKey: 'MAINTENANCE_JOB',
-    prefix: 'MNT',
-    minimumDigits: 4,
+  }).sort({ createdAt: -1 }).lean();
+
+  return response.status(200).json({
+    success: true,
+    data: {
+      asset,
+      workOrders,
+    },
+    correlationId: request.correlationId || null,
+  });
+});
+
+// 5. POST /api/v1/assets/:assetId/commission
+const commissionAsset = asyncHandler(async (request, response) => {
+  const normAssetId = normalizeId(request.params.assetId);
+  const asset = await Asset.findOne({
+    assetId: normAssetId,
+    organisationId: request.auth.organisationId,
   });
 
-  const job = new MaintenanceJob({
-    jobId: seqId,
-    organisationId: request.auth.organisationId,
-    cafeId: asset.cafeId,
-    assetId,
-    issueDescription: issueText,
-    status: 'LOGGED',
-    loggedByUserId: request.auth.userId,
-  });
+  if (!asset) throw new ApiError(404, 'ASSET_NOT_FOUND', 'Asset not found.');
+  assertCafeAccess(request, asset.cafeId);
 
-  await job.save();
+  asset.operationalStatus = 'IN_SERVICE';
+  asset.status = 'OPERATIONAL';
+  asset.commissioningDate = new Date().toISOString().split('T')[0];
+  asset.commissioningChecklist = {
+    isInstallationComplete: true,
+    isPowerUtilitiesChecked: true,
+    isInitialInspectionPassed: true,
+    isTestRunPassed: true,
+    commissionedByUserId: request.auth.userId,
+    commissionedAt: new Date(),
+  };
 
-  asset.status = 'UNDER_MAINTENANCE';
   await asset.save();
 
   await recordRequestAudit({
     request,
     module: 'ASSETS',
-    action: 'LOG_MAINTENANCE_JOB',
-    entityType: 'MAINTENANCE_JOB',
-    entityId: seqId,
-    after: { jobId: seqId, assetId },
-    result: 'SUCCESS',
-    riskClassification: 'LOW',
+    action: 'ASSET_COMMISSIONED',
+    entityType: 'Asset',
+    entityId: asset.assetId,
+    metadata: { operationalStatus: asset.operationalStatus },
+  });
+
+  return response.status(200).json({
+    success: true,
+    message: 'Asset commissioned and placed in service.',
+    data: { asset },
+    correlationId: request.correlationId || null,
+  });
+});
+
+// 6. POST /api/v1/assets/:assetId/transfer
+const transferAsset = asyncHandler(async (request, response) => {
+  const normAssetId = normalizeId(request.params.assetId);
+  const { toCafeId: rawToCafeId, reason = '', conditionAtTransfer = 'GOOD' } = request.body || {};
+
+  const toCafeId = normalizeId(rawToCafeId);
+  if (!toCafeId) throw new ApiError(400, 'DESTINATION_CAFE_REQUIRED', 'Destination cafeId is required.');
+
+  const asset = await Asset.findOne({
+    assetId: normAssetId,
+    organisationId: request.auth.organisationId,
+  });
+
+  if (!asset) throw new ApiError(404, 'ASSET_NOT_FOUND', 'Asset not found.');
+
+  const fromCafeId = asset.cafeId;
+  asset.cafeId = toCafeId;
+  asset.condition = conditionAtTransfer.toUpperCase();
+  asset.locationHistory.push({
+    fromCafeId,
+    toCafeId,
+    transferredAt: new Date(),
+    transferredByUserId: request.auth.userId,
+    reason: reason.trim() || 'Inter-Café Operational Transfer',
+    conditionAtTransfer: conditionAtTransfer.toUpperCase(),
+  });
+
+  await asset.save();
+
+  await recordRequestAudit({
+    request,
+    module: 'ASSETS',
+    action: 'ASSET_TRANSFERRED',
+    entityType: 'Asset',
+    entityId: asset.assetId,
+    metadata: { fromCafeId, toCafeId, reason },
+  });
+
+  return response.status(200).json({
+    success: true,
+    message: `Asset successfully transferred from ${fromCafeId} to ${toCafeId}.`,
+    data: { asset },
+    correlationId: request.correlationId || null,
+  });
+});
+
+// 7. POST /api/v1/assets/:assetId/safety-hold
+const toggleSafetyHold = asyncHandler(async (request, response) => {
+  const normAssetId = normalizeId(request.params.assetId);
+  const { isHoldActive, reason = '' } = request.body || {};
+
+  const asset = await Asset.findOne({
+    assetId: normAssetId,
+    organisationId: request.auth.organisationId,
+  });
+
+  if (!asset) throw new ApiError(404, 'ASSET_NOT_FOUND', 'Asset not found.');
+
+  if (isHoldActive) {
+    asset.operationalStatus = 'OUT_OF_SERVICE';
+    asset.safetyHold = {
+      isSafetyHoldActive: true,
+      holdReason: reason.trim() || 'Safety hazard detected — Out of service',
+      holdReportedByUserId: request.auth.userId,
+      holdReportedAt: new Date(),
+    };
+  } else {
+    asset.operationalStatus = 'IN_SERVICE';
+    asset.safetyHold = {
+      isSafetyHoldActive: false,
+      holdReason: '',
+      holdReportedByUserId: null,
+      holdReportedAt: null,
+    };
+  }
+
+  await asset.save();
+
+  await recordRequestAudit({
+    request,
+    module: 'ASSETS',
+    action: isHoldActive ? 'ASSET_SAFETY_HOLD_APPLIED' : 'ASSET_SAFETY_HOLD_RELEASED',
+    entityType: 'Asset',
+    entityId: asset.assetId,
+    metadata: { isHoldActive, reason },
+  });
+
+  return response.status(200).json({
+    success: true,
+    message: isHoldActive ? 'Safety Hold applied: Asset marked Out of Service.' : 'Safety Hold released: Asset returned to service.',
+    data: { asset },
+    correlationId: request.correlationId || null,
+  });
+});
+
+// 8. POST /api/v1/assets/:assetId/retire (Primary Master authorized for final capital retirement)
+const retireAsset = asyncHandler(async (request, response) => {
+  const normAssetId = normalizeId(request.params.assetId);
+  const { reason = 'End of Life', disposalMethod = 'Scrapped', notes = '' } = request.body || {};
+
+  const asset = await Asset.findOne({
+    assetId: normAssetId,
+    organisationId: request.auth.organisationId,
+  });
+
+  if (!asset) throw new ApiError(404, 'ASSET_NOT_FOUND', 'Asset not found.');
+
+  const isPrimary = request.auth.isPrimaryMaster === true;
+
+  if (!isPrimary && request.auth.role !== 'MASTER') {
+    throw new ApiError(403, 'PRIMARY_MASTER_AUTHORITY_REQUIRED', 'Only Primary Master holds authority for capital asset retirement and write-off.');
+  }
+
+  asset.operationalStatus = 'RETIRED';
+  asset.status = 'DISCARDED';
+  asset.retirementRecord = {
+    retiredAt: new Date(),
+    retiredByUserId: request.auth.userId,
+    reason,
+    disposalMethod,
+    notes,
+    isPrimaryAuthorized: isPrimary,
+  };
+
+  await asset.save();
+
+  await recordRequestAudit({
+    request,
+    module: 'ASSETS',
+    action: 'ASSET_RETIRED',
+    entityType: 'Asset',
+    entityId: asset.assetId,
+    metadata: { reason, disposalMethod, isPrimaryAuthorized: isPrimary },
+  });
+
+  return response.status(200).json({
+    success: true,
+    message: 'Asset successfully retired and removed from active service.',
+    data: { asset },
+    correlationId: request.correlationId || null,
+  });
+});
+
+// 9. Work Orders Endpoints
+const listWorkOrders = asyncHandler(async (request, response) => {
+  const filter = { organisationId: request.auth.organisationId };
+  if (request.query.cafeId) {
+    const normCafe = normalizeId(request.query.cafeId);
+    assertCafeAccess(request, normCafe);
+    filter.cafeId = normCafe;
+  }
+  if (request.query.status) filter.status = request.query.status.toUpperCase();
+  if (request.query.assetId) filter.assetId = normalizeId(request.query.assetId);
+
+  const workOrders = await WorkOrder.find(filter)
+    .sort({ createdAt: -1 })
+    .lean();
+
+  return response.status(200).json({
+    success: true,
+    data: { workOrders },
+    correlationId: request.correlationId || null,
+  });
+});
+
+const createWorkOrder = asyncHandler(async (request, response) => {
+  const {
+    assetId: rawAssetId,
+    title,
+    workType = 'CORRECTIVE_REPAIR',
+    priority = 'NORMAL',
+    description,
+    assignedExecutionType = 'UNASSIGNED',
+    assignedUserId = null,
+    vendorId = null,
+    technicianName = '',
+    plannedStartDate = null,
+    dueDate = null,
+  } = request.body || {};
+
+  const assetId = normalizeId(rawAssetId);
+  const asset = await Asset.findOne({
+    assetId,
+    organisationId: request.auth.organisationId,
+  }).lean();
+
+  if (!asset) throw new ApiError(404, 'ASSET_NOT_FOUND', 'Asset not found.');
+  assertCafeAccess(request, asset.cafeId);
+
+  if (!title || !title.trim()) throw new ApiError(400, 'TITLE_REQUIRED', 'Work order title is required.');
+  if (!description || !description.trim()) throw new ApiError(400, 'DESCRIPTION_REQUIRED', 'Work order description is required.');
+
+  const workOrderId = await SequenceCounter.generateId({
+    organisationId: request.auth.organisationId,
+    sequenceKey: 'WORK_ORDER',
+    prefix: 'WO',
+    minimumDigits: 4,
+  });
+
+  const workOrder = await WorkOrder.create({
+    workOrderId,
+    organisationId: request.auth.organisationId,
+    cafeId: asset.cafeId,
+    assetId,
+    title: title.trim(),
+    workType: workType.toUpperCase(),
+    priority: priority.toUpperCase(),
+    description: description.trim(),
+    status: 'OPEN',
+    reportedByUserId: request.auth.userId,
+    assignedExecutionType,
+    assignedUserId,
+    vendorId,
+    technicianName,
+    plannedStartDate,
+    dueDate,
+  });
+
+  await recordRequestAudit({
+    request,
+    module: 'ASSETS',
+    action: 'WORK_ORDER_CREATED',
+    entityType: 'WorkOrder',
+    entityId: workOrder.workOrderId,
+    metadata: { assetId, title: workOrder.title, priority: workOrder.priority },
   });
 
   return response.status(201).json({
     success: true,
-    data: { job: job.toObject(), asset: asset.toObject() },
+    message: 'Work order created successfully.',
+    data: { workOrder },
+    correlationId: request.correlationId || null,
+  });
+});
+
+const updateWorkOrder = asyncHandler(async (request, response) => {
+  const normWoId = normalizeId(request.params.workOrderId);
+  const workOrder = await WorkOrder.findOne({
+    workOrderId: normWoId,
+    organisationId: request.auth.organisationId,
+  });
+
+  if (!workOrder) throw new ApiError(404, 'WORK_ORDER_NOT_FOUND', 'Work order not found.');
+
+  const {
+    status,
+    blocker,
+    blockerNotes,
+    downtimeMinutes,
+    costPaisa,
+    completionNotes,
+    failureAnalysis,
+    parts,
+  } = request.body || {};
+
+  if (status) workOrder.status = status.toUpperCase();
+  if (blocker) workOrder.blocker = blocker.toUpperCase();
+  if (blockerNotes !== undefined) workOrder.blockerNotes = blockerNotes;
+  if (downtimeMinutes !== undefined) workOrder.downtimeMinutes = Number(downtimeMinutes) || 0;
+  if (costPaisa !== undefined) workOrder.costPaisa = Number(costPaisa) || 0;
+  if (completionNotes !== undefined) workOrder.completionNotes = completionNotes;
+  if (failureAnalysis) workOrder.failureAnalysis = { ...workOrder.failureAnalysis, ...failureAnalysis };
+  if (parts) workOrder.parts = parts;
+
+  if (status === 'COMPLETED' && !workOrder.actualCompletionDate) {
+    workOrder.actualCompletionDate = new Date();
+  }
+
+  await workOrder.save();
+
+  return response.status(200).json({
+    success: true,
+    message: 'Work order updated successfully.',
+    data: { workOrder },
+    correlationId: request.correlationId || null,
+  });
+});
+
+// 10. Maintenance Plans Endpoints
+const listMaintenancePlans = asyncHandler(async (request, response) => {
+  const plans = await MaintenancePlan.find({
+    organisationId: request.auth.organisationId,
+  }).sort({ nextDueDate: 1 }).lean();
+
+  return response.status(200).json({
+    success: true,
+    data: { plans },
+    correlationId: request.correlationId || null,
+  });
+});
+
+const createMaintenancePlan = asyncHandler(async (request, response) => {
+  const { name, assetId, category, frequencyType = 'QUARTERLY', intervalDays = 90, startDate, jobPlan } = request.body || {};
+
+  if (!name || !name.trim()) throw new ApiError(400, 'PLAN_NAME_REQUIRED', 'Plan name is required.');
+
+  const planId = await SequenceCounter.generateId({
+    organisationId: request.auth.organisationId,
+    sequenceKey: 'MAINTENANCE_PLAN',
+    prefix: 'PLN',
+    minimumDigits: 4,
+  });
+
+  const plan = await MaintenancePlan.create({
+    planId,
+    organisationId: request.auth.organisationId,
+    name: name.trim(),
+    assetId: assetId ? normalizeId(assetId) : null,
+    category: category ? category.toUpperCase() : null,
+    frequencyType,
+    intervalDays: Number(intervalDays) || 90,
+    startDate: startDate || new Date().toISOString().split('T')[0],
+    nextDueDate: startDate || new Date().toISOString().split('T')[0],
+    jobPlan: jobPlan || { title: 'Standard Preventive Maintenance SOP', tasks: [] },
+    createdByUserId: request.auth.userId,
+  });
+
+  return response.status(201).json({
+    success: true,
+    message: 'Maintenance plan created successfully.',
+    data: { plan },
+    correlationId: request.correlationId || null,
+  });
+});
+
+// Backward compatibility: Log maintenance job
+const logMaintenanceJob = asyncHandler(async (request, response) => {
+  const normAssetId = normalizeId(request.params.assetId);
+  const asset = await Asset.findOne({
+    assetId: normAssetId,
+    organisationId: request.auth.organisationId,
+  });
+
+  if (!asset) throw new ApiError(404, 'ASSET_NOT_FOUND', 'Asset not found.');
+  assertCafeAccess(request, asset.cafeId);
+
+  const { issueDescription, costPaisa = 0, technicianName = '', resolutionNotes = '', nextMaintenanceDue } = request.body || {};
+
+  const jobId = await SequenceCounter.generateId({
+    organisationId: request.auth.organisationId,
+    sequenceKey: 'MAINTENANCE',
+    prefix: 'MNT',
+    minimumDigits: 4,
+  });
+
+  const job = await MaintenanceJob.create({
+    jobId,
+    organisationId: request.auth.organisationId,
+    cafeId: asset.cafeId,
+    assetId: normAssetId,
+    issueDescription: issueDescription || 'General Service Logged',
+    costPaisa: Number(costPaisa) || 0,
+    technicianName,
+    resolutionNotes,
+    loggedByUserId: request.auth.userId,
+    status: 'COMPLETED',
+    completedAt: new Date(),
+  });
+
+  asset.lastServiceDate = new Date().toISOString().split('T')[0];
+  if (nextMaintenanceDue) asset.nextMaintenanceDue = nextMaintenanceDue;
+  await asset.save();
+
+  return response.status(201).json({
+    success: true,
+    message: 'Maintenance job logged successfully.',
+    data: { job, asset },
     correlationId: request.correlationId || null,
   });
 });
 
 module.exports = {
+  getAssetOverview,
   listAssets,
   createAsset,
+  getAssetDetail,
+  commissionAsset,
+  transferAsset,
+  toggleSafetyHold,
+  retireAsset,
+  listWorkOrders,
+  createWorkOrder,
+  updateWorkOrder,
+  listMaintenancePlans,
+  createMaintenancePlan,
   logMaintenanceJob,
 };

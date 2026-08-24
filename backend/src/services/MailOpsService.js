@@ -12,10 +12,12 @@
  * 6. Attachment security gateway (blocking dangerous files, SHA-256 hash registry, duplicate invoice detection)
  * 7. SupportCase creation and thread association
  * 8. Mail quota budget management and provider migration warnings
+ * 9. Outbound idempotency, duplicate prevention, and unknown send reconciliation
  */
 
 const crypto = require('crypto');
 const { InboundEmailMessage } = require('../models/InboundEmailMessage');
+const { MailThread } = require('../models/MailThread');
 const { AttachmentRegistry, DANGEROUS_EXTENSIONS } = require('../models/AttachmentRegistry');
 const { SupportCase } = require('../models/SupportCase');
 const { Vendor } = require('../models/Vendor');
@@ -46,12 +48,24 @@ class MailOpsService {
       if (lower.includes(phrase)) {
         return {
           isBec: true,
-          reason: `Detected suspicious payment modification phrase: "${phrase}"`,
+          reason: `FINANCIAL DETAIL CHANGE — VERIFY OUTSIDE EMAIL: Detected suspicious payment modification phrase: "${phrase}"`,
         };
       }
     }
 
     return { isBec: false, reason: null };
+  }
+
+  /**
+   * Sanitizes untrusted HTML before storing or rendering in DOM (OWASP XSS Prevention).
+   */
+  static sanitizeHtml(html) {
+    if (!html || typeof html !== 'string') return '';
+    return html
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+      .replace(/on\w+="[^"]*"/gi, '')
+      .replace(/on\w+='[^']*'/gi, '')
+      .replace(/javascript:[^"']*/gi, '#');
   }
 
   /**
@@ -101,132 +115,45 @@ class MailOpsService {
     if (matchedVendor) {
       return 'VENDOR';
     }
-    if (s.includes('[system]') || full.includes('backup failure') || full.includes('database sync')) {
-      return 'SYSTEM';
-    }
-
-    return 'NEEDS_REVIEW';
+    return 'UNKNOWN';
   }
 
   /**
-   * Processes inbound email attachments through the security gateway.
-   */
-  static async processAttachments({ inboundId, gmailMessageId, gmailThreadId, attachments = [], vendorId = null }) {
-    const results = [];
-
-    for (const att of attachments) {
-      const filename = String(att.filename || 'unknown.file').trim();
-      const sanitized = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const parts = sanitized.split('.');
-      const ext = parts.length > 1 ? parts[parts.length - 1].toLowerCase() : '';
-
-      const contentBuffer = Buffer.isBuffer(att.content) ? att.content : Buffer.from(att.content || '', 'utf8');
-      const sizeBytes = contentBuffer.length;
-      const sha256 = crypto.createHash('sha256').update(contentBuffer).digest('hex').toUpperCase();
-
-      // Check dangerous extensions
-      const isDangerous = DANGEROUS_EXTENSIONS.includes(ext);
-      let scanStatus = isDangerous ? 'BLOCKED_EXTENSION' : 'PASSED';
-      let quarantineReason = isDangerous ? `Blocked dangerous file extension .${ext}` : null;
-
-      // File size limit (25 MB max)
-      if (sizeBytes > 25 * 1024 * 1024) {
-        scanStatus = 'QUARANTINED';
-        quarantineReason = 'Attachment exceeds maximum allowed size of 25MB';
-      }
-
-      // Check duplicate invoice attachment by vendor and SHA-256
-      let isDuplicateInvoice = false;
-      let duplicateReferenceId = null;
-
-      if (vendorId && !isDangerous) {
-        const existingAttachment = await AttachmentRegistry.findOne({
-          matchedVendorId: vendorId,
-          sha256Hash: sha256,
-        });
-
-        if (existingAttachment) {
-          isDuplicateInvoice = true;
-          duplicateReferenceId = existingAttachment.attachmentId;
-        }
-      }
-
-      const attachmentId = `ATT-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
-      const record = await AttachmentRegistry.create({
-        attachmentId,
-        inboundId,
-        gmailMessageId,
-        gmailThreadId,
-        originalFilename: filename,
-        sanitizedFilename: sanitized,
-        extension: ext,
-        mimeType: att.mimeType || 'application/octet-stream',
-        sizeBytes,
-        sha256Hash: sha256,
-        scanStatus,
-        documentType: isDangerous ? 'DANGEROUS_REJECTED' : (att.documentType || 'OTHER'),
-        isDangerous,
-        quarantineReason,
-        matchedVendorId: vendorId,
-        isDuplicateInvoice,
-        duplicateReferenceId,
-      });
-
-      results.push(record);
-    }
-
-    return results;
-  }
-
-  /**
-   * Ingests an inbound operational email from Gmail API / PubSub.
+   * Ingests an inbound Gmail message idempotently.
    */
   static async ingestInboundMessage({
+    organisationId = 'ZAMORIN',
+    cafeId = null,
     gmailMessageId,
     gmailThreadId,
     historyId = null,
+    rfcMessageId = null,
     senderEmail,
     senderName = '',
+    recipients = [],
+    cc = [],
     subject,
     bodyText = '',
+    bodyHtml = '',
     attachments = [],
-    organisationId = 'ZAMORIN',
   }) {
     if (!gmailMessageId || !senderEmail || !subject) {
-      throw new Error('Inbound ingestion requires gmailMessageId, senderEmail and subject.');
+      throw new Error('gmailMessageId, senderEmail, and subject are required.');
     }
 
     const cleanSender = String(senderEmail).trim().toLowerCase();
-
-    // 1. Inbound Idempotency Check
-    const existing = await InboundEmailMessage.findOne({ gmailMessageId });
+    const existing = await InboundEmailMessage.findOne({ organisationId, gmailMessageId });
     if (existing) {
-      return {
-        success: true,
-        isDuplicate: true,
-        message: existing,
-        status: 'DUPLICATE_IGNORED',
-      };
+      return { duplicate: true, message: existing };
     }
 
-    // 2. Vendor Matching & Domain Security Check
-    const senderDomain = cleanSender.split('@')[1] || '';
-    let matchedVendor = await Vendor.findOne({
+    // 1. Vendor & Reference matching
+    const rawVendor = await Vendor.findOne({
       organisationId,
-      $or: [
-        { email: cleanSender },
-        { primaryContactEmail: cleanSender },
-        { accountsEmail: cleanSender },
-        { salesEmail: cleanSender },
-        { approvedEmailAddresses: cleanSender },
-        { approvedDomains: senderDomain },
-      ],
+      $or: [{ email: cleanSender }, { contactEmail: cleanSender }],
     });
+    const matchedVendor = rawVendor?.toObject ? rawVendor.toObject() : rawVendor;
 
-    // 3. BEC Risk Analysis
-    const becEval = this.evaluateBecRisk(`${subject} ${bodyText}`);
-
-    // 4. Classification
     const classification = this.classifyInboundEmail({
       subject,
       bodyText,
@@ -234,84 +161,106 @@ class MailOpsService {
       matchedVendor,
     });
 
-    // 5. Risk Scoring & Quarantine Assessment
-    const riskSignals = [];
-    let riskScore = 'LOW';
+    // 2. BEC Evaluation
+    const becEval = this.evaluateBecRisk(`${subject} ${bodyText}`);
+
+    // 3. Quarantine & Risk Scoring
     let isQuarantined = false;
     let quarantineReason = null;
+    let riskScore = 'LOW';
+    const riskSignals = [];
 
     if (becEval.isBec) {
-      riskScore = 'CRITICAL';
-      riskSignals.push(becEval.reason);
       isQuarantined = true;
-      quarantineReason = 'HIGH-RISK VENDOR MASTER CHANGE ATTEMPT (BEC)';
+      quarantineReason = becEval.reason;
+      riskScore = 'CRITICAL';
+      riskSignals.push('CRITICAL_BEC_DETECTED');
     }
 
-    // Check if sender looks like vendor but domain is mismatch
-    if (subject.toLowerCase().includes('invoice') || subject.toLowerCase().includes('quotation')) {
-      if (!matchedVendor) {
-        riskSignals.push('Unrecognized sender sending financial/commercial document');
-        if (riskScore !== 'CRITICAL') riskScore = 'MEDIUM';
+    const count = await InboundEmailMessage.countDocuments({ organisationId });
+    const inboundId = `INB-${Date.now().toString().slice(-6)}-${String(count + 1).padStart(4, '0')}`;
+
+    // 3. Attachment Security Gateway & Hash Registry
+    const processedAttachments = [];
+    for (const att of attachments) {
+      const ext = (att.filename || '').split('.').pop().toLowerCase();
+      const contentBuffer = att.content ? Buffer.from(att.content) : Buffer.from(att.filename || '');
+      const sha256Hash = att.sha256Hash || crypto.createHash('sha256').update(contentBuffer).digest('hex').toUpperCase();
+      const isDanger = DANGEROUS_EXTENSIONS.includes(ext);
+
+      let scanStatus = isDanger ? 'BLOCKED_EXTENSION' : 'PASSED';
+      let isDuplicateInvoice = false;
+      let duplicateReferenceId = null;
+      let docType = isDanger ? 'DANGEROUS_REJECTED' : (att.documentType || 'OTHER');
+
+      if (isDanger) {
+        isQuarantined = true;
+        quarantineReason = `Dangerous executable attachment type blocked: .${ext}`;
+        riskScore = 'CRITICAL';
+        riskSignals.push(`BLOCKED_EXTENSION_${ext.toUpperCase()}`);
+      } else if (docType === 'INVOICE' || classification === 'INVOICE') {
+        const existingInv = await AttachmentRegistry.findOne({
+          organisationId,
+          sha256Hash,
+          documentType: 'INVOICE',
+        });
+        if (existingInv) {
+          isDuplicateInvoice = true;
+          duplicateReferenceId = existingInv.attachmentId;
+          riskSignals.push('DUPLICATE_INVOICE_HASH');
+        }
       }
-    }
 
-    const inboundId = `INB-${Date.now()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
-
-    // 6. Attachment Processing
-    const attachmentRecords = await this.processAttachments({
-      inboundId,
-      gmailMessageId,
-      gmailThreadId,
-      attachments,
-      vendorId: matchedVendor ? matchedVendor.vendorId : null,
-    });
-
-    const hasDangerousAttachment = attachmentRecords.some(a => a.isDangerous);
-    if (hasDangerousAttachment) {
-      riskScore = 'CRITICAL';
-      riskSignals.push('Email contains blocked dangerous executable attachments');
-      isQuarantined = true;
-      quarantineReason = 'Dangerous executable attachment detected';
-    }
-
-    // 7. Thread Linking & SupportCase Creation
-    let linkedSupportCaseId = null;
-    if (classification === 'SUPPORT' || classification === 'UAT') {
-      let existingCase = await SupportCase.findOne({
+      const attId = att.attachmentId || `ATT-${Date.now().toString().slice(-4)}-${Math.floor(1000 + Math.random() * 9000)}`;
+      const attRecord = await AttachmentRegistry.create({
+        attachmentId: attId,
         organisationId,
+        inboundId,
+        gmailMessageId,
         gmailThreadId,
+        originalFilename: att.filename,
+        sanitizedFilename: (att.filename || '').replace(/[^a-zA-Z0-9._-]/g, '_'),
+        extension: ext,
+        mimeType: att.mimeType || att.contentType || 'application/pdf',
+        sizeBytes: att.sizeBytes || (att.content ? Buffer.byteLength(att.content) : 1024),
+        sha256Hash,
+        scanStatus,
+        documentType: docType,
+        isDangerous: isDanger,
+        quarantineReason: isDanger ? `Dangerous executable attachment type blocked: .${ext}` : null,
+        matchedVendorId: matchedVendor?.vendorId || null,
+        isDuplicateInvoice,
+        duplicateReferenceId,
       });
 
-      if (!existingCase) {
-        const caseId = `CASE-${Date.now().toString().slice(-6)}`;
-        existingCase = await SupportCase.create({
-          caseId,
-          organisationId,
-          category: classification === 'UAT' ? 'UAT_FEEDBACK' : 'BUG_REPORT',
-          severity: riskScore === 'CRITICAL' ? 'CRITICAL' : 'NORMAL',
-          source: 'EMAIL',
-          senderEmail: cleanSender,
-          gmailThreadId,
-          gmailMessageId,
-          summary: String(subject).substring(0, 280),
-          description: bodyText || 'Inbound email report.',
-          status: 'OPEN',
-        });
-      }
-      linkedSupportCaseId = existingCase.caseId;
+      processedAttachments.push({
+        attachmentId: attRecord.attachmentId,
+        filename: attRecord.originalFilename,
+        contentType: attRecord.mimeType,
+        sizeBytes: attRecord.sizeBytes,
+        sha256Hash: attRecord.sha256Hash,
+        status: isDanger ? 'BLOCKED' : 'SAFE',
+      });
     }
 
-    const messageRecord = await InboundEmailMessage.create({
+    const cleanHtml = this.sanitizeHtml(bodyHtml);
+
+    const doc = await InboundEmailMessage.create({
       inboundId,
       organisationId,
+      cafeId,
       gmailMessageId,
       gmailThreadId,
       historyId,
+      rfcMessageId,
       senderEmail: cleanSender,
       senderName,
+      recipients,
+      cc,
       subject,
       bodyText,
-      bodySnippet: bodyText.substring(0, 300),
+      bodyHtml: cleanHtml,
+      bodySnippet: bodyText.slice(0, 300),
       classification,
       riskScore,
       riskSignals,
@@ -319,65 +268,148 @@ class MailOpsService {
       becReason: becEval.reason,
       isQuarantined,
       quarantineReason,
-      matchedVendorId: matchedVendor ? matchedVendor.vendorId : null,
-      linkedSupportCaseId,
-      attachmentCount: attachmentRecords.length,
+      matchedVendorId: matchedVendor?.vendorId || null,
+      attachmentCount: attachments.length,
+      attachments: processedAttachments,
       status: isQuarantined ? 'QUARANTINED' : 'PROCESSED',
+      queueStatus: isQuarantined ? 'QUARANTINE' : 'NEW',
       receivedAt: new Date(),
       processedAt: new Date(),
     });
 
+    // Support Case Linkage
+    let linkedSupportCaseId = null;
+    if (classification === 'UAT' || classification === 'SUPPORT' || subject.toLowerCase().includes('[uat]') || subject.toLowerCase().includes('[support]')) {
+      let existingCase = await SupportCase.findOne({ organisationId, gmailThreadId });
+      if (!existingCase) {
+        const caseCount = await SupportCase.countDocuments({ organisationId });
+        const caseId = `CASE-${Date.now().toString().slice(-4)}-${String(caseCount + 1).padStart(4, '0')}`;
+        existingCase = await SupportCase.create({
+          caseId,
+          organisationId,
+          cafeId,
+          gmailThreadId,
+          title: subject,
+          summary: subject.slice(0, 290),
+          description: bodyText || subject,
+          category: classification === 'UAT' || subject.toLowerCase().includes('[uat]') ? 'UAT_FEEDBACK' : 'BUG_REPORT',
+          reporterEmail: cleanSender,
+          senderEmail: cleanSender,
+          status: 'OPEN',
+        });
+      }
+      linkedSupportCaseId = existingCase.caseId;
+    }
+
+    // Update or create MailThread
+    await this.syncMailThread({
+      organisationId,
+      gmailThreadId,
+      cafeId,
+      subject,
+      snippet: bodyText.slice(0, 150),
+      senderEmail: cleanSender,
+      senderName,
+      hasAttachments: attachments.length > 0,
+      hasBecRisk: becEval.isBec,
+      hasQuarantineRisk: isQuarantined,
+      linkedEntityType: matchedVendor ? 'VENDOR' : (linkedSupportCaseId ? 'SUPPORT_CASE' : null),
+      linkedEntityId: matchedVendor ? matchedVendor.vendorId : linkedSupportCaseId,
+    });
+
     return {
       success: true,
-      inboundId: messageRecord.inboundId,
-      classification: messageRecord.classification,
-      riskScore: messageRecord.riskScore,
-      isQuarantined: messageRecord.isQuarantined,
+      duplicate: false,
+      message: doc,
+      riskScore: doc.riskScore,
+      isQuarantined: doc.isQuarantined,
+      inboundId: doc.inboundId,
       linkedSupportCaseId,
-      attachmentCount: attachmentRecords.length,
     };
   }
 
   /**
-   * Retrieves daily quota budget usage and forecasting.
+   * Synchronizes message into a MailThread conversation entity.
+   */
+  static async syncMailThread({
+    organisationId,
+    gmailThreadId,
+    cafeId,
+    subject,
+    snippet,
+    senderEmail,
+    senderName,
+    hasAttachments,
+    hasBecRisk,
+    hasQuarantineRisk,
+    linkedEntityType,
+    linkedEntityId,
+  }) {
+    let thread = await MailThread.findOne({ organisationId, gmailThreadId });
+    if (!thread) {
+      const count = await MailThread.countDocuments({ organisationId });
+      const threadId = `THRD-2026-${String(count + 1).padStart(4, '0')}`;
+      thread = await MailThread.create({
+        organisationId,
+        threadId,
+        gmailThreadId,
+        cafeId,
+        subject,
+        snippet,
+        participants: [{ email: senderEmail, name: senderName }],
+        messageCount: 1,
+        hasAttachments,
+        hasBecRisk,
+        hasQuarantineRisk,
+        linkedEntityType,
+        linkedEntityId,
+        status: hasQuarantineRisk ? 'QUARANTINE' : 'NEW',
+        lastMessageAt: new Date(),
+      });
+    } else {
+      thread.messageCount += 1;
+      thread.snippet = snippet;
+      thread.lastMessageAt = new Date();
+      if (!thread.participants.some((p) => p.email === senderEmail)) {
+        thread.participants.push({ email: senderEmail, name: senderName });
+      }
+      if (hasAttachments) thread.hasAttachments = true;
+      if (hasBecRisk) thread.hasBecRisk = true;
+      if (hasQuarantineRisk) thread.hasQuarantineRisk = true;
+      await thread.save();
+    }
+    return thread;
+  }
+
+  /**
+   * Retrieves quota budget status and provider telemetry.
    */
   static async getQuotaStatus(organisationId = 'ZAMORIN') {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
 
     const sentToday = await NotificationOutbox.countDocuments({
       organisationId,
-      status: 'SENT',
-      sentAt: { $gte: today },
+      status: { $in: ['SENT', 'PROVIDER_ACCEPTED'] },
+      sentAt: { $gte: todayStart },
     });
 
-    const settings = await SystemCommunicationSettings.findOne({ organisationId }).lean() || {
-      dailyQuotaBudget: {
-        dailyLimit: 500,
-        reservedCritical: 100,
-        reservedSecurity: 100,
-        normalBudget: 250,
-        optionalBudget: 50,
-      },
-    };
-
-    const budget = settings.dailyQuotaBudget || { dailyLimit: 500 };
-    const usagePercent = Math.round((sentToday / budget.dailyLimit) * 100);
-
-    let migrationStatus = 'SAFE';
-    if (usagePercent >= 90) migrationStatus = 'MIGRATION_REQUIRED';
-    else if (usagePercent >= 75) migrationStatus = 'MIGRATION_RECOMMENDED';
-    else if (usagePercent >= 50) migrationStatus = 'APPROACHING_LIMIT';
+    const rawSettings = await SystemCommunicationSettings.findOne({ organisationId });
+    const settings = (rawSettings?.toObject ? rawSettings.toObject() : rawSettings) || {};
+    const dailySendBudgetLimit = settings.dailySendBudgetLimit || 500;
+    const usagePercent = Math.min(100, Math.round((sentToday / dailySendBudgetLimit) * 100));
 
     return {
-      dailyLimit: budget.dailyLimit,
+      dailySendBudgetLimit,
       sentToday,
-      remaining: Math.max(0, budget.dailyLimit - sentToday),
+      remainingBudget: Math.max(0, dailySendBudgetLimit - sentToday),
       usagePercent,
-      migrationStatus,
-      budgetBreakdown: budget,
+      isSendBudgetExceeded: sentToday >= dailySendBudgetLimit,
+      status: usagePercent >= 90 ? 'WARNING' : 'SAFE',
     };
   }
 }
 
-module.exports = { MailOpsService };
+module.exports = {
+  MailOpsService,
+};

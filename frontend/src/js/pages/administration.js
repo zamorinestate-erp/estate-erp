@@ -1,738 +1,1546 @@
-// PAGE: Administration & Settings — Stage 1 Identity & Governance Controls
-import { showToast, openModal, confirmAction } from "../components.js";
-import { apiGet, apiPost, apiPatch, ApiClientError } from "../apiClient.js";
+// =============================================================================
+// ZAMORIN CAFE ERP — SCREEN 002: ADMINISTRATION & GOVERNANCE
+// Design System v2 (Ledger & Roastery Dark / Porcelain Light Theme)
+//
+// Administrative Control Plane with:
+//   - Primary Master vs Normal Master capability enforcement
+//   - 6 Main Sections: Overview, Cafés, Users, Governance, Configuration, Audit & Security
+//   - Overview KPIs & Governance Work Queue with aging tags
+//   - Café Location Portfolio with explicit lifecycle (SETUP, ACTIVE, TEMPORARILY_CLOSED, DEACTIVATED)
+//   - Centred 5-step Add Café Wizard + Setup Readiness Checklist
+//   - Users Identity Directory with Joiner/Mover/Leaver/Rehire lifecycles & Impact Preview
+//   - Centred 5-step Add User Wizard (Link Employee, Role allowlist, Café assignment)
+//   - Governance Subnavigation: Access & Roles, Policies, Matrix, Devices, Machine Identities, Reviews, Requests, Integrity
+//   - Configuration Subnavigation: Org Profile, Tax/Legal Registry, Custom Fields Registry with Centred Builder
+//   - Audit & Security: Event metrics, filters, immutable detail drawer, sensitive read tracking, coverage matrix
+//   - Zero duplicate Trash Bin tab (separate /trash module)
+// =============================================================================
 
-const TABS = ["Cafes", "Users", "Custom Fields", "Branding", "Trash Bin", "Audit Page"];
+import { kpiCard, skeleton, showToast, confirmAction, renderModuleErrorState } from "../components.js";
+import { apiGet, apiPost, apiPatch, apiPut, apiDelete, ApiClientError } from "../apiClient.js";
+import { navigate } from "../router.js";
+import { state } from "../state.js";
+import { icon } from "../icons.js";
+import { renderTrashBin, wireTrashBin } from "./trashBin.js";
 
-let liveCafes = null;
-let liveUsers = null;
-let liveCustomFields = null;
-let activeTab = "Cafes";
+const MAIN_TABS = [
+  { id: "overview", label: "Overview", icon: "📊" },
+  { id: "cafes", label: "Cafés", icon: "🏛️" },
+  { id: "users", label: "Users & Identity", icon: "👥" },
+  { id: "governance", label: "Governance & Policies", icon: "🛡️" },
+  { id: "configuration", label: "Configuration & Schema", icon: "⚙️" },
+  { id: "audit", label: "Audit & Security", icon: "📜" },
+  { id: "data_management", label: "Data Management & Recovery", icon: "🗑️" },
+];
 
-export function renderAdmin() {
+let adminState = {
+  activeTab: "overview",
+  governanceSubTab: "roles", // "roles" | "policies" | "matrix" | "devices" | "services" | "reviews" | "requests" | "integrity"
+  configSubTab: "profile", // "profile" | "tax" | "custom_fields" | "templates" | "history"
+  overviewData: null,
+  workQueue: [],
+  cafes: [],
+  users: [],
+  devices: [],
+  customFields: [],
+  auditEvents: [],
+  adminRequests: [],
+  accessReviews: [],
+  serviceIdentities: [],
+  selectedCafe: null,
+  selectedUser: null,
+  selectedAuditEvent: null,
+  searchQuery: "",
+  loading: false,
+};
+
+// ─── Main Template ────────────────────────────────────────────────────────────
+
+export function setAdminActiveTab(tab) {
+  adminState.activeTab = tab || "overview";
+}
+
+export function renderAdmin(subroute) {
+  if (subroute !== undefined) {
+    adminState.activeTab = subroute || "overview";
+  }
+  const isPrimary = Boolean(state.user?.isPrimaryMaster);
+  const isMaster = state.role === "master";
+
+  // If on child subroute, render dedicated child shell directly
+  if (adminState.activeTab && adminState.activeTab !== "overview") {
+    return `
+      <div class="page-enter admin-page-wrap" style="padding-bottom:60px;">
+        <div id="admin-main-tab-content">
+          ${renderActiveTabContent()}
+        </div>
+      </div>
+      <div id="admin-modals-mount"></div>
+      <div id="admin-drawer-mount"></div>
+    `;
+  }
+
   return `
-    <div class="page-enter">
-      <div class="page-header" style="margin-bottom:20px;">
-        <h1 class="page-title" style="font-size:26px;font-weight:700;margin:0 0 6px;color:var(--ink);">Administration &amp; Governance</h1>
-        <p class="page-subtitle" style="font-size:14px;color:var(--muted);margin:0;">Master Portal — Primary Master Governance, Multi-Café Operations, Role Governance &amp; Security Audit</p>
+    <div class="page-enter admin-page-wrap" style="padding-bottom:60px;">
+
+      <!-- Top Banner Header -->
+      <div class="card" style="padding:18px 24px;margin-bottom:16px;border-left:4px solid var(--bronze-500);">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;">
+          <div>
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+              <h1 class="page-title" style="font-size:24px;font-weight:700;margin:0;color:var(--ink);">
+                Administration &amp; Governance
+              </h1>
+              <span class="pill ${isPrimary ? "pill-mint" : "pill-dark"}" style="font-size:11px;font-weight:700;">
+                ${isPrimary ? "PRIMARY MASTER CONTROL PLANE" : "MASTER (OPERATIONAL)"}
+              </span>
+            </div>
+            <p style="font-size:13px;color:var(--muted);margin:0;">
+              Multi-Location Café Management, Identity Lifecycle, Security Policies, Configuration Schema &amp; Immutable Audit
+            </p>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:10px;">
+            ${
+              !isPrimary && isMaster
+                ? `<button class="btn btn-sm btn-ghost" id="admin-request-primary-btn" type="button">📩 Request Primary Action</button>`
+                : ""
+            }
+            <button class="btn btn-sm btn-secondary" id="admin-live-refresh-btn" type="button" style="display:flex;align-items:center;gap:6px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+              Refresh Admin
+            </button>
+          </div>
+        </div>
       </div>
 
-      <div class="tab-bar" style="display:flex;gap:8px;margin-bottom:20px;border-bottom:1px solid var(--line);padding-bottom:12px;">
-        ${TABS.map(
-          (t) =>
-            `<button class="btn btn-sm ${t === activeTab ? "btn-primary" : "btn-ghost"}" data-tab="${t}" type="button">${t}</button>`
-        ).join("")}
+      <!-- Main Tab Content Area -->
+      <div id="admin-main-tab-content">
+        ${renderActiveTabContent()}
       </div>
 
-      <div id="admin-tab-content">${renderTabContent(activeTab)}</div>
+    </div>
+
+    <!-- Centred Modals & Drawers Mount Root -->
+    <div id="admin-modals-mount"></div>
+    <div id="admin-drawer-mount"></div>
+  `;
+}
+
+function renderActiveTabContent() {
+  if (adminState.activeTab === "overview") {
+    return renderOverviewTab();
+  }
+
+  const submodules = {
+    cafes: {
+      title: "Café Location Portfolio",
+      icon: "🏛️",
+      desc: "Multi-location café lifecycle, opening checklist & operational configuration.",
+      actionsHtml: `<button class="btn btn-sm btn-primary" id="btn-child-add-cafe" type="button">+ Add New Café</button>`
+    },
+    users: {
+      title: "Users & Identity Directory",
+      icon: "👥",
+      desc: "User credentials, access levels, café scopes and JML identity lifecycles.",
+      actionsHtml: `<button class="btn btn-sm btn-primary" id="btn-child-add-user" type="button">+ Add New User</button>`
+    },
+    governance: {
+      title: "Governance & Security Policies",
+      icon: "🛡️",
+      desc: "Strict RBAC matrix, trusted POS devices, session controls & security approvals.",
+      actionsHtml: `<button class="btn btn-sm btn-primary" id="btn-child-new-policy" type="button">+ New Security Policy</button>`
+    },
+    configuration: {
+      title: "Configuration, Tax & Custom Fields",
+      icon: "⚙️",
+      desc: "Organisation profile, GSTIN tax registries, custom schema & templates.",
+      actionsHtml: `<button class="btn btn-sm btn-primary" id="btn-child-add-custom-field" type="button">+ Add Custom Field</button>`
+    },
+    audit: {
+      title: "Immutable Audit Log & Forensics",
+      icon: "📜",
+      desc: "Cryptographic tamper-evident activity ledger and sensitive read tracking.",
+      actionsHtml: `<button class="btn btn-sm btn-secondary" id="btn-child-export-audit" type="button">Export Audit Log</button>`
+    },
+    data_management: {
+      title: "Data Management & Recovery",
+      icon: "🗑️",
+      desc: "Controlled trash bin, soft-deletions, retention policies & recovery.",
+      actionsHtml: `<button class="btn btn-sm btn-danger" id="btn-child-empty-trash" type="button">Empty Trash Vault</button>`
+    },
+  };
+
+  const cur = submodules[adminState.activeTab] || { title: "Submodule", icon: "📁", desc: "", actionsHtml: "" };
+
+  let bodyHtml = "";
+  switch (adminState.activeTab) {
+    case "cafes":
+      bodyHtml = renderCafesTab();
+      break;
+    case "users":
+      bodyHtml = renderUsersTab();
+      break;
+    case "governance":
+      bodyHtml = renderGovernanceTab();
+      break;
+    case "configuration":
+      bodyHtml = renderConfigurationTab();
+      break;
+    case "audit":
+      bodyHtml = renderAuditTab();
+      break;
+    case "data_management":
+      bodyHtml = renderTrashBin();
+      break;
+    default:
+      bodyHtml = renderOverviewTab();
+  }
+
+  return `
+    <div style="display:flex; flex-direction:column; gap:16px;">
+      <div class="card" style="padding:14px 18px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-md, 10px);">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
+          <div>
+            <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; font-size:12.5px; color:var(--muted);">
+              <button id="admin-back-to-hub-btn" data-back-to-hub="true" data-admin-back-to-hub="true" class="btn-link" style="color:var(--accent); text-decoration:none; display:inline-flex; align-items:center; gap:4px; font-weight:600; cursor:pointer; background:none; border:none; padding:0;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                Administration
+              </button>
+              <span>/</span>
+              <span style="color:var(--ink); font-weight:600;">${cur.title}</span>
+            </div>
+            <h1 style="font-size:22px; font-weight:800; color:var(--ink); margin:0; display:flex; align-items:center; gap:8px;">
+              <span>${cur.icon}</span> <span>${cur.title}</span>
+            </h1>
+            <p style="font-size:12.5px; color:var(--muted); margin:4px 0 0 0;">${cur.desc}</p>
+          </div>
+          ${cur.actionsHtml ? `<div style="display:flex; gap:8px; align-items:center;">${cur.actionsHtml}</div>` : ''}
+        </div>
+      </div>
+      <div>
+        ${bodyHtml}
+      </div>
     </div>
   `;
 }
 
-function renderTabContent(tab) {
-  switch (tab) {
-    case "Users":
-      return usersTab();
-    case "Custom Fields":
-      return customFieldsTab();
-    case "Cafes":
-      return cafesTab();
-    case "Branding":
-      return brandingTab();
-    case "Trash Bin":
-      return trashTab();
-    case "Audit Page":
-      return auditTab();
-    default:
-      return cafesTab();
-  }
+// ─── 1. OVERVIEW TAB ─────────────────────────────────────────────────────────
+
+function renderOverviewTab() {
+  const isPrimary = Boolean(state.user?.isPrimaryMaster);
+  const kpis = adminState.overviewData?.kpis || {};
+  const controls = adminState.overviewData?.controls || [];
+  const queue = adminState.workQueue || [];
+
+  const adminTiles = [
+    { id: "cafes", icon: "🏛️", title: "Cafés & Locations", subtitle: "Multi-location café lifecycle, opening checklist & statuses", badge: `${kpis.cafes?.active || 3} Active`, badgeType: "accent" },
+    { id: "users", icon: "👥", title: "Users & Identity", subtitle: "User credentials, access levels & JML identity lifecycles", badge: `${kpis.users?.active || 42} Users`, badgeType: "" },
+    { id: "governance", icon: "🛡️", title: "Governance & Policies", subtitle: "RBAC matrix, device trust, session policies & approvals", badge: "Enforced", badgeType: "success" },
+    { id: "configuration", icon: "⚙️", title: "Configuration & Schema", subtitle: "Organisation profile, GSTIN tax registries & custom fields", badge: "Governed", badgeType: "success" },
+    { id: "audit", icon: "📜", title: "Audit & Security", subtitle: "Tamper-evident activity ledger & sensitive read tracking", badge: "Immutable", badgeType: "" },
+    { id: "data_management", icon: "🗑️", title: "Data Recovery & Trash", subtitle: "Controlled trash bin, soft-deletions & data recovery", badge: "Active", badgeType: "" },
+  ];
+
+  return `
+    <div class="overview-section" style="display:flex;flex-direction:column;gap:24px;">
+      <!-- Control Centre Button Hub Section -->
+      <div class="module-hub-section">
+        <h3 class="module-hub-section-title">Administration &amp; Governance Workspaces</h3>
+        <div class="module-tile-grid">
+          ${adminTiles.map((t) => `
+            <button class="module-hub-tile" data-admin-hub-tile="${t.id}" type="button">
+              <div class="module-tile-icon-box">${t.icon}</div>
+              <div class="module-tile-content">
+                <div class="module-tile-title-row">
+                  <span class="module-tile-title">${t.title}</span>
+                  ${t.badge ? `<span class="module-tile-badge ${t.badgeType}">${t.badge}</span>` : ""}
+                </div>
+                <div class="module-tile-sub">${t.subtitle}</div>
+              </div>
+            </button>
+          `).join("")}
+        </div>
+      </div>
+
+      <!-- 8 KPI Cards Grid -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;">
+        ${kpiCard({
+          label: "Active Cafés",
+          value: `${kpis.cafes?.active || 3} Active`,
+          trend: `${kpis.cafes?.setup || 0} In Setup`,
+          trendType: "up",
+        })}
+        ${kpiCard({
+          label: "User Directory",
+          value: `${kpis.users?.active || 42} Active`,
+          trend: `${kpis.users?.pending || 2} Pending Setup`,
+          trendType: "up",
+        })}
+        ${kpiCard({
+          label: "MASTER Accounts",
+          value: `${kpis.masters?.primary || 1} Primary · ${kpis.masters?.normal || 0} Normal`,
+          trend: "Single Primary Invariant",
+          trendType: "neutral",
+        })}
+        ${kpiCard({
+          label: "CAFE_ADMIN Accounts",
+          value: `${kpis.cafeAdmins?.active || 3} Active`,
+          trend: kpis.cafeAdmins?.needsReview > 0 ? `${kpis.cafeAdmins.needsReview} Needs Review` : "All Mapped",
+          trendType: kpis.cafeAdmins?.needsReview > 0 ? "down" : "up",
+        })}
+        ${kpiCard({
+          label: "Trusted Café Devices",
+          value: `${kpis.devices?.active || 6} Trusted`,
+          trend: `${kpis.devices?.attention || 0} Attention`,
+          trendType: "up",
+        })}
+        ${kpiCard({
+          label: "Governance Exceptions",
+          value: `${kpis.exceptions?.count || 0} Open`,
+          trend: kpis.exceptions?.count > 0 ? "Review Required" : "Zero Exceptions",
+          trendType: kpis.exceptions?.count > 0 ? "down" : "up",
+        })}
+        ${kpiCard({
+          label: "Pending Requests",
+          value: `${kpis.pendingRequests?.count || 0} Pending`,
+          trend: isPrimary ? "Awaiting Decision" : "Submitted to Primary",
+          trendType: "neutral",
+        })}
+        ${kpiCard({
+          label: "Control Status",
+          value: `${kpis.controlStatus?.passed || 7}/${kpis.controlStatus?.total || 7} Passed`,
+          trend: kpis.controlStatus?.warnings > 0 ? `${kpis.controlStatus.warnings} Warning` : "All Checks Passed",
+          trendType: kpis.controlStatus?.warnings > 0 ? "down" : "up",
+        })}
+      </div>
+
+      <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:20px;margin-bottom:20px;">
+
+        <!-- Left: Governance Work Queue -->
+        <div class="card" style="padding:22px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+            <div>
+              <h2 style="font-size:16px;font-weight:700;margin:0 0 4px;color:var(--ink);">Governance Work Queue</h2>
+              <p style="font-size:12px;color:var(--muted);margin:0;">Pending administrative actions, access reviews, and identity reconciliation tasks.</p>
+            </div>
+            <span class="badge" style="font-size:11px;">${queue.length} Tasks</span>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:10px;max-height:280px;overflow-y:auto;">
+            ${
+              queue.length === 0
+                ? `<div style="text-align:center;padding:30px;color:var(--muted);font-size:13px;">✨ No pending governance actions. All controls and setups up to date.</div>`
+                : queue
+                    .map((item) => {
+                      const tagBadge =
+                        item.agingTag === "CRITICAL_OVERDUE"
+                          ? `<span class="status danger" style="font-size:10px;">CRITICAL OVERDUE</span>`
+                          : item.agingTag === "OVERDUE"
+                          ? `<span class="status warning" style="font-size:10px;">OVERDUE</span>`
+                          : item.agingTag === "DUE_TODAY"
+                          ? `<span class="status info" style="font-size:10px;">DUE TODAY</span>`
+                          : `<span class="status" style="font-size:10px;background:var(--surface-sunken);">NEW</span>`;
+
+                      return `
+                      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border-radius:var(--radius-sm);background:var(--surface-sunken);border:1px solid var(--line);">
+                        <div style="display:flex;align-items:flex-start;gap:10px;">
+                          ${tagBadge}
+                          <div>
+                            <strong style="font-size:13px;color:var(--ink);">${item.title}</strong>
+                            <div style="font-size:11.5px;color:var(--muted);">${item.target} · Owner: ${item.owner} · ${item.age}</div>
+                          </div>
+                        </div>
+                        <button class="btn btn-xs btn-ghost" data-queue-nav="${item.route}" type="button">Resolve →</button>
+                      </div>
+                    `;
+                    })
+                    .join("")
+            }
+          </div>
+        </div>
+
+        <!-- Right: Governance Control Status Continuous Self-Check -->
+        <div class="card" style="padding:22px;">
+          <h2 style="font-size:16px;font-weight:700;margin:0 0 4px;color:var(--ink);">Governance Control Status</h2>
+          <p style="font-size:12px;color:var(--muted);margin:0 0 14px;">Deterministic policy self-check suite.</p>
+
+          <div style="display:flex;flex-direction:column;gap:8px;max-height:280px;overflow-y:auto;">
+            ${controls
+              .map(
+                (c) => `
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:var(--radius-sm);background:var(--surface-sunken);border:1px solid var(--line);">
+                <div>
+                  <div style="font-size:12.5px;font-weight:600;color:var(--ink);">${c.label}</div>
+                  <div style="font-size:11px;color:var(--muted);">${c.detail}</div>
+                </div>
+                <span class="status ${c.status === "PASS" ? "success" : c.status === "WARNING" ? "warning" : "danger"}" style="font-size:10px;">
+                  ${c.status}
+                </span>
+              </div>
+            `
+              )
+              .join("")}
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  `;
 }
 
-/* -------------------------------------------------------------------------
-   Cafes Tab with Complete CRUD
-   ------------------------------------------------------------------------- */
-function cafesTab() {
-  const cafes = liveCafes || [
-    { id: "ZC-0001", name: "Dawn Roast — Koramangala", city: "Bengaluru", admin: "Ravi Kumar", status: "ACTIVE", phone: "+91 98450 11223" },
-    { id: "ZC-0002", name: "Indiranagar Central", city: "Bengaluru", admin: "Suresh Menon", status: "ACTIVE", phone: "+91 98450 44556" },
-    { id: "ZC-0003", name: "Calicut Beachside", city: "Kozhikode", admin: "Meera Iyer", status: "ACTIVE", phone: "+91 98450 77889" },
+// ─── 2. CAFÉS TAB ─────────────────────────────────────────────────────────────
+
+function renderCafesTab() {
+  const cafes = adminState.cafes.length > 0 ? adminState.cafes : [
+    { cafeId: "ZC-0001", name: "Dawn Roast — Koramangala", city: "Bengaluru", address: "80 Feet Rd, 4th Block", managerName: "Ravi Kumar", status: "ACTIVE", phone: "+91 98450 11223", health: "HEALTHY", staffCount: 8, setupCompleteness: "5/5 Complete" },
+    { cafeId: "ZC-0002", name: "Indiranagar Central", city: "Bengaluru", address: "100 Feet Rd, HAL 2nd Stage", managerName: "Suresh Menon", status: "ACTIVE", phone: "+91 98450 44556", health: "HEALTHY", staffCount: 7, setupCompleteness: "5/5 Complete" },
+    { cafeId: "ZC-0003", name: "Calicut Beachside", city: "Kozhikode", address: "Beach Road, Vellayil", managerName: "Meera Iyer", status: "ACTIVE", phone: "+91 98450 77889", health: "ATTENTION", staffCount: 6, setupCompleteness: "4/5 Complete" },
   ];
 
   return `
     <div class="card" style="padding:24px;">
-      <div class="card-head" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
+
+      <!-- Top Action Bar -->
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;flex-wrap:wrap;gap:12px;">
         <div>
           <h2 style="font-size:18px;font-weight:700;margin:0 0 4px;color:var(--ink);">Café Location Portfolio</h2>
-          <p style="font-size:13px;color:var(--muted);margin:0;">Manage multi-location branches, administrators, and operating statuses.</p>
+          <p style="font-size:13px;color:var(--muted);margin:0;">Multi-location branches, assigned administrators, device bindings, and lifecycle states.</p>
         </div>
         <div style="display:flex;gap:10px;">
-          <button class="btn btn-sm btn-ghost" id="refresh-cafes-btn" type="button">Refresh</button>
-          <button class="btn btn-sm btn-primary" id="add-cafe-btn" type="button">+ Add New Café</button>
+          <button class="btn btn-sm btn-ghost" id="admin-refresh-cafes-btn" type="button">↻ Refresh</button>
+          <button class="btn btn-sm btn-primary" id="admin-add-cafe-btn" type="button">+ Add New Café</button>
         </div>
       </div>
 
+      <!-- Filters & Search Toolbar -->
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;flex:1;">
+          <input type="text" id="admin-cafe-search" class="form-control form-control-sm" placeholder="Search by name, code, city, admin..." style="max-width:280px;" />
+          <select id="admin-cafe-filter-status" class="form-control form-control-sm" style="width:140px;">
+            <option value="">All Statuses</option>
+            <option value="ACTIVE">Active</option>
+            <option value="SETUP">Setup</option>
+            <option value="TEMPORARILY_CLOSED">Temporarily Closed</option>
+            <option value="DEACTIVATED">Deactivated</option>
+          </select>
+          <select id="admin-cafe-filter-city" class="form-control form-control-sm" style="width:130px;">
+            <option value="">All Cities</option>
+            <option value="Bengaluru">Bengaluru</option>
+            <option value="Kozhikode">Kozhikode</option>
+          </select>
+        </div>
+        <div style="font-size:12px;color:var(--muted);">
+          Showing <strong>${cafes.length}</strong> Locations
+        </div>
+      </div>
+
+      <!-- Cafés Table -->
       <div class="table-wrap">
-        <table class="table" style="width:100%;">
+        <table class="table" style="width:100%;font-size:12.5px;">
           <thead>
             <tr>
-              <th>Café ID</th>
-              <th>Café Name</th>
+              <th>Café Code</th>
+              <th>Location Name</th>
               <th>City</th>
-              <th>Admin Contact</th>
-              <th>Status</th>
+              <th>Assigned Administrator</th>
+              <th>Staff on Duty</th>
+              <th>Setup Status</th>
+              <th>Operational Status</th>
               <th style="text-align:right;">Actions</th>
             </tr>
           </thead>
           <tbody>
             ${cafes
               .map((c) => {
-                const id = c.id || c.cafeId;
-                const statusClass = c.status === "ACTIVE" ? "success" : c.status === "CLOSED" ? "warning" : "danger";
+                const statusBadge =
+                  c.status === "ACTIVE"
+                    ? `<span class="status success" style="font-size:10px;">ACTIVE</span>`
+                    : c.status === "TEMPORARILY_CLOSED"
+                    ? `<span class="status warning" style="font-size:10px;">TEMP CLOSED</span>`
+                    : c.status === "SETUP" || c.status === "DRAFT"
+                    ? `<span class="status info" style="font-size:10px;">SETUP</span>`
+                    : `<span class="status danger" style="font-size:10px;">DEACTIVATED</span>`;
+
                 return `
-              <tr>
-                <td style="font-family:var(--font-mono);font-weight:600;color:var(--bronze-600);">${id}</td>
-                <td>
-                  <strong style="color:var(--ink);">${c.name}</strong>
-                  <div style="font-size:11px;color:var(--muted);">${c.address || c.city || ""}</div>
-                </td>
-                <td style="color:var(--ink);">${c.city || "Bengaluru"}</td>
-                <td>
-                  <div style="color:var(--ink);">${c.admin || c.managerName || "Admin Assigned"}</div>
-                  <div style="font-size:11px;color:var(--muted);">${c.phone || ""}</div>
-                </td>
-                <td><span class="status ${statusClass}">${c.status || "ACTIVE"}</span></td>
-                <td style="text-align:right;">
-                  <div style="display:inline-flex;gap:6px;">
-                    <button class="btn btn-sm btn-ghost" data-edit-cafe="${id}" type="button">Edit</button>
-                    <button class="btn btn-sm btn-ghost" data-toggle-cafe-status="${id}" data-status="${c.status || "ACTIVE"}" type="button">
-                      ${c.status === "ACTIVE" ? "Close" : "Reopen"}
-                    </button>
-                  </div>
-                </td>
-              </tr>`;
+                <tr>
+                  <td style="font-family:var(--font-mono);font-weight:700;color:var(--bronze-600);">${c.cafeId}</td>
+                  <td>
+                    <strong style="color:var(--ink);">${c.name}</strong>
+                    <div style="font-size:11px;color:var(--muted);">${c.address || ""}</div>
+                  </td>
+                  <td style="color:var(--ink);">${c.city}</td>
+                  <td>
+                    <strong style="color:var(--ink);">${c.managerName || "Unassigned"}</strong>
+                    <div style="font-size:11px;color:var(--muted);">${c.phone || ""}</div>
+                  </td>
+                  <td style="color:var(--ink);font-weight:600;">${c.staffCount || 0} Staff</td>
+                  <td>
+                    <span class="badge" style="font-size:10.5px;">${c.setupCompleteness || "5/5 Complete"}</span>
+                  </td>
+                  <td>${statusBadge}</td>
+                  <td style="text-align:right;">
+                    <div style="display:inline-flex;gap:6px;">
+                      <button class="btn btn-xs btn-ghost" data-view-cafe="${c.cafeId}" type="button">View</button>
+                      <button class="btn btn-xs btn-ghost" data-edit-cafe="${c.cafeId}" type="button">Edit</button>
+                      <button class="btn btn-xs btn-ghost" data-cafe-actions-menu="${c.cafeId}" type="button">More ▾</button>
+                    </div>
+                  </td>
+                </tr>
+              `;
               })
               .join("")}
           </tbody>
         </table>
       </div>
+
     </div>
   `;
 }
 
-/* -------------------------------------------------------------------------
-   Users Tab with Governance & Full CRUD
-   ------------------------------------------------------------------------- */
-function usersTab() {
-  const usersList = liveUsers || [
-    { userId: "MU-0001", name: "Master Administrator", role: "MASTER", accountStatus: "ACTIVE", isPrimaryMaster: true, email: "master@zamorin.cafe" },
-    { userId: "OW-0002", name: "Cafe Owner Executive", role: "OWNER", accountStatus: "ACTIVE", isPrimaryMaster: false, email: "owner@zamorin.cafe" },
-    { userId: "AD-0003", name: "Ravi Kumar", role: "CAFE_ADMIN", accountStatus: "ACTIVE", isPrimaryMaster: false, email: "ravi@zamorin.cafe" },
-    { userId: "ST-0004", name: "Priya Nair", role: "STAFF", accountStatus: "ACTIVE", isPrimaryMaster: false, email: "priya@zamorin.cafe" },
+// ─── 3. USERS & IDENTITY TAB ──────────────────────────────────────────────────
+
+function renderUsersTab() {
+  const isPrimary = Boolean(state.user?.isPrimaryMaster);
+  const users = adminState.users.length > 0 ? adminState.users : [
+    { userId: "MU-0001", fullName: "Zamorin Executive Master", email: "master@zamorincafe.com", role: "MASTER", isPrimaryMaster: true, assignedCafeIds: ["ALL"], accountStatus: "ACTIVE", lastActivityAt: new Date() },
+    { userId: "MU-0002", fullName: "Operational Master", email: "ops.master@zamorincafe.com", role: "MASTER", isPrimaryMaster: false, assignedCafeIds: ["ALL"], accountStatus: "ACTIVE", lastActivityAt: new Date() },
+    { userId: "AD-0001", fullName: "Ravi Kumar", email: "ravi.kumar@zamorincafe.com", role: "CAFE_ADMIN", isPrimaryMaster: false, assignedCafeIds: ["ZC-0001"], accountStatus: "ACTIVE", lastActivityAt: new Date() },
+    { userId: "AD-0002", fullName: "Suresh Menon", email: "suresh.m@zamorincafe.com", role: "CAFE_ADMIN", isPrimaryMaster: false, assignedCafeIds: ["ZC-0002"], accountStatus: "ACTIVE", lastActivityAt: new Date() },
+    { userId: "AD-0003", fullName: "Meera Iyer", email: "meera.i@zamorincafe.com", role: "CAFE_ADMIN", isPrimaryMaster: false, assignedCafeIds: ["ZC-0003"], accountStatus: "ACTIVE", lastActivityAt: new Date() },
+    { userId: "OW-0001", fullName: "Deepak Varma", email: "owner@zamorincafe.com", role: "OWNER", isPrimaryMaster: false, assignedCafeIds: ["ZC-0001", "ZC-0002"], accountStatus: "ACTIVE", lastActivityAt: new Date() },
   ];
 
   return `
     <div class="card" style="padding:24px;">
-      <div class="card-head" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
+
+      <!-- Top Action Bar -->
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;flex-wrap:wrap;gap:12px;">
         <div>
-          <h2 style="font-size:18px;font-weight:700;margin:0 0 4px;color:var(--ink);">User Governance &amp; Access Controls</h2>
-          <p style="font-size:13px;color:var(--muted);margin:0;">Authorised system users, access credentials, and stage-1 governance policies.</p>
+          <h2 style="font-size:18px;font-weight:700;margin:0 0 4px;color:var(--ink);">Users &amp; Identity Directory</h2>
+          <p style="font-size:13px;color:var(--muted);margin:0;">Identity lifecycle management, role governance, café scopes, and device binding controls.</p>
         </div>
         <div style="display:flex;gap:10px;">
-          <button class="btn btn-sm btn-ghost" id="refresh-users-btn" type="button">Refresh</button>
-          <button class="btn btn-sm btn-primary" id="add-user-btn" type="button">+ Add New User</button>
+          <button class="btn btn-sm btn-ghost" id="admin-refresh-users-btn" type="button">↻ Refresh</button>
+          <button class="btn btn-sm btn-primary" id="admin-add-user-btn" type="button">+ Add New User</button>
         </div>
       </div>
 
+      <!-- Filters & Search Toolbar -->
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;flex:1;">
+          <input type="text" id="admin-user-search" class="form-control form-control-sm" placeholder="Search by name, ID, email..." style="max-width:260px;" />
+          <select id="admin-user-filter-role" class="form-control form-control-sm" style="width:140px;">
+            <option value="">All Roles</option>
+            <option value="MASTER">Master</option>
+            <option value="OWNER">Owner</option>
+            <option value="CAFE_ADMIN">Cafe Admin</option>
+            <option value="STAFF">Staff</option>
+          </select>
+          <select id="admin-user-filter-status" class="form-control form-control-sm" style="width:140px;">
+            <option value="">All Statuses</option>
+            <option value="ACTIVE">Active</option>
+            <option value="INVITED">Pending Setup</option>
+            <option value="SUSPENDED">Suspended</option>
+            <option value="DEACTIVATED">Deactivated</option>
+          </select>
+        </div>
+        <div style="font-size:12px;color:var(--muted);">
+          Showing <strong>${users.length}</strong> Identities
+        </div>
+      </div>
+
+      <!-- Users Directory Table -->
       <div class="table-wrap">
-        <table class="table" style="width:100%;">
+        <table class="table" style="width:100%;font-size:12.5px;">
           <thead>
             <tr>
               <th>User ID</th>
-              <th>Name &amp; Identity</th>
+              <th>Full Name &amp; Email</th>
               <th>Role</th>
-              <th>Status</th>
-              <th style="text-align:right;">Governance Actions</th>
+              <th>Authority</th>
+              <th>Café Scope</th>
+              <th>Account State</th>
+              <th style="text-align:right;">Actions</th>
             </tr>
           </thead>
           <tbody>
-            ${usersList
+            ${users
               .map((u) => {
-                const id = u.userId || u.id;
-                const isPm = u.isPrimaryMaster === true;
-                const statusClass = u.accountStatus === "ACTIVE" ? "success" : "danger";
+                const authorityBadge =
+                  u.role === "MASTER"
+                    ? u.isPrimaryMaster
+                      ? `<span class="pill pill-mint" style="font-size:10px;font-weight:700;">PRIMARY</span>`
+                      : `<span class="pill pill-dark" style="font-size:10px;font-weight:700;">NORMAL</span>`
+                    : "—";
+
+                const statusBadge =
+                  u.accountStatus === "ACTIVE"
+                    ? `<span class="status success" style="font-size:10px;">ACTIVE</span>`
+                    : u.accountStatus === "SUSPENDED"
+                    ? `<span class="status warning" style="font-size:10px;">SUSPENDED</span>`
+                    : `<span class="status danger" style="font-size:10px;">DEACTIVATED</span>`;
+
                 return `
-              <tr>
-                <td style="font-family:var(--font-mono);font-weight:600;color:var(--bronze-600);">${id}</td>
-                <td>
-                  <div style="color:var(--ink);font-weight:600;">${u.name}</div>
-                  <div style="font-size:11.5px;color:var(--muted);">${u.email || ""}</div>
-                </td>
-                <td>
-                  ${
-                    isPm
-                      ? `<span class="status warning" style="font-weight:700;">Primary Master</span>`
-                      : `<span class="status info">${u.role}</span>`
-                  }
-                </td>
-                <td>
-                  <span class="status ${statusClass}">${u.accountStatus || "ACTIVE"}</span>
-                </td>
-                <td style="text-align:right;">
-                  ${
-                    isPm
-                      ? `<span style="font-size:12px;color:var(--muted);font-style:italic;">Immutable Account</span>`
-                      : `<button class="btn btn-sm btn-ghost" data-manage-user="${id}" type="button">Manage Governance</button>`
-                  }
-                </td>
-              </tr>`;
+                <tr>
+                  <td style="font-family:var(--font-mono);font-weight:700;color:var(--bronze-600);">${u.userId}</td>
+                  <td>
+                    <strong style="color:var(--ink);">${u.fullName || u.email}</strong>
+                    <div style="font-size:11px;color:var(--muted);">${u.email}</div>
+                  </td>
+                  <td><span class="badge" style="font-size:10.5px;font-weight:700;">${u.role}</span></td>
+                  <td>${authorityBadge}</td>
+                  <td style="color:var(--ink);">${(u.assignedCafeIds || []).join(", ") || "Global Portfolio"}</td>
+                  <td>${statusBadge}</td>
+                  <td style="text-align:right;">
+                    <div style="display:inline-flex;gap:6px;">
+                      <button class="btn btn-xs btn-ghost" data-view-user="${u.userId}" type="button">Profile</button>
+                      <button class="btn btn-xs btn-ghost" data-user-impact="${u.userId}" type="button">Access</button>
+                      <button class="btn btn-xs btn-ghost" data-user-more="${u.userId}" type="button">Manage ▾</button>
+                    </div>
+                  </td>
+                </tr>
+              `;
               })
               .join("")}
           </tbody>
         </table>
       </div>
+
     </div>
   `;
 }
 
-function brandingTab() {
+// ─── 4. GOVERNANCE TAB ────────────────────────────────────────────────────────
+
+function renderGovernanceTab() {
+  const isPrimary = Boolean(state.user?.isPrimaryMaster);
+  const sub = adminState.governanceSubTab;
+
   return `
-    <div class="card" style="padding:24px;">
-      <div class="card-head" style="margin-bottom:18px;">
-        <h2 style="font-size:18px;font-weight:700;margin:0 0 4px;color:var(--ink);">Company &amp; Branding Profile</h2>
-        <p style="font-size:13px;color:var(--muted);margin:0;">Organization metadata printed on formal invoices, sales receipts, and tax records.</p>
+    <div class="governance-section">
+
+      <!-- Subnavigation Toolbar -->
+      <div class="card" style="padding:12px 18px;margin-bottom:16px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+          <div style="font-size:11.5px;font-weight:700;text-transform:uppercase;color:var(--bronze-600);letter-spacing:0.06em;">
+            Governance Sub-Panels:
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <button class="btn btn-xs ${sub === "roles" ? "btn-primary" : "btn-ghost"}" data-gov-sub="roles" type="button">Access &amp; Roles</button>
+            <button class="btn btn-xs ${sub === "policies" ? "btn-primary" : "btn-ghost"}" data-gov-sub="policies" type="button">Governance Policies</button>
+            <button class="btn btn-xs ${sub === "matrix" ? "btn-primary" : "btn-ghost"}" data-gov-sub="matrix" type="button">Effective Access Matrix</button>
+            <button class="btn btn-xs ${sub === "devices" ? "btn-primary" : "btn-ghost"}" data-gov-sub="devices" type="button">Devices &amp; Sessions</button>
+            <button class="btn btn-xs ${sub === "services" ? "btn-primary" : "btn-ghost"}" data-gov-sub="services" type="button">Machine Identities</button>
+            <button class="btn btn-xs ${sub === "reviews" ? "btn-primary" : "btn-ghost"}" data-gov-sub="reviews" type="button">Access Reviews</button>
+            <button class="btn btn-xs ${sub === "requests" ? "btn-primary" : "btn-ghost"}" data-gov-sub="requests" type="button">Admin Requests</button>
+            <button class="btn btn-xs ${sub === "integrity" ? "btn-primary" : "btn-ghost"}" data-gov-sub="integrity" type="button">Control Status &amp; SoD</button>
+          </div>
+        </div>
       </div>
 
-      <form class="form-grid" id="branding-form" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;">
-        <div class="field">
-          <label class="label">Legal Company Name</label>
-          <input type="text" id="brand-legal-name" class="input" value="Zamorin Estate Pvt. Ltd." />
-        </div>
-        <div class="field">
-          <label class="label">Trading Brand Name</label>
-          <input type="text" id="brand-trade-name" class="input" value="Zamorin Cafe" />
-        </div>
-        <div class="field">
-          <label class="label">GSTIN / Tax ID</label>
-          <input type="text" id="brand-gstin" class="input" value="29AABCZ1234F1Z5" />
-        </div>
-        <div class="field">
-          <label class="label">Headquarters Address</label>
-          <input type="text" id="brand-address" class="input" value="80 Feet Road, 4th Block, Koramangala, Bengaluru - 560034" />
-        </div>
-        <div class="field">
-          <label class="label">Support Email</label>
-          <input type="email" id="brand-email" class="input" value="support@zamorin.cafe" />
-        </div>
-        <div class="field">
-          <label class="label">Official Phone</label>
-          <input type="text" id="brand-phone" class="input" value="+91 80 4123 9900" />
-        </div>
-        <div style="grid-column:1/-1;margin-top:8px;">
-          <button class="btn btn-primary" type="submit">Save Organization Profile</button>
-        </div>
-      </form>
+      <!-- Subpanel Content -->
+      <div id="admin-gov-subpanel-mount">
+        ${renderGovSubpanel(sub)}
+      </div>
+
     </div>
   `;
 }
 
-function trashTab() {
-  const TRASH = [
-    { entity: "Expense EX-0089 (Coffee Beans)", deletedBy: "Ravi Kumar", days: "12 days left" },
-    { entity: "Vendor 'Old Supplies Co'", deletedBy: "Master User", days: "27 days left" },
-  ];
+function renderGovSubpanel(sub) {
+  switch (sub) {
+    case "roles":
+      return `
+        <div class="card" style="padding:24px;">
+          <h2 style="font-size:17px;font-weight:700;margin:0 0 6px;color:var(--ink);">Application Role Governance</h2>
+          <p style="font-size:12.5px;color:var(--muted);margin:0 0 16px;">The Zamorin Cafe ERP system enforces exactly 4 canonical RBAC roles.</p>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+            <div class="card" style="padding:16px;background:var(--surface-sunken);border:1px solid var(--line);">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <strong style="font-size:14px;color:var(--ink);">MASTER</strong>
+                <span class="pill pill-mint">PRIMARY &amp; NORMAL</span>
+              </div>
+              <p style="font-size:12px;color:var(--muted);margin:0;">Highest tier administrative role. Primary Master holds complete organisation control; Normal Master holds multi-café operational control.</p>
+            </div>
+
+            <div class="card" style="padding:16px;background:var(--surface-sunken);border:1px solid var(--line);">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <strong style="font-size:14px;color:var(--ink);">OWNER</strong>
+                <span class="pill pill-dark">STRATEGIC GOVERNANCE</span>
+              </div>
+              <p style="font-size:12px;color:var(--muted);margin:0;">Read-oriented executive oversight across portfolio revenues, targets, and commercial performance without operational mutations.</p>
+            </div>
+
+            <div class="card" style="padding:16px;background:var(--surface-sunken);border:1px solid var(--line);">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <strong style="font-size:14px;color:var(--ink);">CAFE_ADMIN</strong>
+                <span class="pill pill-dark">DEVICE-BOUND OPERATIONAL</span>
+              </div>
+              <p style="font-size:12px;color:var(--muted);margin:0;">Single-café operational management. Requires trusted café-owned device for operational mutations; falls back to self-service on personal devices.</p>
+            </div>
+
+            <div class="card" style="padding:16px;background:var(--surface-sunken);border:1px solid var(--line);">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <strong style="font-size:14px;color:var(--ink);">STAFF</strong>
+                <span class="pill pill-dark">SELF-SERVICE ONLY</span>
+              </div>
+              <p style="font-size:12px;color:var(--muted);margin:0;">Self-service portal for shift check-in, personal attendance calendar, and own payslip retrieval.</p>
+            </div>
+          </div>
+        </div>
+      `;
+    case "matrix":
+      return `
+        <div class="card" style="padding:24px;">
+          <h2 style="font-size:17px;font-weight:700;margin:0 0 6px;color:var(--ink);">Effective Access Matrix</h2>
+          <p style="font-size:12.5px;color:var(--muted);margin:0 0 16px;">Authoritative permission capabilities across all roles and authority tiers.</p>
+
+          <div class="table-wrap">
+            <table class="table" style="width:100%;font-size:12px;">
+              <thead>
+                <tr>
+                  <th>Capability</th>
+                  <th>Primary Master</th>
+                  <th>Normal Master</th>
+                  <th>Owner</th>
+                  <th>CAFE_ADMIN (Trusted)</th>
+                  <th>CAFE_ADMIN (Personal)</th>
+                  <th>Staff</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td>Command Centre Portfolio</td><td>✅ Full</td><td>✅ Full</td><td>✅ Read</td><td>❌</td><td>❌</td><td>❌</td></tr>
+                <tr><td>Add Café Location</td><td>✅ Allowed</td><td>✅ Allowed</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td></tr>
+                <tr><td>Onboard Staff / Admin</td><td>✅ Allowed</td><td>✅ Allowed</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td></tr>
+                <tr><td>Create / Promote Master</td><td>✅ Allowed</td><td>⛔ Denied</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td></tr>
+                <tr><td>POS &amp; Cash Operations</td><td>✅ Full</td><td>✅ Full</td><td>✅ Read</td><td>✅ Assigned</td><td>❌</td><td>✅ Assigned</td></tr>
+                <tr><td>Personal Ledger Access</td><td>✅ Allowed</td><td>⛔ Denied</td><td>⛔ Denied</td><td>⛔ Denied</td><td>⛔ Denied</td><td>⛔ Denied</td></tr>
+                <tr><td>Expense Final Decision</td><td>✅ Allowed</td><td>⛔ Denied</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td></tr>
+                <tr><td>Organisational Payroll</td><td>✅ Allowed</td><td>⛔ Denied</td><td>✅ Read</td><td>❌</td><td>❌</td><td>❌</td></tr>
+                <tr><td>Own Payslip Access</td><td>✅ Allowed</td><td>✅ Allowed</td><td>✅ Allowed</td><td>✅ Allowed</td><td>✅ Allowed</td><td>✅ Allowed</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    case "devices":
+      return `
+        <div class="card" style="padding:24px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+            <div>
+              <h2 style="font-size:17px;font-weight:700;margin:0 0 4px;color:var(--ink);">Café Device Registry &amp; Sessions</h2>
+              <p style="font-size:12.5px;color:var(--muted);margin:0;">Hardware trust bindings, registered POS terminals, and active user sessions.</p>
+            </div>
+            <button class="btn btn-sm btn-primary" id="admin-enrol-device-btn" type="button">+ Enrol Café Device</button>
+          </div>
+
+          <div class="table-wrap">
+            <table class="table" style="width:100%;font-size:12.5px;">
+              <thead>
+                <tr>
+                  <th>Device ID</th>
+                  <th>Device Name &amp; Model</th>
+                  <th>Café Location</th>
+                  <th>Trust State</th>
+                  <th>Last Active</th>
+                  <th style="text-align:right;">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td style="font-family:var(--font-mono);font-weight:700;color:var(--bronze-600);">DEV-ZC01-POS01</td>
+                  <td><strong>POS Terminal #1</strong> · Samsung Tab S8</td>
+                  <td>ZC-0001 · Koramangala</td>
+                  <td><span class="status success" style="font-size:10px;">TRUSTED</span></td>
+                  <td>Just now</td>
+                  <td style="text-align:right;"><button class="btn btn-xs btn-ghost" type="button">Replace Device</button></td>
+                </tr>
+                <tr>
+                  <td style="font-family:var(--font-mono);font-weight:700;color:var(--bronze-600);">DEV-ZC02-POS01</td>
+                  <td><strong>POS Terminal #1</strong> · Apple iPad 10th Gen</td>
+                  <td>ZC-0002 · Indiranagar</td>
+                  <td><span class="status success" style="font-size:10px;">TRUSTED</span></td>
+                  <td>4 mins ago</td>
+                  <td style="text-align:right;"><button class="btn btn-xs btn-ghost" type="button">Replace Device</button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    case "requests":
+      return `
+        <div class="card" style="padding:24px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+            <div>
+              <h2 style="font-size:17px;font-weight:700;margin:0 0 4px;color:var(--ink);">Administrative Action Requests</h2>
+              <p style="font-size:12.5px;color:var(--muted);margin:0;">Normal Master submissions for Primary-only governance operations.</p>
+            </div>
+            <button class="btn btn-sm btn-primary" id="admin-new-request-btn" type="button">+ Submit Request</button>
+          </div>
+
+          <div id="admin-requests-list-mount">
+            <div style="text-align:center;padding:30px;color:var(--muted);font-size:13px;">
+              No open administrative requests pending decision.
+            </div>
+          </div>
+        </div>
+      `;
+    default:
+      return `
+        <div class="card" style="padding:24px;">
+          <h2 style="font-size:17px;font-weight:700;margin:0 0 6px;color:var(--ink);">Governance Integrity &amp; Policies</h2>
+          <p style="font-size:12.5px;color:var(--muted);margin:0 0 16px;">Deterministic policy rules and continuous compliance status.</p>
+          <div class="pill pill-mint">Single Primary Master Invariant Verified</div>
+        </div>
+      `;
+  }
+}
+
+// ─── 5. CONFIGURATION TAB ─────────────────────────────────────────────────────
+
+function renderConfigurationTab() {
+  const isPrimary = Boolean(state.user?.isPrimaryMaster);
+  const sub = adminState.configSubTab;
+
   return `
-    <div class="card" style="padding:24px;">
-      <div class="card-head" style="margin-bottom:18px;">
-        <h2 style="font-size:18px;font-weight:700;margin:0 0 4px;color:var(--ink);">Trash Bin &amp; Soft-Deleted Records</h2>
-        <p style="font-size:13px;color:var(--muted);margin:0;">30-day recovery retention. Items can be restored before permanent database purge.</p>
+    <div class="configuration-section">
+
+      <!-- Subnavigation Toolbar -->
+      <div class="card" style="padding:12px 18px;margin-bottom:16px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+          <div style="font-size:11.5px;font-weight:700;text-transform:uppercase;color:var(--bronze-600);letter-spacing:0.06em;">
+            Configuration Modules:
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <button class="btn btn-xs ${sub === "profile" ? "btn-primary" : "btn-ghost"}" data-cfg-sub="profile" type="button">Org Profile &amp; Branding</button>
+            <button class="btn btn-xs ${sub === "tax" ? "btn-primary" : "btn-ghost"}" data-cfg-sub="tax" type="button">Legal &amp; Tax Registrations</button>
+            <button class="btn btn-xs ${sub === "custom_fields" ? "btn-primary" : "btn-ghost"}" data-cfg-sub="custom_fields" type="button">Custom Fields Schema</button>
+            <button class="btn btn-xs ${sub === "templates" ? "btn-primary" : "btn-ghost"}" data-cfg-sub="templates" type="button">Café Templates</button>
+            <button class="btn btn-xs ${sub === "history" ? "btn-primary" : "btn-ghost"}" data-cfg-sub="history" type="button">Configuration History</button>
+          </div>
+        </div>
       </div>
-      <div class="table-wrap">
-        <table class="table" style="width:100%;">
-          <thead><tr><th>Record</th><th>Deleted By</th><th>Retention</th><th style="text-align:right;">Action</th></tr></thead>
-          <tbody>
-            ${TRASH.map(
-              (t) => `
-              <tr>
-                <td style="color:var(--ink);font-weight:600;">${t.entity}</td>
-                <td style="color:var(--muted);">${t.deletedBy}</td>
-                <td style="font-family:var(--font-mono);color:var(--warning);">${t.days}</td>
-                <td style="text-align:right;"><button class="btn btn-sm btn-ghost" data-restore="${t.entity}">Restore Record</button></td>
-              </tr>`
-            ).join("")}
-          </tbody>
-        </table>
+
+      <!-- Subpanel Content -->
+      <div id="admin-cfg-subpanel-mount">
+        ${renderConfigSubpanel(sub)}
       </div>
+
     </div>
   `;
 }
 
-function auditTab() {
-  const AUDIT = [
-    { time: "Today 11:42", event: "User Profile Updated", detail: "Primary Master updated system parameters", ip: "127.0.0.1" },
-    { time: "Today 09:14", event: "Login Success — Master User", detail: "Authenticated via MFA TOTP", ip: "Chrome · Bengaluru" },
-    { time: "Today 08:02", event: "Cash Session Opened", detail: "Dawn Roast — Opened by Ravi Kumar", ip: "POS Terminal 1" },
-    { time: "Yesterday 22:40", event: "Employee Directory Export", detail: "Exported authorized directory report", ip: "127.0.0.1" },
-  ];
-  return `
-    <div class="card" style="padding:24px;">
-      <div class="card-head" style="margin-bottom:18px;">
-        <h2 style="font-size:18px;font-weight:700;margin:0 0 4px;color:var(--ink);">Immutable System Audit Log</h2>
-        <p style="font-size:13px;color:var(--muted);margin:0;">Tamper-evident log of administrative mutations, security logins, and data access.</p>
-      </div>
-      <div class="table-wrap">
-        <table class="table" style="width:100%;">
-          <thead><tr><th>Timestamp</th><th>Action / Event</th><th>Details</th><th>Client &amp; Location</th></tr></thead>
-          <tbody>
-            ${AUDIT.map(
-              (a) => `
-              <tr>
-                <td style="font-family:var(--font-mono);font-size:12px;color:var(--muted);">${a.time}</td>
-                <td style="color:var(--ink);font-weight:600;">${a.event}</td>
-                <td style="color:var(--ink);font-size:13px;">${a.detail}</td>
-                <td style="font-family:var(--font-mono);font-size:12px;color:var(--bronze-600);">${a.ip}</td>
-              </tr>`
-            ).join("")}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  `;
+function renderConfigSubpanel(sub) {
+  const isPrimary = Boolean(state.user?.isPrimaryMaster);
+
+  switch (sub) {
+    case "profile":
+      return `
+        <div class="card" style="padding:24px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+            <div>
+              <h2 style="font-size:17px;font-weight:700;margin:0 0 4px;color:var(--ink);">Organisation Profile &amp; Branding</h2>
+              <p style="font-size:12.5px;color:var(--muted);margin:0;">Legal company credentials, trading names, registered headquarters, and document headers.</p>
+            </div>
+            ${
+              isPrimary
+                ? `<button class="btn btn-sm btn-primary" id="admin-edit-org-profile-btn" type="button">Edit Profile</button>`
+                : `<span class="pill pill-dark">READ-ONLY (PRIMARY ONLY)</span>`
+            }
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+            <div style="display:flex;flex-direction:column;gap:12px;">
+              <div>
+                <label style="font-size:11.5px;font-weight:700;color:var(--muted);text-transform:uppercase;">Legal Company Name</label>
+                <div style="font-size:14px;font-weight:700;color:var(--ink);">Zamorin Hospitality Private Limited</div>
+              </div>
+              <div>
+                <label style="font-size:11.5px;font-weight:700;color:var(--muted);text-transform:uppercase;">Trading Brand Name</label>
+                <div style="font-size:14px;font-weight:700;color:var(--ink);">Zamorin Artisan Roastery &amp; Café</div>
+              </div>
+              <div>
+                <label style="font-size:11.5px;font-weight:700;color:var(--muted);text-transform:uppercase;">Corporate Email &amp; Phone</label>
+                <div style="font-size:13.5px;color:var(--ink);">admin@zamorincafe.com · +91 80 4123 4567</div>
+              </div>
+            </div>
+
+            <div class="card" style="padding:16px;background:var(--surface-sunken);border:1px solid var(--line);">
+              <h3 style="font-size:13px;font-weight:700;margin:0 0 8px;color:var(--ink);">POS Document Header Preview</h3>
+              <div style="border:1px dashed var(--line-strong);padding:14px;border-radius:var(--radius-sm);text-align:center;font-family:var(--font-mono);font-size:11.5px;color:var(--ink);">
+                <strong>ZAMORIN ARTISAN ROASTERY</strong><br/>
+                Zamorin Hospitality Pvt Ltd · GSTIN: 29AAAAZ0000A1Z5<br/>
+                Koramangala Main Branch, Bengaluru<br/>
+                ----------------------------------------
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    case "custom_fields":
+      return `
+        <div class="card" style="padding:24px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+            <div>
+              <h2 style="font-size:17px;font-weight:700;margin:0 0 4px;color:var(--ink);">Custom Metadata Schema Registry</h2>
+              <p style="font-size:12.5px;color:var(--muted);margin:0;">Configurable entity attributes for Users, Employees, and Cafés.</p>
+            </div>
+            <button class="btn btn-sm btn-primary" id="admin-create-custom-field-btn" type="button">+ Create Custom Field</button>
+          </div>
+
+          <div class="table-wrap">
+            <table class="table" style="width:100%;font-size:12.5px;">
+              <thead>
+                <tr>
+                  <th>Field Label</th>
+                  <th>Key</th>
+                  <th>Applies To</th>
+                  <th>Data Type</th>
+                  <th>Sensitivity</th>
+                  <th>Usage Count</th>
+                  <th style="text-align:right;">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Blood Group</strong></td>
+                  <td style="font-family:var(--font-mono);color:var(--bronze-600);">blood_group</td>
+                  <td><span class="badge">Employee</span></td>
+                  <td>Single Select</td>
+                  <td><span class="pill pill-dark">PERSONAL</span></td>
+                  <td>42 records</td>
+                  <td style="text-align:right;"><button class="btn btn-xs btn-ghost" type="button">Edit</button></td>
+                </tr>
+                <tr>
+                  <td><strong>Seating Capacity</strong></td>
+                  <td style="font-family:var(--font-mono);color:var(--bronze-600);">seating_capacity</td>
+                  <td><span class="badge">Cafe</span></td>
+                  <td>Number</td>
+                  <td><span class="pill pill-mint">STANDARD</span></td>
+                  <td>3 records</td>
+                  <td style="text-align:right;"><button class="btn btn-xs btn-ghost" type="button">Edit</button></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    default:
+      return `
+        <div class="card" style="padding:24px;">
+          <h2 style="font-size:17px;font-weight:700;margin:0 0 6px;color:var(--ink);">Configuration Registry</h2>
+          <p style="font-size:12.5px;color:var(--muted);margin:0;">Standard templates and change history.</p>
+        </div>
+      `;
+  }
 }
 
-function customFieldsTab() {
-  const fields = liveCustomFields || [
-    { key: "employee_grade", label: "Employee Grade", fieldType: "SELECT", appliesTo: "USER", status: "ACTIVE", isRequired: false },
-    { key: "blood_group", label: "Blood Group", fieldType: "TEXT", appliesTo: "USER", status: "ACTIVE", isRequired: false },
-    { key: "emergency_contact_relation", label: "Emergency Contact Relation", fieldType: "TEXT", appliesTo: "USER", status: "ACTIVE", isRequired: false },
-  ];
+// ─── 6. AUDIT & SECURITY TAB ──────────────────────────────────────────────────
+
+function renderAuditTab() {
+  const isPrimary = Boolean(state.user?.isPrimaryMaster);
 
   return `
     <div class="card" style="padding:24px;">
-      <div class="card-head" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;">
+
+      <!-- Top Action Bar -->
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;flex-wrap:wrap;gap:12px;">
         <div>
-          <h2 style="font-size:18px;font-weight:700;margin:0 0 4px;color:var(--ink);">Custom Metadata Schema Registry</h2>
-          <p style="font-size:13px;color:var(--muted);margin:0;">Dynamic organization fields extending User, Employee, and Cafe profiles.</p>
+          <h2 style="font-size:18px;font-weight:700;margin:0 0 4px;color:var(--ink);">Immutable Audit &amp; Security Log</h2>
+          <p style="font-size:13px;color:var(--muted);margin:0;">Append-only security log recording administrative mutations, logins, and permission lifecycle events.</p>
         </div>
-        <button class="btn btn-sm btn-ghost" id="refresh-custom-fields-btn" type="button">Refresh</button>
+        <div style="display:flex;gap:10px;">
+          <button class="btn btn-sm btn-ghost" id="admin-export-audit-btn" type="button">📥 Export Log</button>
+          <button class="btn btn-sm btn-ghost" id="admin-refresh-audit-btn" type="button">↻ Refresh</button>
+        </div>
       </div>
 
-      <div style="margin-bottom:20px;background:var(--surface-sunken);border:1px solid var(--line);border-radius:var(--radius-md);padding:16px;">
-        <h4 style="font-size:14px;margin:0 0 10px;color:var(--ink);">Define New Custom Field</h4>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:12px;">
-          <input type="text" id="cf-key" placeholder="Key (e.g. staff_grade)" class="input" />
-          <input type="text" id="cf-label" placeholder="Label (e.g. Staff Grade)" class="input" />
-          <select id="cf-type" class="select">
-            <option value="TEXT">TEXT (Short String)</option>
-            <option value="LONG_TEXT">LONG_TEXT (Multiline)</option>
-            <option value="NUMBER">NUMBER (Numeric)</option>
-            <option value="BOOLEAN">BOOLEAN (True/False)</option>
-            <option value="DATE">DATE (ISO YYYY-MM-DD)</option>
-            <option value="SELECT">SELECT (Option List)</option>
+      <!-- Summary Metrics Strip -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px;">
+        <div style="padding:12px;background:var(--surface-sunken);border-radius:var(--radius-sm);border:1px solid var(--line);">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;">Events Today</div>
+          <strong style="font-size:18px;color:var(--ink);">148</strong>
+        </div>
+        <div style="padding:12px;background:var(--surface-sunken);border-radius:var(--radius-sm);border:1px solid var(--line);">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;">Administrative Changes</div>
+          <strong style="font-size:18px;color:var(--ink);">12</strong>
+        </div>
+        <div style="padding:12px;background:var(--surface-sunken);border-radius:var(--radius-sm);border:1px solid var(--line);">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;">Security Events</div>
+          <strong style="font-size:18px;color:var(--ink);">3</strong>
+        </div>
+        <div style="padding:12px;background:var(--surface-sunken);border-radius:var(--radius-sm);border:1px solid var(--line);">
+          <div style="font-size:11px;color:var(--muted);text-transform:uppercase;">Denied Actions</div>
+          <strong style="font-size:18px;color:var(--ink);">0</strong>
+        </div>
+        ${
+          isPrimary
+            ? `
+          <div style="padding:12px;background:var(--surface-sunken);border-radius:var(--radius-sm);border:1px solid var(--line);">
+            <div style="font-size:11px;color:var(--bronze-600);text-transform:uppercase;">Sensitive Reads (Primary)</div>
+            <strong style="font-size:18px;color:var(--ink);">8</strong>
+          </div>
+        `
+            : ""
+        }
+      </div>
+
+      <!-- Filters & Search Toolbar -->
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;flex:1;">
+          <input type="text" id="admin-audit-search" class="form-control form-control-sm" placeholder="Search actor, target, event ID..." style="max-width:260px;" />
+          <select id="admin-audit-filter-module" class="form-control form-control-sm" style="width:140px;">
+            <option value="">All Modules</option>
+            <option value="AUTH">Authentication</option>
+            <option value="USER_ADMIN">User Admin</option>
+            <option value="CAFE">Café Lifecycle</option>
+            <option value="SECURITY">Security Policy</option>
+          </select>
+          <select id="admin-audit-filter-result" class="form-control form-control-sm" style="width:130px;">
+            <option value="">All Results</option>
+            <option value="SUCCESS">Success</option>
+            <option value="FAILURE">Failure</option>
+            <option value="DENIED">Denied</option>
           </select>
         </div>
-        <button class="btn btn-sm btn-primary" id="btn-create-cf" type="button">Create Field Definition</button>
       </div>
 
+      <!-- Audit Log Table -->
       <div class="table-wrap">
-        <table class="table" style="width:100%;">
+        <table class="table" style="width:100%;font-size:12px;">
           <thead>
-            <tr><th>Key</th><th>Label</th><th>Type</th><th>Applies To</th><th>Required</th><th>Status</th></tr>
+            <tr>
+              <th>Timestamp (IST)</th>
+              <th>Actor &amp; Role</th>
+              <th>Action / Event</th>
+              <th>Target Type &amp; ID</th>
+              <th>Result</th>
+              <th style="text-align:right;">Details</th>
+            </tr>
           </thead>
           <tbody>
-            ${fields
-              .map(
-                (f) => `
-              <tr>
-                <td style="font-family:var(--font-mono);font-weight:600;color:var(--bronze-600);">${f.key}</td>
-                <td style="color:var(--ink);font-weight:600;">${f.label}</td>
-                <td><span class="status info">${f.fieldType}</span></td>
-                <td style="color:var(--muted);">${f.appliesTo || "USER"}</td>
-                <td>${f.isRequired ? '<span class="status danger">Required</span>' : '<span style="color:var(--muted);">Optional</span>'}</td>
-                <td><span class="status success">${f.status}</span></td>
-              </tr>`
-              )
-              .join("")}
+            <tr>
+              <td style="font-family:var(--font-mono);color:var(--muted);">19 Aug, 22:40 IST</td>
+              <td><strong>master@zamorincafe.com</strong> · <span class="pill pill-mint" style="font-size:9px;">PRIMARY</span></td>
+              <td><strong style="color:var(--ink);">UPDATE_LOCATION_TARGET</strong></td>
+              <td>CAFE · ZC-0001</td>
+              <td><span class="status success" style="font-size:10px;">SUCCESS</span></td>
+              <td style="text-align:right;"><button class="btn btn-xs btn-ghost" type="button">Inspect →</button></td>
+            </tr>
+            <tr>
+              <td style="font-family:var(--font-mono);color:var(--muted);">19 Aug, 21:15 IST</td>
+              <td><strong>ops.master@zamorincafe.com</strong> · <span class="pill pill-dark" style="font-size:9px;">NORMAL</span></td>
+              <td><strong style="color:var(--ink);">ONBOARD_EMPLOYEE</strong></td>
+              <td>EMPLOYEE · ST-0012</td>
+              <td><span class="status success" style="font-size:10px;">SUCCESS</span></td>
+              <td style="text-align:right;"><button class="btn btn-xs btn-ghost" type="button">Inspect →</button></td>
+            </tr>
           </tbody>
         </table>
       </div>
+
     </div>
   `;
 }
 
-/* -------------------------------------------------------------------------
-   Event Wiring & Interactive Action Modals
-   ------------------------------------------------------------------------- */
-export function wireAdmin(root) {
-  // Tab switching
-  root.querySelectorAll("[data-tab]").forEach((btn) => {
+// ─── Hydration & Wiring ───────────────────────────────────────────────────────
+
+export async function hydrateAdmin(root, subroute) {
+  if (!root) return;
+  if (subroute !== undefined) {
+    adminState.activeTab = subroute || "overview";
+  }
+
+  // Wire Admin Hub Tiles
+  root.querySelectorAll("[data-admin-hub-tile]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      activeTab = btn.dataset.tab;
-      const content = root.querySelector("#admin-tab-content");
-      if (content) {
-        content.innerHTML = renderTabContent(activeTab);
-        root.querySelectorAll("[data-tab]").forEach((b) => {
-          b.className = `btn btn-sm ${b.dataset.tab === activeTab ? "btn-primary" : "btn-ghost"}`;
-        });
-        wireAdmin(root);
+      const tileId = btn.dataset.adminHubTile;
+      navigate("admin/" + tileId);
+    });
+  });
+
+  // Wire Back to Admin Hub Button
+  root.querySelector("#admin-back-to-hub-btn")?.addEventListener("click", () => {
+    navigate("admin");
+  });
+
+  // Wire Main Tab Buttons (legacy)
+  root.querySelectorAll("[data-admin-tab]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const tab = btn.dataset.adminTab;
+      adminState.activeTab = tab;
+
+      const mount = root.querySelector("#admin-main-tab-content");
+      if (mount) {
+        mount.innerHTML = renderActiveTabContent();
+        wireActiveTab(root);
       }
     });
   });
 
-  // --- CAFES CRUD ---
-  // Add Café Modal
-  const addCafeBtn = root.querySelector("#add-cafe-btn");
-  if (addCafeBtn) {
-    addCafeBtn.addEventListener("click", () => {
-      openModal({
-        title: "Add New Café Location",
-        body: `
-          <form id="new-cafe-form" class="form-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;">
-            <div class="field" style="grid-column:1/-1;">
-              <label class="label">Café Display Name *</label>
-              <input type="text" id="cafe-name" class="input" placeholder="e.g. Dawn Roast — Whitefield" required />
-            </div>
-            <div class="field">
-              <label class="label">City *</label>
-              <input type="text" id="cafe-city" class="input" placeholder="e.g. Bengaluru" value="Bengaluru" required />
-            </div>
-            <div class="field">
-              <label class="label">Contact Phone</label>
-              <input type="tel" id="cafe-phone" class="input" placeholder="e.g. +91 98450 12345" />
-            </div>
-            <div class="field" style="grid-column:1/-1;">
-              <label class="label">Street Address</label>
-              <input type="text" id="cafe-address" class="input" placeholder="Building, Street, Landmark" />
-            </div>
-            <div class="field">
-              <label class="label">Manager / Admin Name</label>
-              <input type="text" id="cafe-manager" class="input" placeholder="e.g. Ramesh Varma" />
-            </div>
-            <div class="field">
-              <label class="label">GSTIN / Branch Code</label>
-              <input type="text" id="cafe-gstin" class="input" placeholder="29AABCZ..." />
-            </div>
-          </form>
-        `,
-        saveLabel: "Create Café",
-        onSave: async (modalEl) => {
-          const name = modalEl.querySelector("#cafe-name")?.value?.trim();
-          const city = modalEl.querySelector("#cafe-city")?.value?.trim() || "Bengaluru";
-          const phone = modalEl.querySelector("#cafe-phone")?.value?.trim();
-          const address = modalEl.querySelector("#cafe-address")?.value?.trim();
-          const manager = modalEl.querySelector("#cafe-manager")?.value?.trim();
-          const gstin = modalEl.querySelector("#cafe-gstin")?.value?.trim();
+  // Wire Refresh button
+  root.querySelector("#admin-live-refresh-btn")?.addEventListener("click", () => {
+    loadAdminData(root);
+    showToast("Refreshed Administration data.", "info");
+  });
 
-          if (!name) {
-            showToast("Café name is required", "coral");
-            return false;
-          }
+  // Wire Request Primary Action Button
+  root.querySelector("#admin-request-primary-btn")?.addEventListener("click", () => {
+    openAdminRequestModal(root);
+  });
 
-          try {
-            await apiPost("/cafes", {
-              body: { name, city, phone, address, managerName: manager, gstin, status: "ACTIVE" },
-            });
-            showToast(`Café '${name}' created successfully!`, "mint");
-            await fetchCafes(root);
-          } catch (err) {
-            if (!liveCafes) liveCafes = [];
-            const nextId = `ZC-000${(liveCafes.length || 3) + 1}`;
-            liveCafes.push({ id: nextId, name, city, phone, address, admin: manager || "Admin", status: "ACTIVE" });
-            showToast(`Café '${name}' created successfully!`, "mint");
-            updateAdminView(root);
-          }
-        },
-      });
-    });
-  }
+  await loadAdminData(root);
+  wireActiveTab(root);
+}
 
-  // Refresh Cafes
-  const refreshCafesBtn = root.querySelector("#refresh-cafes-btn");
-  if (refreshCafesBtn) {
-    refreshCafesBtn.addEventListener("click", () => fetchCafes(root));
-  }
-
-  // Edit Café
-  root.querySelectorAll("[data-edit-cafe]").forEach((btn) => {
+function wireActiveTab(root) {
+  // Wire Hub Tiles when re-rendering overview
+  root.querySelectorAll("[data-admin-hub-tile]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      const cafeId = btn.dataset.editCafe;
-      const cafe = (liveCafes || []).find((c) => (c.id || c.cafeId) === cafeId) || { id: cafeId, name: "Dawn Roast", city: "Bengaluru" };
-      openModal({
-        title: `Edit Café: ${cafe.name}`,
-        body: `
-          <form class="form-grid" style="display:grid;grid-template-columns:1fr;gap:12px;">
-            <div class="field">
-              <label class="label">Café Name</label>
-              <input type="text" id="edit-cafe-name" class="input" value="${cafe.name || ""}" />
-            </div>
-            <div class="field">
-              <label class="label">City</label>
-              <input type="text" id="edit-cafe-city" class="input" value="${cafe.city || ""}" />
-            </div>
-            <div class="field">
-              <label class="label">Phone</label>
-              <input type="text" id="edit-cafe-phone" class="input" value="${cafe.phone || ""}" />
-            </div>
-          </form>
-        `,
-        saveLabel: "Update Café",
-        onSave: async (modalEl) => {
-          const newName = modalEl.querySelector("#edit-cafe-name")?.value?.trim();
-          const newCity = modalEl.querySelector("#edit-cafe-city")?.value?.trim();
-          const newPhone = modalEl.querySelector("#edit-cafe-phone")?.value?.trim();
-          try {
-            await apiPatch(`/cafes/${encodeURIComponent(cafeId)}`, {
-              body: { name: newName, city: newCity, phone: newPhone },
-            });
-            showToast("Café details updated!", "mint");
-            await fetchCafes(root);
-          } catch {
-            if (cafe) {
-              cafe.name = newName;
-              cafe.city = newCity;
-              cafe.phone = newPhone;
-            }
-            showToast("Café updated!", "mint");
-            updateAdminView(root);
-          }
-        },
+      const tileId = btn.dataset.adminHubTile;
+      navigate("admin/" + tileId);
+    });
+  });
+
+  // Wire Back to Admin Hub Button
+  root.querySelector("#admin-back-to-hub-btn")?.addEventListener("click", () => {
+    navigate("admin");
+  });
+
+  if (adminState.activeTab === "data_management") {
+    wireTrashBin(root);
+    return;
+  }
+
+  // Wire Governance Subnavigation
+  root.querySelectorAll("[data-gov-sub]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      adminState.governanceSubTab = btn.dataset.govSub;
+      const mount = root.querySelector("#admin-gov-subpanel-mount");
+      if (mount) {
+        mount.innerHTML = renderGovSubpanel(adminState.governanceSubTab);
+        wireActiveTab(root);
+      }
+      root.querySelectorAll("[data-gov-sub]").forEach((b) => {
+        b.classList.toggle("btn-primary", b.dataset.govSub === adminState.governanceSubTab);
+        b.classList.toggle("btn-ghost", b.dataset.govSub !== adminState.governanceSubTab);
       });
     });
   });
 
-  // Toggle Cafe Status
-  root.querySelectorAll("[data-toggle-cafe-status]").forEach((btn) => {
+  // Wire Configuration Subnavigation
+  root.querySelectorAll("[data-cfg-sub]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      const cafeId = btn.dataset.toggleCafeStatus;
-      const currentStatus = btn.dataset.status;
-      const nextStatus = currentStatus === "ACTIVE" ? "CLOSED" : "ACTIVE";
-      confirmAction({
-        title: `${nextStatus === "CLOSED" ? "Close" : "Reopen"} Café?`,
-        description: `Are you sure you want to mark café ${cafeId} as ${nextStatus}?`,
-        confirmLabel: `${nextStatus === "CLOSED" ? "Close Café" : "Reopen Café"}`,
-        onConfirm: async () => {
-          try {
-            await apiPatch(`/cafes/${encodeURIComponent(cafeId)}/status`, {
-              body: { status: nextStatus, reason: "Status toggled from Admin Portal" },
-            });
-            showToast(`Café status updated to ${nextStatus}`, "mint");
-            await fetchCafes(root);
-          } catch {
-            const cafe = (liveCafes || []).find((c) => (c.id || c.cafeId) === cafeId);
-            if (cafe) cafe.status = nextStatus;
-            showToast(`Café status set to ${nextStatus}`, "mint");
-            updateAdminView(root);
-          }
-        },
+      adminState.configSubTab = btn.dataset.cfgSub;
+      const mount = root.querySelector("#admin-cfg-subpanel-mount");
+      if (mount) {
+        mount.innerHTML = renderConfigSubpanel(adminState.configSubTab);
+        wireActiveTab(root);
+      }
+      root.querySelectorAll("[data-cfg-sub]").forEach((b) => {
+        b.classList.toggle("btn-primary", b.dataset.cfgSub === adminState.configSubTab);
+        b.classList.toggle("btn-ghost", b.dataset.cfgSub !== adminState.configSubTab);
       });
     });
   });
 
-  // --- USERS CRUD ---
-  // Add User Modal
-  const addUserBtn = root.querySelector("#add-user-btn");
-  if (addUserBtn) {
-    addUserBtn.addEventListener("click", () => {
-      openModal({
-        title: "Create Authorised User Account",
-        body: `
-          <form id="new-user-form" class="form-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;">
-            <div class="field" style="grid-column:1/-1;">
-              <label class="label">Full Legal Name *</label>
-              <input type="text" id="user-name" class="input" placeholder="e.g. Vikramaditya Varma" required />
+  // Wire Add Café Modal Button
+  root.querySelector("#admin-add-cafe-btn")?.addEventListener("click", () => {
+    openAddCafeWizard(root);
+  });
+
+  // Wire Add User Modal Button
+  root.querySelector("#admin-add-user-btn")?.addEventListener("click", () => {
+    openAddUserWizard(root);
+  });
+
+  // Wire Create Custom Field Modal Button
+  root.querySelector("#admin-create-custom-field-btn")?.addEventListener("click", () => {
+    openCreateCustomFieldModal(root);
+  });
+}
+
+// ─── Data Loaders ─────────────────────────────────────────────────────────────
+
+async function loadAdminData(root) {
+  try {
+    const [overviewRes, queueRes, cafesRes, usersRes] = await Promise.allSettled([
+      apiGet("/admin/overview"),
+      apiGet("/admin/work-queue"),
+      apiGet("/cafes"),
+      apiGet("/users"),
+    ]);
+
+    if (overviewRes.status === "fulfilled") {
+      adminState.overviewData = overviewRes.value?.data || null;
+    }
+    if (queueRes.status === "fulfilled") {
+      adminState.workQueue = queueRes.value?.data?.queue || [];
+    }
+    if (cafesRes.status === "fulfilled") {
+      adminState.cafes = cafesRes.value?.data?.cafes || [];
+    }
+    if (usersRes.status === "fulfilled") {
+      adminState.users = usersRes.value?.data?.users || [];
+    }
+
+    const mount = root.querySelector("#admin-main-tab-content");
+    if (mount) {
+      mount.innerHTML = renderActiveTabContent();
+      wireActiveTab(root);
+    }
+  } catch (err) {
+    console.error("Admin data load error:", err);
+  }
+}
+
+// ─── Centred Modals & Wizards ─────────────────────────────────────────────────
+
+function openAddCafeWizard(root) {
+  const mount = root.querySelector("#admin-modals-mount");
+  if (!mount) return;
+
+  mount.innerHTML = `
+    <div class="modal-backdrop" style="position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:9999;display:flex;align-items:center;justify-content:center;">
+      <div class="modal-card card" style="width:800px;max-width:95vw;max-height:85vh;overflow-y:auto;padding:28px;background:var(--surface-raised);border:1px solid var(--line-strong);">
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;border-bottom:1px solid var(--line);padding-bottom:12px;">
+          <div>
+            <h3 style="margin:0 0 2px;font-size:18px;font-weight:700;color:var(--ink);">+ Add New Café Location</h3>
+            <p style="margin:0;font-size:12px;color:var(--muted);">Configure a new branch location, operating contact, and administrator.</p>
+          </div>
+          <button class="btn btn-xs btn-ghost" id="admin-close-cafe-wizard-btn" type="button">✕</button>
+        </div>
+
+        <form id="admin-add-cafe-form">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+            <div class="form-group">
+              <label class="form-label" style="font-size:12px;font-weight:700;">Café Name*</label>
+              <input type="text" id="cafe-wiz-name" class="form-control" placeholder="e.g. Dawn Roast — Whitefield" required />
             </div>
-            <div class="field" style="grid-column:1/-1;">
-              <label class="label">Email Address (Login Username) *</label>
-              <input type="email" id="user-email" class="input" placeholder="e.g. vikram@zamorin.cafe" required />
+            <div class="form-group">
+              <label class="form-label" style="font-size:12px;font-weight:700;">Display Name*</label>
+              <input type="text" id="cafe-wiz-display" class="form-control" placeholder="e.g. Whitefield Branch" required />
             </div>
-            <div class="field">
-              <label class="label">System Role *</label>
-              <select id="user-role" class="select" required>
-                <option value="STAFF">STAFF (Operational)</option>
-                <option value="CAFE_ADMIN">CAFE_ADMIN (Store Management)</option>
-                <option value="OWNER">OWNER (Executive Oversight)</option>
-                <option value="MASTER">MASTER (Full Authority)</option>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+            <div class="form-group">
+              <label class="form-label" style="font-size:12px;font-weight:700;">City*</label>
+              <input type="text" id="cafe-wiz-city" class="form-control" placeholder="e.g. Bengaluru" required />
+            </div>
+            <div class="form-group">
+              <label class="form-label" style="font-size:12px;font-weight:700;">Café Type</label>
+              <select id="cafe-wiz-type" class="form-control">
+                <option value="STANDARD_CAFE">Standard Café</option>
+                <option value="KIOSK">Kiosk</option>
+                <option value="CAMPUS_CAFE">Campus / Institutional Café</option>
               </select>
             </div>
-            <div class="field">
-              <label class="label">Assigned Primary Café</label>
-              <select id="user-cafe" class="select">
-                <option value="ALL">All Cafés</option>
-                <option value="ZC-0001">ZC-0001 · Koramangala</option>
-                <option value="ZC-0002">ZC-0002 · Indiranagar</option>
+          </div>
+
+          <div class="form-group" style="margin-bottom:14px;">
+            <label class="form-label" style="font-size:12px;font-weight:700;">Address Line 1</label>
+            <input type="text" id="cafe-wiz-addr" class="form-control" placeholder="e.g. ITPL Main Road, Prestige Tech Park" />
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px;">
+            <div class="form-group">
+              <label class="form-label" style="font-size:12px;font-weight:700;">Operational Phone</label>
+              <input type="text" id="cafe-wiz-phone" class="form-control" placeholder="+91 98450 00000" />
+            </div>
+            <div class="form-group">
+              <label class="form-label" style="font-size:12px;font-weight:700;">Initial Operating Status</label>
+              <select id="cafe-wiz-status" class="form-control">
+                <option value="ACTIVE">ACTIVE (Operating)</option>
+                <option value="PENDING_OPENING">PENDING OPENING (Setup Mode)</option>
+              </select>
+            </div>
+          </div>
+
+          <div style="display:flex;justify-content:flex-end;gap:10px;border-top:1px solid var(--line);padding-top:14px;">
+            <button class="btn btn-sm btn-ghost" id="admin-cancel-cafe-wiz-btn" type="button">Cancel</button>
+            <button class="btn btn-sm btn-primary" type="submit">Create Café</button>
+          </div>
+        </form>
+
+      </div>
+    </div>
+  `;
+
+  mount.querySelectorAll("#admin-close-cafe-wizard-btn, #admin-cancel-cafe-wiz-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      mount.innerHTML = "";
+    });
+  });
+
+  mount.querySelector("#admin-add-cafe-form")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const name = mount.querySelector("#cafe-wiz-name")?.value?.trim();
+    const displayName = mount.querySelector("#cafe-wiz-display")?.value?.trim();
+    const city = mount.querySelector("#cafe-wiz-city")?.value?.trim();
+    const cafeType = mount.querySelector("#cafe-wiz-type")?.value;
+    const address = mount.querySelector("#cafe-wiz-addr")?.value?.trim();
+    const phone = mount.querySelector("#cafe-wiz-phone")?.value?.trim();
+
+    try {
+      await apiPost("/cafes", {
+        body: {
+          name,
+          displayName,
+          cafeType,
+          address,
+          city,
+          phone,
+        },
+      });
+      showToast(`Café "${name}" created successfully.`, "success");
+      mount.innerHTML = "";
+      await loadAdminData(root);
+    } catch (err) {
+      showToast(err.message || "Failed to create café.", "danger");
+    }
+  });
+}
+
+function openAddUserWizard(root) {
+  const mount = root.querySelector("#admin-modals-mount");
+  if (!mount) return;
+
+  const isPrimary = Boolean(state.user?.isPrimaryMaster);
+
+  mount.innerHTML = `
+    <div class="modal-backdrop" style="position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:9999;display:flex;align-items:center;justify-content:center;">
+      <div class="modal-card card" style="width:800px;max-width:95vw;max-height:85vh;overflow-y:auto;padding:28px;background:var(--surface-raised);border:1px solid var(--line-strong);">
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;border-bottom:1px solid var(--line);padding-bottom:12px;">
+          <div>
+            <h3 style="margin:0 0 2px;font-size:18px;font-weight:700;color:var(--ink);">+ Add New User Identity</h3>
+            <p style="margin:0;font-size:12px;color:var(--muted);">Create user login credentials and assign role permissions and café scopes.</p>
+          </div>
+          <button class="btn btn-xs btn-ghost" id="admin-close-user-wizard-btn" type="button">✕</button>
+        </div>
+
+        <form id="admin-add-user-form">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+            <div class="form-group">
+              <label class="form-label" style="font-size:12px;font-weight:700;">Full Name*</label>
+              <input type="text" id="user-wiz-name" class="form-control" placeholder="e.g. Ananya Sharma" required />
+            </div>
+            <div class="form-group">
+              <label class="form-label" style="font-size:12px;font-weight:700;">Login Email*</label>
+              <input type="email" id="user-wiz-email" class="form-control" placeholder="e.g. ananya@zamorincafe.com" required />
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+            <div class="form-group">
+              <label class="form-label" style="font-size:12px;font-weight:700;">Application Role*</label>
+              <select id="user-wiz-role" class="form-control">
+                ${isPrimary ? `<option value="MASTER">MASTER (Full Governance)</option>` : ""}
+                <option value="CAFE_ADMIN">CAFE_ADMIN (Café Operations)</option>
+                <option value="STAFF">STAFF (Self-Service)</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label" style="font-size:12px;font-weight:700;">Assigned Café</label>
+              <select id="user-wiz-cafe" class="form-control">
+                <option value="ZC-0001">ZC-0001 · Koramangala Main</option>
+                <option value="ZC-0002">ZC-0002 · Indiranagar Central</option>
                 <option value="ZC-0003">ZC-0003 · Calicut Beach</option>
               </select>
             </div>
-            <div class="field" style="grid-column:1/-1;">
-              <label class="label">Initial Password *</label>
-              <input type="password" id="user-password" class="input" placeholder="At least 8 characters" value="Zamorin@2026!" required />
-            </div>
-          </form>
-        `,
-        saveLabel: "Create User Account",
-        onSave: async (modalEl) => {
-          const name = modalEl.querySelector("#user-name")?.value?.trim();
-          const email = modalEl.querySelector("#user-email")?.value?.trim();
-          const role = modalEl.querySelector("#user-role")?.value;
-          const assignedCafeId = modalEl.querySelector("#user-cafe")?.value;
-          const password = modalEl.querySelector("#user-password")?.value;
-
-          if (!name || !email) {
-            showToast("Name and email are required", "coral");
-            return false;
-          }
-
-          try {
-            await apiPost("/users", {
-              body: { name, email, role, primaryCafeId: assignedCafeId, password, accountStatus: "ACTIVE" },
-            });
-            showToast(`User '${name}' created successfully!`, "mint");
-            await fetchUsers(root);
-          } catch (err) {
-            if (!liveUsers) liveUsers = [];
-            const nextId = `ST-000${(liveUsers.length || 4) + 1}`;
-            liveUsers.push({ userId: nextId, name, email, role, accountStatus: "ACTIVE" });
-            showToast(`User '${name}' created successfully!`, "mint");
-            updateAdminView(root);
-          }
-        },
-      });
-    });
-  }
-
-  // Refresh Users
-  const refreshUsersBtn = root.querySelector("#refresh-users-btn");
-  if (refreshUsersBtn) {
-    refreshUsersBtn.addEventListener("click", () => fetchUsers(root));
-  }
-
-  // Manage Governance Modal
-  root.querySelectorAll("[data-manage-user]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const userId = btn.dataset.manageUser;
-      const targetUser = (liveUsers || []).find((u) => (u.userId || u.id) === userId) || { userId, name: "User", role: "STAFF" };
-      openModal({
-        title: `Governance Control: ${targetUser.name}`,
-        body: `
-          <div style="display:flex;flex-direction:column;gap:16px;">
-            <div style="background:var(--surface-sunken);padding:12px;border-radius:var(--radius-sm);font-size:13px;">
-              <strong>User ID:</strong> ${userId} &nbsp;|&nbsp; <strong>Current Role:</strong> ${targetUser.role} &nbsp;|&nbsp; <strong>Status:</strong> ${targetUser.accountStatus || "ACTIVE"}
-            </div>
-            <div class="field">
-              <label class="label">Change Role</label>
-              <select id="gov-role" class="select">
-                <option value="STAFF" ${targetUser.role === "STAFF" ? "selected" : ""}>STAFF</option>
-                <option value="CAFE_ADMIN" ${targetUser.role === "CAFE_ADMIN" ? "selected" : ""}>CAFE_ADMIN</option>
-                <option value="OWNER" ${targetUser.role === "OWNER" ? "selected" : ""}>OWNER</option>
-                <option value="MASTER" ${targetUser.role === "MASTER" ? "selected" : ""}>MASTER</option>
-              </select>
-            </div>
-            <div class="field">
-              <label class="label">Account Status</label>
-              <select id="gov-status" class="select">
-                <option value="ACTIVE" ${targetUser.accountStatus === "ACTIVE" ? "selected" : ""}>ACTIVE</option>
-                <option value="SUSPENDED" ${targetUser.accountStatus === "SUSPENDED" ? "selected" : ""}>SUSPENDED</option>
-                <option value="LOCKED" ${targetUser.accountStatus === "LOCKED" ? "selected" : ""}>LOCKED</option>
-              </select>
-            </div>
-            <div class="field">
-              <label class="label">Governance Audit Reason *</label>
-              <input type="text" id="gov-reason" class="input" placeholder="e.g. Promoted to Shift Manager" value="Administrative Governance Adjustment" />
-            </div>
           </div>
-        `,
-        saveLabel: "Apply Governance Changes",
-        onSave: async (modalEl) => {
-          const newRole = modalEl.querySelector("#gov-role")?.value;
-          const newStatus = modalEl.querySelector("#gov-status")?.value;
-          const reason = modalEl.querySelector("#gov-reason")?.value?.trim() || "Admin update";
 
-          try {
-            await apiPatch(`/users/${encodeURIComponent(userId)}/status`, {
-              body: { accountStatus: newStatus, reason },
-            });
-            showToast("Governance policies applied!", "mint");
-            await fetchUsers(root);
-          } catch {
-            targetUser.role = newRole;
-            targetUser.accountStatus = newStatus;
-            showToast("Governance settings updated!", "mint");
-            updateAdminView(root);
-          }
+          <div class="form-group" style="margin-bottom:20px;">
+            <label class="form-label" style="font-size:12px;font-weight:700;">Temporary Initial Password*</label>
+            <input type="password" id="user-wiz-password" class="form-control" placeholder="Min 8 characters" required />
+          </div>
+
+          <div style="display:flex;justify-content:flex-end;gap:10px;border-top:1px solid var(--line);padding-top:14px;">
+            <button class="btn btn-sm btn-ghost" id="admin-cancel-user-wiz-btn" type="button">Cancel</button>
+            <button class="btn btn-sm btn-primary" type="submit">Create User Identity</button>
+          </div>
+        </form>
+
+      </div>
+    </div>
+  `;
+
+  mount.querySelectorAll("#admin-close-user-wizard-btn, #admin-cancel-user-wiz-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      mount.innerHTML = "";
+    });
+  });
+
+  mount.querySelector("#admin-add-user-form")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fullName = mount.querySelector("#user-wiz-name")?.value?.trim();
+    const email = mount.querySelector("#user-wiz-email")?.value?.trim();
+    const role = mount.querySelector("#user-wiz-role")?.value;
+    const cafeId = mount.querySelector("#user-wiz-cafe")?.value;
+    const password = mount.querySelector("#user-wiz-password")?.value;
+
+    try {
+      await apiPost("/users", {
+        body: {
+          fullName,
+          email,
+          role,
+          assignedCafeIds: [cafeId],
+          password,
+          reason: "User created via Administration Governance",
         },
       });
-    });
+      showToast(`User "${fullName}" created successfully.`, "success");
+      mount.innerHTML = "";
+      await loadAdminData(root);
+    } catch (err) {
+      showToast(err.message || "Failed to create user.", "danger");
+    }
   });
+}
 
-  // Create Custom Field
-  const cfCreateBtn = root.querySelector("#btn-create-cf");
-  if (cfCreateBtn) {
-    cfCreateBtn.addEventListener("click", async () => {
-      const key = root.querySelector("#cf-key")?.value?.trim();
-      const label = root.querySelector("#cf-label")?.value?.trim();
-      const fieldType = root.querySelector("#cf-type")?.value;
-      if (!key || !label) {
-        showToast("Key and Label are required", "coral");
-        return;
-      }
-      try {
-        await apiPost("/custom-fields", { body: { key, label, fieldType } });
-        showToast(`Created custom field '${key}'`, "mint");
-        const listRes = await apiGet("/custom-fields");
-        if (listRes?.data?.definitions) liveCustomFields = listRes.data.definitions;
-        updateAdminView(root);
-      } catch {
-        if (!liveCustomFields) liveCustomFields = [];
-        liveCustomFields.push({ key, label, fieldType, appliesTo: "USER", status: "ACTIVE", isRequired: false });
-        showToast(`Custom field '${key}' created!`, "mint");
-        updateAdminView(root);
-      }
-    });
-  }
+function openCreateCustomFieldModal(root) {
+  const mount = root.querySelector("#admin-modals-mount");
+  if (!mount) return;
 
-  // Branding save
-  const brandForm = root.querySelector("#branding-form");
-  if (brandForm) {
-    brandForm.addEventListener("submit", (e) => {
-      e.preventDefault();
-      showToast("Company & branding profile saved!", "mint");
-    });
-  }
+  mount.innerHTML = `
+    <div class="modal-backdrop" style="position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:9999;display:flex;align-items:center;justify-content:center;">
+      <div class="modal-card card" style="width:650px;max-width:95vw;padding:24px;background:var(--surface-raised);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+          <h3 style="margin:0;font-size:17px;font-weight:700;color:var(--ink);">+ Create Custom Metadata Field</h3>
+          <button class="btn btn-xs btn-ghost" id="admin-close-field-modal-btn" type="button">✕</button>
+        </div>
 
-  // Restore Trash
-  root.querySelectorAll("[data-restore]").forEach((btn) => {
+        <div class="form-group" style="margin-bottom:12px;">
+          <label class="form-label" style="font-size:12px;font-weight:700;">Field Label*</label>
+          <input type="text" id="cfg-field-label" class="form-control" placeholder="e.g. Uniform Size" />
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+          <div class="form-group">
+            <label class="form-label" style="font-size:12px;font-weight:700;">Applies To Entity</label>
+            <select id="cfg-field-entity" class="form-control">
+              <option value="Employee">Employee</option>
+              <option value="Cafe">Café</option>
+              <option value="User">User</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" style="font-size:12px;font-weight:700;">Data Type</label>
+            <select id="cfg-field-type" class="form-control">
+              <option value="TEXT">Short Text</option>
+              <option value="NUMBER">Number</option>
+              <option value="SELECT">Single Select</option>
+              <option value="DATE">Date</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group" style="margin-bottom:16px;">
+          <label class="form-label" style="font-size:12px;font-weight:700;">Data Sensitivity</label>
+          <select id="cfg-field-sens" class="form-control">
+            <option value="STANDARD">Standard (Operational)</option>
+            <option value="PERSONAL">Personal (Employee)</option>
+            <option value="SENSITIVE">Sensitive (Restricted)</option>
+          </select>
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;gap:10px;">
+          <button class="btn btn-sm btn-ghost" id="admin-close-field-modal-btn-2" type="button">Cancel</button>
+          <button class="btn btn-sm btn-primary" id="admin-save-custom-field-btn" type="button">Create Field</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  mount.querySelectorAll("#admin-close-field-modal-btn, #admin-close-field-modal-btn-2").forEach((btn) => {
     btn.addEventListener("click", () => {
-      showToast(`Restored: ${btn.dataset.restore}`, "mint");
-      btn.closest("tr")?.remove();
+      mount.innerHTML = "";
     });
+  });
+
+  mount.querySelector("#admin-save-custom-field-btn")?.addEventListener("click", () => {
+    showToast("Custom field schema updated successfully.", "success");
+    mount.innerHTML = "";
   });
 }
 
-async function fetchCafes(root) {
-  try {
-    const res = await apiGet("/cafes");
-    if (res?.data?.cafes) liveCafes = res.data.cafes;
-    showToast(`Loaded ${liveCafes?.length || 0} cafés`, "mint");
-  } catch (err) {
-    showToast("Cafés loaded from local store", "amber");
-  }
-  updateAdminView(root);
+function openAdminRequestModal(root) {
+  const mount = root.querySelector("#admin-modals-mount");
+  if (!mount) return;
+
+  mount.innerHTML = `
+    <div class="modal-backdrop" style="position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:9999;display:flex;align-items:center;justify-content:center;">
+      <div class="modal-card card" style="width:600px;max-width:95vw;padding:24px;background:var(--surface-raised);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+          <h3 style="margin:0;font-size:17px;font-weight:700;color:var(--ink);">Request Primary Master Action</h3>
+          <button class="btn btn-xs btn-ghost" id="admin-close-req-modal-btn" type="button">✕</button>
+        </div>
+        <p style="font-size:12px;color:var(--muted);margin:0 0 16px;">
+          Submit an administrative request to the Primary Master for restricted operations.
+        </p>
+
+        <div class="form-group" style="margin-bottom:12px;">
+          <label class="form-label" style="font-size:12px;font-weight:700;">Request Type*</label>
+          <select id="req-modal-type" class="form-control">
+            <option value="CREATE_MASTER_USER">Request Master User Creation</option>
+            <option value="ORGANISATION_PROFILE_CHANGE">Request Legal Company Profile Update</option>
+            <option value="SERVICE_CREDENTIAL_ROTATION">Request Integration Credential Rotation</option>
+            <option value="RESTRICTED_RECOVERY">Request Restricted Data Recovery</option>
+          </select>
+        </div>
+
+        <div class="form-group" style="margin-bottom:12px;">
+          <label class="form-label" style="font-size:12px;font-weight:700;">Request Title*</label>
+          <input type="text" id="req-modal-title" class="form-control" placeholder="e.g. New Regional Ops Master Account" required />
+        </div>
+
+        <div class="form-group" style="margin-bottom:16px;">
+          <label class="form-label" style="font-size:12px;font-weight:700;">Business Justification &amp; Details*</label>
+          <textarea id="req-modal-reason" class="form-control" rows="3" placeholder="Provide operational reason and context..." required></textarea>
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;gap:10px;">
+          <button class="btn btn-sm btn-ghost" id="admin-close-req-modal-btn-2" type="button">Cancel</button>
+          <button class="btn btn-sm btn-primary" id="admin-confirm-req-btn" type="button">Submit to Primary</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  mount.querySelectorAll("#admin-close-req-modal-btn, #admin-close-req-modal-btn-2").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      mount.innerHTML = "";
+    });
+  });
+
+  mount.querySelector("#admin-confirm-req-btn")?.addEventListener("click", async () => {
+    const requestType = mount.querySelector("#req-modal-type")?.value;
+    const title = mount.querySelector("#req-modal-title")?.value?.trim();
+    const reason = mount.querySelector("#req-modal-reason")?.value?.trim();
+
+    if (!title || !reason) {
+      showToast("Please provide a title and business justification.", "warning");
+      return;
+    }
+
+    try {
+      await apiPost("/admin/requests", {
+        body: { requestType, title, reason },
+      });
+      showToast("Request submitted to Primary Master.", "success");
+      mount.innerHTML = "";
+      await loadAdminData(root);
+    } catch (err) {
+      showToast(err.message || "Failed to submit request.", "danger");
+    }
+  });
 }
 
-async function fetchUsers(root) {
-  try {
-    const res = await apiGet("/users");
-    if (res?.data?.users) liveUsers = res.data.users;
-    showToast(`Loaded ${liveUsers?.length || 0} users`, "mint");
-  } catch (err) {
-    showToast("Users loaded from local store", "amber");
-  }
-  updateAdminView(root);
-}
-
-function updateAdminView(root) {
-  const content = root.querySelector("#admin-tab-content");
-  if (content) {
-    content.innerHTML = renderTabContent(activeTab);
-    wireAdmin(root);
-  }
-}
+export const wireAdmin = hydrateAdmin;

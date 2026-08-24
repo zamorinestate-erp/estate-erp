@@ -63,8 +63,8 @@ export class CafeAttendanceDisplayPage {
         </main>
 
         <footer style="margin-top:2.5rem;">
-          <button id="btn-admin-unlock" style="background:transparent; border:1px solid #475569; color:#94a3b8; padding:0.5rem 1.25rem; border-radius:0.5rem; cursor:pointer; font-size:0.85rem;" onclick="window.location.hash='#/login'">
-            🔒 Manager Login
+          <button id="btn-admin-unlock" style="background:transparent; border:1px solid #475569; color:#94a3b8; padding:0.5rem 1.25rem; border-radius:0.5rem; cursor:pointer; font-size:0.85rem;" onclick="window.location.hash='cafe-operator-signin'">
+            🔒 Cafe Operator Sign-In
           </button>
         </footer>
       </div>

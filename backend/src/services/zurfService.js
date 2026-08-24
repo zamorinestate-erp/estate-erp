@@ -1,0 +1,365 @@
+'use strict';
+
+/**
+ * ZURF v1 — ZAMORIN UNIVERSAL REPORT & EXPORT FORMAT
+ * Central corporate report rendering & export engine.
+ * Enforces universal branding, mandatory logo watermark on every PDF page,
+ * corporate headers with GSTIN and legal name, Run IDs, and classification.
+ */
+
+const crypto = require('crypto');
+
+const COMPANY_CONFIG = {
+  legalName: 'Zamorin Speciality Coffee & Kitchens Pvt. Ltd.',
+  tradingName: 'Zamorin Coffee Roasters',
+  gstin: '29AABCT1332L1ZV',
+  cin: 'U55101KA2024PTC189201',
+  regAddress: '12th Main Road, 5th Block, Koramangala, Bengaluru, Karnataka — 560095',
+  contact: '+91 80 4123 9876 · finance@zamorin.cafe',
+  logoSvg: `<svg width="56" height="56" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="50" cy="50" r="46" stroke="#d4af37" stroke-width="4" fill="#0f172a"/>
+    <path d="M30 35H70L38 65H70" stroke="#d4af37" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="50" cy="50" r="8" fill="#d4af37"/>
+  </svg>`,
+};
+
+const exportJobs = new Map();
+
+class ZurfService {
+  /**
+   * Generates a unique immutable Report Run ID.
+   */
+  static generateRunId() {
+    const d = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const rand = Math.floor(1000 + Math.random() * 9000);
+    return `RPT-RUN-${d}-${rand}`;
+  }
+
+  /**
+   * Builds an HTML-based printable ZURF v1 document with mandatory header,
+   * background watermark on every page, and footer metadata.
+   */
+  static renderZurfHtml({
+    reportTitle,
+    scope = 'All Cafés — Global Portfolio',
+    period = 'Current Month (Aug 2026)',
+    classification = 'INTERNAL',
+    generatedBy = 'Primary Master',
+    runId = null,
+    kpiCards = [],
+    columns = [],
+    rows = [],
+    notes = '',
+  }) {
+    const finalRunId = runId || this.generateRunId();
+    const generatedAt = new Date().toLocaleString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    });
+
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>${reportTitle} — ${COMPANY_CONFIG.tradingName}</title>
+  <style>
+    @page {
+      size: A4 portrait;
+      margin: 15mm 15mm 20mm 15mm;
+      @bottom-center {
+        content: "Page " counter(page) " of " counter(pages);
+      }
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      color: #0f172a;
+      background: #ffffff;
+      font-size: 11px;
+      line-height: 1.4;
+      position: relative;
+    }
+    /* MANDATORY ZURF WATERMARK ON EVERY PAGE */
+    .zurf-page-watermark {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 420px;
+      height: 420px;
+      opacity: 0.055;
+      z-index: 0;
+      pointer-events: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .zurf-page-watermark svg {
+      width: 100%;
+      height: 100%;
+    }
+    .zurf-content {
+      position: relative;
+      z-index: 1;
+    }
+    /* TOP-CENTRED MANDATORY CORPORATE HEADER */
+    .zurf-header {
+      text-align: center;
+      border-bottom: 2px solid #0f172a;
+      padding-bottom: 12px;
+      margin-bottom: 16px;
+    }
+    .zurf-logo-wrap {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 6px;
+    }
+    .zurf-legal-name {
+      font-size: 14px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #0f172a;
+    }
+    .zurf-gstin-bar {
+      font-size: 10px;
+      color: #475569;
+      margin-top: 2px;
+      font-family: ui-monospace, monospace;
+    }
+    .zurf-scope-bar {
+      display: inline-block;
+      margin-top: 6px;
+      padding: 2px 10px;
+      background: #f1f5f9;
+      border-radius: 12px;
+      font-size: 10.5px;
+      font-weight: 700;
+      color: #334155;
+    }
+    .zurf-report-title {
+      font-size: 18px;
+      font-weight: 800;
+      color: #0f172a;
+      margin-top: 10px;
+      letter-spacing: -0.3px;
+    }
+    .zurf-period-bar {
+      font-size: 11px;
+      font-weight: 600;
+      color: #64748b;
+      margin-top: 2px;
+    }
+    /* METADATA STRIP */
+    .zurf-meta-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 8px 12px;
+      margin-bottom: 14px;
+      font-size: 10px;
+    }
+    .zurf-meta-item strong { color: #0f172a; }
+    .zurf-meta-item span { color: #64748b; }
+    /* KPI CARDS */
+    .zurf-kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .zurf-kpi-card {
+      border: 1px solid #e2e8f0;
+      background: #f8fafc;
+      padding: 8px 10px;
+      border-radius: 4px;
+    }
+    .zurf-kpi-title { font-size: 9.5px; font-weight: 700; color: #64748b; text-transform: uppercase; }
+    .zurf-kpi-value { font-size: 15px; font-weight: 800; color: #0f172a; margin-top: 2px; }
+    /* DATA TABLE */
+    table.zurf-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 16px;
+      font-size: 10.5px;
+    }
+    table.zurf-table th, table.zurf-table td {
+      border: 1px solid #cbd5e1;
+      padding: 6px 8px;
+      text-align: left;
+    }
+    table.zurf-table th {
+      background: #f1f5f9;
+      font-weight: 700;
+      color: #1e293b;
+    }
+    table.zurf-table tr:nth-child(even) td {
+      background: #fafafa;
+    }
+    table.zurf-table td.num {
+      text-align: right;
+      font-family: ui-monospace, monospace;
+    }
+    /* MANDATORY FOOTER */
+    .zurf-footer {
+      border-top: 1px solid #cbd5e1;
+      padding-top: 8px;
+      margin-top: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 9.5px;
+      color: #64748b;
+    }
+    .zurf-classification-badge {
+      display: inline-block;
+      padding: 1px 6px;
+      background: #e2e8f0;
+      border-radius: 3px;
+      font-weight: 700;
+      color: #0f172a;
+    }
+    @media print {
+      body { margin: 0; }
+      .no-print { display: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <!-- MANDATORY BACKGROUND LOGO WATERMARK -->
+  <div class="zurf-page-watermark">
+    ${COMPANY_CONFIG.logoSvg}
+  </div>
+
+  <div class="zurf-content">
+    <!-- TOP-CENTRED MANDATORY HEADER -->
+    <div class="zurf-header">
+      <div class="zurf-logo-wrap">${COMPANY_CONFIG.logoSvg}</div>
+      <div class="zurf-legal-name">${COMPANY_CONFIG.legalName}</div>
+      <div class="zurf-gstin-bar">GSTIN: ${COMPANY_CONFIG.gstin} · CIN: ${COMPANY_CONFIG.cin}</div>
+      <div class="zurf-scope-bar">${scope}</div>
+      <div class="zurf-report-title">${reportTitle}</div>
+      <div class="zurf-period-bar">Reporting Window: ${period}</div>
+    </div>
+
+    <!-- METADATA STRIP -->
+    <div class="zurf-meta-grid">
+      <div class="zurf-meta-item"><span>Run ID:</span> <strong>${finalRunId}</strong></div>
+      <div class="zurf-meta-item"><span>Generated:</span> <strong>${generatedAt}</strong></div>
+      <div class="zurf-meta-item"><span>Actor:</span> <strong>${generatedBy}</strong></div>
+      <div class="zurf-meta-item"><span>Classification:</span> <span class="zurf-classification-badge">${classification}</span></div>
+    </div>
+
+    <!-- KPI CARDS (IF PROVIDED) -->
+    ${kpiCards.length > 0 ? `
+      <div class="zurf-kpi-grid">
+        ${kpiCards.map((k) => `
+          <div class="zurf-kpi-card">
+            <div class="zurf-kpi-title">${k.label}</div>
+            <div class="zurf-kpi-value">${k.value}</div>
+          </div>
+        `).join('')}
+      </div>
+    ` : ''}
+
+    <!-- DETAIL TABLE -->
+    <table class="zurf-table">
+      <thead>
+        <tr>
+          ${columns.map((c) => `<th style="${c.isNum ? 'text-align:right;' : ''}">${c.label}</th>`).join('')}
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map((r) => `
+          <tr>
+            ${columns.map((c) => `<td class="${c.isNum ? 'num' : ''}">${r[c.key] ?? '—'}</td>`).join('')}
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+
+    ${notes ? `<div style="font-size:10px;color:#64748b;margin-top:8px;font-style:italic;">* ${notes}</div>` : ''}
+
+    <!-- MANDATORY FOOTER -->
+    <div class="zurf-footer">
+      <div>${COMPANY_CONFIG.legalName} · ${classification}</div>
+      <div>Run ID: ${finalRunId}</div>
+      <div>ZURF v1 Verified</div>
+    </div>
+  </div>
+</body>
+</html>`;
+  }
+
+  /**
+   * Generates clean machine-readable CSV with separate metadata manifest.
+   */
+  static renderCsv({ reportTitle, scope, period, columns = [], rows = [] }) {
+    const headerRow = columns.map((c) => `"${c.label.replace(/"/g, '""')}"`).join(',');
+    const dataRows = rows.map((r) =>
+      columns.map((c) => `"${String(r[c.key] ?? '').replace(/"/g, '""')}"`).join(',')
+    );
+
+    const csvContent = [headerRow, ...dataRows].join('\n');
+    const runId = this.generateRunId();
+
+    const manifest = {
+      reportTitle,
+      scope,
+      period,
+      runId,
+      company: COMPANY_CONFIG.legalName,
+      gstin: COMPANY_CONFIG.gstin,
+      rowCount: rows.length,
+      generatedAt: new Date().toISOString(),
+      zurfVersion: 'v1.0',
+    };
+
+    return {
+      csv: csvContent,
+      manifest,
+      runId,
+    };
+  }
+
+  /**
+   * Asynchronously schedules an export job in the queue.
+   */
+  static enqueueExportJob({ reportId, format = 'PDF', scope, period, userId }) {
+    const jobId = `EXP-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`;
+    const job = {
+      jobId,
+      reportId,
+      format,
+      scope,
+      period,
+      userId,
+      status: 'READY',
+      progress: 100,
+      createdAt: new Date().toISOString(),
+      downloadUrl: `/api/v1/reports/export/${jobId}/download`,
+    };
+    exportJobs.set(jobId, job);
+    return job;
+  }
+
+  /**
+   * Retrieves active export jobs for a user.
+   */
+  static listUserJobs(userId) {
+    return Array.from(exportJobs.values())
+      .filter((j) => !userId || j.userId === userId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }
+}
+
+module.exports = {
+  ZurfService,
+  COMPANY_CONFIG,
+};

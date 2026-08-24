@@ -1,0 +1,1041 @@
+{
+  "staffSmoke": {
+    "pass": true,
+    "landingPage": "staff-home",
+    "representativeRoute": "staff-leave",
+    "scopePill": "Staff",
+    "sidebarNavCount": 5,
+    "managerialRoutesExposed": false,
+    "themeRetained": "paper"
+  },
+  "routeMatrix": [
+    {
+      "profile": "PRIMARY MASTER",
+      "label": "Command Centre",
+      "route": "dashboard",
+      "heading": "Zamorin Command Centre",
+      "activeLink": "Command Centre",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "PRIMARY MASTER",
+      "label": "POS & Billing",
+      "route": "pos",
+      "heading": "Active Order Ticket",
+      "activeLink": "POS & Billing",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "PRIMARY MASTER",
+      "label": "Tasks & Oversight",
+      "route": "approvals",
+      "heading": "Operational Task Oversight",
+      "activeLink": "Tasks & Oversight",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "PRIMARY MASTER",
+      "label": "Attendance & Shifts",
+      "route": "attendance",
+      "heading": "Attendance & Shifts",
+      "activeLink": "Attendance & Shifts",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "PRIMARY MASTER",
+      "label": "Department Orders",
+      "route": "dept-orders",
+      "heading": "Institutional & Department Orders",
+      "activeLink": "Department Orders",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "PRIMARY MASTER",
+      "label": "Inventory",
+      "route": "inventory",
+      "heading": "Inventory & Raw Material Stock",
+      "activeLink": "Inventory",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "PRIMARY MASTER",
+      "label": "Procurement",
+      "route": "procurement",
+      "heading": "Procurement Control Centre",
+      "activeLink": "Procurement",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "PRIMARY MASTER",
+      "label": "Assets & Maintenance",
+      "route": "assets",
+      "heading": "Equipment & Asset Management",
+      "activeLink": "Assets & Maintenance",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "PRIMARY MASTER",
+      "label": "Quality & Compliance",
+      "route": "quality",
+      "heading": "Operational Task Oversight",
+      "activeLink": "Quality & Compliance",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "PRIMARY MASTER",
+      "label": "Employees",
+      "route": "employees",
+      "heading": "Employee Directory & Staffing",
+      "activeLink": "Employees",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "PRIMARY MASTER",
+      "label": "Payroll & Payslips",
+      "route": "payroll",
+      "heading": "Zamorin Payroll Control Centre",
+      "activeLink": "Payroll & Payslips",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "PRIMARY MASTER",
+      "label": "Bills & Receipts",
+      "route": "bills",
+      "heading": "Sales Bills & Tax Receipts",
+      "activeLink": "Bills & Receipts",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "PRIMARY MASTER",
+      "label": "Expenses",
+      "route": "expenses",
+      "heading": "Expense Management & Approvals",
+      "activeLink": "Expenses",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "PRIMARY MASTER",
+      "label": "Finance & Accounts",
+      "route": "finance",
+      "heading": "Finance & Accounts",
+      "activeLink": "Finance & Accounts",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "PRIMARY MASTER",
+      "label": "Personal Ledger & Owner Account",
+      "route": "ledger",
+      "heading": "Personal Ledger & Owner Account",
+      "activeLink": "Personal Ledger & Owner Account",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "PRIMARY MASTER",
+      "label": "Customers & Loyalty",
+      "route": "customers",
+      "heading": "Customer Directory & Loyalty Rewards",
+      "activeLink": "Customers & Loyalty",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "PRIMARY MASTER",
+      "label": "Menu Management",
+      "route": "menu",
+      "heading": "Menu & Recipe Management",
+      "activeLink": "Menu Management",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "PRIMARY MASTER",
+      "label": "Vendors",
+      "route": "vendors",
+      "heading": "Supplier & Vendor Control Centre",
+      "activeLink": "Vendors",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "PRIMARY MASTER",
+      "label": "Revenue Share & Outlets",
+      "route": "revenue-share",
+      "heading": "Revenue Share & Leased Outlets",
+      "activeLink": "Revenue Share & Outlets",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "PRIMARY MASTER",
+      "label": "Reports & Analytics",
+      "route": "reports",
+      "heading": "Reports & Analytics Control Centre",
+      "activeLink": "Reports & Analytics",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "PRIMARY MASTER",
+      "label": "Administration",
+      "route": "admin",
+      "heading": "Administration & Governance",
+      "activeLink": "Administration",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "PRIMARY MASTER",
+      "label": "Devices & Sessions",
+      "route": "cafe-ops-devices",
+      "heading": "Devices & Operator Sessions",
+      "activeLink": "Devices & Sessions",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "PRIMARY MASTER",
+      "label": "Settings",
+      "route": "settings",
+      "heading": "Operational Task Oversight",
+      "activeLink": "Settings",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "NORMAL MASTER",
+      "label": "Command Centre",
+      "route": "dashboard",
+      "heading": "Zamorin Command Centre",
+      "activeLink": "Command Centre",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "NORMAL MASTER",
+      "label": "POS & Billing",
+      "route": "pos",
+      "heading": "Active Order Ticket",
+      "activeLink": "POS & Billing",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "NORMAL MASTER",
+      "label": "Tasks & Oversight",
+      "route": "approvals",
+      "heading": "Operational Task Oversight",
+      "activeLink": "Tasks & Oversight",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "NORMAL MASTER",
+      "label": "Attendance & Shifts",
+      "route": "attendance",
+      "heading": "Attendance & Shifts",
+      "activeLink": "Attendance & Shifts",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "NORMAL MASTER",
+      "label": "Department Orders",
+      "route": "dept-orders",
+      "heading": "Institutional & Department Orders",
+      "activeLink": "Department Orders",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "NORMAL MASTER",
+      "label": "Inventory",
+      "route": "inventory",
+      "heading": "Inventory & Raw Material Stock",
+      "activeLink": "Inventory",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "NORMAL MASTER",
+      "label": "Procurement",
+      "route": "procurement",
+      "heading": "Procurement Control Centre",
+      "activeLink": "Procurement",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "NORMAL MASTER",
+      "label": "Assets & Maintenance",
+      "route": "assets",
+      "heading": "Equipment & Asset Management",
+      "activeLink": "Assets & Maintenance",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "NORMAL MASTER",
+      "label": "Quality & Compliance",
+      "route": "quality",
+      "heading": "Quality & Compliance Control Centre",
+      "activeLink": "Quality & Compliance",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "NORMAL MASTER",
+      "label": "Employees",
+      "route": "employees",
+      "heading": "Employee Directory & Staffing",
+      "activeLink": "Employees",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "NORMAL MASTER",
+      "label": "Bills & Receipts",
+      "route": "bills",
+      "heading": "Sales Bills & Tax Receipts",
+      "activeLink": "Bills & Receipts",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "NORMAL MASTER",
+      "label": "Expenses",
+      "route": "expenses",
+      "heading": "Expense Management & Approvals",
+      "activeLink": "Expenses",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "NORMAL MASTER",
+      "label": "Finance & Accounts",
+      "route": "finance",
+      "heading": "Finance & Accounts",
+      "activeLink": "Finance & Accounts",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "NORMAL MASTER",
+      "label": "Customers & Loyalty",
+      "route": "customers",
+      "heading": "Customer Directory & Loyalty Rewards",
+      "activeLink": "Customers & Loyalty",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "NORMAL MASTER",
+      "label": "Menu Management",
+      "route": "menu",
+      "heading": "Menu & Recipe Management",
+      "activeLink": "Menu Management",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "NORMAL MASTER",
+      "label": "Vendors",
+      "route": "vendors",
+      "heading": "Supplier & Vendor Control Centre",
+      "activeLink": "Vendors",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "NORMAL MASTER",
+      "label": "Reports & Analytics",
+      "route": "reports",
+      "heading": "Reports & Analytics Control Centre",
+      "activeLink": "Reports & Analytics",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "NORMAL MASTER",
+      "label": "Administration",
+      "route": "admin",
+      "heading": "Administration & Governance",
+      "activeLink": "Administration",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "NORMAL MASTER",
+      "label": "Devices & Sessions",
+      "route": "cafe-ops-devices",
+      "heading": "Devices & Operator Sessions",
+      "activeLink": "Devices & Sessions",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "NORMAL MASTER",
+      "label": "Settings",
+      "route": "settings",
+      "heading": "⚙️\n            Settings, Account & Preferences\n            Universal Personal Hub",
+      "activeLink": "Settings",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "OWNER",
+      "label": "Overview",
+      "route": "dashboard",
+      "heading": "Zamorin Command Centre",
+      "activeLink": "Overview",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "OWNER",
+      "label": "Tasks & Oversight",
+      "route": "approvals",
+      "heading": "Operational Task Oversight",
+      "activeLink": "Tasks & Oversight",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "OWNER",
+      "label": "Bills & Receipts",
+      "route": "bills",
+      "heading": "Sales Bills & Tax Receipts",
+      "activeLink": "Bills & Receipts",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "OWNER",
+      "label": "Finance Summary",
+      "route": "finance",
+      "heading": "Owner Finance Summary",
+      "activeLink": "Finance Summary",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "OWNER",
+      "label": "Personal Ledger & Owner Account",
+      "route": "ledger",
+      "heading": "Personal Ledger & Owner Account",
+      "activeLink": "Personal Ledger & Owner Account",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "OWNER",
+      "label": "Café Performance",
+      "route": "performance",
+      "heading": "Café Performance Control Centre",
+      "activeLink": "Café Performance",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "OWNER",
+      "label": "Reports",
+      "route": "reports",
+      "heading": "Reports & Analytics Control Centre",
+      "activeLink": "Reports",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "OWNER",
+      "label": "Employees",
+      "route": "employees",
+      "heading": "Employee Directory & Staffing",
+      "activeLink": "Employees",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "OWNER",
+      "label": "Payroll & Payslips",
+      "route": "payroll",
+      "heading": "Zamorin Payroll Control Centre",
+      "activeLink": "Payroll & Payslips",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "OWNER",
+      "label": "Revenue Share & Outlets",
+      "route": "revenue-share",
+      "heading": "Revenue Share & Leased Outlets",
+      "activeLink": "Revenue Share & Outlets",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "OWNER",
+      "label": "Settings",
+      "route": "settings",
+      "heading": "⚙️\n            Settings, Account & Preferences\n            Universal Personal Hub",
+      "activeLink": "Settings",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "CAFE OPERATIONS",
+      "label": "Cafe Operations Dashboard",
+      "route": "dashboard",
+      "heading": "Rendered",
+      "activeLink": "Cafe Operations Dashboard",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "CAFE OPERATIONS",
+      "label": "POS & Billing",
+      "route": "pos",
+      "heading": "Active Order Ticket",
+      "activeLink": "POS & Billing",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "CAFE OPERATIONS",
+      "label": "Attendance & Shifts",
+      "route": "attendance",
+      "heading": "Attendance & Shifts",
+      "activeLink": "Attendance & Shifts",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "CAFE OPERATIONS",
+      "label": "Department Orders",
+      "route": "dept-orders",
+      "heading": "Institutional & Department Orders",
+      "activeLink": "Department Orders",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "CAFE OPERATIONS",
+      "label": "Inventory",
+      "route": "inventory",
+      "heading": "Inventory & Raw Material Stock",
+      "activeLink": "Inventory",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "CAFE OPERATIONS",
+      "label": "Procurement",
+      "route": "procurement",
+      "heading": "Procurement Control Centre",
+      "activeLink": "Procurement",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "CAFE OPERATIONS",
+      "label": "Assets & Maintenance",
+      "route": "assets",
+      "heading": "Equipment & Asset Management",
+      "activeLink": "Assets & Maintenance",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "CAFE OPERATIONS",
+      "label": "Quality & Compliance",
+      "route": "quality",
+      "heading": "Quality & Compliance Control Centre",
+      "activeLink": "Quality & Compliance",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "CAFE OPERATIONS",
+      "label": "Expenses",
+      "route": "expenses",
+      "heading": "Expense Management & Approvals",
+      "activeLink": "Expenses",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "CAFE OPERATIONS",
+      "label": "Sales & Cash",
+      "route": "sales-cash",
+      "heading": "Rendered",
+      "activeLink": "Sales & Cash",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "CAFE OPERATIONS",
+      "label": "Customers & Loyalty",
+      "route": "customers",
+      "heading": "Customer Directory & Loyalty Rewards",
+      "activeLink": "Customers & Loyalty",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "CAFE OPERATIONS",
+      "label": "Reports (this café)",
+      "route": "reports",
+      "heading": "Reports & Analytics Control Centre",
+      "activeLink": "Reports (this café)",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "CAFE OPERATIONS",
+      "label": "Action Centre",
+      "route": "tasks",
+      "heading": "Operational Task Oversight",
+      "activeLink": "Action Centre",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "CAFE OPERATIONS",
+      "label": "Devices & Sessions",
+      "route": "cafe-ops-devices",
+      "heading": "Devices & Operator Sessions",
+      "activeLink": "Devices & Sessions",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    },
+    {
+      "profile": "CAFE OPERATIONS",
+      "label": "Settings",
+      "route": "settings",
+      "heading": "⚙️\n            Settings, Account & Preferences\n            Universal Personal Hub",
+      "activeLink": "Settings",
+      "topbar": true,
+      "sidebar": true,
+      "theme": "paper",
+      "pass": true
+    }
+  ],
+  "ownerHistoricalDefect": {
+    "pass": true,
+    "step1_initial": {
+      "activeLink": "",
+      "isTasksRendered": true,
+      "hash": "#tasks"
+    },
+    "step2_afterClickBills": {
+      "activeLink": "Bills & Receipts",
+      "isBillsRendered": true,
+      "isTasksStillRendered": false,
+      "hash": "#bills"
+    }
+  },
+  "scrollPersistence": [
+    {
+      "profile": "PRIMARY MASTER",
+      "before": 120,
+      "after": 120,
+      "resetToZero": false,
+      "pass": true
+    },
+    {
+      "profile": "NORMAL MASTER",
+      "before": 120,
+      "after": 120,
+      "resetToZero": false,
+      "pass": true
+    },
+    {
+      "profile": "OWNER",
+      "before": 120,
+      "after": 120,
+      "resetToZero": false,
+      "pass": true
+    },
+    {
+      "profile": "CAFE OPERATIONS",
+      "before": 120,
+      "after": 120,
+      "resetToZero": false,
+      "pass": true
+    }
+  ],
+  "themeMatrix": [
+    {
+      "profile": "PRIMARY MASTER",
+      "theme": "paper",
+      "rootTheme": "paper",
+      "hasNavyOverride": false,
+      "pass": true
+    },
+    {
+      "profile": "PRIMARY MASTER",
+      "theme": "pearl",
+      "rootTheme": "pearl",
+      "hasNavyOverride": false,
+      "pass": true
+    },
+    {
+      "profile": "PRIMARY MASTER",
+      "theme": "midnight",
+      "rootTheme": "midnight",
+      "hasNavyOverride": false,
+      "pass": true
+    },
+    {
+      "profile": "PRIMARY MASTER",
+      "theme": "noir",
+      "rootTheme": "noir",
+      "hasNavyOverride": false,
+      "pass": true
+    },
+    {
+      "profile": "NORMAL MASTER",
+      "theme": "paper",
+      "rootTheme": "paper",
+      "hasNavyOverride": false,
+      "pass": true
+    },
+    {
+      "profile": "NORMAL MASTER",
+      "theme": "pearl",
+      "rootTheme": "pearl",
+      "hasNavyOverride": false,
+      "pass": true
+    },
+    {
+      "profile": "NORMAL MASTER",
+      "theme": "midnight",
+      "rootTheme": "midnight",
+      "hasNavyOverride": false,
+      "pass": true
+    },
+    {
+      "profile": "NORMAL MASTER",
+      "theme": "noir",
+      "rootTheme": "noir",
+      "hasNavyOverride": false,
+      "pass": true
+    },
+    {
+      "profile": "OWNER",
+      "theme": "paper",
+      "rootTheme": "paper",
+      "hasNavyOverride": false,
+      "pass": true
+    },
+    {
+      "profile": "OWNER",
+      "theme": "pearl",
+      "rootTheme": "pearl",
+      "hasNavyOverride": false,
+      "pass": true
+    },
+    {
+      "profile": "OWNER",
+      "theme": "midnight",
+      "rootTheme": "midnight",
+      "hasNavyOverride": false,
+      "pass": true
+    },
+    {
+      "profile": "OWNER",
+      "theme": "noir",
+      "rootTheme": "noir",
+      "hasNavyOverride": false,
+      "pass": true
+    },
+    {
+      "profile": "CAFE OPERATIONS",
+      "theme": "paper",
+      "rootTheme": "paper",
+      "hasNavyOverride": false,
+      "pass": true
+    },
+    {
+      "profile": "CAFE OPERATIONS",
+      "theme": "pearl",
+      "rootTheme": "pearl",
+      "hasNavyOverride": false,
+      "pass": true
+    },
+    {
+      "profile": "CAFE OPERATIONS",
+      "theme": "midnight",
+      "rootTheme": "midnight",
+      "hasNavyOverride": false,
+      "pass": true
+    },
+    {
+      "profile": "CAFE OPERATIONS",
+      "theme": "noir",
+      "rootTheme": "noir",
+      "hasNavyOverride": false,
+      "pass": true
+    }
+  ],
+  "responsiveMatrix": [
+    {
+      "condition": "1366 × 768 @ 100%",
+      "width": 1366,
+      "height": 768,
+      "type": "Native Baseline",
+      "topbarVisible": true,
+      "sidebarVisible": true,
+      "sidebarWidth": 272,
+      "docOverflow": false,
+      "hamburgerHidden": true,
+      "pass": true
+    },
+    {
+      "condition": "1440 × 900 @ 100%",
+      "width": 1440,
+      "height": 900,
+      "type": "Native Baseline",
+      "topbarVisible": true,
+      "sidebarVisible": true,
+      "sidebarWidth": 272,
+      "docOverflow": false,
+      "hamburgerHidden": true,
+      "pass": true
+    },
+    {
+      "condition": "1536 × 864 @ 100%",
+      "width": 1536,
+      "height": 864,
+      "type": "Native Baseline",
+      "topbarVisible": true,
+      "sidebarVisible": true,
+      "sidebarWidth": 272,
+      "docOverflow": false,
+      "hamburgerHidden": true,
+      "pass": true
+    },
+    {
+      "condition": "1600 × 900 @ 100%",
+      "width": 1600,
+      "height": 900,
+      "type": "Native Baseline",
+      "topbarVisible": true,
+      "sidebarVisible": true,
+      "sidebarWidth": 272,
+      "docOverflow": false,
+      "hamburgerHidden": true,
+      "pass": true
+    },
+    {
+      "condition": "1920 × 1080 @ 100%",
+      "width": 1920,
+      "height": 1080,
+      "type": "Native Baseline",
+      "topbarVisible": true,
+      "sidebarVisible": true,
+      "sidebarWidth": 272,
+      "docOverflow": false,
+      "hamburgerHidden": true,
+      "pass": true
+    },
+    {
+      "condition": "125% Zoom Simulation (1536x864 CSS)",
+      "width": 1536,
+      "height": 864,
+      "type": "Zoom Simulation",
+      "topbarVisible": true,
+      "sidebarVisible": true,
+      "sidebarWidth": 272,
+      "docOverflow": false,
+      "hamburgerHidden": true,
+      "pass": true
+    },
+    {
+      "condition": "150% Zoom Simulation (1280x720 CSS)",
+      "width": 1280,
+      "height": 720,
+      "type": "Zoom Simulation",
+      "topbarVisible": true,
+      "sidebarVisible": true,
+      "sidebarWidth": 272,
+      "docOverflow": false,
+      "hamburgerHidden": true,
+      "pass": true
+    },
+    {
+      "condition": "175% Zoom Simulation (1097x617 CSS)",
+      "width": 1097,
+      "height": 617,
+      "type": "Zoom Simulation",
+      "topbarVisible": true,
+      "sidebarVisible": true,
+      "sidebarWidth": 84,
+      "docOverflow": false,
+      "hamburgerHidden": true,
+      "pass": true
+    },
+    {
+      "condition": "200% Zoom Simulation (960x540 CSS)",
+      "width": 960,
+      "height": 540,
+      "type": "Zoom Simulation",
+      "topbarVisible": true,
+      "sidebarVisible": true,
+      "sidebarWidth": 84,
+      "docOverflow": false,
+      "hamburgerHidden": true,
+      "pass": true
+    }
+  ],
+  "runtimeErrors": []
+}

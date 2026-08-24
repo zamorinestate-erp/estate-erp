@@ -15,6 +15,13 @@ const {
   listPayrollRuns,
   getPayrollRun,
   listPayrollRunPayslips,
+  getPayrollOverview,
+  getPayrollReconciliation,
+  getPayrollExceptions,
+  getPayrollPayments,
+  generatePaymentBatch,
+  getPayrollCompliance,
+  getPayrollIntegrity,
 } = require('../controllers/payrollManagementController');
 
 const {
@@ -63,6 +70,21 @@ router.get(
 );
 
 router.get(
+  '/overview',
+  getPayrollOverview
+);
+
+router.get(
+  '/compliance/overview',
+  getPayrollCompliance
+);
+
+router.get(
+  '/integrity',
+  getPayrollIntegrity
+);
+
+router.get(
   '/runs',
   listPayrollRuns
 );
@@ -75,6 +97,26 @@ router.post(
 router.get(
   '/runs/:payrollRunId/payslips',
   listPayrollRunPayslips
+);
+
+router.get(
+  '/runs/:payrollRunId/reconciliation',
+  getPayrollReconciliation
+);
+
+router.get(
+  '/runs/:payrollRunId/exceptions',
+  getPayrollExceptions
+);
+
+router.get(
+  '/runs/:payrollRunId/payments',
+  getPayrollPayments
+);
+
+router.post(
+  '/runs/:payrollRunId/payments/batch',
+  generatePaymentBatch
 );
 
 router.post(

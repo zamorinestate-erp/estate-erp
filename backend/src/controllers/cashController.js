@@ -22,6 +22,8 @@ const {
   ApiError,
 } = require('../utils/ApiError');
 
+const { resolveEffectiveCafeScope, assertResourceCafeOwnership } = require('../utils/cafeScope');
+
 const PAYMENT_METHODS = [
   'CASH',
   'CARD',
@@ -88,18 +90,9 @@ function ensureCafeAccess(
   request,
   cafeId
 ) {
-  if (
-    request.auth.role === 'MASTER' ||
-    request.auth.role === 'OWNER'
-  ) {
-    return;
-  }
-
-  if (
-    !(
-      request.auth.assignedCafeIds || []
-    ).includes(cafeId)
-  ) {
+  if (!cafeId) return;
+  const effectiveCafe = resolveEffectiveCafeScope(request);
+  if (effectiveCafe && effectiveCafe !== cafeId.trim().toUpperCase()) {
     throw new ApiError(
       403,
       'CAFE_ACCESS_DENIED',
@@ -207,7 +200,18 @@ function buildCashFilter(request) {
       request.auth.organisationId,
   };
 
-  if (
+  if (request.auth.role === 'STAFF') {
+    throw new ApiError(
+      403,
+      'CASH_BOOK_ACCESS_DENIED',
+      'Staff users cannot access the Cash Book.'
+    );
+  }
+
+  const effectiveCafe = resolveEffectiveCafeScope(request);
+  if (effectiveCafe) {
+    filter.cafeId = effectiveCafe;
+  } else if (
     request.auth.role ===
     'CAFE_ADMIN'
   ) {
@@ -218,20 +222,12 @@ function buildCashFilter(request) {
     };
   }
 
-  if (request.auth.role === 'STAFF') {
-    throw new ApiError(
-      403,
-      'CASH_BOOK_ACCESS_DENIED',
-      'Staff users cannot access the Cash Book.'
-    );
-  }
-
   const cafeId =
     normalizeIdentifier(
       request.query.cafeId
     );
 
-  if (cafeId) {
+  if (!effectiveCafe && cafeId && cafeId !== 'ALL') {
     ensureCafeAccess(
       request,
       cafeId

@@ -43,12 +43,18 @@ async function attachDeviceContext(req, res, next) {
       req.params.cafeId || req.query.cafeId || (req.body && req.body.cafeId)
     );
 
+    const operatorSessionId = req.headers['x-operator-session-id'] || null;
+    if (operatorSessionId) {
+      req.auth.operatorSessionId = operatorSessionId;
+    }
+
     req.auth.deviceContext = {
       deviceId: deviceId || 'UNKNOWN_PERSONAL_DEVICE',
       deviceClass: deviceRegistration ? deviceRegistration.deviceClass : 'PERSONAL',
       boundCafeId: deviceRegistration ? deviceRegistration.assignedCafeId : null,
       status: deviceRegistration ? deviceRegistration.status : 'UNREGISTERED',
       trustLevel: deviceRegistration ? deviceRegistration.trustLevel : 'UNVERIFIED',
+      operatorSessionId,
     };
 
     req.auth.privilegeProfile = effective.privilegeProfile;

@@ -60,10 +60,14 @@ async function startServer(t) {
 }
 
 function mockAuth(t, overrides = {}) {
+  const role = overrides.role || 'MASTER';
   const user = {
     userId: 'MU-0001',
     organisationId: 'ORG-TEST',
-    role: 'MASTER',
+    role,
+    // Primary Master by default for all MASTER users in tests.
+    // Set isPrimaryMaster: false in overrides to test Normal Master denial.
+    isPrimaryMaster: role === 'MASTER' ? true : false,
     assignedCafeIds: [],
     primaryCafeId: null,
     sessionVersion: 1,

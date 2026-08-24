@@ -1,133 +1,285 @@
 'use strict';
 
-/**
- * INVENTORY ROUTES
- *
- * Mounted at: /api/v1/inventory (registered in routes/index.js)
- *
- * Permission model:
- *   Global item management: MASTER ONLY
- *   Café stock reads:       MASTER + CAFE_ADMIN (assigned café)
- *   Café stock configure:   MASTER + CAFE_ADMIN (assigned café)
- *   Stock movement record:  MASTER + CAFE_ADMIN (assigned café)
- *
- * The inventoryController's assertCafeAccess() provides the per-request
- * café scope enforcement as the data layer (third layer of the
- * three-layer permission model).
- */
-
 const express = require('express');
 const { authenticate } = require('../middleware/authenticate');
 const { authorize } = require('../middleware/authorize');
+
 const {
-  listItems,
+  getInventoryOverview,
+  listGlobalItems,
   getItem,
-  createItem,
-  updateItem,
+  createGlobalItem,
+  updateGlobalItem,
   archiveItem,
   listCafeStock,
   getCafeStockItem,
   configureCafeStock,
   recordMovement,
   listMovements,
-  getReorderAlerts,
+  receiveStock,
+  listTransfers,
+  createTransfer,
+  dispatchTransfer,
+  receiveTransfer,
+  listLots,
+  getExpirySchedule,
+  listRecalls,
+  createRecall,
+  getReplenishmentRecommendations,
+  listCycleCounts,
+  submitCycleCount,
+  approveCycleCount,
+  recordWastage,
+  getInventoryIntegrity,
+  listReservations,
+  createReservation,
+  releaseReservation,
+  recordInternalLocationTransfer,
+  getItem360,
+  getConsumptionRecipeVariance,
+  getInventoryValuationReport,
 } = require('../controllers/inventoryController');
 
 const router = express.Router();
 
-// All inventory routes require an authenticated session.
 router.use(authenticate);
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// GLOBAL INVENTORY ITEMS — MASTER ONLY
-// ═══════════════════════════════════════════════════════════════════════════════
+// 1. Overview & Multi-Café Command Centre
+router.get(
+  '/overview',
+  authorize('INVENTORY_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  getInventoryOverview
+);
 
-// List items
+// 2. Global Item Master
 router.get(
   '/items',
   authorize('INVENTORY_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
-  listItems
+  listGlobalItems
 );
 
-// Single item
 router.get(
   '/items/:itemId',
   authorize('INVENTORY_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
   getItem
 );
 
-// Create item (MASTER ONLY — propagates to all cafés)
 router.post(
   '/items',
   authorize('INVENTORY_WRITE', { allowedRoles: ['MASTER'] }),
-  createItem
+  createGlobalItem
 );
 
-// Update item fields
 router.patch(
   '/items/:itemId',
   authorize('INVENTORY_WRITE', { allowedRoles: ['MASTER'] }),
-  updateItem
+  updateGlobalItem
 );
 
-// Archive item
 router.post(
   '/items/:itemId/archive',
   authorize('INVENTORY_WRITE', { allowedRoles: ['MASTER'] }),
   archiveItem
 );
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// CAFÉ STOCK — MASTER + CAFE_ADMIN (controller enforces café scope)
-// ═══════════════════════════════════════════════════════════════════════════════
-
-// List all stock for a café
+// 3. Café Stock Management
 router.get(
   '/cafes/:cafeId/stock',
   authorize('INVENTORY_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
   listCafeStock
 );
 
-// Single item stock at a café
 router.get(
   '/cafes/:cafeId/stock/:itemId',
   authorize('INVENTORY_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
   getCafeStockItem
 );
 
-// Update thresholds / vendor / availability for a café+item
 router.patch(
   '/cafes/:cafeId/stock/:itemId/configure',
   authorize('INVENTORY_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
   configureCafeStock
 );
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// STOCK MOVEMENTS — MASTER + CAFE_ADMIN (controller enforces café scope)
-// ═══════════════════════════════════════════════════════════════════════════════
-
-// Record a movement
+// 4. Stock Movement Ledger & Mutations
 router.post(
-  '/cafes/:cafeId/movements',
+  '/movements',
   authorize('INVENTORY_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
   recordMovement
 );
 
-// List movements for a café
 router.get(
-  '/cafes/:cafeId/movements',
+  '/movements',
   authorize('INVENTORY_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
   listMovements
 );
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// REORDER ALERTS
-// ═══════════════════════════════════════════════════════════════════════════════
+router.post(
+  '/receipts',
+  authorize('INVENTORY_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
+  receiveStock
+);
+
+// 5. Inter-Café Transfers
+router.get(
+  '/transfers',
+  authorize('INVENTORY_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  listTransfers
+);
+
+router.post(
+  '/transfers',
+  authorize('INVENTORY_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
+  createTransfer
+);
+
+router.post(
+  '/transfers/:transferId/dispatch',
+  authorize('INVENTORY_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
+  dispatchTransfer
+);
+
+router.post(
+  '/transfers/:transferId/receive',
+  authorize('INVENTORY_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
+  receiveTransfer
+);
+
+// 6. Lots, Expiry & FEFO
+router.get(
+  '/lots',
+  authorize('INVENTORY_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  listLots
+);
 
 router.get(
-  '/cafes/:cafeId/reorder-alerts',
+  '/expiry-schedule',
   authorize('INVENTORY_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
-  getReorderAlerts
+  getExpirySchedule
+);
+
+// 7. Recall & Traceability
+router.get(
+  '/recalls',
+  authorize('INVENTORY_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  listRecalls
+);
+
+router.post(
+  '/recalls',
+  authorize('INVENTORY_ADMIN', { allowedRoles: ['MASTER'] }),
+  createRecall
+);
+
+// 8. Replenishment & PAR
+router.get(
+  '/replenishment/recommendations',
+  authorize('INVENTORY_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  getReplenishmentRecommendations
+);
+
+// 9. Cycle Counts & Stocktake
+router.get(
+  '/counts',
+  authorize('INVENTORY_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  listCycleCounts
+);
+
+router.get(
+  '/cycle-counts',
+  authorize('INVENTORY_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  listCycleCounts
+);
+
+router.post(
+  '/counts',
+  authorize('INVENTORY_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
+  submitCycleCount
+);
+
+router.post(
+  '/cycle-counts',
+  authorize('INVENTORY_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
+  submitCycleCount
+);
+
+router.post(
+  '/counts/:countId/approve',
+  authorize('INVENTORY_WRITE', { allowedRoles: ['MASTER'] }),
+  approveCycleCount
+);
+
+router.post(
+  '/cycle-counts/:countId/approve',
+  authorize('INVENTORY_WRITE', { allowedRoles: ['MASTER'] }),
+  approveCycleCount
+);
+
+// 10. Wastage & Adjustments
+router.post(
+  '/wastage',
+  authorize('INVENTORY_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
+  recordWastage
+);
+
+// 11. Inventory Reservations (Stages 151-158)
+router.get(
+  '/reservations',
+  authorize('INVENTORY_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  listReservations
+);
+
+router.post(
+  '/reservations',
+  authorize('INVENTORY_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
+  createReservation
+);
+
+router.post(
+  '/reservations/:reservationId/release',
+  authorize('INVENTORY_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
+  releaseReservation
+);
+
+// 12. Internal Location Transfers (Stages 076-084)
+router.post(
+  '/internal-transfers',
+  authorize('INVENTORY_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
+  recordInternalLocationTransfer
+);
+
+// 13. Item 360 Drilldown (Stages 268-270)
+router.get(
+  '/items/:itemId/360',
+  authorize('INVENTORY_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  getItem360
+);
+
+// 14. Consumption & Recipe Variance (Stages 162-166)
+router.get(
+  '/consumption/variance',
+  authorize('INVENTORY_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  getConsumptionRecipeVariance
+);
+
+router.get(
+  '/reports/recipe-variance',
+  authorize('INVENTORY_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  getConsumptionRecipeVariance
+);
+
+// 15. Inventory Valuation Report (Stages 213-217, 278-291)
+router.get(
+  '/reports/valuation',
+  authorize('INVENTORY_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  getInventoryValuationReport
+);
+
+// 16. Inventory Integrity Audit
+router.get(
+  '/integrity',
+  authorize('INVENTORY_READ', { allowedRoles: ['MASTER', 'OWNER'] }),
+  getInventoryIntegrity
 );
 
 module.exports = router;

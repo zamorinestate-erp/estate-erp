@@ -67,9 +67,10 @@ test('Inventory — GlobalItem, CafeConfig & StockMovement model contracts', asy
   await t.test('GlobalInventoryItem computes nameLower and normalises baseUnit', async () => {
     const item = new GlobalInventoryItem({
       itemId: 'ITEM-0001',
+      sku: 'SKU-0001',
       organisationId: 'ORG-0001',
       name: ' Whole Milk ',
-      category: 'BEVERAGE',
+      category: 'DAIRY_FRESH',
       baseUnit: ' ML ',
       createdByUserId: 'MU-0001',
     });
@@ -87,19 +88,17 @@ test('Inventory — GlobalItem, CafeConfig & StockMovement model contracts', asy
     });
 
     assert.equal(config.currentQuantityBase, 0);
-    assert.equal(config.negativeStockAllowed, false);
   });
 
-  await t.test('StockMovement validates non-zero delta', async () => {
+  await t.test('StockMovement validates quantityBase required', async () => {
     const mov = new StockMovement({
       movementId: 'SMOV-20260807-0001',
       organisationId: 'ORG-0001',
       cafeId: 'CAFE-0001',
       itemId: 'ITEM-0001',
       movementType: 'RECEIPT',
-      quantityDelta: 0,
-      balanceBefore: 0,
-      balanceAfter: 0,
+      balanceBeforeBase: 0,
+      balanceAfterBase: 0,
       businessDate: '2026-08-07',
       createdByUserId: 'MU-0001',
       createdByRole: 'MASTER',
@@ -109,7 +108,7 @@ test('Inventory — GlobalItem, CafeConfig & StockMovement model contracts', asy
       await mov.validate();
       assert.fail('Should have failed validation');
     } catch (err) {
-      assert.ok(err.errors.quantityDelta);
+      assert.ok(err.errors.quantityBase);
     }
   });
 });
@@ -155,6 +154,7 @@ test('Menu & Bill — Price history and sales receipt models', async (t) => {
       menuItemId: 'MENU-0001',
       organisationId: 'ORG-0001',
       name: 'Espresso',
+      nameLower: 'espresso',
       category: 'COFFEE',
       currentPricePaisa: 12000,
       createdByUserId: 'MU-0001',
@@ -288,14 +288,13 @@ test('Operations — Task, Approval, Quality, Asset, DeptOrder, RevenueShare', a
     assert.equal(asset.status, 'OPERATIONAL');
   });
 
-  await t.test('DepartmentOrder validates targetDepartment', async () => {
+  await t.test('DepartmentOrder validates required departmentName', async () => {
     const order = new DepartmentOrder({
-      orderId: 'DO-0001',
+      orderId: 'DO-2026-0001',
       organisationId: 'ORG-0001',
       cafeId: 'CAFE-0001',
-      targetDepartment: 'INVALID_DEPT',
+      institutionName: 'University A',
       items: [{ name: 'Croissants', quantity: 20 }],
-      orderDate: '2026-08-07',
       requestedByUserId: 'MU-0001',
     });
 
@@ -303,7 +302,7 @@ test('Operations — Task, Approval, Quality, Asset, DeptOrder, RevenueShare', a
       await order.validate();
       assert.fail('Should have failed validation');
     } catch (err) {
-      assert.ok(err.errors.targetDepartment);
+      assert.ok(err.errors.departmentName);
     }
   });
 
@@ -312,14 +311,17 @@ test('Operations — Task, Approval, Quality, Asset, DeptOrder, RevenueShare', a
       agreementId: 'RSA-0001',
       organisationId: 'ORG-0001',
       cafeId: 'CAFE-0001',
+      outletId: 'LO-0001',
+      operatorId: 'OPR-0001',
       partnerName: 'Dawn Roasters Partner',
-      sharePercentage: 15,
+      commencementDate: '2026-08-01',
+      expiryDate: '2027-07-31',
       effectiveFrom: '2026-08-01',
+      status: 'ACTIVE',
       createdByUserId: 'MU-0001',
     });
 
     await rsa.validate();
     assert.equal(rsa.status, 'ACTIVE');
-    assert.equal(rsa.sharePercentage, 15);
   });
 });

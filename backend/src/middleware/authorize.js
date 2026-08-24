@@ -5,7 +5,7 @@ const {
 } = require('../models/RolePermission');
 
 const ABSOLUTE_ROLE_RESTRICTIONS = {
-  PERSONAL_LEDGER: ['MASTER'],
+  PERSONAL_LEDGER: ['MASTER', 'OWNER'],
   MASTER_AUDIT: ['MASTER'],
   MASTER_TRASH_BIN: ['MASTER'],
   MASTER_USER_ADMINISTRATION: ['MASTER'],
@@ -69,6 +69,8 @@ function getRequestCafeId(
   return normalizeIdentifier(
     request.params?.cafeId ||
       request.body?.cafeId ||
+      request.body?.sourceCafeId ||
+      request.body?.destCafeId ||
       request.query?.cafeId ||
       request.get('x-cafe-id')
   );
@@ -150,6 +152,9 @@ function ruleAppliesToRequest({
         auth.role === 'OWNER';
 
     case 'ASSIGNED_CAFES':
+      if (!cafeId) {
+        return (auth.assignedCafeIds || []).length > 0;
+      }
       return Boolean(
         cafeId &&
           canAccessCafe(auth, cafeId)
@@ -268,11 +273,71 @@ function enforceSensitiveRequirements({
   return true;
 }
 
+/**
+ * requirePrimaryMaster — standalone middleware that ensures the authenticated
+ * user is a MASTER with isPrimaryMaster === true. Normal Masters, Owners,
+ * Admins, and Staff all receive 403 PRIMARY_MASTER_AUTHORITY_REQUIRED.
+ */
+function requirePrimaryMaster(
+  request,
+  response,
+  next
+) {
+  if (
+    !request.auth ||
+    request.auth.role !== 'MASTER' ||
+    !request.auth.isPrimaryMaster
+  ) {
+    return sendAuthorizationError(
+      response,
+      'PRIMARY_MASTER_AUTHORITY_REQUIRED',
+      'This action requires Primary Master authority.'
+    );
+  }
+
+  return next();
+}
+
+/**
+ * requirePrimaryMasterOrOwner — ensures the authenticated user is either
+ * an OWNER, or a MASTER with isPrimaryMaster === true.
+ * Non-primary Masters, Admins, and Staff all receive 403 REVENUE_SHARE_RESTRICTED.
+ */
+function requirePrimaryMasterOrOwner(
+  request,
+  response,
+  next
+) {
+  if (!request.auth) {
+    return sendAuthorizationError(
+      response,
+      'UNAUTHORIZED',
+      'Authentication required.'
+    );
+  }
+
+  const isOwner = request.auth.role === 'OWNER';
+  const isPrimaryMaster =
+    request.auth.role === 'MASTER' &&
+    request.auth.isPrimaryMaster === true;
+
+  if (!isOwner && !isPrimaryMaster) {
+    return sendAuthorizationError(
+      response,
+      'REVENUE_SHARE_RESTRICTED',
+      'SCR-026 Revenue Share is visible and accessible exclusively to Primary Master and Owner.'
+    );
+  }
+
+  return next();
+}
+
 function authorize(
   permissionCode,
   {
     allowedRoles = null,
     absoluteRestriction = null,
+    requirePrimaryMaster: requiresPrimary = false,
     cafeIdResolver = null,
     targetUserIdResolver = null,
     cafeRequired = false,
@@ -322,6 +387,18 @@ function authorize(
           response,
           'ABSOLUTE_ROLE_RESTRICTION',
           'This action is permanently restricted to another role.'
+        );
+      }
+
+      if (
+        (requiresPrimary || absoluteRestriction === 'PERSONAL_LEDGER') &&
+        auth.role === 'MASTER' &&
+        !auth.isPrimaryMaster
+      ) {
+        return sendAuthorizationError(
+          response,
+          'PRIMARY_MASTER_AUTHORITY_REQUIRED',
+          'This action requires Primary Master authority.'
         );
       }
 
@@ -495,5 +572,7 @@ module.exports = {
   ABSOLUTE_ROLE_RESTRICTIONS,
   authorize,
   requireReason,
+  requirePrimaryMaster,
+  requirePrimaryMasterOrOwner,
   canAccessCafe,
 };

@@ -10,7 +10,7 @@ test('OWNER has organisation-wide Inventory read scope while CAFE_ADMIN remains 
   const source = fs.readFileSync(filePath, 'utf8');
 
   assert.equal(
-    source.includes("if (request.auth.role === 'MASTER' || request.auth.role === 'OWNER') return;"),
+    source.includes("if (role === 'MASTER' || role === 'OWNER') return;"),
     true,
     'assertCafeAccess must allow MASTER and OWNER organisation-wide Inventory access'
   );

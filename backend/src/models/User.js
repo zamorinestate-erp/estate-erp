@@ -352,6 +352,75 @@ const userSchema = new mongoose.Schema(
       },
     ],
 
+    workerType: {
+      type: String,
+      enum: ['PERMANENT', 'FIXED_TERM', 'TRAINEE', 'INTERN', 'CONTINGENT'],
+      default: 'PERMANENT',
+    },
+
+    employmentStatus: {
+      type: String,
+      enum: ['PREBOARDING', 'PROBATION', 'ACTIVE', 'NOTICE_PERIOD', 'EXITED', 'ARCHIVED'],
+      default: 'ACTIVE',
+      index: true,
+    },
+
+    fte: {
+      type: Number,
+      default: 1.0,
+    },
+
+    standardWeeklyHours: {
+      type: Number,
+      default: 48,
+    },
+
+    positionId: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: null,
+    },
+
+    managerUserId: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: null,
+    },
+
+    probationStatus: {
+      type: String,
+      enum: ['PENDING', 'CONFIRMED', 'EXTENDED', 'NOT_APPLICABLE'],
+      default: 'CONFIRMED',
+    },
+
+    probationEndDate: {
+      type: String,
+      default: null,
+    },
+
+    offboardingDetails: {
+      noticeDate: { type: String, default: null },
+      lastWorkingDay: { type: String, default: null },
+      exitType: { type: String, default: null },
+      reasonCategory: { type: String, default: null },
+      handoverComplete: { type: Boolean, default: false },
+      assetsReturned: { type: Boolean, default: false },
+      accessRevoked: { type: Boolean, default: false },
+      payrollNotified: { type: Boolean, default: false },
+    },
+
+    statutoryStatus: {
+      epfUanStatus: { type: String, default: 'VERIFIED' },
+      esiStatus: { type: String, default: 'REGISTERED' },
+    },
+
+    recordHold: {
+      type: Boolean,
+      default: false,
+    },
+
     isPrimaryMaster: {
       type: Boolean,
       required: true,
@@ -475,6 +544,61 @@ const userSchema = new mongoose.Schema(
     lockedUntil: {
       type: Date,
       default: null,
+    },
+
+    operatorPinHash: {
+      type: String,
+      select: false,
+      default: null,
+    },
+
+    operatorPinFailedAttempts: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+
+    operatorPinLockedUntil: {
+      type: Date,
+      default: null,
+    },
+
+    operatorPinSetAt: {
+      type: Date,
+      default: null,
+    },
+
+    cafeOperatorAccess: {
+      active: {
+        type: Boolean,
+        default: false,
+      },
+      assignedCafeId: {
+        type: String,
+        trim: true,
+        uppercase: true,
+        default: null,
+      },
+      validFrom: {
+        type: Date,
+        default: null,
+      },
+      validUntil: {
+        type: Date,
+        default: null,
+      },
+      assignedBy: {
+        type: String,
+        trim: true,
+        uppercase: true,
+        default: null,
+      },
+      assignmentReason: {
+        type: String,
+        trim: true,
+        maxlength: 1000,
+        default: null,
+      },
     },
 
     lastLoginAt: {

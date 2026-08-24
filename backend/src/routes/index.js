@@ -23,11 +23,17 @@ const notificationRoutes =
 const attendanceRoutes =
   require('../modules/attendance/attendanceRoutes');
 
+const leaveRoutes =
+  require('./leaveRoutes');
+
 const cashRoutes =
   require('./cashRoutes');
 
 const expenseRoutes =
   require('./expenseRoutes');
+
+const financeRoutes =
+  require('./financeRoutes');
 
 const reportRoutes =
   require('./reportRoutes');
@@ -95,7 +101,18 @@ const customFieldRoutes =
 const expansionModulesRoutes =
   require('./expansionModulesRoutes');
 
+const adminRoutes =
+  require('./adminRoutes');
+
+const settingsRoutes =
+  require('./settingsRoutes');
+
 const router = express.Router();
+
+router.use(
+  '/admin',
+  adminRoutes
+);
 
 router.use(
   '/auth',
@@ -133,6 +150,11 @@ router.use(
 );
 
 router.use(
+  '/leave',
+  leaveRoutes
+);
+
+router.use(
   '/cash-transactions',
   cashRoutes
 );
@@ -140,6 +162,11 @@ router.use(
 router.use(
   '/expenses',
   expenseRoutes
+);
+
+router.use(
+  '/finance',
+  financeRoutes
 );
 
 router.use(
@@ -250,6 +277,9 @@ router.use(
 const deviceRoutes =
   require('./deviceRoutes');
 
+const operatorSessionRoutes =
+  require('./operatorSessionRoutes');
+
 router.use(
   '/devices',
   deviceRoutes
@@ -260,11 +290,31 @@ router.use(
   deviceRoutes
 );
 
+router.use(
+  '/cafe-operations/devices',
+  deviceRoutes
+);
+
+router.use(
+  '/cafe-operations/operator',
+  operatorSessionRoutes
+);
+
+router.use(
+  '/operator',
+  operatorSessionRoutes
+);
+
 const mailOpsRoutes = require('./mailOpsRoutes');
 
 router.use(
   '/mailops',
   mailOpsRoutes
+);
+
+router.use(
+  '/settings',
+  settingsRoutes
 );
 
 router.use(

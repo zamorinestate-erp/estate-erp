@@ -116,7 +116,7 @@ function integerInputs(fields, section, values = {}) {
       ([name, label]) => `
         <label style="min-width:180px; flex:1;">
           <span
-            class="muted-white"
+            style="color:var(--muted);"
             style="display:block; font-size:11px; margin-bottom:6px;"
           >
             ${escapeHtml(label)}
@@ -143,7 +143,7 @@ function moneyInputs(fields, section, values = {}) {
       ([name, label]) => `
         <label style="min-width:180px; flex:1;">
           <span
-            class="muted-white"
+            style="color:var(--muted);"
             style="display:block; font-size:11px; margin-bottom:6px;"
           >
             ${escapeHtml(label)} (₹)
@@ -196,7 +196,7 @@ function renderPayslipRows(payslips) {
                     <div style="font-weight:700;">
                       ${escapeHtml(payslip.employeeName)}
                     </div>
-                    <div class="muted-white" style="font-size:11px;">
+                    <div style="color:var(--muted);" style="font-size:11px;">
                       ${escapeHtml(payslip.employeeUserId)}
                       ${payslip.jobTitle
                         ? ` · ${escapeHtml(payslip.jobTitle)}`
@@ -238,7 +238,7 @@ function renderPayslipRows(payslips) {
                             Edit draft
                           </button>
                         `
-                        : `<span class="muted-white" style="font-size:11px;">Read only</span>`
+                        : `<span style="color:var(--muted);" style="font-size:11px;">Read only</span>`
                     }
                   </td>
                 </tr>
@@ -274,10 +274,10 @@ function renderPayslipForm({
         style="gap:12px; flex-wrap:wrap; margin-bottom:16px;"
       >
         <div>
-          <div style="color:#fff; font-size:16px; font-weight:700;">
+          <div style="color:var(--ink); font-size:16px; font-weight:700;">
             ${editing ? "Edit draft payslip" : "Add payslip"}
           </div>
-          <div class="muted-white" style="font-size:12px;">
+          <div style="color:var(--muted);" style="font-size:12px;">
             All totals and lifecycle fields are calculated by the backend.
           </div>
         </div>
@@ -298,7 +298,7 @@ function renderPayslipForm({
 
       <div class="flex gap-md" style="flex-wrap:wrap;">
         <label style="min-width:240px; flex:1;">
-          <span class="muted-white" style="display:block; font-size:11px; margin-bottom:6px;">
+          <span style="color:var(--muted);" style="display:block; font-size:11px; margin-bottom:6px;">
             Employee
           </span>
           <select
@@ -315,7 +315,7 @@ function renderPayslipForm({
         </label>
 
         <label style="min-width:220px; flex:1;">
-          <span class="muted-white" style="display:block; font-size:11px; margin-bottom:6px;">
+          <span style="color:var(--muted);" style="display:block; font-size:11px; margin-bottom:6px;">
             Job title
           </span>
           <input
@@ -330,7 +330,7 @@ function renderPayslipForm({
         </label>
 
         <label style="min-width:260px; flex:1;">
-          <span class="muted-white" style="display:block; font-size:11px; margin-bottom:6px;">
+          <span style="color:var(--muted);" style="display:block; font-size:11px; margin-bottom:6px;">
             Notes
           </span>
           <input
@@ -345,7 +345,7 @@ function renderPayslipForm({
       </div>
 
       <div style="margin-top:18px;">
-        <div style="color:#fff; font-weight:700; margin-bottom:10px;">
+        <div style="color:var(--ink); font-weight:700; margin-bottom:10px;">
           Attendance
         </div>
         <div class="flex gap-md" style="flex-wrap:wrap;">
@@ -358,7 +358,7 @@ function renderPayslipForm({
       </div>
 
       <div style="margin-top:18px;">
-        <div style="color:#fff; font-weight:700; margin-bottom:10px;">
+        <div style="color:var(--ink); font-weight:700; margin-bottom:10px;">
           Earnings
         </div>
         <div class="flex gap-md" style="flex-wrap:wrap;">
@@ -371,7 +371,7 @@ function renderPayslipForm({
       </div>
 
       <div style="margin-top:18px;">
-        <div style="color:#fff; font-weight:700; margin-bottom:10px;">
+        <div style="color:var(--ink); font-weight:700; margin-bottom:10px;">
           Deductions
         </div>
         <div class="flex gap-md" style="flex-wrap:wrap;">
@@ -557,12 +557,12 @@ function renderPayslipManagerShell(payrollRun) {
         style="gap:14px; flex-wrap:wrap; margin-bottom:18px;"
       >
         <div>
-          <div style="color:#fff; font-size:18px; font-weight:700;">
+          <div style="color:var(--ink); font-size:18px; font-weight:700;">
             Payslips · ${escapeHtml(
               payrollRun.payrollRunId
             )}
           </div>
-          <div class="muted-white" style="font-size:12px;">
+          <div style="color:var(--muted);" style="font-size:12px;">
             ${escapeHtml(payrollRun.cafeId)}
             · ${escapeHtml(payrollRun.periodKey)}
             · ${escapeHtml(payrollRun.status)}
@@ -594,7 +594,7 @@ function renderPayslipManagerShell(payrollRun) {
               class="glass"
               style="padding:12px 14px; margin-bottom:16px;"
             >
-              <div class="muted-white" style="font-size:12px;">
+              <div style="color:var(--muted);" style="font-size:12px;">
                 This payroll run is read only because its status is
                 ${escapeHtml(payrollRun.status)}.
               </div>
@@ -607,7 +607,7 @@ function renderPayslipManagerShell(payrollRun) {
         style="padding:18px; margin-bottom:18px;"
       >
         <div
-          style="color:#fff; font-size:15px; font-weight:700; margin-bottom:12px;"
+          style="color:var(--ink); font-size:15px; font-weight:700; margin-bottom:12px;"
         >
           Employee payslips
         </div>
@@ -624,7 +624,7 @@ function renderPayslipManagerShell(payrollRun) {
         ${
           canEdit
             ? renderPayslipLoading()
-            : `<div class="muted-white">Draft editing is unavailable.</div>`
+            : `<div style="color:var(--muted);">Draft editing is unavailable.</div>`
         }
       </div>
     </div>
@@ -700,7 +700,7 @@ function bindPayslipEditor({
       });
 
     editor.innerHTML =
-      `<div class="muted-white">Draft editing is unavailable.</div>`;
+      `<div style="color:var(--muted);">Draft editing is unavailable.</div>`;
     return;
   }
 

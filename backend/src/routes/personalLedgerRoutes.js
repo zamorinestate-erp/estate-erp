@@ -1,16 +1,12 @@
 'use strict';
 
 /**
- * PERSONAL LEDGER ROUTES
+ * PERSONAL LEDGER & OWNER ACCOUNT ROUTES (SCR-018)
  *
- * ABSOLUTE RESTRICTION: MASTER ONLY
- * Every route uses absoluteRestriction: 'PERSONAL_LEDGER'.
- * The backend will reject any request whose authenticated role is not MASTER.
- *
- * Undiscoverability:
- * The controller returns 404 (not 403) for any entry not owned by the
- * authenticated caller, so a non-Master impersonator cannot confirm that
- * Personal Ledger exists.
+ * AUTHORIZATION:
+ *   - PRIMARY MASTER (role = MASTER && isPrimaryMaster === true): Full authority.
+ *   - OWNER (role = OWNER): Authorized according to authorized Owner-account scope.
+ *   - NORMAL MASTER, CAFE_ADMIN, STAFF: Strictly DENIED (403/404).
  *
  * Mounted at: /api/v1/personal-ledger (registered in routes/index.js)
  */
@@ -27,11 +23,17 @@ const {
 } = require('../middleware/authorize');
 
 const {
+  getLedgerOverview,
+  getBalance,
   listEntries,
   getEntry,
   createEntry,
+  classifyToBusinessBooks,
+  reverseClassification,
   reverseEntry,
-  getBalance,
+  settleBalances,
+  confirmBalance,
+  getReconciliation,
 } = require('../controllers/personalLedgerController');
 
 const router = express.Router();
@@ -39,63 +41,156 @@ const router = express.Router();
 // All routes require an authenticated session.
 router.use(authenticate);
 
+// ── GET /personal-ledger/overview ────────────────────────────────────────────
+router.get(
+  '/overview',
+  authorize('PERSONAL_LEDGER_READ', {
+    absoluteRestriction: 'PERSONAL_LEDGER',
+    allowedRoles: ['MASTER', 'OWNER'],
+  }),
+  getLedgerOverview
+);
+
 // ── GET /personal-ledger/balance ─────────────────────────────────────────────
-// Returns balance summary (credits, debits, net). Placed before /:id to avoid
-// "balance" being misinterpreted as a ledgerEntryId.
 router.get(
   '/balance',
   authorize('PERSONAL_LEDGER_READ', {
     absoluteRestriction: 'PERSONAL_LEDGER',
-    allowedRoles: ['MASTER'],
+    allowedRoles: ['MASTER', 'OWNER'],
   }),
   getBalance
 );
 
-// ── GET /personal-ledger ─────────────────────────────────────────────────────
-// List own entries. Supports ?page, ?limit, ?from, ?to, ?category,
-// ?entryType, ?status query parameters.
+// ── GET /personal-ledger/reconciliation ──────────────────────────────────────
 router.get(
-  '/',
+  '/reconciliation',
   authorize('PERSONAL_LEDGER_READ', {
     absoluteRestriction: 'PERSONAL_LEDGER',
-    allowedRoles: ['MASTER'],
+    allowedRoles: ['MASTER', 'OWNER'],
+  }),
+  getReconciliation
+);
+
+// ── GET /personal-ledger/entries (and /personal-ledger) ──────────────────────
+router.get(
+  '/entries',
+  authorize('PERSONAL_LEDGER_READ', {
+    absoluteRestriction: 'PERSONAL_LEDGER',
+    allowedRoles: ['MASTER', 'OWNER'],
   }),
   listEntries
 );
 
-// ── GET /personal-ledger/:ledgerEntryId ──────────────────────────────────────
-// Fetch a single entry by its business ID.
 router.get(
-  '/:ledgerEntryId',
+  '/',
   authorize('PERSONAL_LEDGER_READ', {
     absoluteRestriction: 'PERSONAL_LEDGER',
-    allowedRoles: ['MASTER'],
+    allowedRoles: ['MASTER', 'OWNER'],
+  }),
+  listEntries
+);
+
+// ── GET /personal-ledger/entries/:ledgerEntryId ──────────────────────────────
+router.get(
+  '/entries/:ledgerEntryId',
+  authorize('PERSONAL_LEDGER_READ', {
+    absoluteRestriction: 'PERSONAL_LEDGER',
+    allowedRoles: ['MASTER', 'OWNER'],
   }),
   getEntry
 );
 
-// ── POST /personal-ledger ────────────────────────────────────────────────────
-// Create a new Personal Ledger entry.
+router.get(
+  '/:ledgerEntryId',
+  authorize('PERSONAL_LEDGER_READ', {
+    absoluteRestriction: 'PERSONAL_LEDGER',
+    allowedRoles: ['MASTER', 'OWNER'],
+  }),
+  getEntry
+);
+
+// ── POST /personal-ledger/entries (and /personal-ledger) ─────────────────────
 router.post(
-  '/',
+  '/entries',
   authorize('PERSONAL_LEDGER_WRITE', {
     absoluteRestriction: 'PERSONAL_LEDGER',
-    allowedRoles: ['MASTER'],
+    allowedRoles: ['MASTER', 'OWNER'],
   }),
   createEntry
 );
 
-// ── POST /personal-ledger/:ledgerEntryId/reverse ─────────────────────────────
-// Post a reversing entry. Body must include { reason }.
 router.post(
-  '/:ledgerEntryId/reverse',
+  '/',
   authorize('PERSONAL_LEDGER_WRITE', {
     absoluteRestriction: 'PERSONAL_LEDGER',
-    allowedRoles: ['MASTER'],
+    allowedRoles: ['MASTER', 'OWNER'],
+  }),
+  createEntry
+);
+
+// ── POST /personal-ledger/entries/:ledgerEntryId/classify ────────────────────
+router.post(
+  '/entries/:ledgerEntryId/classify',
+  authorize('PERSONAL_LEDGER_WRITE', {
+    absoluteRestriction: 'PERSONAL_LEDGER',
+    allowedRoles: ['MASTER', 'OWNER'],
+  }),
+  classifyToBusinessBooks
+);
+
+// ── POST /personal-ledger/entries/:ledgerEntryId/reverse-classification ──────
+router.post(
+  '/entries/:ledgerEntryId/reverse-classification',
+  authorize('PERSONAL_LEDGER_WRITE', {
+    absoluteRestriction: 'PERSONAL_LEDGER',
+    allowedRoles: ['MASTER', 'OWNER'],
+    requiresReason: true,
+  }),
+  requireReason,
+  reverseClassification
+);
+
+// ── POST /personal-ledger/entries/:ledgerEntryId/reverse ─────────────────────
+router.post(
+  '/entries/:ledgerEntryId/reverse',
+  authorize('PERSONAL_LEDGER_WRITE', {
+    absoluteRestriction: 'PERSONAL_LEDGER',
+    allowedRoles: ['MASTER', 'OWNER'],
     requiresReason: true,
   }),
   requireReason,
   reverseEntry
+);
+
+router.post(
+  '/:ledgerEntryId/reverse',
+  authorize('PERSONAL_LEDGER_WRITE', {
+    absoluteRestriction: 'PERSONAL_LEDGER',
+    allowedRoles: ['MASTER', 'OWNER'],
+    requiresReason: true,
+  }),
+  requireReason,
+  reverseEntry
+);
+
+// ── POST /personal-ledger/settlements ────────────────────────────────────────
+router.post(
+  '/settlements',
+  authorize('PERSONAL_LEDGER_WRITE', {
+    absoluteRestriction: 'PERSONAL_LEDGER',
+    allowedRoles: ['MASTER', 'OWNER'],
+  }),
+  settleBalances
+);
+
+// ── POST /personal-ledger/confirmations ──────────────────────────────────────
+router.post(
+  '/confirmations',
+  authorize('PERSONAL_LEDGER_WRITE', {
+    absoluteRestriction: 'PERSONAL_LEDGER',
+    allowedRoles: ['MASTER', 'OWNER'],
+  }),
+  confirmBalance
 );
 
 module.exports = router;

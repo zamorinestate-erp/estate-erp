@@ -44,8 +44,8 @@ function requireSelfProfile(req, res, next) {
     return res.status(401).json({ error: 'UNAUTHENTICATED' });
   }
 
-  const requestedUserId = req.params.userId || req.query.userId || (req.body && req.body.userId);
-  if (req.auth.privilegeProfile === 'SELF_ONLY' && requestedUserId && requestedUserId !== req.auth.userId) {
+  const requestedUserId = req.params.userId || req.params.employeeId || req.query.userId || (req.body && req.body.userId);
+  if ((req.auth.privilegeProfile === 'SELF_ONLY' || req.auth.role === 'STAFF') && requestedUserId && requestedUserId !== req.auth.userId) {
     return res.status(403).json({
       error: 'SELF_ONLY_SCOPE_DENIED',
       message: 'Personal device context restricts operations to own user profile data only',

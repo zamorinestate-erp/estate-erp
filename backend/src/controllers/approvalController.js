@@ -131,6 +131,20 @@ const decideApproval = asyncHandler(async (request, response) => {
     );
   }
 
+  // For protected entity types, Normal Master is also blocked — only Primary Master
+  // has final authority over sensitive approval categories.
+  if (
+    PROTECTED_ENTITY_TYPES.has(approval.entityType) &&
+    request.auth.role === 'MASTER' &&
+    !request.auth.isPrimaryMaster
+  ) {
+    throw new ApiError(
+      403,
+      'PRIMARY_MASTER_AUTHORITY_REQUIRED',
+      `Deciding approvals of type ${approval.entityType} requires Primary Master authority.`
+    );
+  }
+
   if (approval.status !== 'PENDING') {
     throw new ApiError(409, 'ALREADY_DECIDED', `Approval request is already ${approval.status}.`);
   }

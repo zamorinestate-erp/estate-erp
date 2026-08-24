@@ -10,67 +10,84 @@
 
 import { state, setState } from "./state.js";
 import { NAVIGATION, isRouteAllowed, ROLES } from "./navigation.js";
-import { renderSidebar, wireSidebar, renderTopbar, wireBell, updateBellBadge, isSidebarCollapsed } from "./components.js";
+import { renderSidebar, wireSidebar, renderTopbar, wireBell, updateBellBadge, updateSidebarActive } from "./components.js";
 import { renderNotificationCentre, wireNotificationCentre } from "./pages/notificationCentre.js";
 import { icon } from "./icons.js";
 import { renderMasterDashboard, hydrateMasterDashboard } from "./pages/dashboardMaster.js";
-import { renderAdminDashboard } from "./pages/dashboardAdmin.js";
+import { renderOwnerDashboard, hydrateOwnerDashboard } from "./pages/dashboardOwner.js";
+import { renderAdminDashboard, hydrateAdminDashboard } from "./pages/dashboardAdmin.js";
 import { renderStaffHome, wireStaffHome } from "./pages/staffHome.js";
 import { renderStaffSettings, wireStaffSettings } from "./pages/staffSettings.js";
-import { renderSettingsShared, wireSettingsShared } from "./pages/settingsShared.js?v=2.0.1";
-import { renderPOS, wirePOS } from "./pages/posTill.js?v=2.0.1";
-import { renderOwnerBills, wireOwnerBills } from "./pages/ownerBills.js?v=2.0.1";
-import { renderInventory, wireInventory } from "./pages/inventory.js?v=2.0.1";
-import { renderExpenses, wireExpenses } from "./pages/expenses.js?v=2.0.1";
-import { renderFinance, wireFinance } from "./pages/financeAccounts.js?v=2.0.1";
-import { renderLedger, wireLedger } from "./pages/personalLedger.js?v=2.0.1";
-import { renderEmployees, wireEmployees } from "./pages/employees.js?v=2.0.1";
-import { renderEmployeeProfile, wireEmployeeProfile } from "./pages/employeeProfile.js?v=2.0.1";
-import { renderAttendance } from "./modules/attendance/attendanceShifts.js?v=2.0.1";
-import { renderReports, wireReports } from "./pages/reportsAnalytics.js?v=2.0.1";
-import { renderAdmin, wireAdmin } from "./pages/administration.js?v=2.0.1";
-import { renderCashBook, wireCashBook } from "./pages/cashBook.js?v=2.0.1";
-import { renderTasks, wireTasks } from "./pages/tasksApprovals.js?v=2.0.1";
-import { renderPerformance, wirePerformance } from "./pages/cafePerformance.js?v=2.0.1";
-import { renderStaffAttendance, wireStaffAttendance } from "./modules/attendance/staffAttendance.js?v=2.0.1";
-import { renderStaffLeave, wireStaffLeave } from "./pages/staffLeave.js?v=2.0.1";
-import { renderStaffPayslips, wireStaffPayslips } from "./pages/staffPayslips.js?v=2.0.1";
-import { renderStaffLoansAdvances, wireStaffLoansAdvances } from "./pages/staffLoansAdvances.js?v=2.0.1";
-import { renderPayrollManagement, wirePayrollManagement } from "./pages/payrollManagement.js?v=2.0.1";
-import { renderAnnouncements, wireAnnouncements } from "./pages/announcements.js?v=2.0.1";
-import { renderNotAvailable, renderNotBuiltYet } from "./pages/notAvailable.js?v=2.0.1";
-import { renderVendors, wireVendors } from "./pages/vendors.js?v=2.0.1";
-import { renderProcurement, wireProcurement } from "./pages/procurement.js?v=2.0.1";
-import { renderMenuManagement, wireMenuManagement } from "./pages/menuManagement.js?v=2.0.1";
-import { renderCustomers, wireCustomers } from "./pages/customers.js?v=2.0.1";
-import { renderQuality, wireQuality } from "./pages/quality.js?v=2.0.1";
-import { renderAssets, wireAssets } from "./pages/assets.js?v=2.0.1";
-import { renderDepartmentOrders, wireDepartmentOrders } from "./pages/departmentOrders.js?v=2.0.1";
-import { renderTrashBin, wireTrashBin } from "./pages/trashBin.js?v=2.0.1";
-import { renderMailOpsCommandCentre, wireMailOpsCommandCentre } from "./pages/mailOpsCommandCentre.js?v=2.0.1";
-import { CafeAttendanceDisplayPage } from "./pages/cafeAttendanceDisplay.js?v=2.0.1";
+import { renderSettingsShared, wireSettingsShared, setSettingsActiveSection } from "./pages/settingsShared.js";
+import { renderPOS, wirePOS } from "./pages/posTill.js";
+import { renderOwnerBills, wireOwnerBills, setBillsActiveTab } from "./pages/ownerBills.js";
+import { renderInventory, wireInventory, setInventoryActiveTab } from "./pages/inventory.js";
+import { renderExpenses, wireExpenses, setExpensesActiveTab } from "./pages/expenses.js";
+import { renderFinance, wireFinance, setFinanceActiveTab } from "./pages/financeAccounts.js";
+import { renderOwnerFinanceSummary, wireOwnerFinanceSummary } from "./pages/ownerFinanceSummary.js";
+import { renderLedger, wireLedger } from "./pages/personalLedger.js";
+import { renderEmployees, wireEmployees, setEmployeesActiveTab } from "./pages/employees.js";
+import { renderEmployeeProfile, wireEmployeeProfile } from "./pages/employeeProfile.js";
+import { renderAttendance, wireAttendance, setAttendanceActiveTab } from "./modules/attendance/attendanceShifts.js";
+import { renderReports, wireReports, setReportsActiveTab } from "./pages/reportsAnalytics.js";
+import { renderAdmin, wireAdmin, setAdminActiveTab } from "./pages/administration.js";
+import { renderCashBook, wireCashBook } from "./pages/cashBook.js";
+import { renderTasks, wireTasks } from "./pages/tasksApprovals.js";
+import { renderPerformance, wirePerformance } from "./pages/cafePerformance.js";
+import { renderStaffAttendance, wireStaffAttendance } from "./modules/attendance/staffAttendance.js";
+import { renderStaffLeave, wireStaffLeave } from "./pages/staffLeave.js";
+import { renderStaffPayslips, wireStaffPayslips } from "./pages/staffPayslips.js";
+import { renderStaffLoansAdvances, wireStaffLoansAdvances } from "./pages/staffLoansAdvances.js";
+import { renderPayrollManagement, wirePayrollManagement, setPayrollActiveTab } from "./pages/payrollManagement.js";
+import { renderAnnouncements, wireAnnouncements } from "./pages/announcements.js";
+import { renderNotAvailable, renderNotBuiltYet } from "./pages/notAvailable.js";
+import { renderVendors, wireVendors, setVendorsActiveTab } from "./pages/vendors.js";
+import { renderProcurement, wireProcurement, setProcurementActiveTab } from "./pages/procurement.js";
+import { renderMenuManagement, wireMenuManagement, setMenuActiveTab } from "./pages/menuManagement.js";
+import { renderCustomers, wireCustomers, setCustomersActiveTab } from "./pages/customers.js";
+import { renderQuality, wireQuality, setQualityActiveTab } from "./pages/quality.js";
+import { renderAssets, wireAssets, setAssetsActiveTab } from "./pages/assets.js";
+import { renderDepartmentOrders, wireDepartmentOrders, setDepartmentOrdersActiveTab } from "./pages/departmentOrders.js";
+import { renderTrashBin, wireTrashBin } from "./pages/trashBin.js";
+import { renderMailOpsCommandCentre, wireMailOpsCommandCentre } from "./pages/mailOpsCommandCentre.js";
+import { CafeAttendanceDisplayPage } from "./pages/cafeAttendanceDisplay.js";
+import { renderRevenueShare, wireRevenueShare, setRevenueShareActiveTab } from "./pages/revenueShare.js";
+import { renderCafeOperationsDevices, wireCafeOperationsDevices, setCafeDevicesActiveTab } from "./pages/cafeOperationsDevices.js";
+import { renderCafeOperatorSignIn, wireCafeOperatorSignIn } from "./pages/cafeOperatorSignIn.js";
+import { renderCafeOperationsState, wireCafeOperationsState } from "./pages/cafeOperationsState.js";
+import { startCafeOpsInactivityTimer, stopCafeOpsInactivityTimer } from "./cafeOpsInactivity.js";
 
 // ROLE_LABELS: display-safe generic labels used only for topbar scope chip
 // until /auth/me bootstrap provides the real user's display name.
-// "Ravi" and "Priya" were demo sample names — removed in Stage 8 Batch 1.
 const ROLE_LABELS = {
   [ROLES.MASTER]: "Master",
   [ROLES.OWNER]: "Owner",
-  [ROLES.CAFE_ADMIN]: "Cafe Admin",
+  [ROLES.CAFE_ADMIN]: "Cafe Operations",
   [ROLES.STAFF]: "Staff",
 };
 
 export function navigate(route) {
   // Route-layer guard: deny by default, exactly per Part B.3 / Part R's
   // closing rule ("any action not explicitly marked defaults to no access").
-  // "notifications" is the one deliberate exception — every authenticated
-  // role reaches it through the bell, not through a sidebar item, so it's
-  // not listed in any role's NAVIGATION config.
-  if (route !== "notifications" && !isRouteAllowed(state.role, route)) {
+  const isPrimary = Boolean(
+    state.auth?.user?.isPrimaryMaster ||
+    state.user?.isPrimaryMaster
+  );
+
+  if (route !== "notifications" && !isRouteAllowed(state.role, route, isPrimary)) {
     setState({ route: "__blocked__" });
     renderShell();
     return;
   }
+
+  // Synchronize hash in URL for back/forward navigation support
+  if (typeof window !== "undefined") {
+    const targetHash = "#" + route;
+    if (window.location.hash !== targetHash) {
+      window.history.pushState(null, "", targetHash);
+    }
+  }
+
   setState({ route });
   renderShell();
 }
@@ -79,13 +96,15 @@ export function renderShell() {
   const app = document.getElementById("app");
   if (!app) return;
   app.classList.remove("auth-screen");
-  const collapsed = isSidebarCollapsed();
 
-  if (!document.getElementById("sidebar") || app.dataset.shellRole !== state.role) {
+  const existingSidebar = document.getElementById("sidebar");
+  const existingTopbar = document.getElementById("topbar");
+
+  if (!existingSidebar || !existingTopbar || app.dataset.shellRole !== state.role) {
     app.dataset.shellRole = state.role;
     app.innerHTML = `
-      <div class="app-shell ${collapsed ? "sidebar-collapsed" : ""}">
-        <aside id="sidebar" class="sidebar ${collapsed ? "collapsed" : ""}"></aside>
+      <div class="app-shell">
+        <aside id="sidebar" class="sidebar"></aside>
         <main class="main-shell">
           <header id="topbar" class="topbar"></header>
           <div id="page-content" class="page"></div>
@@ -106,14 +125,9 @@ export function renderShell() {
       updateBellBadge();
     }
   } else {
-    const shell = document.querySelector(".app-shell");
-    const sb = document.getElementById("sidebar");
-    if (shell) shell.classList.toggle("sidebar-collapsed", collapsed);
-    if (sb) {
-      sb.classList.toggle("collapsed", collapsed);
-      sb.innerHTML = renderSidebar();
-      wireSidebar(sb);
-    }
+    // STAGE 1 PERSISTENT APP SHELL:
+    // Retain mounted sidebar DOM & preserve scrollTop; update active route indicators in place.
+    updateSidebarActive(state.route);
   }
 
   renderPage();
@@ -129,10 +143,90 @@ async function renderPage() {
     return;
   }
 
-  switch (route) {
+  // Dedicated Settings Subroutes: #settings and #settings/<section>
+  if (route === "settings" || (route && route.startsWith("settings/"))) {
+    const sub = route.startsWith("settings/") ? route.slice("settings/".length).toLowerCase() : "overview";
+    const sectionMap = {
+      "profile": "profile",
+      "my-profile": "profile",
+      "employment": "employment",
+      "my-employment": "employment",
+      "access": "access",
+      "my-access": "access",
+      "delegation": "delegation",
+      "delegations": "delegation",
+      "security": "security",
+      "security-settings": "security",
+      "devices": "devices",
+      "sessions": "devices",
+      "recovery": "recovery",
+      "account-recovery": "recovery",
+      "notifications": "notifications",
+      "notification-preferences": "notifications",
+      "language": "language",
+      "language-region": "language",
+      "appearance": "appearance",
+      "themes": "appearance",
+      "accessibility": "accessibility",
+      "a11y": "accessibility",
+      "workspace": "workspace",
+      "navigation-workspace": "workspace",
+      "privacy": "privacy",
+      "privacy-data": "privacy",
+      "connected": "connected",
+      "connected-apps": "connected",
+      "help": "help",
+      "diagnostics": "help",
+      "help-diagnostics": "help",
+      "trash": "trash",
+      "data-recovery": "trash",
+      "admin": "admin",
+      "system-administration": "admin",
+    };
+
+    const targetSection = sectionMap[sub] || (sub === "" ? "overview" : sub);
+
+    if (targetSection === "trash") {
+      if (state.role !== ROLES.MASTER) {
+        content.innerHTML = renderNotAvailable();
+      } else {
+        content.innerHTML = renderTrashBin();
+        wireTrashBin(content);
+      }
+      return;
+    }
+
+    if (targetSection === "admin") {
+      if (state.role !== ROLES.MASTER) {
+        content.innerHTML = renderNotAvailable();
+      } else {
+        content.innerHTML = renderAdmin();
+        await wireAdmin(content);
+      }
+      return;
+    }
+
+    setSettingsActiveSection(targetSection);
+    content.innerHTML = renderSettingsShared();
+    wireSettingsShared(content);
+    return;
+  }
+
+  // Universal Module Base Route and Subroute Parsing
+  const [baseRoute, ...subSegments] = (route || "").split("/");
+  const subroute = subSegments.join("/");
+
+  switch (baseRoute) {
     case "dashboard":
       if (state.role === ROLES.CAFE_ADMIN) {
         content.innerHTML = renderAdminDashboard();
+        hydrateAdminDashboard(content);
+      } else if (state.role === ROLES.OWNER) {
+        content.innerHTML = renderOwnerDashboard();
+        hydrateOwnerDashboard(content);
+      } else if (state.role === ROLES.STAFF) {
+        content.innerHTML = renderStaffHome();
+        wireStaffHome(content);
       } else {
         content.innerHTML = renderMasterDashboard({ roleLabel: ROLE_LABELS[state.role] });
         hydrateMasterDashboard(content);
@@ -145,11 +239,29 @@ async function renderPage() {
       break;
 
     case "staff-settings":
-      content.innerHTML = renderStaffSettings();
-      wireStaffSettings(content);
+      if (subroute) {
+        setSettingsActiveSection(subroute);
+      }
+      content.innerHTML = renderStaffSettings(subroute);
+      wireStaffSettings(content, subroute);
       break;
 
     case "settings":
+      setSettingsActiveSection("overview");
+      content.innerHTML = renderSettingsShared();
+      wireSettingsShared(content);
+      break;
+
+    case "profile":
+    case "my-profile":
+      setSettingsActiveSection("profile");
+      content.innerHTML = renderSettingsShared();
+      wireSettingsShared(content);
+      break;
+
+    case "employment":
+    case "my-employment":
+      setSettingsActiveSection("employment");
       content.innerHTML = renderSettingsShared();
       wireSettingsShared(content);
       break;
@@ -160,28 +272,41 @@ async function renderPage() {
       break;
 
     case "bills":
-      content.innerHTML = renderOwnerBills();
-      await wireOwnerBills(content);
+      setBillsActiveTab?.(subroute || "overview");
+      content.innerHTML = renderOwnerBills(subroute);
+      await wireOwnerBills(content, subroute);
       break;
 
     case "inventory":
-      content.innerHTML = renderInventory();
-      wireInventory(content);
+      setInventoryActiveTab?.(subroute || "overview");
+      content.innerHTML = renderInventory(subroute);
+      wireInventory(content, subroute);
       break;
 
     case "expenses":
-      content.innerHTML = renderExpenses();
-      wireExpenses(content);
+      setExpensesActiveTab?.(subroute || "overview");
+      content.innerHTML = renderExpenses(subroute);
+      wireExpenses(content, subroute);
       break;
 
     case "finance":
-      content.innerHTML = renderFinance();
-      wireFinance(content);
+      if (state.role === ROLES.OWNER) {
+        content.innerHTML = renderOwnerFinanceSummary();
+        await wireOwnerFinanceSummary(content);
+      } else {
+        setFinanceActiveTab?.(subroute || "overview");
+        content.innerHTML = renderFinance(subroute);
+        wireFinance(content, subroute);
+      }
       break;
 
     case "ledger":
     case "personal-ledger":
-      if (state.role !== ROLES.MASTER) {
+      // SCR-018 Rule: Primary Master or Owner only. Normal Master, CAFE_ADMIN, STAFF denied.
+      if (
+        (state.role === ROLES.MASTER && !state.isPrimaryMaster) ||
+        (state.role !== ROLES.MASTER && state.role !== ROLES.OWNER)
+      ) {
         content.innerHTML = renderNotAvailable();
         break;
       }
@@ -189,9 +314,24 @@ async function renderPage() {
       wireLedger(content);
       break;
 
+    case "revenue-share":
+      // SCR-026 Rule: Primary Master or Owner only. Normal Master, CAFE_ADMIN, STAFF strictly denied.
+      if (
+        (state.role === ROLES.MASTER && !state.isPrimaryMaster) ||
+        (state.role !== ROLES.MASTER && state.role !== ROLES.OWNER)
+      ) {
+        content.innerHTML = renderNotAvailable();
+        break;
+      }
+      setRevenueShareActiveTab?.(subroute || "overview");
+      content.innerHTML = renderRevenueShare(subroute);
+      await wireRevenueShare(content, subroute);
+      break;
+
     case "employees":
-      content.innerHTML = renderEmployees();
-      wireEmployees(content);
+      setEmployeesActiveTab?.(subroute || "overview");
+      content.innerHTML = renderEmployees(subroute);
+      wireEmployees(content, subroute);
       break;
 
     case "employee-profile":
@@ -200,17 +340,21 @@ async function renderPage() {
       break;
 
     case "attendance":
-      content.innerHTML = renderAttendance();
+      setAttendanceActiveTab?.(subroute || "overview");
+      content.innerHTML = renderAttendance(subroute);
+      wireAttendance(content, subroute);
       break;
 
     case "reports":
-      content.innerHTML = renderReports();
-      wireReports(content);
+      setReportsActiveTab?.(subroute || "overview");
+      content.innerHTML = renderReports(subroute);
+      wireReports(content, subroute);
       break;
 
     case "admin":
-      content.innerHTML = renderAdmin();
-      wireAdmin(content);
+      setAdminActiveTab?.(subroute || "overview");
+      content.innerHTML = renderAdmin(subroute);
+      wireAdmin(content, subroute);
       break;
 
     case "sales-cash":
@@ -244,8 +388,9 @@ async function renderPage() {
       break;
 
     case "payroll":
-      content.innerHTML = renderPayrollManagement();
-      wirePayrollManagement(content);
+      setPayrollActiveTab?.(subroute || "overview");
+      content.innerHTML = renderPayrollManagement(subroute);
+      wirePayrollManagement(content, subroute);
       break;
 
     case "staff-payslips":
@@ -269,50 +414,112 @@ async function renderPage() {
       break;
 
     case "vendors":
-      content.innerHTML = renderVendors();
-      wireVendors(content);
+      setVendorsActiveTab?.(subroute || "overview");
+      content.innerHTML = renderVendors(subroute);
+      wireVendors(content, subroute);
       break;
 
     case "procurement":
-      content.innerHTML = renderProcurement();
-      wireProcurement(content);
+      setProcurementActiveTab?.(subroute || "overview");
+      content.innerHTML = renderProcurement(subroute);
+      wireProcurement(content, subroute);
       break;
 
     case "mailops":
-      content.innerHTML = renderMailOpsCommandCentre();
-      await wireMailOpsCommandCentre(content);
-      break;
+      navigate("dashboard");
+      return;
 
     case "menu":
-      content.innerHTML = renderMenuManagement();
-      wireMenuManagement(content);
+      setMenuActiveTab?.(subroute || "overview");
+      content.innerHTML = renderMenuManagement(subroute);
+      wireMenuManagement(content, subroute);
       break;
 
     case "customers":
-      content.innerHTML = renderCustomers();
-      wireCustomers(content);
+      setCustomersActiveTab?.(subroute || "overview");
+      content.innerHTML = renderCustomers(subroute);
+      wireCustomers(content, subroute);
       break;
 
     case "quality":
-      content.innerHTML = renderQuality();
-      wireQuality(content);
+      setQualityActiveTab?.(subroute || "overview");
+      content.innerHTML = renderQuality(subroute);
+      wireQuality(content, subroute);
       break;
 
     case "assets":
-      content.innerHTML = renderAssets();
-      wireAssets(content);
+      setAssetsActiveTab?.(subroute || "overview");
+      content.innerHTML = renderAssets(subroute);
+      wireAssets(content, subroute);
       break;
 
     case "dept-orders":
     case "department-orders":
-      content.innerHTML = renderDepartmentOrders();
-      wireDepartmentOrders(content);
+      setDepartmentOrdersActiveTab?.(subroute || "overview");
+      content.innerHTML = renderDepartmentOrders(subroute);
+      wireDepartmentOrders(content, subroute);
       break;
 
     case "trash":
       content.innerHTML = renderTrashBin();
       wireTrashBin(content);
       break;
+
+    case "cafe-ops-devices":
+    case "devices":
+      setCafeDevicesActiveTab?.(subroute || "overview");
+      content.innerHTML = renderCafeOperationsDevices(subroute);
+      wireCafeOperationsDevices(content, subroute);
+      break;
+
+    case "cafe-operator-signin":
+      // Stop inactivity timer while sign-in UI is visible
+      stopCafeOpsInactivityTimer();
+      content.innerHTML = renderCafeOperatorSignIn();
+      wireCafeOperatorSignIn(content, {
+        onSignIn: async ({ employeeId, pin }) => {
+          const { apiPost } = await import('./apiClient.js');
+          const deviceId = localStorage.getItem('zamorin_device_id') || 'ZC-DEV-0001';
+          const res = await apiPost('/cafe-operations/operator/sign-in', {
+            deviceId,
+            operatorUserId: employeeId,
+            pin,
+            organisationId: state.auth?.user?.organisationId || 'ZAMORIN',
+            cafeId: localStorage.getItem('zamorin_bound_cafe_id') || 'ZC-0001',
+          });
+          if (res?.operatorSession) {
+            // Update state with new operator
+            setState({
+              user: {
+                ...state.user,
+                userId: res.operatorSession.operatorUserId,
+                name: res.operatorSession.operatorName,
+              },
+              route: 'dashboard',
+            });
+            // Start inactivity auto-lock after successful sign-in
+            startCafeOpsInactivityTimer();
+            renderShell();
+          }
+        },
+        onReturnKiosk: () => navigate('kiosk-attendance'),
+      });
+      break;
+
+    case "cafe-device-state": {
+      // Reads state key from URL hash param: #cafe-device-state?s=DEVICE_REVOKED
+      const params = new URLSearchParams(window.location.search);
+      const stateKey = params.get('s') || 'NO_ACCESS';
+      content.innerHTML = renderCafeOperationsState(stateKey);
+      wireCafeOperationsState(content, {
+        onSignIn: () => navigate('cafe-operator-signin'),
+        onUnlock: () => { import('./components.js').then(({ openOperatorLockModal }) => openOperatorLockModal()); },
+        onSwitch: () => { import('./components.js').then(({ openSwitchOperatorModal }) => openSwitchOperatorModal()); },
+        onKiosk: () => navigate('kiosk-attendance'),
+        onRetry: () => renderPage(),
+      });
+      break;
+    }
 
     case "kiosk-attendance":
       const kioskDisplay = new CafeAttendanceDisplayPage();

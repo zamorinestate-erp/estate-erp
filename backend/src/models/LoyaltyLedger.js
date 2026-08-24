@@ -1,18 +1,26 @@
 'use strict';
 
 /**
- * LOYALTY LEDGER — MONGOOSE MODEL
+ * LOYALTY LEDGER — MONGOOSE MODEL (SCREEN 006)
  *
- * Immutable ledger of points earned, redeemed, adjusted, or expired.
+ * Immutable ledger of points earned, redeemed, reserved, adjusted, or expired.
  */
 
 const mongoose = require('mongoose');
 
 const LOYALTY_TX_TYPES = [
-  'EARN',
-  'REDEEM',
-  'ADJUSTMENT',
-  'EXPIRE',
+  'MEMBER_ENROLLED',
+  'PURCHASE_ACCRUAL',
+  'MANUAL_ADJUSTMENT',
+  'REWARD_RESERVED',
+  'REWARD_RELEASED',
+  'REWARD_REDEEMED',
+  'REFUND_REVERSAL',
+  'POINTS_EXPIRED',
+  'TIER_CHANGED',
+  'PROMOTION_BONUS',
+  'ACCOUNT_MERGED',
+  'MIGRATION_ADJUSTMENT',
 ];
 
 const loyaltyLedgerSchema = new mongoose.Schema(
@@ -50,6 +58,7 @@ const loyaltyLedgerSchema = new mongoose.Schema(
       type: String,
       required: true,
       enum: LOYALTY_TX_TYPES,
+      index: true,
     },
 
     pointsDelta: {
@@ -78,11 +87,36 @@ const loyaltyLedgerSchema = new mongoose.Schema(
       default: null,
     },
 
+    referenceRewardId: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+
+    referenceRefundId: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+
+    reasonCode: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+
     description: {
       type: String,
       trim: true,
       maxlength: 1000,
       default: '',
+    },
+
+    idempotencyKey: {
+      type: String,
+      trim: true,
+      default: null,
+      index: true,
     },
 
     performedByUserId: {
@@ -102,24 +136,14 @@ const loyaltyLedgerSchema = new mongoose.Schema(
   {
     timestamps: true,
     versionKey: 'version',
-    collection: 'loyalty_ledger_entries',
+    collection: 'loyalty_ledger',
   }
 );
 
 loyaltyLedgerSchema.index(
-  { organisationId: 1, customerId: 1, serverTimestamp: -1 },
-  { name: 'org_cust_time' }
+  { organisationId: 1, customerId: 1, createdAt: -1 },
+  { name: 'org_customer_ledger_idx' }
 );
-
-loyaltyLedgerSchema.pre('validate', function normaliseLoyaltyFields() {
-  const upperFields = ['loyaltyLedgerId', 'organisationId', 'customerId', 'referenceBillId', 'performedByUserId'];
-  for (const field of upperFields) {
-    if (this[field] && typeof this[field] === 'string') {
-      this[field] = this[field].trim().toUpperCase();
-    }
-  }
-  if (this.transactionType) this.transactionType = this.transactionType.trim().toUpperCase();
-});
 
 const LoyaltyLedger =
   mongoose.models.LoyaltyLedger ||

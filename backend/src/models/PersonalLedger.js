@@ -1,43 +1,57 @@
 'use strict';
 
 /**
- * PERSONAL LEDGER — MONGOOSE MODEL
+ * PERSONAL LEDGER & OWNER ACCOUNT — MONGOOSE MODEL (SCR-018)
  *
- * ABSOLUTE RESTRICTION: MASTER ONLY
- * Backend enforces this via ABSOLUTE_ROLE_RESTRICTIONS.PERSONAL_LEDGER in
- * backend/src/middleware/authorize.js. All routes using this model must
- * include absoluteRestriction: 'PERSONAL_LEDGER'.
- *
- * Undiscoverability contract:
- *   - API routes return 404 (not 403) to non-Master roles so existence
- *     is not confirmed.
- *   - No Personal Ledger data must appear in notifications, reports,
- *     global search results, or export outputs visible to other roles.
+ * AUTHORIZATION:
+ *   - PRIMARY MASTER (role = MASTER && isPrimaryMaster === true): Full authority.
+ *   - OWNER (role = OWNER): Authorized according to authorized Owner-account scope.
+ *   - NORMAL MASTER, CAFE_ADMIN, STAFF: Strictly DENIED.
  *
  * Immutability:
- *   - Ledger entries are NEVER deleted. Errors are corrected by posting
- *     a reversing entry that references the original entry ID.
- *   - The originalEntryId field links a correction to the entry it corrects.
- *   - The correctedByEntryId field on the original links forward to the
- *     correction — this is the only mutable field on a finalised entry.
+ *   - Financial entries are NEVER deleted. Corrections are made via reversing entries
+ *     or controlled classification reversals that preserve complete audit history.
  *
- * Currency: INR only. All amounts stored as paisa (integer, positive).
- * Direction is encoded by entryType (DEBIT = outflow, CREDIT = inflow).
+ * Precision:
+ *   - Currency: INR only. All amounts stored as integer paise (1 INR = 100 paise).
  */
 
 const mongoose = require('mongoose');
 
 const ENTRY_TYPES = [
-  'CREDIT',  // Inflow — money coming in to the personal account
-  'DEBIT',   // Outflow — money going out of the personal account
+  'CREDIT',  // Inflow — money coming in to personal account / amount owed by company
+  'DEBIT',   // Outflow — money going out of personal account / amount owed to company
 ];
 
 const ENTRY_STATUSES = [
-  'ACTIVE',     // Normal, counted-in balance
-  'REVERSED',   // Replaced by a correcting entry — excluded from balance
+  'ACTIVE',     // Counted in balance
+  'REVERSED',   // Replaced by a correcting/reversing entry — excluded from balance
+];
+
+const ACCOUNT_TYPES = [
+  'OWNER_CURRENT_ACCOUNT',
+  'PRIMARY_MASTER_PERSONAL_LEDGER',
+  'OWNER_FUNDING_ACCOUNT',
+  'DIRECTOR_SHAREHOLDER_LOAN',
+  'OWNER_RECEIVABLE',
+  'REIMBURSEMENT_PAYABLE',
 ];
 
 const ENTRY_CATEGORIES = [
+  // SCR-018 Governed Taxonomy
+  'BUSINESS_EXPENSE_PAID_PERSONALLY',
+  'COMPANY_PAID_PERSONAL_EXPENSE',
+  'FUNDS_ADVANCED_TO_COMPANY',
+  'DIRECTOR_LOAN_TO_COMPANY',
+  'CURRENT_ACCOUNT_FUNDING',
+  'CAPITAL_CONTRIBUTION_REF',
+  'REIMBURSEMENT_TO_OWNER',
+  'REPAYMENT_OF_LOAN',
+  'DECLARED_DIVIDEND_PAYMENT',
+  'AMOUNT_RECOVERABLE_FROM_OWNER',
+  'APPROVED_SETTLEMENT',
+  'CORRECTION',
+  // Backward compatibility
   'PERSONAL_TRANSFER',
   'BUSINESS_REIMBURSEMENT',
   'PERSONAL_SPEND',
@@ -51,6 +65,81 @@ const ENTRY_CATEGORIES = [
   'DEPOSIT',
   'OTHER',
 ];
+
+const ECONOMIC_DIRECTIONS = [
+  'DUE_TO_OWNER',       // Company owes Owner (e.g. personal expense paid for business)
+  'DUE_FROM_OWNER',     // Owner owes Company (e.g. company paid personal expense)
+  'EQUITY_FUNDING',     // Capital / owner equity reference
+  'DIVIDEND_PAYABLE',   // Dividend entitlement
+  'NEUTRAL',            // Internal transfer / offset
+];
+
+const WORKFLOW_STATUSES = [
+  'DRAFT',
+  'SUBMITTED',
+  'UNDER_REVIEW',
+  'CLASSIFIED',
+  'POSTING_PENDING',
+  'POSTED',
+  'POSTING_FAILED',
+  'SETTLED',
+  'REVERSED',
+];
+
+const ACCOUNTING_TREATMENTS = [
+  'PERSONAL',               // Isolated personal movement
+  'BUSINESS_EXPENSE',       // Operating P&L cost
+  'BUSINESS_ASSET',         // Fixed / capital asset
+  'INVENTORY',              // Raw material / stock
+  'PREPAID_EXPENSE',        // Deferred asset
+  'OWNER_LOAN',             // Formal liability
+  'CAPITAL_REFERENCE',      // Equity infusion reference
+  'DIVIDEND_PAYABLE',       // Declared dividend liability
+  'REIMBURSEMENT_PAYABLE',  // Approved reimbursement
+  'OWNER_RECEIVABLE',       // Recoverable from owner
+];
+
+const SETTLEMENT_STATUSES = [
+  'UNSETTLED',
+  'PARTIALLY_SETTLED',
+  'SETTLED',
+  'NOT_APPLICABLE',
+];
+
+const CONFIRMATION_STATUSES = [
+  'UNCONFIRMED',
+  'CONFIRMED',
+  'DISPUTED',
+];
+
+const splitSchema = new mongoose.Schema(
+  {
+    splitId: { type: String, required: true },
+    amountPaisa: { type: Number, required: true, min: 1 },
+    category: { type: String, required: true },
+    accountingTreatment: { type: String, enum: ACCOUNTING_TREATMENTS, default: 'BUSINESS_EXPENSE' },
+    targetGLAccount: { type: String, trim: true, default: '' },
+    cafeId: { type: String, trim: true, default: null },
+    memo: { type: String, trim: true, default: '' },
+  },
+  { _id: false }
+);
+
+const evidenceSchema = new mongoose.Schema(
+  {
+    documentId: { type: String, required: true },
+    fileName: { type: String, required: true },
+    fileType: { type: String, default: 'application/pdf' },
+    fileUrl: { type: String, default: '' },
+    fileSize: { type: Number, default: 0 },
+    checksum: { type: String, default: '' },
+    status: { type: String, default: 'CURRENT' },
+    version: { type: Number, default: 1 },
+    uploadedAt: { type: Date, default: Date.now },
+    uploadedBy: { type: String, required: true },
+  },
+  { _id: false }
+);
 
 const personalLedgerSchema = new mongoose.Schema(
   {
@@ -66,10 +155,29 @@ const personalLedgerSchema = new mongoose.Schema(
       index: true,
     },
 
-    // ── Scope ────────────────────────────────────────────────────────────────
-    // ownerUserId is the MASTER user who owns this entry.
-    // It is derived exclusively from request.auth.userId — never from the
-    // request body.
+    voucherNumber: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      index: true,
+    },
+
+    // ── Scope & Account Definition ───────────────────────────────────────────
+    accountType: {
+      type: String,
+      enum: ACCOUNT_TYPES,
+      default: 'OWNER_CURRENT_ACCOUNT',
+      index: true,
+    },
+
+    accountHolderId: {
+      type: String,
+      required: true,
+      trim: true,
+      uppercase: true,
+      index: true,
+    },
+
     ownerUserId: {
       type: String,
       required: true,
@@ -88,7 +196,30 @@ const personalLedgerSchema = new mongoose.Schema(
       index: true,
     },
 
-    // ── Entry core ───────────────────────────────────────────────────────────
+    legalEntityId: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: 'LE-ZAMORIN-INDIA',
+      index: true,
+    },
+
+    cafeId: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: null,
+      index: true,
+    },
+
+    financialYear: {
+      type: String,
+      trim: true,
+      default: '2026-2027',
+      index: true,
+    },
+
+    // ── Entry Core & Precision ───────────────────────────────────────────────
     entryType: {
       type: String,
       required: true,
@@ -96,8 +227,6 @@ const personalLedgerSchema = new mongoose.Schema(
       enum: ENTRY_TYPES,
     },
 
-    // Amount in paisa (INR × 100). Always a positive integer.
-    // The entryType determines direction.
     amountPaisa: {
       type: Number,
       required: true,
@@ -112,11 +241,31 @@ const personalLedgerSchema = new mongoose.Schema(
     category: {
       type: String,
       required: true,
-      immutable: true,
       enum: ENTRY_CATEGORIES,
+      index: true,
     },
 
-    // Business date of the entry in YYYY-MM-DD (IST).
+    direction: {
+      type: String,
+      enum: ECONOMIC_DIRECTIONS,
+      default: 'NEUTRAL',
+      index: true,
+    },
+
+    workflowStatus: {
+      type: String,
+      enum: WORKFLOW_STATUSES,
+      default: 'POSTED',
+      index: true,
+    },
+
+    accountingTreatment: {
+      type: String,
+      enum: ACCOUNTING_TREATMENTS,
+      default: 'PERSONAL',
+      index: true,
+    },
+
     businessDate: {
       type: String,
       required: true,
@@ -126,7 +275,6 @@ const personalLedgerSchema = new mongoose.Schema(
       index: true,
     },
 
-    // Server-authoritative timestamp of record creation.
     serverTimestamp: {
       type: Date,
       required: true,
@@ -135,11 +283,10 @@ const personalLedgerSchema = new mongoose.Schema(
       index: true,
     },
 
-    // ── Descriptive fields ───────────────────────────────────────────────────
+    // ── Descriptive & Payment References ─────────────────────────────────────
     description: {
       type: String,
       required: true,
-      immutable: true,
       trim: true,
       minlength: 1,
       maxlength: 1000,
@@ -147,42 +294,119 @@ const personalLedgerSchema = new mongoose.Schema(
 
     notes: {
       type: String,
-      immutable: true,
       trim: true,
       maxlength: 3000,
       default: '',
     },
 
-    // Counterparty or payee — optional free text.
+    businessPurpose: {
+      type: String,
+      trim: true,
+      maxlength: 2000,
+      default: '',
+    },
+
+    paymentSource: {
+      type: String,
+      trim: true,
+      default: 'PERSONAL_BANK',
+    },
+
+    paymentReference: {
+      type: String,
+      trim: true,
+      maxlength: 200,
+      default: '',
+    },
+
     counterparty: {
       type: String,
-      immutable: true,
       trim: true,
       maxlength: 200,
       default: '',
     },
 
-    // Reference to an external document, bank transfer ID, etc.
     externalReference: {
       type: String,
-      immutable: true,
       trim: true,
       maxlength: 200,
       default: '',
     },
 
-    // ── Reversal / correction linkage ────────────────────────────────────────
+    // ── Splits & Multi-line Allocations ──────────────────────────────────────
+    splits: [splitSchema],
+
+    // ── Settlements & Recoveries ─────────────────────────────────────────────
+    settlementStatus: {
+      type: String,
+      enum: SETTLEMENT_STATUSES,
+      default: 'NOT_APPLICABLE',
+      index: true,
+    },
+
+    settledAmountPaisa: {
+      type: Number,
+      default: 0,
+      min: 0,
+      validate: {
+        validator: Number.isInteger,
+        message: 'settledAmountPaisa must be an integer.',
+      },
+    },
+
+    outstandingAmountPaisa: {
+      type: Number,
+      default: 0,
+      min: 0,
+      validate: {
+        validator: Number.isInteger,
+        message: 'outstandingAmountPaisa must be an integer.',
+      },
+    },
+
+    settlementBatchRef: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+
+    // ── Finance GL Integration ───────────────────────────────────────────────
+    financeJournalRef: {
+      type: String,
+      trim: true,
+      default: null,
+      index: true,
+    },
+
+    financePostingStatus: {
+      type: String,
+      enum: ['NOT_POSTED', 'POSTED', 'FAILED', 'REVERSED'],
+      default: 'NOT_POSTED',
+      index: true,
+    },
+
+    financePostingError: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+
+    financePostedAt: {
+      type: Date,
+      default: null,
+    },
+
+    // ── Reversal / Correction Linkage ────────────────────────────────────────
     status: {
       type: String,
       required: true,
       enum: ENTRY_STATUSES,
       default: 'ACTIVE',
+      index: true,
     },
 
-    // On a REVERSAL entry: points to the original entry being reversed.
     originalEntryId: {
       type: String,
-      immutable: true,
       trim: true,
       uppercase: true,
       default: null,
@@ -190,14 +414,11 @@ const personalLedgerSchema = new mongoose.Schema(
 
     reversalReason: {
       type: String,
-      immutable: true,
       trim: true,
       maxlength: 2000,
       default: '',
     },
 
-    // On the original entry: populated when a correcting entry is posted.
-    // This is the only mutable field after initial creation.
     correctedByEntryId: {
       type: String,
       trim: true,
@@ -210,8 +431,9 @@ const personalLedgerSchema = new mongoose.Schema(
       default: null,
     },
 
-    // ── Attachment ───────────────────────────────────────────────────────────
-    // References a PrivateFile record (Batch 18). Stored as the file ID.
+    // ── Evidence & Supporting Documents ──────────────────────────────────────
+    evidence: [evidenceSchema],
+
     attachmentFileId: {
       type: String,
       trim: true,
@@ -219,9 +441,41 @@ const personalLedgerSchema = new mongoose.Schema(
       default: null,
     },
 
-    // ── Actor ────────────────────────────────────────────────────────────────
-    // Always == ownerUserId because only the owning Master may create entries.
-    // Stored redundantly for audit clarity.
+    // ── India Governance & Statutory Metadata ────────────────────────────────
+    complianceReview: {
+      directorDeclarationReceived: { type: Boolean, default: false },
+      declarationDate: { type: String, default: null },
+      sourceOfFundsVerified: { type: Boolean, default: false },
+      dpt3Reportable: { type: Boolean, default: false },
+      dpt3FilingRef: { type: String, default: null },
+      section185ReviewRequired: { type: Boolean, default: false },
+      section186ReviewRequired: { type: Boolean, default: false },
+      section188RelatedParty: { type: Boolean, default: false },
+      relatedPartyRelationship: { type: String, default: null },
+      taxReviewState: { type: String, default: 'TAX_REVIEW_NOT_REQUIRED' },
+      reviewStatus: { type: String, default: 'DOCUMENTATION_COMPLETE' },
+    },
+
+    // ── Owner Balance Confirmation ───────────────────────────────────────────
+    confirmationStatus: {
+      type: String,
+      enum: CONFIRMATION_STATUSES,
+      default: 'UNCONFIRMED',
+      index: true,
+    },
+
+    confirmedAt: {
+      type: Date,
+      default: null,
+    },
+
+    discrepancyNote: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+
+    // ── Audit Actor ──────────────────────────────────────────────────────────
     createdByUserId: {
       type: String,
       required: true,
@@ -246,7 +500,7 @@ const personalLedgerSchema = new mongoose.Schema(
   }
 );
 
-// ── Compound indexes ─────────────────────────────────────────────────────────
+// ── Compound Indexes ─────────────────────────────────────────────────────────
 
 personalLedgerSchema.index(
   {
@@ -259,22 +513,21 @@ personalLedgerSchema.index(
 
 personalLedgerSchema.index(
   {
-    ownerUserId: 1,
+    accountHolderId: 1,
     organisationId: 1,
     status: 1,
     businessDate: -1,
   },
-  { name: 'owner_org_status_date' }
+  { name: 'acc_org_status_date' }
 );
 
 personalLedgerSchema.index(
   {
-    ownerUserId: 1,
     organisationId: 1,
-    category: 1,
-    businessDate: -1,
+    accountType: 1,
+    workflowStatus: 1,
   },
-  { name: 'owner_org_category_date' }
+  { name: 'org_acctype_workflow' }
 );
 
 // ── Normalise fields ─────────────────────────────────────────────────────────
@@ -282,8 +535,12 @@ personalLedgerSchema.index(
 personalLedgerSchema.pre('validate', function normalisePersonalLedgerFields() {
   const stringFields = [
     'ledgerEntryId',
+    'voucherNumber',
+    'accountHolderId',
     'ownerUserId',
     'organisationId',
+    'legalEntityId',
+    'cafeId',
     'originalEntryId',
     'correctedByEntryId',
     'createdByUserId',
@@ -306,10 +563,39 @@ personalLedgerSchema.pre('validate', function normalisePersonalLedgerFields() {
   if (this.status) {
     this.status = this.status.trim().toUpperCase();
   }
+
+  if (!this.voucherNumber && this.ledgerEntryId) {
+    this.voucherNumber = this.ledgerEntryId;
+  }
+  if (!this.accountHolderId && this.ownerUserId) {
+    this.accountHolderId = this.ownerUserId;
+  }
+
+  // Derive initial economic direction if not explicitly set
+  if (!this.direction || this.direction === 'NEUTRAL') {
+    if (this.category === 'BUSINESS_EXPENSE_PAID_PERSONALLY' || this.category === 'FUNDS_ADVANCED_TO_COMPANY' || this.category === 'DIRECTOR_LOAN_TO_COMPANY') {
+      this.direction = 'DUE_TO_OWNER';
+    } else if (this.category === 'COMPANY_PAID_PERSONAL_EXPENSE' || this.category === 'AMOUNT_RECOVERABLE_FROM_OWNER') {
+      this.direction = 'DUE_FROM_OWNER';
+    } else if (this.category === 'CAPITAL_CONTRIBUTION_REF') {
+      this.direction = 'EQUITY_FUNDING';
+    } else if (this.category === 'DECLARED_DIVIDEND_PAYMENT' || this.category === 'DIVIDEND') {
+      this.direction = 'DIVIDEND_PAYABLE';
+    }
+  }
+
+  // Initialize outstanding amount for due balances
+  if (this.direction === 'DUE_TO_OWNER' || this.direction === 'DUE_FROM_OWNER') {
+    if (this.settlementStatus === 'NOT_APPLICABLE') {
+      this.settlementStatus = 'UNSETTLED';
+    }
+    if (this.outstandingAmountPaisa === 0 && this.settledAmountPaisa === 0) {
+      this.outstandingAmountPaisa = this.amountPaisa;
+    }
+  }
 });
 
 // ── Guard against direct deletion ────────────────────────────────────────────
-// Entries are never deleted; they are reversed by posting a correcting entry.
 
 const BLOCKED_OPERATIONS = [
   'deleteOne',
@@ -333,18 +619,22 @@ personalLedgerSchema.virtual('amountInr').get(function getAmountInr() {
 });
 
 // ── Static: calculate running balance ────────────────────────────────────────
-// Returns ACTIVE entries only. REVERSED entries are excluded from balance.
 
 personalLedgerSchema.statics.calculateBalance =
-  async function calculateBalance({ ownerUserId, organisationId }) {
+  async function calculateBalance({ ownerUserId, accountHolderId, organisationId }) {
+    const matchFilter = {
+      organisationId: organisationId.trim().toUpperCase(),
+      status: 'ACTIVE',
+    };
+
+    if (accountHolderId) {
+      matchFilter.accountHolderId = accountHolderId.trim().toUpperCase();
+    } else if (ownerUserId) {
+      matchFilter.ownerUserId = ownerUserId.trim().toUpperCase();
+    }
+
     const result = await this.aggregate([
-      {
-        $match: {
-          ownerUserId: ownerUserId.trim().toUpperCase(),
-          organisationId: organisationId.trim().toUpperCase(),
-          status: 'ACTIVE',
-        },
-      },
+      { $match: matchFilter },
       {
         $group: {
           _id: '$entryType',
@@ -361,10 +651,33 @@ personalLedgerSchema.statics.calculateBalance =
       if (row._id === 'DEBIT') debitPaisa = row.totalPaisa;
     }
 
+    // Also calculate Due To and Due From balances
+    const directionResult = await this.aggregate([
+      { $match: matchFilter },
+      {
+        $group: {
+          _id: '$direction',
+          totalOutstandingPaisa: { $sum: '$outstandingAmountPaisa' },
+          totalAmountPaisa: { $sum: '$amountPaisa' },
+        },
+      },
+    ]);
+
+    let dueToOwnerPaisa = 0;
+    let dueFromOwnerPaisa = 0;
+
+    for (const row of directionResult) {
+      if (row._id === 'DUE_TO_OWNER') dueToOwnerPaisa = row.totalOutstandingPaisa || row.totalAmountPaisa;
+      if (row._id === 'DUE_FROM_OWNER') dueFromOwnerPaisa = row.totalOutstandingPaisa || row.totalAmountPaisa;
+    }
+
     return {
       creditPaisa,
       debitPaisa,
       balancePaisa: creditPaisa - debitPaisa,
+      dueToOwnerPaisa,
+      dueFromOwnerPaisa,
+      netCurrentAccountPositionPaisa: dueToOwnerPaisa - dueFromOwnerPaisa,
     };
   };
 
@@ -377,4 +690,10 @@ module.exports = {
   ENTRY_TYPES,
   ENTRY_STATUSES,
   ENTRY_CATEGORIES,
+  ACCOUNT_TYPES,
+  ECONOMIC_DIRECTIONS,
+  WORKFLOW_STATUSES,
+  ACCOUNTING_TREATMENTS,
+  SETTLEMENT_STATUSES,
+  CONFIRMATION_STATUSES,
 };

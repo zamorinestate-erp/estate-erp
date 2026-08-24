@@ -19,7 +19,8 @@ test('Menu seed permissions match the approved role and scope policy', () => {
     .sort();
 
   assert.deepEqual(keys, [
-    'CAFE_ADMIN|MENU_READ|RECORD',
+    'CAFE_ADMIN|MENU_READ|ASSIGNED_CAFES',
+    'CAFE_ADMIN|MENU_WRITE|ASSIGNED_CAFES',
     'MASTER|MENU_READ|ORGANISATION',
     'MASTER|MENU_WRITE|ORGANISATION',
     'OWNER|MENU_READ|ORGANISATION',
@@ -47,6 +48,7 @@ test('Menu seed permissions match the approved role and scope policy', () => {
     rules.some(
       (rule) =>
         rule.role !== 'MASTER' &&
+        rule.role !== 'CAFE_ADMIN' &&
         rule.permissionCode === 'MENU_WRITE'
     ),
     false

@@ -230,10 +230,43 @@ const createCafe = asyncHandler(
         request.auth.userId,
     });
 
+    // Stage 008 Non-Negotiable: Auto-provision all active global inventory items to the new café with quantity 0
+    try {
+      const { GlobalInventoryItem } = require('../models/GlobalInventoryItem');
+      const { CafeInventoryConfig } = require('../models/CafeInventoryConfig');
+      const activeItems = await GlobalInventoryItem.find({ organisationId: request.auth.organisationId, status: 'ACTIVE' }).lean();
+      if (activeItems.length > 0) {
+        const configDocs = activeItems.map((itm) => ({
+          organisationId: request.auth.organisationId,
+          cafeId,
+          itemId: itm.itemId,
+          currentQuantityBase: 0,
+          availableQuantityBase: 0,
+          reservedQuantityBase: 0,
+          quarantinedQuantityBase: 0,
+          expiredQuantityBase: 0,
+          inTransitQuantityBase: 0,
+          incomingQuantityBase: 0,
+          minQuantityBase: 10,
+          parQuantityBase: 25,
+          maxQuantityBase: 50,
+          safetyStockBase: 5,
+          stockedHere: true,
+          replenishmentEnabled: true,
+          primaryLocation: 'Main Store',
+          storageLocations: ['Main Store'],
+          status: 'ACTIVE',
+        }));
+        await CafeInventoryConfig.insertMany(configDocs, { ordered: false }).catch(() => {});
+      }
+    } catch (_) {
+      // Non-blocking provisioning catch
+    }
+
     return response.status(201).json({
       success: true,
       message:
-        'Café created successfully.',
+        'Café created successfully and global inventory items provisioned.',
       data: {
         cafe,
       },

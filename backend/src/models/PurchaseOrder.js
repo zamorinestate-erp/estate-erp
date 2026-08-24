@@ -1,24 +1,21 @@
 'use strict';
 
 /**
- * PURCHASE ORDER — MONGOOSE MODEL
+ * PURCHASE ORDER — MONGOOSE MODEL (SCR-025)
  *
  * Lifecycle:
- *   DRAFT → SUBMITTED → APPROVED → ORDERED → PARTIALLY_RECEIVED
- *   → RECEIVED → CLOSED
- *   DRAFT / SUBMITTED / APPROVED → CANCELLED
+ *   DRAFT → SUBMITTED → APPROVED → ORDER_PLACED / ORDERED → ACKNOWLEDGED →
+ *   DISPATCHED → PARTIALLY_RECEIVED → RECEIVED_PENDING_FINAL_POSTING →
+ *   POSTED_TO_INVENTORY / INVOICED → CLOSED
  *
  * A PurchaseOrder belongs to a single café and a single vendor.
- * Line items reference GlobalInventoryItem.itemId.
+ * Line items reference GlobalInventoryItem.itemId or pure service items.
  *
- * On receipt:
- *   Each received line item triggers a StockMovement (RECEIPT type)
- *   and atomically updates CafeInventoryConfig.currentQuantityBase.
- *   The procurementController handles this chained operation.
- *
- * Idempotency:
- *   The receipt endpoint accepts an idempotencyKey to prevent
- *   double-posting of the same delivery.
+ * Owner-Mandated Posting Safeguard:
+ *   Physical arrival (GRN) records delivery and sets state to RECEIVED_PENDING_FINAL_POSTING.
+ *   Stock movements are NOT created until authenticated MASTER approves the validated 3-Way Match.
+ *   Inventory is posted atomically and exactly once with unique idempotency protection.
+ *   Service lines NEVER update stock.
  */
 
 const mongoose = require('mongoose');
@@ -27,10 +24,14 @@ const PO_STATUSES = [
   'DRAFT',
   'SUBMITTED',
   'APPROVED',
-  'ORDERED',           // Sent to vendor
+  'ORDER_PLACED',
+  'ORDERED',
+  'ACKNOWLEDGED',
+  'DISPATCHED',
   'PARTIALLY_RECEIVED',
-  'RECEIVED',          // All quantities received
-  'CLOSED',            // Manually closed / invoiced
+  'RECEIVED_PENDING_FINAL_POSTING',
+  'RECEIVED',
+  'CLOSED',
   'CANCELLED',
 ];
 
@@ -43,12 +44,37 @@ const poLineItemSchema = new mongoose.Schema(
       uppercase: true,
     },
 
-    // Snapshot of item name at PO creation time.
     itemNameSnapshot: {
       type: String,
       trim: true,
       maxlength: 200,
       default: '',
+    },
+
+    itemType: {
+      type: String,
+      enum: ['GOODS', 'SERVICE'],
+      default: 'GOODS',
+    },
+
+    supplierItemCode: {
+      type: String,
+      trim: true,
+      maxlength: 100,
+      default: '',
+    },
+
+    packSize: {
+      type: String,
+      trim: true,
+      maxlength: 50,
+      default: '1 UNIT',
+    },
+
+    uomConversionFactor: {
+      type: Number,
+      min: 0.0001,
+      default: 1,
     },
 
     baseUnit: {
@@ -59,7 +85,6 @@ const poLineItemSchema = new mongoose.Schema(
       default: '',
     },
 
-    // Quantities in baseUnit.
     orderedQuantityBase: {
       type: Number,
       required: true,
@@ -72,7 +97,12 @@ const poLineItemSchema = new mongoose.Schema(
       default: 0,
     },
 
-    // Price per baseUnit in paisa.
+    invoicedQuantityBase: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+
     unitPricePaisa: {
       type: Number,
       required: true,
@@ -83,14 +113,12 @@ const poLineItemSchema = new mongoose.Schema(
       },
     },
 
-    // Total line value in paisa: orderedQuantityBase × unitPricePaisa.
     totalLinePaisa: {
       type: Number,
       required: true,
       min: 0,
     },
 
-    // Notes for this line only (e.g., brand preference).
     lineNotes: {
       type: String,
       trim: true,
@@ -99,6 +127,105 @@ const poLineItemSchema = new mongoose.Schema(
     },
   },
   { _id: true }
+);
+
+const milestoneSchema = new mongoose.Schema(
+  {
+    milestoneKey: { type: String, required: true, trim: true },
+    label: { type: String, required: true, trim: true },
+    timestamp: { type: Date, required: true, default: Date.now },
+    actorUserId: { type: String, trim: true, uppercase: true, default: 'SYSTEM' },
+    details: { type: String, trim: true, default: '' },
+  },
+  { _id: true }
+);
+
+const grnItemSchema = new mongoose.Schema(
+  {
+    itemId: { type: String, required: true, trim: true, uppercase: true },
+    deliveredQty: { type: Number, required: true, min: 0 },
+    acceptedQty: { type: Number, required: true, min: 0 },
+    rejectedQty: { type: Number, min: 0, default: 0 },
+    lotNumber: { type: String, trim: true, default: null },
+    manufacturingDate: { type: Date, default: null },
+    expiryDate: { type: Date, default: null },
+    rejectionReason: { type: String, trim: true, default: null },
+  },
+  { _id: false }
+);
+
+const grnSchema = new mongoose.Schema(
+  {
+    grnId: { type: String, required: true, trim: true, uppercase: true },
+    deliveryNoteNumber: { type: String, trim: true, default: '' },
+    receivedAt: { type: Date, default: Date.now },
+    receivedByUserId: { type: String, required: true, trim: true, uppercase: true },
+    items: [grnItemSchema],
+    notes: { type: String, trim: true, default: '' },
+    status: { type: String, enum: ['ACCEPTED', 'PARTIAL', 'REJECTED'], default: 'ACCEPTED' },
+  },
+  { _id: true }
+);
+
+const supplierInvoiceRefSchema = new mongoose.Schema(
+  {
+    invoiceId: { type: String, required: true, trim: true, uppercase: true },
+    invoiceNumber: { type: String, required: true, trim: true },
+    invoiceDate: { type: String, required: true, trim: true },
+    amountPaisa: { type: Number, required: true, min: 0 },
+    taxPaisa: { type: Number, default: 0, min: 0 },
+    totalPaisa: { type: Number, required: true, min: 0 },
+    receivedAt: { type: Date, default: Date.now },
+    irn: { type: String, trim: true, default: '' },
+    signedQr: { type: String, trim: true, default: '' },
+    status: { type: String, enum: ['CAPTURED', 'MATCHED', 'APPROVED', 'DISPUTED'], default: 'CAPTURED' },
+  },
+  { _id: true }
+);
+
+const threeWayMatchSchema = new mongoose.Schema(
+  {
+    matchStatus: {
+      type: String,
+      enum: ['MATCHED', 'PRICE_VARIANCE', 'QUANTITY_VARIANCE', 'TAX_VARIANCE', 'REVIEW_REQUIRED', 'PENDING'],
+      default: 'PENDING',
+    },
+    matchedAt: { type: Date, default: null },
+    matchedByUserId: { type: String, trim: true, uppercase: true, default: null },
+    priceVariancePaisa: { type: Number, default: 0 },
+    quantityVarianceBase: { type: Number, default: 0 },
+    taxVariancePaisa: { type: Number, default: 0 },
+    isExceptionApproved: { type: Boolean, default: false },
+    exceptionReason: { type: String, trim: true, default: '' },
+    exceptionApprovedByUserId: { type: String, trim: true, uppercase: true, default: null },
+  },
+  { _id: false }
+);
+
+const masterApprovalSchema = new mongoose.Schema(
+  {
+    approvedAt: { type: Date, default: null },
+    approvedByUserId: { type: String, trim: true, uppercase: true, default: null },
+    approvalNotes: { type: String, trim: true, maxlength: 2000, default: '' },
+    isHighRiskReauthConfirmed: { type: Boolean, default: false },
+  },
+  { _id: false }
+);
+
+const inventoryPostingSchema = new mongoose.Schema(
+  {
+    postingId: { type: String, trim: true, uppercase: true, default: null },
+    postedAt: { type: Date, default: null },
+    postedByUserId: { type: String, trim: true, uppercase: true, default: null },
+    stockMovementIds: [{ type: String, trim: true, uppercase: true }],
+    status: {
+      type: String,
+      enum: ['IDLE', 'PENDING', 'POSTED', 'FAILED'],
+      default: 'IDLE',
+    },
+    error: { type: String, trim: true, default: null },
+  },
+  { _id: false }
 );
 
 const purchaseOrderSchema = new mongoose.Schema(
@@ -111,7 +238,7 @@ const purchaseOrderSchema = new mongoose.Schema(
       immutable: true,
       trim: true,
       uppercase: true,
-      match: /^PO-\d{4,}$/,
+      match: /^PO-[\dA-Z-]+$/,
       index: true,
     },
 
@@ -151,6 +278,13 @@ const purchaseOrderSchema = new mongoose.Schema(
       default: '',
     },
 
+    vendorSiteId: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: null,
+    },
+
     // ── Line items ────────────────────────────────────────────────────────────
     lineItems: {
       type: [poLineItemSchema],
@@ -162,29 +296,10 @@ const purchaseOrderSchema = new mongoose.Schema(
     },
 
     // ── Totals (in paisa) ─────────────────────────────────────────────────────
-    subtotalPaisa: {
-      type: Number,
-      min: 0,
-      default: 0,
-    },
-
-    taxPaisa: {
-      type: Number,
-      min: 0,
-      default: 0,
-    },
-
-    discountPaisa: {
-      type: Number,
-      min: 0,
-      default: 0,
-    },
-
-    totalPaisa: {
-      type: Number,
-      min: 0,
-      default: 0,
-    },
+    subtotalPaisa: { type: Number, min: 0, default: 0 },
+    taxPaisa: { type: Number, min: 0, default: 0 },
+    discountPaisa: { type: Number, min: 0, default: 0 },
+    totalPaisa: { type: Number, min: 0, default: 0 },
 
     // ── Status lifecycle ──────────────────────────────────────────────────────
     status: {
@@ -195,8 +310,7 @@ const purchaseOrderSchema = new mongoose.Schema(
       index: true,
     },
 
-    // ── Dates ────────────────────────────────────────────────────────────────
-    // Server-generated in IST.
+    // ── Order Tracking & Dates ────────────────────────────────────────────────
     orderDate: {
       type: String,
       trim: true,
@@ -204,7 +318,19 @@ const purchaseOrderSchema = new mongoose.Schema(
       default: null,
     },
 
+    orderPlacedAt: {
+      type: Date,
+      default: null,
+    },
+
     expectedDeliveryDate: {
+      type: String,
+      trim: true,
+      match: /^\d{4}-\d{2}-\d{2}$/,
+      default: null,
+    },
+
+    supplierConfirmedDeliveryDate: {
       type: String,
       trim: true,
       match: /^\d{4}-\d{2}-\d{2}$/,
@@ -218,72 +344,65 @@ const purchaseOrderSchema = new mongoose.Schema(
       default: null,
     },
 
-    // ── Approval trail ────────────────────────────────────────────────────────
-    submittedByUserId: {
+    // ── Supplier Collaboration ────────────────────────────────────────────────
+    supplierAcknowledgedAt: { type: Date, default: null },
+    supplierAcknowledgementStatus: {
       type: String,
-      trim: true,
-      uppercase: true,
+      enum: ['PENDING', 'ACCEPTED', 'ACCEPTED_WITH_CHANGES', 'CANNOT_SUPPLY', 'NEW_DELIVERY_PROPOSED'],
+      default: 'PENDING',
+    },
+    supplierProposedChanges: {
+      type: mongoose.Schema.Types.Mixed,
       default: null,
     },
+
+    // ── Receiving & Invoicing Arrays ───────────────────────────────────────────
+    receivingStatus: {
+      type: String,
+      enum: ['PENDING', 'PARTIALLY_RECEIVED', 'RECEIVED_PENDING_FINAL_POSTING', 'POSTED_TO_INVENTORY'],
+      default: 'PENDING',
+    },
+    grnReceipts: [grnSchema],
+    invoices: [supplierInvoiceRefSchema],
+
+    // ── 3-Way Match & MASTER Approval & Inventory Posting ─────────────────────
+    threeWayMatch: {
+      type: threeWayMatchSchema,
+      default: () => ({}),
+    },
+
+    masterApproval: {
+      type: masterApprovalSchema,
+      default: () => ({}),
+    },
+
+    inventoryPosting: {
+      type: inventoryPostingSchema,
+      default: () => ({}),
+    },
+
+    // ── Milestones Timeline ───────────────────────────────────────────────────
+    milestones: [milestoneSchema],
+
+    // ── Approval trail ────────────────────────────────────────────────────────
+    submittedByUserId: { type: String, trim: true, uppercase: true, default: null },
     submittedAt: { type: Date, default: null },
 
-    approvedByUserId: {
-      type: String,
-      trim: true,
-      uppercase: true,
-      default: null,
-    },
+    approvedByUserId: { type: String, trim: true, uppercase: true, default: null },
     approvedAt: { type: Date, default: null },
-    approvalNotes: {
-      type: String,
-      trim: true,
-      maxlength: 2000,
-      default: '',
-    },
+    approvalNotes: { type: String, trim: true, maxlength: 2000, default: '' },
 
-    cancelledByUserId: {
-      type: String,
-      trim: true,
-      uppercase: true,
-      default: null,
-    },
+    cancelledByUserId: { type: String, trim: true, uppercase: true, default: null },
     cancelledAt: { type: Date, default: null },
-    cancellationReason: {
-      type: String,
-      trim: true,
-      maxlength: 2000,
-      default: '',
-    },
+    cancellationReason: { type: String, trim: true, maxlength: 2000, default: '' },
 
-    // ── Vendor invoice / reference ────────────────────────────────────────────
-    vendorInvoiceNumber: {
-      type: String,
-      trim: true,
-      maxlength: 100,
-      default: '',
-    },
-
-    vendorInvoiceDate: {
-      type: String,
-      trim: true,
-      match: /^\d{4}-\d{2}-\d{2}$/,
-      default: null,
-    },
+    // ── Vendor invoice / reference (Legacy compatibility) ─────────────────────
+    vendorInvoiceNumber: { type: String, trim: true, maxlength: 100, default: '' },
+    vendorInvoiceDate: { type: String, trim: true, match: /^\d{4}-\d{2}-\d{2}$/, default: null },
 
     // ── Notes / terms ─────────────────────────────────────────────────────────
-    terms: {
-      type: String,
-      trim: true,
-      maxlength: 3000,
-      default: '',
-    },
-
-    notes: {
-      type: String,
-      trim: true,
-      maxlength: 3000,
-      default: '',
-    },
+    terms: { type: String, trim: true, maxlength: 3000, default: '' },
+    notes: { type: String, trim: true, maxlength: 3000, default: '' },
 
     // ── Governance ───────────────────────────────────────────────────────────
     createdByUserId: {

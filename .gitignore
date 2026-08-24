@@ -10,3 +10,6 @@ coverage/
 .local-evidence-storage/
 logs/
 *.tmp
+.chrome*
+.system_generated/
+scratch/
