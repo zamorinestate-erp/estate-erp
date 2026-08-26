@@ -696,7 +696,7 @@ async function seedMasterUser({
       ],
       cafeAssignmentHistory: [],
       passwordHash,
-      mustChangePassword: true,
+      mustChangePassword: false,
       passwordChangedAt: new Date(),
       mfaEnabled: false,
       mfaMethod: 'NONE',

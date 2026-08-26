@@ -359,9 +359,9 @@ function renderActiveTab() {
         <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
           <div>
             <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; font-size:12.5px; color:var(--muted);">
-              <button id="rs-back-to-hub-btn" data-back-to-hub="true" data-revenue-share-back-to-hub="true" class="btn-link" style="color:var(--accent); text-decoration:none; display:inline-flex; align-items:center; gap:4px; font-weight:600; cursor:pointer; background:none; border:none; padding:0;">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-                Revenue Share
+              <button id="rs-back-to-hub-btn" data-back-to-hub="true" data-revenue-share-back-to-hub="true" class="btn-back-nav" type="button">
+                <span class="back-icon">←</span>
+                <span>Revenue Share</span>
               </button>
               <span>/</span>
               <span style="color:var(--ink); font-weight:600;">${cur.title}</span>
@@ -908,9 +908,9 @@ function renderSalesTab() {
                   <td style="padding:10px;">${s.businessDate}</td>
                   <td style="padding:10px; text-align:right; font-weight:700; color:var(--ink);">₹${((s.grossSalesPaisa || 0) / 100).toFixed(2)}</td>
                   <td style="padding:10px; text-align:right; font-weight:700; color:#059669;">₹${((s.netEligibleRevenuePaisa || 0) / 100).toFixed(2)}</td>
-                  <td style="padding:10px; text-align:center;"><span class="badge" style="background:#f1f5f9; padding:2px 6px; border-radius:4px; font-size:11px;">${s.source}</span></td>
+                  <td style="padding:10px; text-align:center;"><span class="badge-tag badge-neutral" style="font-size:11px;">${s.source}</span></td>
                   <td style="padding:10px; text-align:center;">
-                    <span class="badge" style="background:${s.status === 'APPROVED' || s.status === 'CERTIFIED' ? '#dcfce7' : '#fef3c7'}; color:${s.status === 'APPROVED' || s.status === 'CERTIFIED' ? '#166534' : '#92400e'}; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600;">
+                    <span class="badge-tag ${s.status === 'APPROVED' || s.status === 'CERTIFIED' ? 'badge-success' : 'badge-warning'}" style="font-size:11px; font-weight:700;">
                       ${s.status}
                     </span>
                   </td>
@@ -1076,7 +1076,7 @@ function renderSettlementsTab() {
                   <td style="padding:10px; text-align:right; font-weight:700; color:var(--ink);">₹${((st.netPayablePaisa || 0) / 100).toFixed(2)}</td>
                   <td style="padding:10px; text-align:right; font-weight:700; color:#dc2626;">₹${((st.balanceOutstandingPaisa || 0) / 100).toFixed(2)}</td>
                   <td style="padding:10px; text-align:center;">
-                    <span class="badge" style="background:${st.status === 'APPROVED' ? '#dcfce7' : '#fef3c7'}; color:${st.status === 'APPROVED' ? '#166534' : '#92400e'}; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600;">
+                    <span class="badge-tag ${st.status === 'APPROVED' ? 'badge-success' : 'badge-warning'}" style="font-size:11px; font-weight:700;">
                       ${st.status}
                     </span>
                   </td>

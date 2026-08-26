@@ -645,7 +645,9 @@ function escapeHtml(str) {
     .replace(/'/g, "&#039;");
 }
 
-export function wireTasks(root) {
+let hasInitialFetchedTasks = false;
+
+function wireTaskEventListeners(root) {
   if (!root) return;
 
   // Refresh Button
@@ -770,11 +772,20 @@ export function wireTasks(root) {
       openAssignTaskModal(root);
     });
   }
+}
 
-  // Fetch live tasks on initial mount
-  if (!liveTasks) {
+export function wireTasks(root) {
+  if (!root) return;
+
+  wireTaskEventListeners(root);
+
+  // Fetch live tasks on initial mount exactly once
+  if (!hasInitialFetchedTasks) {
+    hasInitialFetchedTasks = true;
     fetchTasksFromServer().then(() => {
-      refreshTasksView(root);
+      if (state.route === "approvals" || state.route === "tasks") {
+        refreshTasksView(root);
+      }
     });
   }
 }
@@ -785,16 +796,32 @@ async function fetchTasksFromServer() {
     if (res?.data?.tasks && Array.isArray(res.data.tasks) && res.data.tasks.length > 0) {
       liveTasks = res.data.tasks;
       if (res.data.summary) summaryMetrics = res.data.summary;
+    } else {
+      liveTasks = [...SAMPLE_TASKS];
     }
   } catch (err) {
     console.warn("Could not fetch tasks from server, using existing state:", err);
+    if (!liveTasks) liveTasks = [...SAMPLE_TASKS];
   }
 }
 
 function refreshTasksView(root) {
-  const container = root.querySelector(".page-enter") || root;
+  const activeId = document.activeElement?.id || null;
+  const cursorStart = document.activeElement?.selectionStart;
+  const cursorEnd = document.activeElement?.selectionEnd;
+  const container = root.querySelector(".tasks-page") || root.querySelector(".page-enter") || root;
+  if (!container) return;
   container.innerHTML = renderTasks();
-  wireTasks(root);
+  wireTaskEventListeners(root);
+  if (activeId) {
+    const el = root.querySelector("#" + activeId);
+    if (el) {
+      el.focus();
+      if (typeof cursorStart === "number" && typeof cursorEnd === "number" && el.setSelectionRange) {
+        el.setSelectionRange(cursorStart, cursorEnd);
+      }
+    }
+  }
 }
 
 function openTaskDetailModal(taskId, root) {
@@ -1046,8 +1073,8 @@ function openReturnTaskModal(taskId, root) {
     maxWidth: "480px",
     body: `
       <div>
-        <label class="label" style="color:#f8fafc;margin-bottom:6px;display:block;">Mandatory Return Reason *</label>
-        <textarea id="return-task-reason" class="input" rows="3" placeholder="Specify why the submission was rejected (e.g. missing pressure tag, incomplete backflush)..." required></textarea>
+        <label class="label" style="color:var(--ink, #18181b);font-weight:700;font-size:12px;margin-bottom:6px;display:block;">Mandatory Return Reason *</label>
+        <textarea id="return-task-reason" class="input" rows="3" placeholder="Specify why the submission was rejected (e.g. missing pressure tag, incomplete backflush)..." required style="width:100%;box-sizing:border-box;"></textarea>
       </div>
     `,
     saveLabel: "Return for Correction",
@@ -1084,8 +1111,8 @@ function openReopenTaskModal(taskId, root) {
     maxWidth: "480px",
     body: `
       <div>
-        <label class="label" style="color:#f8fafc;margin-bottom:6px;display:block;">Reopen Justification *</label>
-        <textarea id="reopen-task-reason" class="input" rows="3" placeholder="State reason for reopening completed task..." required></textarea>
+        <label class="label" style="color:var(--ink, #18181b);font-weight:700;font-size:12px;margin-bottom:6px;display:block;">Reopen Justification *</label>
+        <textarea id="reopen-task-reason" class="input" rows="3" placeholder="State reason for reopening completed task..." required style="width:100%;box-sizing:border-box;"></textarea>
       </div>
     `,
     saveLabel: "Reopen Task",
@@ -1120,8 +1147,8 @@ function openBlockTaskModal(taskId, root) {
     maxWidth: "480px",
     body: `
       <div>
-        <label class="label" style="color:#f8fafc;margin-bottom:6px;display:block;">Block Reason &amp; Root Cause Category *</label>
-        <select id="block-task-category" class="select" style="margin-bottom:10px;">
+        <label class="label" style="color:var(--ink, #18181b);font-weight:700;font-size:12px;margin-bottom:6px;display:block;">Block Reason &amp; Root Cause Category *</label>
+        <select id="block-task-category" class="select" style="margin-bottom:10px;width:100%;box-sizing:border-box;">
           <option value="EQUIPMENT_UNAVAILABLE">Equipment / Asset Unavailable</option>
           <option value="SPARE_PART_UNAVAILABLE">Spare Part / Material Missing</option>
           <option value="VENDOR_DEPENDENCY">Vendor / Contractor Dependency</option>
@@ -1129,7 +1156,7 @@ function openBlockTaskModal(taskId, root) {
           <option value="ACCESS_RESTRICTION">Facility Access Restriction</option>
           <option value="OTHER">Other Operational Impasse</option>
         </select>
-        <textarea id="block-task-reason" class="input" rows="3" placeholder="State specific impediment..." required></textarea>
+        <textarea id="block-task-reason" class="input" rows="3" placeholder="State specific impediment..." required style="width:100%;box-sizing:border-box;"></textarea>
       </div>
     `,
     saveLabel: "Mark as Blocked",
@@ -1163,8 +1190,8 @@ function openCancelTaskModal(taskId, root) {
     maxWidth: "480px",
     body: `
       <div>
-        <label class="label" style="color:#f8fafc;margin-bottom:6px;display:block;">Mandatory Cancellation Reason *</label>
-        <textarea id="cancel-task-reason" class="input" rows="3" placeholder="Specify why this task is being cancelled..." required></textarea>
+        <label class="label" style="color:var(--ink, #18181b);font-weight:700;font-size:12px;margin-bottom:6px;display:block;">Mandatory Cancellation Reason *</label>
+        <textarea id="cancel-task-reason" class="input" rows="3" placeholder="Specify why this task is being cancelled..." required style="width:100%;box-sizing:border-box;"></textarea>
       </div>
     `,
     saveLabel: "Cancel Task",
@@ -1198,20 +1225,20 @@ function openAssignTaskModal(root) {
     title: "Assign Operational / Compliance Task",
     maxWidth: "620px",
     body: `
-      <form id="new-task-form" style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px;">
+      <form id="new-task-form" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;width:100%;box-sizing:border-box;">
         <div style="grid-column:1/-1;">
-          <label class="label" style="color:#f8fafc;margin-bottom:4px;display:block;">Task Title *</label>
-          <input type="text" id="assign-title" class="input" placeholder="e.g. Deep Descaling & Pressure Calibration" required />
+          <label class="label" style="color:var(--ink, #18181b);font-weight:700;font-size:12px;margin-bottom:4px;display:block;">Task Title *</label>
+          <input type="text" id="assign-title" class="input" placeholder="e.g. Deep Descaling & Pressure Calibration" required style="width:100%;box-sizing:border-box;" />
         </div>
 
         <div style="grid-column:1/-1;">
-          <label class="label" style="color:#f8fafc;margin-bottom:4px;display:block;">Description / SOP Details</label>
-          <textarea id="assign-desc" class="input" rows="2" placeholder="Specify step-by-step procedure or expectations..."></textarea>
+          <label class="label" style="color:var(--ink, #18181b);font-weight:700;font-size:12px;margin-bottom:4px;display:block;">Description / SOP Details</label>
+          <textarea id="assign-desc" class="input" rows="2" placeholder="Specify step-by-step procedure or expectations..." style="width:100%;box-sizing:border-box;"></textarea>
         </div>
 
         <div>
-          <label class="label" style="color:#f8fafc;margin-bottom:4px;display:block;">Authorized Café *</label>
-          <select id="assign-cafe" class="select" required>
+          <label class="label" style="color:var(--ink, #18181b);font-weight:700;font-size:12px;margin-bottom:4px;display:block;">Authorized Café *</label>
+          <select id="assign-cafe" class="select" required style="width:100%;box-sizing:border-box;">
             <option value="ZC-0001">ZC-0001 · Kozhikode Beach Main</option>
             <option value="ZC-0002">ZC-0002 · Calicut Cyberpark Outpost</option>
             <option value="ZC-0003">ZC-0003 · Wayanad Heritage Roastery</option>
@@ -1219,8 +1246,8 @@ function openAssignTaskModal(root) {
         </div>
 
         <div>
-          <label class="label" style="color:#f8fafc;margin-bottom:4px;display:block;">Category *</label>
-          <select id="assign-category" class="select">
+          <label class="label" style="color:var(--ink, #18181b);font-weight:700;font-size:12px;margin-bottom:4px;display:block;">Category *</label>
+          <select id="assign-category" class="select" style="width:100%;box-sizing:border-box;">
             <option value="EQUIPMENT_MAINTENANCE">Equipment Maintenance</option>
             <option value="SAFETY_COMPLIANCE">Safety & Compliance</option>
             <option value="INVENTORY_RECEIVING">Inventory Receiving</option>
@@ -1232,18 +1259,18 @@ function openAssignTaskModal(root) {
         </div>
 
         <div>
-          <label class="label" style="color:#f8fafc;margin-bottom:4px;display:block;">Assignee (Performer) *</label>
-          <input type="text" id="assign-user" class="input" placeholder="e.g. Priya Nair" required />
+          <label class="label" style="color:var(--ink, #18181b);font-weight:700;font-size:12px;margin-bottom:4px;display:block;">Assignee (Performer) *</label>
+          <input type="text" id="assign-user" class="input" placeholder="e.g. Priya Nair" required style="width:100%;box-sizing:border-box;" />
         </div>
 
         <div>
-          <label class="label" style="color:#f8fafc;margin-bottom:4px;display:block;">Accountable Manager</label>
-          <input type="text" id="assign-responsible" class="input" placeholder="e.g. Ravi Kumar" />
+          <label class="label" style="color:var(--ink, #18181b);font-weight:700;font-size:12px;margin-bottom:4px;display:block;">Accountable Manager</label>
+          <input type="text" id="assign-responsible" class="input" placeholder="e.g. Ravi Kumar" style="width:100%;box-sizing:border-box;" />
         </div>
 
         <div>
-          <label class="label" style="color:#f8fafc;margin-bottom:4px;display:block;">Priority</label>
-          <select id="assign-priority" class="select">
+          <label class="label" style="color:var(--ink, #18181b);font-weight:700;font-size:12px;margin-bottom:4px;display:block;">Priority</label>
+          <select id="assign-priority" class="select" style="width:100%;box-sizing:border-box;">
             <option value="NORMAL">Normal Priority</option>
             <option value="HIGH">High Priority</option>
             <option value="URGENT">Urgent (Immediate Attention)</option>
@@ -1252,8 +1279,8 @@ function openAssignTaskModal(root) {
         </div>
 
         <div>
-          <label class="label" style="color:#f8fafc;margin-bottom:4px;display:block;">Risk Level</label>
-          <select id="assign-risk" class="select">
+          <label class="label" style="color:var(--ink, #18181b);font-weight:700;font-size:12px;margin-bottom:4px;display:block;">Risk Level</label>
+          <select id="assign-risk" class="select" style="width:100%;box-sizing:border-box;">
             <option value="LOW">Low Exposure</option>
             <option value="MEDIUM">Medium Exposure</option>
             <option value="HIGH">High Risk</option>
@@ -1262,18 +1289,18 @@ function openAssignTaskModal(root) {
         </div>
 
         <div>
-          <label class="label" style="color:#f8fafc;margin-bottom:4px;display:block;">Due Date *</label>
-          <input type="date" id="assign-duedate" class="input" value="${getIstDateString()}" required />
+          <label class="label" style="color:var(--ink, #18181b);font-weight:700;font-size:12px;margin-bottom:4px;display:block;">Due Date *</label>
+          <input type="date" id="assign-duedate" class="input" value="${getIstDateString()}" required style="width:100%;box-sizing:border-box;" />
         </div>
 
         <div>
-          <label class="label" style="color:#f8fafc;margin-bottom:4px;display:block;">Due Time</label>
-          <input type="time" id="assign-duetime" class="input" value="22:00" />
+          <label class="label" style="color:var(--ink, #18181b);font-weight:700;font-size:12px;margin-bottom:4px;display:block;">Due Time</label>
+          <input type="time" id="assign-duetime" class="input" value="22:00" style="width:100%;box-sizing:border-box;" />
         </div>
 
         <div>
-          <label class="label" style="color:#f8fafc;margin-bottom:4px;display:block;">Recurrence</label>
-          <select id="assign-recurrence" class="select">
+          <label class="label" style="color:var(--ink, #18181b);font-weight:700;font-size:12px;margin-bottom:4px;display:block;">Recurrence</label>
+          <select id="assign-recurrence" class="select" style="width:100%;box-sizing:border-box;">
             <option value="NONE">One-Time Task</option>
             <option value="DAILY">Daily Recurring</option>
             <option value="WEEKLY">Weekly Recurring</option>
@@ -1282,16 +1309,16 @@ function openAssignTaskModal(root) {
         </div>
 
         <div>
-          <label class="label" style="color:#f8fafc;margin-bottom:4px;display:block;">SOP Code / Procedure</label>
-          <input type="text" id="assign-sop" class="input" placeholder="e.g. SOP-EQ-004 v2.1" />
+          <label class="label" style="color:var(--ink, #18181b);font-weight:700;font-size:12px;margin-bottom:4px;display:block;">SOP Code / Procedure</label>
+          <input type="text" id="assign-sop" class="input" placeholder="e.g. SOP-EQ-004 v2.1" style="width:100%;box-sizing:border-box;" />
         </div>
 
-        <div style="grid-column:1/-1;display:flex;gap:20px;margin-top:4px;">
-          <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#f8fafc;cursor:pointer;">
+        <div style="grid-column:1/-1;display:flex;gap:20px;margin-top:4px;flex-wrap:wrap;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink,#18181b);cursor:pointer;font-weight:600;">
             <input type="checkbox" id="assign-critical-control" />
             <span>Flag as <strong>Critical Control</strong></span>
           </label>
-          <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#f8fafc;cursor:pointer;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink,#18181b);cursor:pointer;font-weight:600;">
             <input type="checkbox" id="assign-verify-req" checked />
             <span>Require <strong>Authorized Verification</strong></span>
           </label>

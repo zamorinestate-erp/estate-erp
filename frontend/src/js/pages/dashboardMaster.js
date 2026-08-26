@@ -754,25 +754,50 @@ export function renderMasterDashboard({ roleLabel = "Master Administrator" } = {
       </div>
 
       <!-- Tier 3: Executive Quick Action Shortcuts -->
-      <div class="card" style="padding:12px 18px;margin-bottom:20px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
-          <div style="font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--bronze-600);">
-            Executive Actions:
+      <div class="card" style="padding:16px 20px;margin-bottom:24px;border-radius:var(--radius-card, 12px);border:1px solid var(--line);background:var(--surface);box-shadow:var(--shadow-xs);">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);">Executive Fast Actions &amp; Workflows</span>
           </div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;">
-            <button class="btn btn-xs btn-ghost" data-quick-action="pos" type="button">🧾 New POS Bill</button>
-            <button class="btn btn-xs btn-ghost" data-quick-action="expenses" type="button">💳 Record Expense</button>
-            <button class="btn btn-xs btn-ghost" data-quick-action="inventory" type="button">📦 Adjust Stock</button>
-            <button class="btn btn-xs btn-ghost" data-quick-action="employees" type="button">👤 Onboard Employee</button>
-            <button class="btn btn-xs btn-ghost" data-quick-action="department-orders" type="button">🏛️ Dept Order</button>
-            ${
-              isMaster && isPrimary
-                ? `<button class="btn btn-xs btn-ghost" data-quick-action="personal-ledger" type="button">📒 Personal Ledger</button>`
-                : ""
-            }
-            <button class="btn btn-xs btn-ghost" data-quick-action="reports" type="button">📊 Financial Reports</button>
-            <button class="btn btn-xs btn-ghost" data-quick-action="tasks" type="button">✅ Task Centre</button>
-          </div>
+          <span style="font-size:11px;color:var(--muted);">Single-click quick jump</span>
+        </div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;">
+          <button class="exec-action-btn" data-quick-action="pos" type="button">
+            <span class="exec-icon-box">${icon('pos', 14)}</span>
+            <span>New POS Bill</span>
+          </button>
+          <button class="exec-action-btn" data-quick-action="expenses" type="button">
+            <span class="exec-icon-box">${icon('expenses', 14)}</span>
+            <span>Record Expense</span>
+          </button>
+          <button class="exec-action-btn" data-quick-action="inventory" type="button">
+            <span class="exec-icon-box">${icon('inventory', 14)}</span>
+            <span>Adjust Stock</span>
+          </button>
+          <button class="exec-action-btn" data-quick-action="employees" type="button">
+            <span class="exec-icon-box">${icon('employees', 14)}</span>
+            <span>Onboard Employee</span>
+          </button>
+          <button class="exec-action-btn" data-quick-action="department-orders" type="button">
+            <span class="exec-icon-box">${icon('deptOrders', 14)}</span>
+            <span>Dept Order</span>
+          </button>
+          ${
+            isMaster && isPrimary
+              ? `<button class="exec-action-btn" data-quick-action="personal-ledger" type="button">
+                  <span class="exec-icon-box">${icon('ledger', 14)}</span>
+                  <span>Personal Ledger</span>
+                </button>`
+              : ""
+          }
+          <button class="exec-action-btn" data-quick-action="reports" type="button">
+            <span class="exec-icon-box">${icon('reports', 14)}</span>
+            <span>Financial Reports</span>
+          </button>
+          <button class="exec-action-btn" data-quick-action="tasks" type="button">
+            <span class="exec-icon-box">${icon('tasks', 14)}</span>
+            <span>Task Centre</span>
+          </button>
         </div>
       </div>
 

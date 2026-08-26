@@ -1172,7 +1172,7 @@ export function renderDashboardBodyHtml(data) {
       <div class="occ-section-card">
         <div class="occ-card-header">
           <div class="occ-card-title">
-            ${icon("pos", 18)}
+            ${icon("menuItem", 18)}
             <span>Commercial Velocity — Top Menu Items</span>
           </div>
           <button class="btn btn-outline btn-xs occ-nav-btn" data-route="reports">Sales Mix →</button>
@@ -1184,12 +1184,12 @@ export function renderDashboardBodyHtml(data) {
             <div class="occ-menu-row">
               <div class="occ-menu-rank">#${idx + 1}</div>
               <div class="occ-menu-info">
-                <div class="occ-menu-name">${item.name}</div>
-                <div class="occ-menu-cat">${item.category || 'Menu Item'}</div>
+                <div class="occ-menu-name">${item.itemName || item.name || item.title || item.menuItemId || 'Menu Item'}</div>
+                <div class="occ-menu-cat">${item.category || item.categoryName || 'Beverages & Dining'}</div>
               </div>
               <div class="occ-menu-stats">
-                <div class="occ-menu-rev">${fmtInr(item.totalRevenuePaisa)}</div>
-                <div class="occ-menu-qty">${item.totalQty} sold</div>
+                <div class="occ-menu-rev">${fmtInr(item.totalRevenuePaisa || 0)}</div>
+                <div class="occ-menu-qty">${item.totalQty || 0} sold</div>
               </div>
             </div>
           `).join('')}

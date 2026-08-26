@@ -1,0 +1,22 @@
+{
+  "name": "zamorin-cafe-erp-frontend",
+  "version": "1.0.0",
+  "description": "Zamorin Cafe ERP — Enterprise Web Application UI",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node ../scripts/serve_frontend.js",
+    "serve": "node ../scripts/serve_frontend.js",
+    "verify:imports": "node verifyRouterImports.mjs",
+    "build": "echo \"Zero-build Vanilla ES Modules — Ready for direct static serving.\""
+  },
+  "keywords": [
+    "zamorin-cafe-erp",
+    "frontend",
+    "vanilla-js",
+    "es-modules",
+    "pwa"
+  ],
+  "author": "Zamorin Cafe Operations Engineering",
+  "license": "UNLICENSED"
+}

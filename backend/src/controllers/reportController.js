@@ -15,7 +15,7 @@ const { PurchaseOrder } = require('../models/PurchaseOrder');
 const { InventoryLot } = require('../models/InventoryLot');
 const { QualityChecklist } = require('../models/QualityChecklist');
 const { MetricsService, METRICS_DICTIONARY } = require('../services/metricsService');
-const { ZurfService, COMPANY_CONFIG } = require('../services/zurfService');
+const { ZurfService, COMPANY_CONFIG, getCompanyConfig } = require('../services/zurfService');
 const { asyncHandler } = require('../utils/asyncHandler');
 const { ApiError } = require('../utils/ApiError');
 const { resolveEffectiveCafeScope, assertResourceCafeOwnership } = require('../utils/cafeScope');
@@ -801,17 +801,20 @@ const generateZurfExport = asyncHandler(async (request, response) => {
   ];
 
   if (format === 'PDF' || format === 'HTML') {
-    const html = ZurfService.renderZurfHtml({
-      reportTitle: reportId === 'pl-statement' ? 'Profit & Loss Statement & Waterfall' : 'Daily Sales & Operations Summary',
-      scope: scope || 'All Cafés — Global Portfolio',
-      period: period || 'August 2026',
-      classification,
-      generatedBy: user,
-      kpiCards,
-      columns,
-      rows,
-      notes: 'ZURF v1 certified export. Figures reconciled against General Ledger posting.',
-    });
+    const [html, branding] = await Promise.all([
+      ZurfService.renderZurfHtml({
+        reportTitle: reportId === 'pl-statement' ? 'Profit & Loss Statement & Waterfall' : 'Daily Sales & Operations Summary',
+        scope: scope || 'All Cafés — Global Portfolio',
+        period: period || 'August 2026',
+        classification,
+        generatedBy: user,
+        kpiCards,
+        columns,
+        rows,
+        notes: 'ZURF v1 certified export. Figures reconciled against General Ledger posting.',
+      }),
+      getCompanyConfig(),
+    ]);
 
     const runId = ZurfService.generateRunId();
     return response.status(200).json({
@@ -822,15 +825,16 @@ const generateZurfExport = asyncHandler(async (request, response) => {
         html,
         classification,
         hasWatermark: true,
-        companyName: COMPANY_CONFIG.legalName,
-        gstin: COMPANY_CONFIG.gstin,
+        companyName: branding.legalName,
+        gstin: branding.gstin,
+        companyDetailsVersionId: branding.companyDetailsVersionId,
       },
       correlationId: request.correlationId || null,
     });
   }
 
   if (format === 'CSV') {
-    const csvResult = ZurfService.renderCsv({
+    const csvResult = await ZurfService.renderCsv({
       reportTitle: 'Daily Sales & Operations Summary',
       scope: scope || 'All Cafés — Global Portfolio',
       period: period || 'August 2026',

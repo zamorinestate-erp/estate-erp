@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>404 — Page Not Found | Zamorin Café ERP</title>
+  <link rel="icon" type="image/svg+xml" href="/src/assets/zamorin-logo-vector.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary: #0b0f19;
+      --card-bg: rgba(18, 24, 38, 0.85);
+      --gold-primary: #d4a359;
+      --gold-hover: #e5b66d;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --border-subtle: rgba(212, 163, 89, 0.25);
+    }
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    body {
+      background-color: var(--bg-primary);
+      color: var(--text-main);
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      overflow-x: hidden;
+      background-image: 
+        radial-gradient(circle at 20% 20%, rgba(212, 163, 89, 0.08) 0%, transparent 40%),
+        radial-gradient(circle at 80% 80%, rgba(22, 34, 63, 0.6) 0%, transparent 50%);
+    }
+    .error-card {
+      background: var(--card-bg);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--border-subtle);
+      border-radius: 20px;
+      padding: 48px 40px;
+      max-width: 520px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6), 0 0 30px rgba(212, 163, 89, 0.1);
+      animation: fadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      background: rgba(212, 163, 89, 0.12);
+      border: 1px solid rgba(212, 163, 89, 0.3);
+      border-radius: 999px;
+      color: var(--gold-primary);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-bottom: 24px;
+    }
+    .error-code {
+      font-family: 'Playfair Display', Georgia, serif;
+      font-size: 76px;
+      font-weight: 700;
+      color: var(--gold-primary);
+      line-height: 1;
+      margin-bottom: 16px;
+      letter-spacing: -2px;
+    }
+    .error-title {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text-main);
+      margin-bottom: 12px;
+    }
+    .error-desc {
+      font-size: 14px;
+      color: var(--text-muted);
+      line-height: 1.6;
+      margin-bottom: 32px;
+    }
+    .btn-return {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      background: linear-gradient(135deg, var(--gold-primary), #9e7534);
+      color: #0b0f19;
+      font-size: 14px;
+      font-weight: 700;
+      padding: 14px 28px;
+      border-radius: 10px;
+      text-decoration: none;
+      transition: all 0.25s ease;
+      box-shadow: 0 8px 20px rgba(212, 163, 89, 0.25);
+    }
+    .btn-return:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 12px 24px rgba(212, 163, 89, 0.35);
+      background: linear-gradient(135deg, var(--gold-hover), #b88a3f);
+    }
+  </style>
+</head>
+<body>
+  <div class="error-card">
+    <div class="badge">Zamorin Café ERP</div>
+    <div class="error-code">404</div>
+    <h1 class="error-title">Page Route Not Found</h1>
+    <p class="error-desc">
+      The destination you requested does not exist or requires authenticated navigation within the Zamorin Enterprise Command Centre.
+    </p>
+    <a href="/" class="btn-return">
+      Return to Command Centre
+    </a>
+  </div>
+</body>
+</html>

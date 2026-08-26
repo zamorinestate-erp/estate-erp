@@ -94,6 +94,19 @@ router.get('/privacy/notice', getPrivacyNotice);
 // ── Help & Diagnostics ────────────────────────────────────────────────────────
 router.get('/diagnostics', getDiagnostics);
 
+// ── Organisation Identity (Restricted) ────────────────────────────────────────
+const {
+  getCompanyIdentity,
+  unlockCompanyIdentity,
+  updateCompanyIdentity,
+  getCompanyIdentityHistory,
+} = require('../controllers/companyIdentityController');
+
+router.get('/company-identity', getCompanyIdentity);
+router.post('/company-identity/unlock', unlockCompanyIdentity);
+router.put('/company-identity', updateCompanyIdentity);
+router.get('/company-identity/history', getCompanyIdentityHistory);
+
 // ── Legacy redirect aliases ───────────────────────────────────────────────────
 // My Profile was previously navigated to directly; now lives in Settings.
 router.get('/my-profile', (req, res) => res.redirect(301, '/api/v1/settings/profile'));

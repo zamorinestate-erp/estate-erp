@@ -237,7 +237,8 @@ function renderOverviewTab() {
     { id: "cafes", icon: "🏛️", title: "Cafés & Locations", subtitle: "Multi-location café lifecycle, opening checklist & statuses", badge: `${kpis.cafes?.active || 3} Active`, badgeType: "accent" },
     { id: "users", icon: "👥", title: "Users & Identity", subtitle: "User credentials, access levels & JML identity lifecycles", badge: `${kpis.users?.active || 42} Users`, badgeType: "" },
     { id: "governance", icon: "🛡️", title: "Governance & Policies", subtitle: "RBAC matrix, device trust, session policies & approvals", badge: "Enforced", badgeType: "success" },
-    { id: "configuration", icon: "⚙️", title: "Configuration & Schema", subtitle: "Organisation profile, GSTIN tax registries & custom fields", badge: "Governed", badgeType: "success" },
+    { id: "configuration", icon: "⚙️", title: "Configuration & Schema", subtitle: "GSTIN tax registries, custom schema & templates", badge: "Governed", badgeType: "success" },
+    { id: "org-identity", icon: "🏢", title: "Organisation Identity", subtitle: "Legal name, logo, statutory registrations & export branding", badge: "Restricted", badgeType: "danger", isExternalRoute: true },
     { id: "audit", icon: "📜", title: "Audit & Security", subtitle: "Tamper-evident activity ledger & sensitive read tracking", badge: "Immutable", badgeType: "" },
     { id: "data_management", icon: "🗑️", title: "Data Recovery & Trash", subtitle: "Controlled trash bin, soft-deletions & data recovery", badge: "Active", badgeType: "" },
   ];
@@ -249,7 +250,7 @@ function renderOverviewTab() {
         <h3 class="module-hub-section-title">Administration &amp; Governance Workspaces</h3>
         <div class="module-tile-grid">
           ${adminTiles.map((t) => `
-            <button class="module-hub-tile" data-admin-hub-tile="${t.id}" type="button">
+            <button class="module-hub-tile" data-admin-hub-tile="${t.id}" ${t.isExternalRoute ? `data-route="${t.id}"` : ''} type="button">
               <div class="module-tile-icon-box">${t.icon}</div>
               <div class="module-tile-content">
                 <div class="module-tile-title-row">
@@ -843,40 +844,26 @@ function renderConfigSubpanel(sub) {
         <div class="card" style="padding:24px;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
             <div>
-              <h2 style="font-size:17px;font-weight:700;margin:0 0 4px;color:var(--ink);">Organisation Profile &amp; Branding</h2>
-              <p style="font-size:12.5px;color:var(--muted);margin:0;">Legal company credentials, trading names, registered headquarters, and document headers.</p>
+              <h2 style="font-size:17px;font-weight:700;margin:0 0 4px;color:var(--ink);">Organisation Identity Master</h2>
+              <p style="font-size:12.5px;color:var(--muted);margin:0;">Legal company credentials, statutory registrations, logo, export branding, GSTIN, FSSAI and banking details. Versioned and audit-locked.</p>
             </div>
-            ${
-              isPrimary
-                ? `<button class="btn btn-sm btn-primary" id="admin-edit-org-profile-btn" type="button">Edit Profile</button>`
-                : `<span class="pill pill-dark">READ-ONLY (PRIMARY ONLY)</span>`
-            }
+            <button class="btn btn-sm btn-primary" id="admin-go-org-identity-btn" type="button">Open Identity Master →</button>
           </div>
-
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
-            <div style="display:flex;flex-direction:column;gap:12px;">
-              <div>
-                <label style="font-size:11.5px;font-weight:700;color:var(--muted);text-transform:uppercase;">Legal Company Name</label>
-                <div style="font-size:14px;font-weight:700;color:var(--ink);">Zamorin Hospitality Private Limited</div>
-              </div>
-              <div>
-                <label style="font-size:11.5px;font-weight:700;color:var(--muted);text-transform:uppercase;">Trading Brand Name</label>
-                <div style="font-size:14px;font-weight:700;color:var(--ink);">Zamorin Artisan Roastery &amp; Café</div>
-              </div>
-              <div>
-                <label style="font-size:11.5px;font-weight:700;color:var(--muted);text-transform:uppercase;">Corporate Email &amp; Phone</label>
-                <div style="font-size:13.5px;color:var(--ink);">admin@zamorincafe.com · +91 80 4123 4567</div>
-              </div>
+          <div class="notice-banner notice-info" style="margin:0 0 12px 0;">
+            <span>This is a <strong>restricted record</strong>. Only Primary Master and Owner can unlock and modify. All changes are permanently versioned and audit-logged.</span>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;">
+            <div class="card" style="padding:14px;background:var(--surface);">
+              <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:4px;">Legal Name</div>
+              <div style="font-size:14px;font-weight:600;color:var(--text-primary);">Zamorin Estate Pvt. Ltd.</div>
             </div>
-
-            <div class="card" style="padding:16px;background:var(--surface-sunken);border:1px solid var(--line);">
-              <h3 style="font-size:13px;font-weight:700;margin:0 0 8px;color:var(--ink);">POS Document Header Preview</h3>
-              <div style="border:1px dashed var(--line-strong);padding:14px;border-radius:var(--radius-sm);text-align:center;font-family:var(--font-mono);font-size:11.5px;color:var(--ink);">
-                <strong>ZAMORIN ARTISAN ROASTERY</strong><br/>
-                Zamorin Hospitality Pvt Ltd · GSTIN: 29AAAAZ0000A1Z5<br/>
-                Koramangala Main Branch, Bengaluru<br/>
-                ----------------------------------------
-              </div>
+            <div class="card" style="padding:14px;background:var(--surface);">
+              <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:4px;">Brand Name</div>
+              <div style="font-size:14px;font-weight:600;color:var(--text-primary);">Zamorin Café</div>
+            </div>
+            <div class="card" style="padding:14px;background:var(--surface);">
+              <div style="font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;margin-bottom:4px;">Status</div>
+              <div><span class="badge-tag badge-success">CURRENT · v1</span></div>
             </div>
           </div>
         </div>
@@ -1099,10 +1086,16 @@ export async function hydrateAdmin(root, subroute) {
 
 function wireActiveTab(root) {
   // Wire Hub Tiles when re-rendering overview
-  root.querySelectorAll("[data-admin-hub-tile]").forEach((btn) => {
-    btn.addEventListener("click", () => {
+  root.querySelectorAll('[data-admin-hub-tile]').forEach((btn) => {
+    btn.addEventListener('click', () => {
       const tileId = btn.dataset.adminHubTile;
-      navigate("admin/" + tileId);
+      const directRoute = btn.dataset.route;
+      if (directRoute) {
+        // External-routed tiles (e.g. org-identity) navigate to their own page
+        navigate(directRoute);
+      } else {
+        navigate('admin/' + tileId);
+      }
     });
   });
 
@@ -1159,8 +1152,13 @@ function wireActiveTab(root) {
   });
 
   // Wire Create Custom Field Modal Button
-  root.querySelector("#admin-create-custom-field-btn")?.addEventListener("click", () => {
+  root.querySelector('#admin-create-custom-field-btn')?.addEventListener('click', () => {
     openCreateCustomFieldModal(root);
+  });
+
+  // Wire Open Organisation Identity Master button (Configuration > Org Profile)
+  root.querySelector('#admin-go-org-identity-btn')?.addEventListener('click', () => {
+    navigate('org-identity');
   });
 }
 

@@ -385,6 +385,13 @@ const cafeSchema = new mongoose.Schema(
         default: '',
       },
 
+      fssai: {
+        number: { type: String, trim: true, default: '' },
+        licenseType: { type: String, trim: true, default: 'State Licence' },
+        validFrom: { type: Date, default: null },
+        validTill: { type: Date, default: null },
+      },
+
       licenceNumbers: [
         {
           type: String,

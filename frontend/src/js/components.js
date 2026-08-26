@@ -309,10 +309,13 @@ export function renderTopbar({ scopeChip } = {}) {
     </div>
 
     <div id="notifPopover" class="popover notif-popover" style="display:none;">
-      <div class="popover-head">
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-          <h4 style="margin:0; font-size:14px; font-weight:700;">Notifications</h4>
-          <button class="btn btn-sm btn-ghost" id="popover-mark-all" style="font-size:11px; padding:2px 8px;">Mark all read</button>
+      <div class="notif-popover-head">
+        <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span style="font-size:14px;">🔔</span>
+            <h4 style="margin:0; font-size:14px; font-weight:700; color:var(--ink);">Notifications</h4>
+          </div>
+          <button class="btn btn-ghost btn-xs" id="popover-mark-all" style="font-size:11.5px; font-weight:600; padding:2px 8px;" type="button">Mark all read</button>
         </div>
         <div class="notif-tabs">
           <button class="notif-tab-btn active" data-notif-tab="all" type="button">All</button>
@@ -321,8 +324,8 @@ export function renderTopbar({ scopeChip } = {}) {
         </div>
       </div>
       <div id="notif-popover-list" class="notif-list"></div>
-      <div class="popover-foot" style="padding:8px 12px; border-top:1px solid var(--line); background:var(--surface-sunken);">
-        <button class="btn btn-sm btn-ghost btn-block" id="popover-view-all" style="font-size:12px;">Open Notification Centre</button>
+      <div class="popover-foot" style="padding:10px 14px; border-top:1px solid var(--line); background:var(--surface-sunken);">
+        <button class="btn btn-sm btn-ghost btn-block" id="popover-view-all" style="font-size:12px; font-weight:600; justify-content:center;" type="button">Open Notification Centre →</button>
       </div>
     </div>
 
@@ -1753,12 +1756,13 @@ export function renderChildHeader({
   const primaryId = backBtnId || defaultId;
   return `
     <div class="child-page-header" style="margin-bottom: 20px;">
-      <div class="child-breadcrumb" style="display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--muted); margin-bottom:8px;">
-        <a href="#${cleanRoute}" class="breadcrumb-parent-link" id="${primaryId}" data-${cleanRoute}-back-to-hub="true" data-inv-back-to-hub="true" data-back-to-hub="true" style="color:var(--muted); text-decoration:none; font-weight:600; display:inline-flex; align-items:center; gap:5px; transition:color 0.15s ease;">
-          <span style="font-size:13px;">←</span> ${parentTitle}
+      <div class="child-breadcrumb" style="display:flex; align-items:center; gap:8px; font-size:12.5px; margin-bottom:12px; flex-wrap:wrap;">
+        <a href="#${cleanRoute}" class="breadcrumb-parent-link" id="${primaryId}" data-${cleanRoute}-back-to-hub="true" data-inv-back-to-hub="true" data-back-to-hub="true">
+          <span class="back-icon">←</span>
+          <span>${parentTitle}</span>
         </a>
-        <span style="opacity:0.4;">/</span>
-        <span style="color:var(--ink); font-weight:600;">${childTitle}</span>
+        <span style="color:var(--muted); font-size:13px; opacity:0.6;">/</span>
+        <span style="color:var(--ink); font-weight:700; font-size:12px; background:var(--surface-sunken, rgba(0,0,0,0.03)); padding:4px 10px; border-radius:4px; border:1px solid var(--line);">${childTitle}</span>
       </div>
       <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px;">
         <div>

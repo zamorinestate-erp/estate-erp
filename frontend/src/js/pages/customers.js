@@ -661,8 +661,9 @@ export async function wireCustomers(root, subroute) {
     openMergeModal(root);
   });
 
-  // Initial load
-  if (!cachedOverview) {
+  // Initial load exactly once
+  if (!hasInitialFetchedCustomers) {
+    hasInitialFetchedCustomers = true;
     loadCustomerData().then(() => {
       if (state.route?.startsWith("customers")) {
         rerender(root);
@@ -670,6 +671,8 @@ export async function wireCustomers(root, subroute) {
     });
   }
 }
+
+let hasInitialFetchedCustomers = false;
 
 async function loadCustomerData() {
   try {
@@ -682,12 +685,14 @@ async function loadCustomerData() {
     ]);
 
     if (ovRes?.data) cachedOverview = ovRes.data;
+    else cachedOverview = { ...DEFAULT_OVERVIEW };
     if (listRes?.data?.customers) cachedCustomers = listRes.data.customers;
     if (rewRes?.data?.rewards) cachedRewards = rewRes.data.rewards;
     if (fbRes?.data?.feedbacks) cachedFeedbacks = fbRes.data.feedbacks;
     if (progRes?.data) cachedProgramme = progRes.data;
   } catch (err) {
     console.warn("Customer data load notice:", err);
+    if (!cachedOverview) cachedOverview = { ...DEFAULT_OVERVIEW };
   }
 }
 

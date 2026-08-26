@@ -206,10 +206,10 @@ export function renderLedger() {
           </p>
         </div>
 
-        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-          <div style="display: flex; align-items: center; gap: 6px; background: var(--surface, #ffffff); border: 1px solid var(--border, #e5e7eb); padding: 4px 10px; border-radius: 6px;">
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <div style="display: flex; align-items: center; gap: 6px;">
             <label style="font-size: 12px; font-weight: 600; color: var(--muted, #6b7280);">Account:</label>
-            <select id="pl-account-select" class="form-select" style="font-size: 12.5px; border: none; background: transparent; font-weight: 600; color: var(--ink, #1f2937); cursor: pointer; outline: none;">
+            <select id="pl-account-select" class="select select-sm" style="font-size: 12px; font-weight: 600;">
               <option value="OWNER_CURRENT_ACCOUNT" ${selectedAccount === "OWNER_CURRENT_ACCOUNT" ? "selected" : ""}>Owner Current Account</option>
               <option value="PRIMARY_MASTER_PERSONAL_LEDGER" ${selectedAccount === "PRIMARY_MASTER_PERSONAL_LEDGER" ? "selected" : ""}>Primary Master Personal Ledger</option>
               <option value="DIRECTOR_SHAREHOLDER_LOAN" ${selectedAccount === "DIRECTOR_SHAREHOLDER_LOAN" ? "selected" : ""}>Director / Shareholder Loan</option>
@@ -218,25 +218,25 @@ export function renderLedger() {
             </select>
           </div>
 
-          <div style="display: flex; align-items: center; gap: 6px; background: var(--surface, #ffffff); border: 1px solid var(--border, #e5e7eb); padding: 4px 10px; border-radius: 6px;">
+          <div style="display: flex; align-items: center; gap: 6px;">
             <label style="font-size: 12px; font-weight: 600; color: var(--muted, #6b7280);">FY:</label>
-            <select id="pl-period-select" class="form-select" style="font-size: 12.5px; border: none; background: transparent; font-weight: 600; color: var(--ink, #1f2937); cursor: pointer; outline: none;">
+            <select id="pl-period-select" class="select select-sm" style="font-size: 12px; font-weight: 600;">
               <option value="2026-2027" ${selectedPeriod === "2026-2027" ? "selected" : ""}>FY 2026–27</option>
               <option value="2025-2026" ${selectedPeriod === "2025-2026" ? "selected" : ""}>FY 2025–26</option>
               <option value="ALL" ${selectedPeriod === "ALL" ? "selected" : ""}>All History</option>
             </select>
           </div>
 
-          <button class="btn btn-ghost btn-sm" id="pl-privacy-toggle-btn" type="button" title="Toggle Privacy Masking" style="font-size: 12.5px;">
+          <button class="btn btn-ghost" id="pl-privacy-toggle-btn" type="button" title="Toggle Privacy Masking" style="font-size: 12.5px; padding: 6px 12px;">
             ${privacyModeActive ? "👁️ Reveal Balances" : "🔒 Mask Values"}
           </button>
 
-          <button class="btn btn-ghost btn-sm" id="pl-refresh-btn" type="button" style="font-size: 12.5px;">↻ Refresh</button>
+          <button class="btn btn-ghost" id="pl-refresh-btn" type="button" style="font-size: 12.5px; padding: 6px 12px;">↻ Refresh</button>
 
-          <button class="btn btn-secondary btn-sm" id="pl-settle-batch-btn" type="button" style="font-size: 12.5px;">⚡ Settle Balances</button>
-          <button class="btn btn-secondary btn-sm" id="pl-confirm-balance-btn" type="button" style="font-size: 12.5px;">✓ Confirm Balance</button>
+          <button class="btn btn-secondary" id="pl-settle-batch-btn" type="button" style="font-size: 12.5px; padding: 6px 14px;">⚡ Settle Balances</button>
+          <button class="btn btn-secondary" id="pl-confirm-balance-btn" type="button" style="font-size: 12.5px; padding: 6px 14px;">✓ Confirm Balance</button>
 
-          <button class="btn btn-primary btn-sm" id="pl-record-txn-btn" type="button" style="font-size: 12.5px; font-weight: 600;">+ Record Transaction</button>
+          <button class="btn btn-primary" id="pl-record-txn-btn" type="button" style="font-size: 12.5px; padding: 6px 16px; font-weight: 600;">+ Record Transaction</button>
         </div>
       </div>
 
@@ -335,14 +335,14 @@ export function renderLedger() {
       </div>
 
       <!-- Navigation Tabs -->
-      <div class="subnav" style="display: flex; gap: 6px; border-bottom: 2px solid var(--border, #e5e7eb); margin-bottom: 20px; overflow-x: auto; padding-bottom: 2px;">
-        <button class="btn btn-sm ${activeTab === 'journal' ? 'btn-primary' : 'btn-ghost'}" data-pl-tab="journal" type="button">📒 Transaction Journal (${entries.length})</button>
-        <button class="btn btn-sm ${activeTab === 'review' ? 'btn-primary' : 'btn-ghost'}" data-pl-tab="review" type="button">🔍 Review Queue (${overview.actionCentre.unclassifiedTransactions})</button>
-        <button class="btn btn-sm ${activeTab === 'reimbursements' ? 'btn-primary' : 'btn-ghost'}" data-pl-tab="reimbursements" type="button">💸 Reimbursements &amp; Recoveries</button>
-        <button class="btn btn-sm ${activeTab === 'funding' ? 'btn-primary' : 'btn-ghost'}" data-pl-tab="funding" type="button">🏛️ Funding &amp; Director Loans</button>
-        <button class="btn btn-sm ${activeTab === 'reconciliation' ? 'btn-primary' : 'btn-ghost'}" data-pl-tab="reconciliation" type="button">⚖️ GL Reconciliation</button>
-        <button class="btn btn-sm ${activeTab === 'confirmations' ? 'btn-primary' : 'btn-ghost'}" data-pl-tab="confirmations" type="button">✍️ Balance Confirmations</button>
-        <button class="btn btn-sm ${activeTab === 'audit' ? 'btn-primary' : 'btn-ghost'}" data-pl-tab="audit" type="button">📜 Audit Trail &amp; Reports</button>
+      <div class="subnav-bar" style="display: flex; gap: 6px; border-bottom: 1px solid var(--border-subtle, var(--line)); margin-bottom: 20px; overflow-x: auto; padding-bottom: 4px;">
+        <button class="subnav-btn ${activeTab === 'journal' ? 'active' : ''}" data-pl-tab="journal" type="button">Transaction Journal (${entries.length})</button>
+        <button class="subnav-btn ${activeTab === 'review' ? 'active' : ''}" data-pl-tab="review" type="button">Review Queue (${overview.actionCentre.unclassifiedTransactions})</button>
+        <button class="subnav-btn ${activeTab === 'reimbursements' ? 'active' : ''}" data-pl-tab="reimbursements" type="button">Reimbursements &amp; Recoveries</button>
+        <button class="subnav-btn ${activeTab === 'funding' ? 'active' : ''}" data-pl-tab="funding" type="button">Funding &amp; Director Loans</button>
+        <button class="subnav-btn ${activeTab === 'reconciliation' ? 'active' : ''}" data-pl-tab="reconciliation" type="button">GL Reconciliation</button>
+        <button class="subnav-btn ${activeTab === 'confirmations' ? 'active' : ''}" data-pl-tab="confirmations" type="button">Balance Confirmations</button>
+        <button class="subnav-btn ${activeTab === 'audit' ? 'active' : ''}" data-pl-tab="audit" type="button">Audit Trail &amp; Reports</button>
       </div>
 
       <!-- Tab Content Area -->
@@ -1600,8 +1600,32 @@ async function fetchLedgerFromServer(root) {
 }
 
 function refreshLedgerView(root) {
-  const content = root.querySelector("#pl-tab-content-area") ? root : document.querySelector("#main-content");
-  if (!content) return;
-  content.innerHTML = renderLedger();
-  wireLedger(content);
+  const content = root.querySelector("#pl-tab-content-area");
+  if (content) {
+    // Update active tab buttons
+    root.querySelectorAll("[data-pl-tab]").forEach((btn) => {
+      if (btn.getAttribute("data-pl-tab") === activeTab) {
+        btn.classList.add("active");
+      } else {
+        btn.classList.remove("active");
+      }
+    });
+    // Only re-render the tab content area, not the full page
+    content.innerHTML = renderActiveTabContent();
+    wireJournalActions(root);
+  } else {
+    // Full page not yet mounted — render completely
+    const mainEl = root.querySelector("#pl-tab-content-area") ? root : document.querySelector("#main-content");
+    if (!mainEl) return;
+    mainEl.innerHTML = renderLedger();
+    wireLedger(mainEl);
+  }
+}
+
+function renderActiveTabContent() {
+  const isPM = getStoredRole().isPrimaryMaster;
+  const isOwner = getStoredRole().role === "OWNER";
+  const overview = liveOverview || DEFAULT_OVERVIEW;
+  const entries = liveEntries || SAMPLE_ENTRIES;
+  return renderTabContent(activeTab, entries, overview, isPM, isOwner);
 }

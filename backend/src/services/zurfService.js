@@ -8,19 +8,25 @@
  */
 
 const crypto = require('crypto');
+const { CompanyIdentityService } = require('./companyIdentityService');
 
+/**
+ * Backward-compatibility shim. Returns resolved branding via CompanyIdentityService.
+ * Callers that used the static COMPANY_CONFIG must await this function.
+ */
+async function getCompanyConfig({ cafeId = null, sensitivityLevel = 'INTERNAL' } = {}) {
+  return CompanyIdentityService.resolveExportBranding({ cafeId, sensitivityLevel });
+}
+
+// Kept for legacy synchronous callers that have not yet migrated to async
 const COMPANY_CONFIG = {
-  legalName: 'Zamorin Speciality Coffee & Kitchens Pvt. Ltd.',
-  tradingName: 'Zamorin Coffee Roasters',
-  gstin: '29AABCT1332L1ZV',
+  legalName: 'Zamorin Estate Pvt. Ltd.',
+  tradingName: 'Zamorin Café',
+  gstin: '29AABCZ1234M1Z5',
   cin: 'U55101KA2024PTC189201',
-  regAddress: '12th Main Road, 5th Block, Koramangala, Bengaluru, Karnataka — 560095',
-  contact: '+91 80 4123 9876 · finance@zamorin.cafe',
-  logoSvg: `<svg width="56" height="56" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <circle cx="50" cy="50" r="46" stroke="#d4af37" stroke-width="4" fill="#0f172a"/>
-    <path d="M30 35H70L38 65H70" stroke="#d4af37" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="50" cy="50" r="8" fill="#d4af37"/>
-  </svg>`,
+  regAddress: 'Koramangala, Bengaluru, Karnataka — 560095',
+  contact: '+91 80 4123 9876 · corporate@zamorin.cafe',
+  logoSvg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><rect x="10" y="10" width="180" height="180" rx="48" fill="#16223F"/><path d="M58 68 L142 68 L58 132 L142 132" fill="none" stroke="#C6A567" stroke-width="17" stroke-linecap="round" stroke-linejoin="round"/></svg>',
 };
 
 const exportJobs = new Map();
@@ -39,7 +45,7 @@ class ZurfService {
    * Builds an HTML-based printable ZURF v1 document with mandatory header,
    * background watermark on every page, and footer metadata.
    */
-  static renderZurfHtml({
+  static async renderZurfHtml({
     reportTitle,
     scope = 'All Cafés — Global Portfolio',
     period = 'Current Month (Aug 2026)',
@@ -50,7 +56,10 @@ class ZurfService {
     columns = [],
     rows = [],
     notes = '',
+    cafeId = null,
+    sensitivityLevel = 'INTERNAL',
   }) {
+    const branding = await getCompanyConfig({ cafeId, sensitivityLevel });
     const finalRunId = runId || this.generateRunId();
     const generatedAt = new Date().toLocaleString('en-IN', {
       timeZone: 'Asia/Kolkata',
@@ -62,7 +71,7 @@ class ZurfService {
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>${reportTitle} — ${COMPANY_CONFIG.tradingName}</title>
+  <title>${reportTitle} — ${branding.brandName}</title>
   <style>
     @page {
       size: A4 portrait;
@@ -234,15 +243,15 @@ class ZurfService {
 <body>
   <!-- MANDATORY BACKGROUND LOGO WATERMARK -->
   <div class="zurf-page-watermark">
-    ${COMPANY_CONFIG.logoSvg}
+    ${branding.logoSvg}
   </div>
 
   <div class="zurf-content">
     <!-- TOP-CENTRED MANDATORY HEADER -->
     <div class="zurf-header">
-      <div class="zurf-logo-wrap">${COMPANY_CONFIG.logoSvg}</div>
-      <div class="zurf-legal-name">${COMPANY_CONFIG.legalName}</div>
-      <div class="zurf-gstin-bar">GSTIN: ${COMPANY_CONFIG.gstin} · CIN: ${COMPANY_CONFIG.cin}</div>
+      <div class="zurf-logo-wrap">${branding.logoSvg}</div>
+      <div class="zurf-legal-name">${branding.legalName}</div>
+      <div class="zurf-gstin-bar">GSTIN: ${branding.gstin} · CIN: ${branding.cin}</div>
       <div class="zurf-scope-bar">${scope}</div>
       <div class="zurf-report-title">${reportTitle}</div>
       <div class="zurf-period-bar">Reporting Window: ${period}</div>
@@ -288,7 +297,7 @@ class ZurfService {
 
     <!-- MANDATORY FOOTER -->
     <div class="zurf-footer">
-      <div>${COMPANY_CONFIG.legalName} · ${classification}</div>
+      <div>${branding.legalName} · ${classification}</div>
       <div>Run ID: ${finalRunId}</div>
       <div>ZURF v1 Verified</div>
     </div>
@@ -300,7 +309,8 @@ class ZurfService {
   /**
    * Generates clean machine-readable CSV with separate metadata manifest.
    */
-  static renderCsv({ reportTitle, scope, period, columns = [], rows = [] }) {
+  static async renderCsv({ reportTitle, scope, period, columns = [], rows = [], cafeId = null, sensitivityLevel = 'INTERNAL' }) {
+    const branding = await getCompanyConfig({ cafeId, sensitivityLevel });
     const headerRow = columns.map((c) => `"${c.label.replace(/"/g, '""')}"`).join(',');
     const dataRows = rows.map((r) =>
       columns.map((c) => `"${String(r[c.key] ?? '').replace(/"/g, '""')}"`).join(',')
@@ -314,8 +324,9 @@ class ZurfService {
       scope,
       period,
       runId,
-      company: COMPANY_CONFIG.legalName,
-      gstin: COMPANY_CONFIG.gstin,
+      company: branding.legalName,
+      gstin: branding.gstin,
+      companyDetailsVersionId: branding.companyDetailsVersionId,
       rowCount: rows.length,
       generatedAt: new Date().toISOString(),
       zurfVersion: 'v1.0',
@@ -362,4 +373,5 @@ class ZurfService {
 module.exports = {
   ZurfService,
   COMPANY_CONFIG,
+  getCompanyConfig,
 };

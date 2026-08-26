@@ -47,6 +47,9 @@ const loanAdvanceRoutes =
 const personalLedgerRoutes =
   require('./personalLedgerRoutes');
 
+const passbookRoutes =
+  require('./passbookRoutes');
+
 const inventoryRoutes =
   require('./inventoryRoutes');
 
@@ -187,6 +190,11 @@ router.use(
 router.use(
   '/personal-ledger',
   personalLedgerRoutes
+);
+
+router.use(
+  '/passbook',
+  passbookRoutes
 );
 
 router.use(

@@ -762,8 +762,9 @@ export function wireAssets(root, subroute) {
     });
   });
 
-  // Initial fetch
-  if (!cachedOverview) {
+  // Initial fetch — exactly once
+  if (!hasInitialFetchedAssets) {
+    hasInitialFetchedAssets = true;
     loadLiveAssetData().then(() => {
       if (state.route?.startsWith("assets")) {
         rerender(root);
@@ -771,6 +772,8 @@ export function wireAssets(root, subroute) {
     });
   }
 }
+
+let hasInitialFetchedAssets = false;
 
 async function loadLiveAssetData() {
   try {
@@ -808,8 +811,23 @@ function rerender(root) {
     root.querySelector("#btn-child-new-insp")?.addEventListener("click", () => showToast("Opening calibration & warranty inspector...", "info"));
   } else {
     root.innerHTML = renderAssets();
-    wireAssets(root);
+    // Re-wire only event listeners, not the full init (to avoid infinite loop)
+    wireAssetsEventListeners(root);
   }
+}
+
+function wireAssetsEventListeners(root) {
+  root.querySelectorAll("[data-assets-hub-tile]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      const tileId = e.currentTarget.dataset.assetsHubTile;
+      navigate("assets/" + tileId);
+    });
+  });
+  root.querySelector("#assets-back-to-hub-btn")?.addEventListener("click", () => navigate("assets"));
+  root.querySelector("#btn-child-reg-asset")?.addEventListener("click", () => openRegisterAssetWizard(root));
+  root.querySelector("#btn-child-new-wo")?.addEventListener("click", () => openCreateWorkOrderModal(root));
+  root.querySelector("#btn-child-new-maint")?.addEventListener("click", () => showToast("Opening preventive maintenance schedule planner...", "info"));
+  root.querySelector("#btn-child-new-insp")?.addEventListener("click", () => showToast("Opening calibration & warranty inspector...", "info"));
 }
 
 // Centred Register Asset Wizard (8-step)

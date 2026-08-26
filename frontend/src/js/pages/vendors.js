@@ -342,8 +342,9 @@ function renderActiveTabContent(vendors, orders, isMaster) {
     <div style="display:flex; flex-direction:column; gap:16px;">
       <div style="display:flex; justify-content:space-between; align-items:center; padding:12px 16px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-md, 10px);">
         <div style="display:flex; align-items:center; gap:12px;">
-          <button class="btn btn-sm btn-ghost" id="vnd-back-to-hub-btn" type="button" style="font-weight:700; display:inline-flex; align-items:center; gap:6px;">
-            ← Back to Suppliers Hub
+          <button class="btn-back-nav" id="vnd-back-to-hub-btn" type="button">
+            <span class="back-icon">←</span>
+            <span>Back to Suppliers Hub</span>
           </button>
           <div style="border-left:1px solid var(--line); padding-left:12px;">
             <h2 style="font-size:16px; font-weight:700; color:var(--ink); margin:0; display:flex; align-items:center; gap:8px;">
@@ -864,10 +865,15 @@ function renderContinuityRiskTab(vendors) {
 }
 
 function updateContainer() {
-  const container = document.getElementById("main-content") || document.querySelector("#app");
-  if (container) {
-    container.innerHTML = renderVendors();
-    wireVendors(container);
+  const content = document.getElementById("vnd-tab-content");
+  if (content) {
+    content.innerHTML = renderActiveTabContent(liveVendors || SAMPLE_VENDORS, liveOrders || SAMPLE_ORDERS, state.user?.role === "MASTER");
+  } else {
+    const container = document.getElementById("main-content") || document.querySelector("#app");
+    if (container) {
+      container.innerHTML = renderVendors();
+      wireVendors(container);
+    }
   }
 }
 
@@ -905,7 +911,6 @@ export function wireVendors(container, subroute) {
       searchQuery = e.target.value;
       const content = document.getElementById("vnd-tab-content");
       if (content) content.innerHTML = renderActiveTabContent(liveVendors || SAMPLE_VENDORS, liveOrders || SAMPLE_ORDERS, state.user?.role === "MASTER");
-      wireVendors(container);
     });
   }
 
@@ -915,7 +920,6 @@ export function wireVendors(container, subroute) {
       selectedCategory = e.target.value;
       const content = document.getElementById("vnd-tab-content");
       if (content) content.innerHTML = renderActiveTabContent(liveVendors || SAMPLE_VENDORS, liveOrders || SAMPLE_ORDERS, state.user?.role === "MASTER");
-      wireVendors(container);
     });
   }
 
@@ -925,7 +929,6 @@ export function wireVendors(container, subroute) {
       selectedType = e.target.value;
       const content = document.getElementById("vnd-tab-content");
       if (content) content.innerHTML = renderActiveTabContent(liveVendors || SAMPLE_VENDORS, liveOrders || SAMPLE_ORDERS, state.user?.role === "MASTER");
-      wireVendors(container);
     });
   }
 
@@ -935,7 +938,6 @@ export function wireVendors(container, subroute) {
       selectedStatus = e.target.value;
       const content = document.getElementById("vnd-tab-content");
       if (content) content.innerHTML = renderActiveTabContent(liveVendors || SAMPLE_VENDORS, liveOrders || SAMPLE_ORDERS, state.user?.role === "MASTER");
-      wireVendors(container);
     });
   }
 

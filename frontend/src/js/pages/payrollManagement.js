@@ -537,56 +537,57 @@ function renderRunsTable(runs, userRole) {
   }
 
   return `
-    <div class="table-wrap">
-      <table class="data-table">
+    <div class="table-wrap" style="overflow-x: auto; -webkit-overflow-scrolling: touch;">
+      <table class="data-table" style="width: 100%; border-collapse: collapse; font-size: 13px;">
         <thead>
-          <tr>
-            <th>Run ID</th>
-            <th>Period</th>
-            <th>Café</th>
-            <th>Status</th>
-            <th style="text-align: right;">Staff</th>
-            <th style="text-align: right;">Gross Pay</th>
-            <th style="text-align: right;">Deductions</th>
-            <th style="text-align: right;">Net Disbursement</th>
-            <th style="text-align: right;">Actions</th>
+          <tr style="text-align: left; border-bottom: 1.5px solid var(--line); background: var(--surface-sunken);">
+            <th style="padding: 12px 14px; font-weight: 700; white-space: nowrap; min-width: 140px;">Run ID</th>
+            <th style="padding: 12px 14px; font-weight: 700; white-space: nowrap; min-width: 110px;">Period</th>
+            <th style="padding: 12px 14px; font-weight: 700; min-width: 160px;">Café</th>
+            <th style="padding: 12px 14px; font-weight: 700; text-align: center; min-width: 110px;">Status</th>
+            <th style="padding: 12px 14px; font-weight: 700; text-align: right; min-width: 65px;">Staff</th>
+            <th style="padding: 12px 14px; font-weight: 700; text-align: right; white-space: nowrap; min-width: 110px;">Gross Pay</th>
+            <th style="padding: 12px 14px; font-weight: 700; text-align: right; white-space: nowrap; min-width: 110px;">Deductions</th>
+            <th style="padding: 12px 14px; font-weight: 700; text-align: right; white-space: nowrap; min-width: 140px;">Net Disbursement</th>
+            <th style="padding: 12px 14px; font-weight: 700; text-align: right; min-width: 200px;">Actions</th>
           </tr>
         </thead>
         <tbody>
           ${runs
             .map(
               (run) => `
-            <tr>
-              <td style="font-weight: 700; color: var(--ink);">
+            <tr style="border-bottom: 1px solid var(--line); transition: background 0.1s ease;">
+              <td style="padding: 12px 14px; font-family: var(--font-mono); font-weight: 700; color: var(--bronze-600); white-space: nowrap;">
                 ${escapeHtml(run.payrollRunId)}
               </td>
-              <td style="color: var(--muted);">
+              <td style="padding: 12px 14px; color: var(--ink); white-space: nowrap; font-weight: 500;">
                 ${escapeHtml(formatPeriod(run.periodKey))}
               </td>
-              <td style="color: var(--ink); font-weight: 500;">
+              <td style="padding: 12px 14px; color: var(--ink); font-weight: 600;">
                 ${escapeHtml(run.cafeName || run.cafeId)}
               </td>
-              <td>
-                <span class="pill ${STATUS_COLORS[run.status] || "pill-dark"}">
+              <td style="padding: 12px 14px; text-align: center; white-space: nowrap;">
+                <span class="pill ${STATUS_COLORS[run.status] || "pill-dark"}" style="font-weight: 700; font-size: 11.5px; padding: 3px 10px;">
                   ${escapeHtml(STATUS_LABELS[run.status] || run.status)}
                 </span>
               </td>
-              <td style="text-align: right; color: var(--ink);">
+              <td style="padding: 12px 14px; text-align: right; color: var(--ink); font-weight: 600; font-family: var(--font-mono);">
                 ${run.employeeCount || 0}
               </td>
-              <td class="num" style="text-align: right; color: var(--bronze-600); font-weight: 600;">
+              <td class="num" style="padding: 12px 14px; text-align: right; color: var(--bronze-600); font-weight: 700; font-family: var(--font-mono); white-space: nowrap;">
                 ${formatMoney(run.totalGrossPaise)}
               </td>
-              <td class="num" style="text-align: right; color: var(--danger); font-weight: 600;">
+              <td class="num" style="padding: 12px 14px; text-align: right; color: var(--danger); font-weight: 700; font-family: var(--font-mono); white-space: nowrap;">
                 ${formatMoney(run.totalDeductionPaise)}
               </td>
-              <td class="num" style="text-align: right; font-weight: 700; color: var(--success);">
+              <td class="num" style="padding: 12px 14px; text-align: right; font-weight: 800; color: #059669; font-family: var(--font-mono); white-space: nowrap; font-size: 13.5px;">
                 ${formatMoney(run.totalNetPayPaise)}
               </td>
-              <td style="text-align: right;">
-                <div style="display: flex; gap: 4px; justify-content: flex-end; flex-wrap: wrap;">
+              <td style="padding: 12px 14px; text-align: right;">
+                <div style="display: inline-flex; gap: 6px; justify-content: flex-end; align-items: center; flex-wrap: nowrap;">
                   <button
-                    class="btn btn-sm btn-ghost"
+                    class="btn btn-sm btn-secondary"
+                    style="padding: 4px 10px; font-size: 11.5px; font-weight: 600;"
                     type="button"
                     data-payroll-action="payslips"
                     data-payroll-run="${escapeHtml(run.payrollRunId)}"
@@ -598,30 +599,30 @@ function renderRunsTable(runs, userRole) {
                       ? `
                     ${
                       run.status === "DRAFT"
-                        ? `<button class="btn btn-sm btn-primary" type="button" data-payroll-action="calculate" data-payroll-run="${escapeHtml(run.payrollRunId)}">Calculate</button>`
+                        ? `<button class="btn btn-sm btn-primary" style="padding: 4px 12px; font-size: 11.5px; font-weight: 700;" type="button" data-payroll-action="calculate" data-payroll-run="${escapeHtml(run.payrollRunId)}">Calculate</button>`
                         : ""
                     }
                     ${
                       run.status === "CALCULATED"
-                        ? `<button class="btn btn-sm btn-primary" type="button" data-payroll-action="submit" data-payroll-run="${escapeHtml(run.payrollRunId)}">Submit</button>`
+                        ? `<button class="btn btn-sm btn-primary" style="padding: 4px 12px; font-size: 11.5px; font-weight: 700;" type="button" data-payroll-action="submit" data-payroll-run="${escapeHtml(run.payrollRunId)}">Submit</button>`
                         : ""
                     }
                     ${
                       run.status === "SUBMITTED"
-                        ? `<button class="btn btn-sm btn-primary" type="button" data-payroll-action="approve" data-payroll-run="${escapeHtml(run.payrollRunId)}">Approve</button>`
+                        ? `<button class="btn btn-sm btn-primary" style="padding: 4px 12px; font-size: 11.5px; font-weight: 700;" type="button" data-payroll-action="approve" data-payroll-run="${escapeHtml(run.payrollRunId)}">Approve</button>`
                         : ""
                     }
                     ${
                       run.status === "APPROVED"
                         ? `
-                        <button class="btn btn-sm btn-ghost" type="button" data-payroll-action="issue-payslips" data-payroll-run="${escapeHtml(run.payrollRunId)}">Issue</button>
-                        <button class="btn btn-sm btn-primary" type="button" data-payroll-action="pay" data-payroll-run="${escapeHtml(run.payrollRunId)}">Record Pay</button>
+                        <button class="btn btn-sm btn-secondary" style="padding: 4px 10px; font-size: 11.5px; font-weight: 600;" type="button" data-payroll-action="issue-payslips" data-payroll-run="${escapeHtml(run.payrollRunId)}">Issue</button>
+                        <button class="btn btn-sm btn-primary" style="padding: 4px 12px; font-size: 11.5px; font-weight: 700;" type="button" data-payroll-action="pay" data-payroll-run="${escapeHtml(run.payrollRunId)}">Record Pay</button>
                       `
                         : ""
                     }
                     ${
                       !["PAID", "VOIDED"].includes(run.status)
-                        ? `<button class="btn btn-sm btn-ghost" type="button" data-payroll-action="void" data-payroll-run="${escapeHtml(run.payrollRunId)}" style="color: var(--danger);">Void</button>`
+                        ? `<button class="btn btn-sm btn-ghost" style="padding: 4px 8px; font-size: 11.5px; color: var(--danger); font-weight: 600;" type="button" data-payroll-action="void" data-payroll-run="${escapeHtml(run.payrollRunId)}">Void</button>`
                         : ""
                     }
                   `
@@ -641,86 +642,166 @@ function renderRunsTable(runs, userRole) {
 
 // ─── TAB: RUNS FILTER BAR ────────────────────────────────────────────────────
 function renderRunsTab(runs, userRole) {
+  const totalGross = runs.reduce((acc, r) => acc + (r.totalGrossPaise || 0), 0);
+  const totalNet = runs.reduce((acc, r) => acc + (r.totalNetPayPaise || 0), 0);
+  const pendingApproval = runs.filter((r) => ["CALCULATED", "SUBMITTED"].includes(r.status)).length;
+
   return `
     <div style="display: flex; flex-direction: column; gap: 16px; width: 100%; min-width: 0;">
-      <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
-        <div style="display: flex; gap: 8px; align-items: center;">
-          <label style="font-size: 13px; color: var(--muted); font-weight: 600;">Status:</label>
-          <select class="select" data-filter-status style="min-height: 36px; padding: 6px 12px; font-size: 13px;">
-            <option value="">All Statuses</option>
-            ${Object.entries(STATUS_LABELS)
-              .map(
-                ([k, v]) => `
-              <option value="${k}" ${selectedStatus === k ? "selected" : ""}>${v}</option>
-            `
-              )
-              .join("")}
-          </select>
+      <!-- TOP STAT STRIP -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px;">
+        <div class="card" style="padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-card, 12px); box-shadow: var(--shadow-xs);">
+          <div style="font-size: 11.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px;">Active Payroll Runs</div>
+          <div style="font-size: 22px; font-weight: 800; color: var(--ink); font-family: var(--font-heading); margin-top: 4px;">${runs.length} <span style="font-size: 13px; font-weight: 600; color: var(--muted);">Batches</span></div>
+          <div style="font-size: 11.5px; color: #059669; font-weight: 600; margin-top: 2px;">● All Operating Locations</div>
         </div>
-        <div style="font-size: 12.5px; color: var(--muted);">
-          Showing ${runs.length} payroll run(s)
+
+        <div class="card" style="padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-card, 12px); box-shadow: var(--shadow-xs);">
+          <div style="font-size: 11.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px;">Total Gross Payroll</div>
+          <div style="font-size: 22px; font-weight: 800; color: var(--bronze-600); font-family: var(--font-heading); margin-top: 4px;">${formatMoney(totalGross)}</div>
+          <div style="font-size: 11.5px; color: var(--muted); margin-top: 2px;">Calculated earnings baseline</div>
+        </div>
+
+        <div class="card" style="padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-card, 12px); box-shadow: var(--shadow-xs);">
+          <div style="font-size: 11.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px;">Net Disbursement Liability</div>
+          <div style="font-size: 22px; font-weight: 800; color: #059669; font-family: var(--font-heading); margin-top: 4px;">${formatMoney(totalNet)}</div>
+          <div style="font-size: 11.5px; color: var(--muted); margin-top: 2px;">Pending and approved payouts</div>
+        </div>
+
+        <div class="card" style="padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-card, 12px); box-shadow: var(--shadow-xs);">
+          <div style="font-size: 11.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px;">Pending Approval</div>
+          <div style="font-size: 22px; font-weight: 800; color: ${pendingApproval > 0 ? "var(--warning)" : "var(--ink)"}; font-family: var(--font-heading); margin-top: 4px;">${pendingApproval} <span style="font-size: 13px; font-weight: 600; color: var(--muted);">Runs</span></div>
+          <div style="font-size: 11.5px; color: var(--muted); margin-top: 2px;">Awaiting Master/Owner sign-off</div>
         </div>
       </div>
 
-      ${renderRunsTable(runs, userRole)}
+      <!-- MAIN TABLE CARD -->
+      <div class="card" style="padding: 18px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-card, 12px); box-shadow: var(--shadow-xs);">
+        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 16px;">
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <label style="font-size: 13px; color: var(--muted); font-weight: 600;">Status:</label>
+            <select class="select" data-filter-status style="min-height: 34px; padding: 4px 12px; font-size: 12.5px; border-radius: 6px;">
+              <option value="">All Statuses</option>
+              ${Object.entries(STATUS_LABELS)
+                .map(
+                  ([k, v]) => `
+                <option value="${k}" ${selectedStatus === k ? "selected" : ""}>${v}</option>
+              `
+                )
+                .join("")}
+            </select>
+          </div>
+          <div style="font-size: 12.5px; color: var(--muted); font-weight: 500;">
+            Showing ${runs.length} payroll run(s)
+          </div>
+        </div>
+
+        ${renderRunsTable(runs, userRole)}
+      </div>
     </div>
   `;
 }
 
 // ─── TAB: EMPLOYEE DRILLDOWN ─────────────────────────────────────────────────
 function renderEmployeesTab(runs) {
+  const staff = [
+    { name: "Rahul Menon", id: "EU-0012", role: "Head Barista", days: 30, basic: 2500000, allow: 800000, ot: 150000, ded: 380000, net: 3070000 },
+    { name: "Ananya Pillai", id: "EU-0015", role: "Shift Supervisor", days: 31, basic: 3200000, allow: 1000000, ot: 0, ded: 490000, net: 3710000 },
+    { name: "Kiran Das", id: "EU-0021", role: "Cafe Staff / Steward", days: 28, basic: 1800000, allow: 500000, ot: 80000, ded: 260000, net: 2120000 },
+  ];
+
   return `
     <div style="display: flex; flex-direction: column; gap: 16px; width: 100%; min-width: 0;">
-      <div style="margin-bottom: 6px;">
-        <h3 style="font-size: 18px; font-weight: 700; color: var(--ink); margin: 0 0 6px 0;">Employee Calculation Trace & Drill-Down</h3>
-        <p style="color: var(--muted); font-size: 13px; margin: 0;">
-          Inspect line-item earnings, statutory deductions, loan repayments, and exact gross-to-net derivation.
-        </p>
+      <!-- TOP STAT STRIP -->
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px;">
+        <div class="card" style="padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-card, 12px); box-shadow: var(--shadow-xs);">
+          <div style="font-size: 11.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px;">Staff Analyzed</div>
+          <div style="font-size: 22px; font-weight: 800; color: var(--ink); font-family: var(--font-heading); margin-top: 4px;">40 <span style="font-size: 13px; font-weight: 600; color: var(--muted);">Employees</span></div>
+          <div style="font-size: 11.5px; color: #059669; font-weight: 600; margin-top: 2px;">● Authoritative Workforce Master</div>
+        </div>
+
+        <div class="card" style="padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-card, 12px); box-shadow: var(--shadow-xs);">
+          <div style="font-size: 11.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px;">Average Gross Pay</div>
+          <div style="font-size: 22px; font-weight: 800; color: var(--bronze-600); font-family: var(--font-heading); margin-top: 4px;">₹28,500</div>
+          <div style="font-size: 11.5px; color: var(--muted); margin-top: 2px;">Per-employee monthly baseline</div>
+        </div>
+
+        <div class="card" style="padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-card, 12px); box-shadow: var(--shadow-xs);">
+          <div style="font-size: 11.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px;">Average Net Pay</div>
+          <div style="font-size: 22px; font-weight: 800; color: #059669; font-family: var(--font-heading); margin-top: 4px;">₹24,800</div>
+          <div style="font-size: 11.5px; color: var(--muted); margin-top: 2px;">Direct account disbursement</div>
+        </div>
+
+        <div class="card" style="padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-card, 12px); box-shadow: var(--shadow-xs);">
+          <div style="font-size: 11.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px;">Total Deductions</div>
+          <div style="font-size: 22px; font-weight: 800; color: var(--danger); font-family: var(--font-heading); margin-top: 4px;">₹1,15,800</div>
+          <div style="font-size: 11.5px; color: var(--muted); margin-top: 2px;">EPF + ESI + PT + TDS</div>
+        </div>
       </div>
 
-      <div class="table-wrap">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>Employee</th>
-              <th>Role / Dept</th>
-              <th style="text-align: right;">Payable Days</th>
-              <th style="text-align: right;">Basic Pay</th>
-              <th style="text-align: right;">HRA & Allowances</th>
-              <th style="text-align: right;">Overtime</th>
-              <th style="text-align: right;">PF + ESI + PT</th>
-              <th style="text-align: right;">Net Pay</th>
-              <th style="text-align: center;">Trace</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${[
-              { name: "Rahul Menon", id: "EU-0012", role: "Head Barista", days: 30, basic: 2500000, allow: 800000, ot: 150000, ded: 380000, net: 3070000 },
-              { name: "Ananya Pillai", id: "EU-0015", role: "Shift Supervisor", days: 31, basic: 3200000, allow: 1000000, ot: 0, ded: 490000, net: 3710000 },
-              { name: "Kiran Das", id: "EU-0021", role: "Cafe Staff / Steward", days: 28, basic: 1800000, allow: 500000, ot: 80000, ded: 260000, net: 2120000 },
-            ]
-              .map(
-                (emp) => `
-              <tr>
-                <td style="font-weight: 700; color: var(--ink);">
-                  ${escapeHtml(emp.name)} <span style="font-size: 11px; color: var(--muted); font-weight: 400;">(${escapeHtml(emp.id)})</span>
-                </td>
-                <td style="color: var(--muted);">${escapeHtml(emp.role)}</td>
-                <td class="num" style="text-align: right; color: var(--ink);">${emp.days}</td>
-                <td class="num" style="text-align: right; color: var(--bronze-600); font-weight: 600;">${formatMoney(emp.basic)}</td>
-                <td class="num" style="text-align: right; color: var(--ink);">${formatMoney(emp.allow)}</td>
-                <td class="num" style="text-align: right; color: var(--success); font-weight: 600;">${formatMoney(emp.ot)}</td>
-                <td class="num" style="text-align: right; color: var(--danger); font-weight: 600;">${formatMoney(emp.ded)}</td>
-                <td class="num" style="text-align: right; font-weight: 700; color: var(--success);">${formatMoney(emp.net)}</td>
-                <td style="text-align: center;">
-                  <button class="btn btn-sm btn-ghost" type="button" data-view-trace="${escapeHtml(emp.id)}">Audit Trace</button>
-                </td>
+      <!-- MAIN TABLE CARD -->
+      <div class="card" style="padding: 18px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-card, 12px); box-shadow: var(--shadow-xs);">
+        <div style="margin-bottom: 16px;">
+          <h3 style="font-size: 16px; font-weight: 800; color: var(--ink); margin: 0 0 4px 0;">Employee Calculation Trace & Drill-Down</h3>
+          <p style="color: var(--muted); font-size: 12.5px; margin: 0;">
+            Inspect line-item earnings, statutory deductions, loan repayments, and exact gross-to-net derivation.
+          </p>
+        </div>
+
+        <div class="table-wrap" style="overflow-x: auto; -webkit-overflow-scrolling: touch;">
+          <table class="data-table" style="width: 100%; border-collapse: collapse; font-size: 13px;">
+            <thead>
+              <tr style="text-align: left; border-bottom: 1.5px solid var(--line); background: var(--surface-sunken);">
+                <th style="padding: 12px 14px; font-weight: 700; white-space: nowrap; min-width: 180px;">Employee</th>
+                <th style="padding: 12px 14px; font-weight: 700; white-space: nowrap; min-width: 150px;">Role / Dept</th>
+                <th style="padding: 12px 14px; font-weight: 700; text-align: right; white-space: nowrap; min-width: 105px;">Payable Days</th>
+                <th style="padding: 12px 14px; font-weight: 700; text-align: right; white-space: nowrap; min-width: 105px;">Basic Pay</th>
+                <th style="padding: 12px 14px; font-weight: 700; text-align: right; white-space: nowrap; min-width: 135px;">HRA & Allowances</th>
+                <th style="padding: 12px 14px; font-weight: 700; text-align: right; white-space: nowrap; min-width: 95px;">Overtime</th>
+                <th style="padding: 12px 14px; font-weight: 700; text-align: right; white-space: nowrap; min-width: 120px;">PF + ESI + PT</th>
+                <th style="padding: 12px 14px; font-weight: 700; text-align: right; white-space: nowrap; min-width: 110px;">Net Pay</th>
+                <th style="padding: 12px 14px; font-weight: 700; text-align: center; white-space: nowrap; min-width: 110px;">Trace</th>
               </tr>
-            `
-              )
-              .join("")}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              ${staff
+                .map(
+                  (emp) => `
+                <tr style="border-bottom: 1px solid var(--line); transition: background 0.1s ease;">
+                  <td style="padding: 12px 14px; font-weight: 700; color: var(--ink); white-space: nowrap;">
+                    ${escapeHtml(emp.name)} <span style="font-family: var(--font-mono); font-size: 11px; color: var(--muted); font-weight: 600; margin-left: 4px;">(${escapeHtml(emp.id)})</span>
+                  </td>
+                  <td style="padding: 12px 14px; color: var(--muted); white-space: nowrap; font-weight: 500;">
+                    ${escapeHtml(emp.role)}
+                  </td>
+                  <td class="num" style="padding: 12px 14px; text-align: right; color: var(--ink); font-weight: 600; font-family: var(--font-mono); white-space: nowrap;">
+                    ${emp.days}
+                  </td>
+                  <td class="num" style="padding: 12px 14px; text-align: right; color: var(--bronze-600); font-weight: 700; font-family: var(--font-mono); white-space: nowrap;">
+                    ${formatMoney(emp.basic)}
+                  </td>
+                  <td class="num" style="padding: 12px 14px; text-align: right; color: var(--ink); font-weight: 600; font-family: var(--font-mono); white-space: nowrap;">
+                    ${formatMoney(emp.allow)}
+                  </td>
+                  <td class="num" style="padding: 12px 14px; text-align: right; color: #059669; font-weight: 700; font-family: var(--font-mono); white-space: nowrap;">
+                    ${formatMoney(emp.ot)}
+                  </td>
+                  <td class="num" style="padding: 12px 14px; text-align: right; color: var(--danger); font-weight: 700; font-family: var(--font-mono); white-space: nowrap;">
+                    ${formatMoney(emp.ded)}
+                  </td>
+                  <td class="num" style="padding: 12px 14px; text-align: right; font-weight: 800; color: #059669; font-family: var(--font-mono); white-space: nowrap; font-size: 13.5px;">
+                    ${formatMoney(emp.net)}
+                  </td>
+                  <td style="padding: 12px 14px; text-align: center; white-space: nowrap;">
+                    <button class="btn btn-sm btn-secondary" style="padding: 4px 10px; font-size: 11.5px; font-weight: 600;" type="button" data-view-trace="${escapeHtml(emp.id)}">Audit Trace</button>
+                  </td>
+                </tr>
+              `
+                )
+                .join("")}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   `;
@@ -1314,9 +1395,9 @@ function renderPayrollControlCentre(root) {
           <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
             <div>
               <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; font-size:12.5px; color:var(--muted);">
-                <button id="payroll-back-to-hub-btn" data-back-to-hub="true" data-payroll-back-to-hub="true" class="btn-link" style="color:var(--accent); text-decoration:none; display:inline-flex; align-items:center; gap:4px; font-weight:600; cursor:pointer; background:none; border:none; padding:0;">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-                  Payroll
+                <button id="payroll-back-to-hub-btn" data-back-to-hub="true" data-payroll-back-to-hub="true" class="btn-back-nav" type="button">
+                  <span class="back-icon">←</span>
+                  <span>Payroll</span>
                 </button>
                 <span>/</span>
                 <span style="color:var(--ink); font-weight:600;">${cur.title}</span>

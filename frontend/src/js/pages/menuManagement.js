@@ -222,9 +222,9 @@ function renderCurrentWorkspace(wrap) {
         <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
           <div>
             <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px; font-size:12.5px; color:var(--muted);">
-              <button id="menu-back-to-hub-btn" data-back-to-hub="true" data-menu-back-to-hub="true" class="btn-link" style="color:var(--accent); text-decoration:none; display:inline-flex; align-items:center; gap:4px; font-weight:600; cursor:pointer; background:none; border:none; padding:0;">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-                Menu
+              <button id="menu-back-to-hub-btn" data-back-to-hub="true" data-menu-back-to-hub="true" class="btn-back-nav" type="button">
+                <span class="back-icon">←</span>
+                <span>Menu</span>
               </button>
               <span>/</span>
               <span style="color:var(--ink); font-weight:600;">${cur.title}</span>
@@ -455,7 +455,25 @@ async function renderItemsTab(wrap) {
     });
 
     const inpSearch = wrap.querySelector("#inp-menu-search");
-    if (inpSearch) inpSearch.addEventListener("input", (e) => { searchQuery = e.target.value; renderItemsTab(wrap); });
+    if (inpSearch) {
+      inpSearch.addEventListener("input", (e) => {
+        searchQuery = e.target.value;
+        const activeId = document.activeElement?.id;
+        const cursorStart = document.activeElement?.selectionStart;
+        const cursorEnd = document.activeElement?.selectionEnd;
+        renderItemsTab(wrap).then(() => {
+          if (activeId) {
+            const el = wrap.querySelector("#" + activeId);
+            if (el) {
+              el.focus();
+              if (typeof cursorStart === "number" && typeof cursorEnd === "number" && el.setSelectionRange) {
+                el.setSelectionRange(cursorStart, cursorEnd);
+              }
+            }
+          }
+        });
+      });
+    }
 
     wrap.querySelectorAll(".btn-drill-item360").forEach((row) => {
       row.addEventListener("click", (e) => {

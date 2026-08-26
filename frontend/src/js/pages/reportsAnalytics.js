@@ -281,8 +281,9 @@ async function renderActiveTab(root) {
       <div style="display:flex;flex-direction:column;gap:16px;">
         <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-md, 10px);">
           <div style="display:flex;align-items:center;gap:12px;">
-            <button class="btn btn-sm btn-ghost" id="analytics-back-to-hub-btn" type="button" style="font-weight:700;display:inline-flex;align-items:center;gap:6px;">
-              ← Back to Reports Hub
+            <button class="btn-back-nav" id="analytics-back-to-hub-btn" type="button">
+              <span class="back-icon">←</span>
+              <span>Back to Reports Hub</span>
             </button>
             <div style="border-left:1px solid var(--line);padding-left:12px;">
               <h2 style="font-size:16px;font-weight:700;color:var(--ink);margin:0;display:flex;align-items:center;gap:8px;">
@@ -550,7 +551,20 @@ async function renderLibrarySubtab(root, container) {
 
     container.querySelector('#lib-search-input')?.addEventListener('input', (e) => {
       librarySearchTerm = e.target.value;
-      renderLibrarySubtab(root, container);
+      const activeId = document.activeElement?.id;
+      const cursorStart = document.activeElement?.selectionStart;
+      const cursorEnd = document.activeElement?.selectionEnd;
+      renderLibrarySubtab(root, container).then(() => {
+        if (activeId) {
+          const el = container.querySelector('#' + activeId);
+          if (el) {
+            el.focus();
+            if (typeof cursorStart === 'number' && typeof cursorEnd === 'number' && el.setSelectionRange) {
+              el.setSelectionRange(cursorStart, cursorEnd);
+            }
+          }
+        }
+      });
     });
 
     container.querySelector('#lib-domain-select')?.addEventListener('change', (e) => {

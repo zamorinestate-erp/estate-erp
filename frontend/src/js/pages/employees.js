@@ -235,64 +235,71 @@ function renderOverviewSubpanel() {
       </div>
 
       <!-- TOP KPIS -->
-      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:16px;">
-        <div class="kpi-card">
-          <div style="font-size:12px; color:var(--muted); text-transform:uppercase; font-weight:600;">Active Employees</div>
-          <div style="font-size:28px; font-weight:700; color:var(--ink); margin-top:6px;">${kpis.activeEmployees}</div>
-          <div style="font-size:12px; color:#10b981; margin-top:4px;">Authoritative Workforce</div>
+      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:14px;">
+        <div class="kpi-card" style="background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); padding:16px 18px; box-shadow:var(--shadow-xs);">
+          <div style="font-size:11.5px; color:var(--muted); text-transform:uppercase; font-weight:700; letter-spacing:0.4px;">Active Employees</div>
+          <div style="font-size:26px; font-weight:800; color:var(--ink); font-family:var(--font-heading); margin-top:4px;">${kpis.activeEmployees}</div>
+          <div style="font-size:11.5px; color:#059669; font-weight:600; margin-top:2px;">● Authoritative Workforce</div>
         </div>
-        <div class="kpi-card">
-          <div style="font-size:12px; color:var(--muted); text-transform:uppercase; font-weight:600;">Approved Capacity</div>
-          <div style="font-size:28px; font-weight:700; color:var(--ink); margin-top:6px;">${kpis.approvedCapacity || 38}</div>
-          <div style="font-size:12px; color:var(--muted); margin-top:4px;">Sanctioned Headcount</div>
+
+        <div class="kpi-card" style="background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); padding:16px 18px; box-shadow:var(--shadow-xs);">
+          <div style="font-size:11.5px; color:var(--muted); text-transform:uppercase; font-weight:700; letter-spacing:0.4px;">Approved Capacity</div>
+          <div style="font-size:26px; font-weight:800; color:var(--ink); font-family:var(--font-heading); margin-top:4px;">${kpis.approvedCapacity || 38}</div>
+          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">Sanctioned Headcount</div>
         </div>
-        <div class="kpi-card">
-          <div style="font-size:12px; color:var(--muted); text-transform:uppercase; font-weight:600;">Capacity Gap</div>
-          <div style="font-size:28px; font-weight:700; color:#f59e0b; margin-top:6px;">${kpis.capacityGap !== undefined ? kpis.capacityGap : 4}</div>
-          <div style="font-size:12px; color:var(--muted); margin-top:4px;">Seats to Approved Total</div>
+
+        <div class="kpi-card" style="background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); padding:16px 18px; box-shadow:var(--shadow-xs);">
+          <div style="font-size:11.5px; color:var(--muted); text-transform:uppercase; font-weight:700; letter-spacing:0.4px;">Capacity Gap</div>
+          <div style="font-size:26px; font-weight:800; color:#d97706; font-family:var(--font-heading); margin-top:4px;">${kpis.capacityGap !== undefined ? kpis.capacityGap : 4}</div>
+          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">Seats to Approved Total</div>
         </div>
-        <div class="kpi-card" title="3 Sanctioned & Actively Recruiting Positions (1 Capacity Gap Paused/Frozen)">
+
+        <div class="kpi-card" style="background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); padding:16px 18px; box-shadow:var(--shadow-xs);" title="3 Sanctioned & Actively Recruiting Positions (1 Capacity Gap Paused/Frozen)">
           <div style="display:flex; justify-content:space-between; align-items:center;">
-            <div style="font-size:12px; color:var(--muted); text-transform:uppercase; font-weight:600;">Open Positions</div>
-            <span class="badge-tag" style="background:#dbeafe; color:#1e40af; font-size:10px;">Recruiting</span>
+            <div style="font-size:11.5px; color:var(--muted); text-transform:uppercase; font-weight:700; letter-spacing:0.4px;">Open Positions</div>
+            <span class="badge-tag" style="background:rgba(37,99,235,0.1); color:#2563eb; font-size:10px; font-weight:700; padding:1px 6px; border-radius:4px;">Recruiting</span>
           </div>
-          <div style="font-size:28px; font-weight:700; color:#3b82f6; margin-top:6px;">${kpis.openPositions}</div>
-          <div style="font-size:12px; color:var(--muted); margin-top:4px;">Actively Sanctioned &amp; Open</div>
+          <div style="font-size:26px; font-weight:800; color:#2563eb; font-family:var(--font-heading); margin-top:4px;">${kpis.openPositions}</div>
+          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">Actively Sanctioned &amp; Open</div>
         </div>
-        <div class="kpi-card">
-          <div style="font-size:12px; color:var(--muted); text-transform:uppercase; font-weight:600;">On Probation</div>
-          <div style="font-size:28px; font-weight:700; color:#b45309; margin-top:6px;">${kpis.employeesOnProbation}</div>
-          <div style="font-size:12px; color:var(--muted); margin-top:4px;">Reviews in progress</div>
+
+        <div class="kpi-card" style="background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); padding:16px 18px; box-shadow:var(--shadow-xs);">
+          <div style="font-size:11.5px; color:var(--muted); text-transform:uppercase; font-weight:700; letter-spacing:0.4px;">On Probation</div>
+          <div style="font-size:26px; font-weight:800; color:#b45309; font-family:var(--font-heading); margin-top:4px;">${kpis.employeesOnProbation}</div>
+          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">Reviews in progress</div>
         </div>
-        <div class="kpi-card">
-          <div style="font-size:12px; color:var(--muted); text-transform:uppercase; font-weight:600;">New Joiners (30D)</div>
-          <div style="font-size:28px; font-weight:700; color:#10b981; margin-top:6px;">${kpis.newJoiners30Days}</div>
-          <div style="font-size:12px; color:var(--muted); margin-top:4px;">Onboarded staff</div>
+
+        <div class="kpi-card" style="background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); padding:16px 18px; box-shadow:var(--shadow-xs);">
+          <div style="font-size:11.5px; color:var(--muted); text-transform:uppercase; font-weight:700; letter-spacing:0.4px;">New Joiners (30D)</div>
+          <div style="font-size:26px; font-weight:800; color:#059669; font-family:var(--font-heading); margin-top:4px;">${kpis.newJoiners30Days}</div>
+          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">Onboarded staff</div>
         </div>
-        <div class="kpi-card">
-          <div style="font-size:12px; color:var(--muted); text-transform:uppercase; font-weight:600;">Exits (30D)</div>
-          <div style="font-size:28px; font-weight:700; color:var(--muted); margin-top:6px;">${kpis.exits30Days}</div>
-          <div style="font-size:12px; color:var(--muted); margin-top:4px;">Offboarded staff</div>
+
+        <div class="kpi-card" style="background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); padding:16px 18px; box-shadow:var(--shadow-xs);">
+          <div style="font-size:11.5px; color:var(--muted); text-transform:uppercase; font-weight:700; letter-spacing:0.4px;">Exits (30D)</div>
+          <div style="font-size:26px; font-weight:800; color:var(--muted); font-family:var(--font-heading); margin-top:4px;">${kpis.exits30Days}</div>
+          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">Offboarded staff</div>
         </div>
-        <div class="kpi-card">
-          <div style="font-size:12px; color:var(--muted); text-transform:uppercase; font-weight:600;">Cafés Staffed</div>
-          <div style="font-size:28px; font-weight:700; color:var(--ink); margin-top:6px;">${kpis.cafesStaffed} / 3</div>
-          <div style="font-size:12px; color:#10b981; margin-top:4px;">100% Location Coverage</div>
+
+        <div class="kpi-card" style="background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); padding:16px 18px; box-shadow:var(--shadow-xs);">
+          <div style="font-size:11.5px; color:var(--muted); text-transform:uppercase; font-weight:700; letter-spacing:0.4px;">Cafés Staffed</div>
+          <div style="font-size:26px; font-weight:800; color:var(--ink); font-family:var(--font-heading); margin-top:4px;">${kpis.cafesStaffed} / 3</div>
+          <div style="font-size:11.5px; color:#059669; font-weight:600; margin-top:2px;">● 100% Location Coverage</div>
         </div>
       </div>
 
       <!-- SECONDARY CONTROL STRIP -->
-      <div style="background:#fff; border:1px solid rgba(0,0,0,0.06); border-radius:12px; padding:16px; display:flex; flex-wrap:wrap; gap:16px; align-items:center; justify-content:space-between;">
-        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-          <span style="font-weight:600; font-size:13px; color:var(--ink);">Actionable Items:</span>
-          <span class="badge-tag" style="background:#fef3c7; color:#92400e;">${strip.probationReviewsDue} Probation Due</span>
-          <span class="badge-tag" style="background:#fee2e2; color:#991b1b;">${strip.certificationsExpiring} Certs Expiring</span>
-          <span class="badge-tag" style="background:#e0e7ff; color:#3730a3;">${strip.onboardingIncomplete} Preboarding</span>
-          <span class="badge-tag" style="background:#f3e8ff; color:#6b21a8;">${strip.transfersPending} Transfers Scheduled</span>
-          <span class="badge-tag" style="background:#fef2f2; color:#dc2626;">${strip.criticalVacancies} Critical Vacancies</span>
-          <span class="badge-tag" style="background:#f1f5f9; color:#475569;">${strip.documentsMissing} Docs Pending</span>
+      <div class="card" style="background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs); padding:16px 20px; display:flex; flex-wrap:wrap; gap:16px; align-items:center; justify-content:space-between;">
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <span style="font-weight:700; font-size:12.5px; color:var(--muted); text-transform:uppercase; letter-spacing:0.04em;">Actionable Items:</span>
+          <span class="badge-tag badge-warning" style="font-weight:700;">${strip.probationReviewsDue} Probation Due</span>
+          <span class="badge-tag badge-warning" style="font-weight:700;">${strip.certificationsExpiring} Certs Expiring</span>
+          <span class="badge-tag badge-accent" style="font-weight:700;">${strip.onboardingIncomplete} Preboarding</span>
+          <span class="badge-tag badge-neutral" style="font-weight:600;">${strip.transfersPending} Transfers Scheduled</span>
+          <span class="badge-tag badge-danger" style="font-weight:700;">${strip.criticalVacancies} Critical Vacancies</span>
+          <span class="badge-tag badge-neutral" style="font-weight:600;">${strip.documentsMissing} Docs Pending</span>
         </div>
-        <button class="btn btn-ghost" id="view-integrity-fast-btn" style="font-size:12px; padding:4px 12px;">View Integrity Audit →</button>
+        <button class="btn btn-ghost btn-sm" id="view-integrity-fast-btn" style="font-size:12px; font-weight:600;">View Integrity Audit →</button>
       </div>
 
       <!-- CAFÉ WORKFORCE CAPACITIES -->
@@ -432,16 +439,16 @@ function renderDirectorySubpanel() {
                 </td>
                 <td style="padding:12px 14px; font-weight:500;">${emp.designation || 'Staff'}</td>
                 <td style="padding:12px 14px; color:var(--muted);">${emp.department || 'Operations'}</td>
-                <td style="padding:12px 14px;"><span class="badge-tag" style="background:#f1f5f9; color:#334155;">${emp.primaryCafeId || 'ZC-0001'}</span></td>
+                <td style="padding:12px 14px;"><span class="badge-tag badge-neutral" style="font-size:11.5px; font-weight:600;">${emp.primaryCafeId || 'ZC-0001'}</span></td>
                 <td style="padding:12px 14px; font-size:12px;">${emp.workerType || 'PERMANENT'}</td>
                 <td style="padding:12px 14px;">
-                  <span class="badge-tag" style="background:${emp.role === 'MASTER' ? '#fef3c7' : emp.role === 'OWNER' ? '#f3e8ff' : emp.role === 'CAFE_ADMIN' ? '#e0e7ff' : '#f1f5f9'}; color:${emp.role === 'MASTER' ? '#92400e' : emp.role === 'OWNER' ? '#6b21a8' : emp.role === 'CAFE_ADMIN' ? '#3730a3' : '#475569'};">
+                  <span class="badge-tag ${emp.role === 'MASTER' ? 'badge-accent' : emp.role === 'OWNER' ? 'badge-accent' : 'badge-neutral'}" style="font-size:11px; font-weight:700;">
                     ${emp.role}
                   </span>
                 </td>
                 <td style="padding:12px 14px; font-size:12px; color:var(--muted);">${emp.joiningDate ? String(emp.joiningDate).split('T')[0] : '—'}</td>
                 <td style="padding:12px 14px;">
-                  <span class="badge-tag" style="background:${emp.employmentStatus === 'ACTIVE' ? 'rgba(16,185,129,0.1)' : emp.employmentStatus === 'PROBATION' ? 'rgba(180,83,9,0.1)' : 'rgba(100,116,139,0.1)'}; color:${emp.employmentStatus === 'ACTIVE' ? '#10b981' : emp.employmentStatus === 'PROBATION' ? '#b45309' : '#64748b'};">
+                  <span class="badge-tag ${emp.employmentStatus === 'ACTIVE' ? 'badge-success' : emp.employmentStatus === 'PROBATION' ? 'badge-warning' : 'badge-neutral'}" style="font-size:11.5px; font-weight:700;">
                     ${emp.employmentStatus || 'ACTIVE'}
                   </span>
                 </td>
@@ -562,9 +569,9 @@ function renderStaffingSubpanel() {
                 </td>
                 <td style="padding:12px 14px; font-weight:600;">${r.headcountRequired} (${r.fteRequired} FTE)</td>
                 <td style="padding:12px 14px; color:var(--muted);">${r.desiredDate}</td>
-                <td style="padding:12px 14px;"><span class="badge-tag" style="background:#fef3c7; color:#92400e;">${r.reason}</span></td>
+                <td style="padding:12px 14px;"><span class="badge-tag badge-neutral" style="font-weight:600;">${r.reason}</span></td>
                 <td style="padding:12px 14px;">
-                  <span class="badge-tag" style="background:${r.status === 'APPROVED' ? 'rgba(16,185,129,0.1)' : 'rgba(59,130,246,0.1)'}; color:${r.status === 'APPROVED' ? '#10b981' : '#3b82f6'};">
+                  <span class="badge-tag ${r.status === 'APPROVED' ? 'badge-success' : 'badge-accent'}" style="font-weight:700;">
                     ${r.status}
                   </span>
                 </td>
@@ -581,25 +588,25 @@ function renderStaffingSubpanel() {
 function renderOnboardingSubpanel() {
   return `
     <div style="display:flex; flex-direction:column; gap:24px;">
-      <div style="background:#fff; border:1px solid rgba(0,0,0,0.06); border-radius:12px; padding:20px;">
-        <h3 style="font-size:16px; font-weight:700; margin:0 0 12px; color:var(--ink);">Active Preboarding &amp; Onboarding Checklists</h3>
-        <p style="font-size:13px; color:var(--muted); margin:0 0 16px;">Readiness verification before and during the first 90 days of employment.</p>
+      <div class="card" style="background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs); padding:22px;">
+        <h3 style="font-size:16px; font-weight:700; margin:0 0 4px; color:var(--ink);">Active Preboarding &amp; Onboarding Checklists</h3>
+        <p style="font-size:12.5px; color:var(--muted); margin:0 0 16px;">Readiness verification before and during the first 90 days of employment.</p>
 
         <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:16px;">
-          <div style="background:#f8fafc; border:1px solid rgba(0,0,0,0.04); border-radius:10px; padding:16px;">
+          <div class="card" style="background:var(--surface-sunken, rgba(0,0,0,0.02)); border:1px solid var(--line); border-radius:var(--radius-sm, 8px); padding:16px;">
             <div style="display:flex; justify-content:space-between; align-items:flex-start;">
               <div>
-                <div style="font-weight:700; color:var(--ink);">Ananya Sen</div>
-                <div style="font-size:12px; color:var(--muted);">ST-0006 · Floor Lead (Calicut)</div>
+                <div style="font-weight:700; color:var(--ink); font-size:13.5px;">Ananya Sen</div>
+                <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">ST-0006 · Floor Lead (Calicut)</div>
               </div>
-              <span class="badge-tag" style="background:#fef3c7; color:#92400e;">Probation Review Due</span>
+              <span class="badge-tag badge-warning" style="font-weight:700;">Probation Review Due</span>
             </div>
-            <div style="margin-top:14px; font-size:12px; display:flex; flex-direction:column; gap:6px;">
+            <div style="margin-top:14px; font-size:12px; display:flex; flex-direction:column; gap:6px; color:var(--ink);">
               <div>✅ Documents Signed (8/8)</div>
               <div>✅ Food Safety Induction (FoSTaC) Complete</div>
-              <div>⚠ 90-Day Manager Evaluation Pending</div>
+              <div style="color:var(--warning); font-weight:600;">⚠ 90-Day Manager Evaluation Pending</div>
             </div>
-            <button class="btn btn-ghost open-probation-modal-btn" data-user-id="ST-0006" style="margin-top:14px; width:100%; font-size:12px; justify-content:center;">Complete Probation Review →</button>
+            <button class="btn btn-ghost btn-sm open-probation-modal-btn" data-user-id="ST-0006" style="margin-top:14px; width:100%; font-size:12px; font-weight:600; justify-content:center;">Complete Probation Review →</button>
           </div>
         </div>
       </div>
@@ -610,35 +617,35 @@ function renderOnboardingSubpanel() {
 // ─── 6. SKILLS & TRAINING ─────────────────────────────────────────────────────
 function renderSkillsSubpanel() {
   return `
-    <div style="background:#fff; border:1px solid rgba(0,0,0,0.06); border-radius:12px; padding:20px;">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+    <div class="card" style="background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs); padding:22px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
         <div>
           <h3 style="font-size:16px; font-weight:700; margin:0; color:var(--ink);">Skills Matrix &amp; Verified Competencies</h3>
-          <p style="font-size:13px; color:var(--muted); margin:2px 0 0;">Espresso extraction, manual brewing, food safety compliance, and supervision.</p>
+          <p style="font-size:12.5px; color:var(--muted); margin:2px 0 0;">Espresso extraction, manual brewing, food safety compliance, and supervision.</p>
         </div>
         <div style="display:flex; gap:10px;">
-          <button class="btn btn-secondary" id="assign-training-btn" style="font-size:13px;">+ Assign Training</button>
-          <button class="btn btn-primary" id="verify-skill-btn" style="font-size:13px;">+ Verify Staff Skill</button>
+          <button class="btn btn-secondary btn-sm" id="assign-training-btn">+ Assign Training</button>
+          <button class="btn btn-primary btn-sm" id="verify-skill-btn">+ Verify Staff Skill</button>
         </div>
       </div>
 
       <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:16px;">
-        <div style="background:#f8fafc; border:1px solid rgba(0,0,0,0.04); border-radius:10px; padding:16px;">
-          <div style="font-weight:700; color:var(--ink);">Priya Nair (ST-0004)</div>
-          <div style="font-size:12px; color:var(--muted);">Senior Head Barista — Koramangala</div>
+        <div class="card" style="background:var(--surface-sunken, rgba(0,0,0,0.02)); border:1px solid var(--line); border-radius:var(--radius-sm, 8px); padding:16px;">
+          <div style="font-weight:700; color:var(--ink); font-size:13.5px;">Priya Nair (ST-0004)</div>
+          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">Senior Head Barista — Koramangala</div>
           <div style="margin-top:12px; display:flex; flex-wrap:wrap; gap:6px;">
-            <span class="badge-tag" style="background:#dcfce7; color:#166534;">Manual Brewing: Expert</span>
-            <span class="badge-tag" style="background:#dcfce7; color:#166534;">Espresso Extraction: Expert</span>
-            <span class="badge-tag" style="background:#e0e7ff; color:#3730a3;">FoSTaC Safety: Verified</span>
+            <span class="badge-tag badge-success" style="font-weight:600;">Manual Brewing: Expert</span>
+            <span class="badge-tag badge-success" style="font-weight:600;">Espresso Extraction: Expert</span>
+            <span class="badge-tag badge-accent" style="font-weight:600;">FoSTaC Safety: Verified</span>
           </div>
         </div>
-        <div style="background:#f8fafc; border:1px solid rgba(0,0,0,0.04); border-radius:10px; padding:16px;">
-          <div style="font-weight:700; color:var(--ink);">Arjun Das (ST-0005)</div>
-          <div style="font-size:12px; color:var(--muted);">Sous Chef — Indiranagar</div>
+        <div class="card" style="background:var(--surface-sunken, rgba(0,0,0,0.02)); border:1px solid var(--line); border-radius:var(--radius-sm, 8px); padding:16px;">
+          <div style="font-weight:700; color:var(--ink); font-size:13.5px;">Arjun Das (ST-0005)</div>
+          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">Sous Chef — Indiranagar</div>
           <div style="margin-top:12px; display:flex; flex-wrap:wrap; gap:6px;">
-            <span class="badge-tag" style="background:#dcfce7; color:#166534;">Kitchen Prep: Expert</span>
-            <span class="badge-tag" style="background:#fef3c7; color:#92400e;">Inventory Receiving: Competent</span>
-            <span class="badge-tag" style="background:#e0e7ff; color:#3730a3;">FoSTaC Safety: Verified</span>
+            <span class="badge-tag badge-success" style="font-weight:600;">Kitchen Prep: Expert</span>
+            <span class="badge-tag badge-warning" style="font-weight:600;">Inventory Receiving: Competent</span>
+            <span class="badge-tag badge-accent" style="font-weight:600;">FoSTaC Safety: Verified</span>
           </div>
         </div>
       </div>

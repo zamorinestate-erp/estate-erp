@@ -303,7 +303,25 @@ async function renderInboxTab(wrap) {
     if (selQueue) selQueue.addEventListener("change", (e) => { selectedQueue = e.target.value; renderInboxTab(wrap); });
 
     const inpSearch = wrap.querySelector("#inp-inbox-search");
-    if (inpSearch) inpSearch.addEventListener("input", (e) => { searchQuery = e.target.value; renderInboxTab(wrap); });
+    if (inpSearch) {
+      inpSearch.addEventListener("input", (e) => {
+        searchQuery = e.target.value;
+        const activeId = document.activeElement?.id;
+        const cursorStart = document.activeElement?.selectionStart;
+        const cursorEnd = document.activeElement?.selectionEnd;
+        renderInboxTab(wrap).then(() => {
+          if (activeId) {
+            const el = wrap.querySelector("#" + activeId);
+            if (el) {
+              el.focus();
+              if (typeof cursorStart === "number" && typeof cursorEnd === "number" && el.setSelectionRange) {
+                el.setSelectionRange(cursorStart, cursorEnd);
+              }
+            }
+          }
+        });
+      });
+    }
 
     wrap.querySelectorAll(".btn-drill-msg360").forEach((row) => {
       row.addEventListener("click", () => openMessage360Modal(row.dataset.id));

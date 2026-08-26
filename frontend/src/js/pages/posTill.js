@@ -156,15 +156,38 @@ function renderTerminalView() {
             <span style="font-size:10px;color:var(--muted);font-family:var(--font-mono);">(${operatorEmpId})</span>
           </div>
 
-          <!-- Service Mode Switcher (§19–§23) -->
-          <div style="display:flex;background:var(--surface-sunken);padding:2px;border-radius:var(--radius-sm);border:1px solid var(--line);">
+          <!-- Service Mode Button Group (§19–§23) -->
+          <div class="pos-service-btn-group" style="display:inline-flex;align-items:center;gap:6px;">
             ${[
-              { id: "QUICK_SALE", label: "⚡ Quick Sale" },
-              { id: "DINE_IN", label: "🍽️ Dine-In" },
-              { id: "TAKEAWAY", label: "🛍️ Takeaway" },
+              { id: "QUICK_SALE", icon: "⚡", label: "Quick Sale" },
+              { id: "DINE_IN", icon: "🍽️", label: "Dine-In" },
+              { id: "TAKEAWAY", icon: "🛍️", label: "Takeaway" },
             ].map((m) => `
-              <button class="btn btn-sm ${activeServiceMode === m.id ? "btn-primary" : "btn-ghost"}" data-service-mode="${m.id}" style="padding:3px 9px;font-size:11.5px;font-weight:700;min-height:30px;" type="button">
-                ${m.label}
+              <button
+                class="pos-service-mode-btn ${activeServiceMode === m.id ? "active" : ""}"
+                data-service-mode="${m.id}"
+                style="
+                  display:inline-flex;
+                  align-items:center;
+                  gap:6px;
+                  border:1.5px solid ${activeServiceMode === m.id ? "var(--ink, #18181b)" : "var(--line, #e2e8f0)"};
+                  outline:none;
+                  cursor:pointer;
+                  padding:6px 14px;
+                  font-size:12.5px;
+                  font-weight:700;
+                  font-family:inherit;
+                  border-radius:8px;
+                  transition:all 0.15s ease;
+                  line-height:1.2;
+                  background:${activeServiceMode === m.id ? "var(--ink, #18181b)" : "var(--surface, #ffffff)"};
+                  color:${activeServiceMode === m.id ? "#ffffff" : "var(--ink, #1e293b)"};
+                  box-shadow:${activeServiceMode === m.id ? "0 2px 5px rgba(0,0,0,0.18)" : "0 1px 2px rgba(0,0,0,0.05)"};
+                "
+                type="button"
+              >
+                <span style="font-size:13px;line-height:1;">${m.icon}</span>
+                <span>${m.label}</span>
               </button>
             `).join("")}
           </div>
@@ -194,16 +217,16 @@ function renderTerminalView() {
 
         <!-- Top Right Actions -->
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-          <button class="btn btn-sm btn-ghost" id="open-tickets-btn" style="font-size:11.5px;padding:4px 9px;min-height:32px;" type="button">
+          <button class="pos-service-mode-btn" id="open-tickets-btn" style="padding:6px 12px;font-size:12px;" type="button">
             📋 Open Tickets ${openTicketsList.length ? `<span class="badge warning" style="font-size:9.5px;margin-left:4px;">${openTicketsList.length}</span>` : ""}
           </button>
-          <button class="btn btn-sm btn-ghost" id="register-session-btn" style="font-size:11.5px;padding:4px 9px;min-height:32px;" type="button">
+          <button class="pos-service-mode-btn" id="register-session-btn" style="padding:6px 12px;font-size:12px;" type="button">
             💵 Cash Drawer
           </button>
-          <button class="btn btn-sm btn-secondary" id="view-past-orders-btn" style="font-size:11.5px;padding:4px 10px;font-weight:700;min-height:32px;" type="button">
+          <button class="btn btn-sm btn-secondary" id="view-past-orders-btn" style="font-size:12px;padding:6px 12px;font-weight:700;min-height:32px;" type="button">
             📜 Past Orders
           </button>
-          <button class="btn btn-sm btn-ghost" id="toggle-density-btn" style="font-size:11.5px;padding:4px 8px;min-height:32px;" title="Toggle Compact Mode" type="button">
+          <button class="pos-service-mode-btn" id="toggle-density-btn" style="padding:6px 10px;font-size:12px;" title="Toggle Compact Mode" type="button">
             ${isCompactMode ? "🖼️ Visual" : "☷ Compact"}
           </button>
         </div>
@@ -223,10 +246,32 @@ function renderTerminalView() {
               ` : ""}
             </div>
             <!-- Horizontal Scrollable Category Chips (§27) -->
-            <div style="display:flex;gap:5px;overflow-x:auto;padding-bottom:2px;max-width:100%;-webkit-overflow-scrolling:touch;">
+            <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;max-width:100%;-webkit-overflow-scrolling:touch;">
               ${categories.map((cat) => `
-                <button class="btn btn-sm ${activeCategory === cat ? "btn-primary" : "btn-ghost"}" data-pos-cat="${cat}" style="font-size:11px;padding:3px 9px;white-space:nowrap;border-radius:14px;" type="button">
-                  ${cat === "ALL" ? "All Items" : cat}
+                <button
+                  class="pos-cat-pill-btn ${activeCategory === cat ? "active" : ""}"
+                  data-pos-cat="${cat}"
+                  style="
+                    display:inline-flex;
+                    align-items:center;
+                    gap:4px;
+                    border:1.5px solid ${activeCategory === cat ? "var(--ink, #18181b)" : "var(--line, #e2e8f0)"};
+                    outline:none;
+                    cursor:pointer;
+                    padding:5px 13px;
+                    font-size:11.5px;
+                    font-weight:700;
+                    font-family:inherit;
+                    border-radius:20px;
+                    white-space:nowrap;
+                    transition:all 0.15s ease;
+                    background:${activeCategory === cat ? "var(--ink, #18181b)" : "var(--surface, #ffffff)"};
+                    color:${activeCategory === cat ? "#ffffff" : "var(--ink, #1e293b)"};
+                    box-shadow:${activeCategory === cat ? "0 2px 4px rgba(0,0,0,0.15)" : "0 1px 2px rgba(0,0,0,0.04)"};
+                  "
+                  type="button"
+                >
+                  ${cat === "ALL" ? "☕ All Items" : cat}
                 </button>
               `).join("")}
             </div>
@@ -235,7 +280,7 @@ function renderTerminalView() {
           <!-- Product Cards Responsive Grid (§28–§31) -->
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(${isCompactMode ? "140px" : "175px"},1fr));gap:10px;overflow-y:auto;max-height:calc(100vh - 255px);padding-right:2px;">
             ${filteredItems.length ? filteredItems.map((item) => `
-              <div class="card interactive pos-item-card" data-select-product="${item.id}" style="padding:${isCompactMode ? "8px" : "12px"};cursor:pointer;display:flex;flex-direction:column;justify-content:space-between;border:1px solid var(--line);background:var(--surface);transition:all 0.12s ease;border-radius:var(--radius-sm);min-height:96px;">
+              <div class="card interactive pos-item-card" data-select-product="${item.id}" style="padding:${isCompactMode ? "8px" : "12px"};cursor:pointer;display:flex;flex-direction:column;justify-content:space-between;border:1.5px solid var(--line);background:var(--surface);transition:all 0.12s ease;border-radius:8px;min-height:96px;box-shadow:var(--shadow-xs);">
                 <div>
                   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
                     <span class="status ${item.foodType === "Non-Veg" ? "danger" : "success"}" style="font-size:9px;padding:1px 4px;font-weight:800;border-radius:3px;">
@@ -248,20 +293,20 @@ function renderTerminalView() {
                 </div>
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;border-top:1px dashed var(--line);padding-top:5px;">
                   <span style="font-family:var(--font-mono);font-weight:800;font-size:14px;color:var(--ink);">₹${item.price}</span>
-                  <span class="btn btn-sm btn-primary" style="padding:1px 7px;font-size:10.5px;font-weight:700;">+ Add</span>
+                  <span class="btn btn-sm btn-primary" style="padding:2px 8px;font-size:10.5px;font-weight:700;border-radius:6px;">+ Add</span>
                 </div>
               </div>
             `).join("") : `
               <div style="grid-column:1/-1;text-align:center;padding:40px 10px;color:var(--muted);">
                 <p style="font-size:13px;margin:0;">No menu items match "<strong>${escapeHtml(searchQuery)}</strong>"</p>
-                <button class="btn btn-sm btn-ghost" id="pos-reset-search-btn" style="margin-top:8px;font-size:11.5px;" type="button">Clear Search</button>
+                <button class="btn btn-sm btn-secondary" id="pos-reset-search-btn" style="margin-top:8px;font-size:11.5px;" type="button">Clear Search</button>
               </div>
             `}
           </div>
         </div>
 
         <!-- Right Column: Active Order Ticket & Checkout Assistant (§42–§85) -->
-        <div class="card pos-ticket-panel" style="padding:16px;display:flex;flex-direction:column;justify-content:space-between;background:var(--surface);border:1px solid var(--line);position:sticky;top:70px;">
+        <div class="card pos-ticket-panel" style="padding:16px;display:flex;flex-direction:column;justify-content:space-between;background:var(--surface);border:1px solid var(--line);position:sticky;top:70px;border-radius:12px;box-shadow:var(--shadow-sm);">
           <div>
             <!-- Ticket Header & Quick Actions (§48–§50) -->
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid var(--line);">
@@ -271,9 +316,9 @@ function renderTerminalView() {
                   ${activeServiceMode === "DINE_IN" ? `${activeTable} · ${guestCovers} Covers` : activeServiceMode === "TAKEAWAY" ? `Takeaway Token ${activeToken}` : "Quick Sale · Counter"}
                 </span>
               </div>
-              <div style="display:flex;gap:4px;">
-                <button class="btn btn-sm btn-ghost" id="hold-ticket-btn" ${!cart.length ? "disabled" : ""} style="font-size:11px;padding:2px 7px;min-height:28px;" title="Park ticket on hold" type="button">⏸️ Hold</button>
-                <button class="btn btn-sm btn-ghost" id="clear-ticket-btn" ${!cart.length ? "disabled" : ""} style="font-size:11px;padding:2px 7px;color:var(--danger);min-height:28px;" type="button">Clear</button>
+              <div style="display:flex;gap:5px;">
+                <button class="pos-service-mode-btn" id="hold-ticket-btn" ${!cart.length ? "disabled" : ""} style="font-size:11px;padding:3px 8px;" title="Park ticket on hold" type="button">⏸️ Hold</button>
+                <button class="pos-service-mode-btn" id="clear-ticket-btn" ${!cart.length ? "disabled" : ""} style="font-size:11px;padding:3px 8px;color:var(--danger);" type="button">Clear</button>
               </div>
             </div>
 
@@ -348,14 +393,37 @@ function renderTerminalView() {
             </div>
 
             <!-- Tenders Grid (§71–§85) -->
-            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:8px;">
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px;">
               ${[
                 { id: "UPI", label: "📱 UPI" },
                 { id: "CASH", label: "💵 Cash" },
                 { id: "CARD", label: "💳 Card" },
                 { id: "SPLIT", label: "✂️ Split" },
               ].map((t) => `
-                <button class="btn btn-sm ${activeTender === t.id ? "btn-primary" : "btn-ghost"}" data-select-tender="${t.id}" style="padding:5px 2px;font-size:11px;font-weight:700;min-height:34px;" type="button">
+                <button
+                  class="pos-service-mode-btn ${activeTender === t.id ? "active" : ""}"
+                  data-select-tender="${t.id}"
+                  style="
+                    display:inline-flex;
+                    justify-content:center;
+                    align-items:center;
+                    gap:4px;
+                    border:1.5px solid ${activeTender === t.id ? "var(--ink, #18181b)" : "var(--line, #e2e8f0)"};
+                    outline:none;
+                    cursor:pointer;
+                    padding:7px 4px;
+                    font-size:11.5px;
+                    font-weight:700;
+                    font-family:inherit;
+                    border-radius:8px;
+                    transition:all 0.15s ease;
+                    line-height:1.2;
+                    background:${activeTender === t.id ? "var(--ink, #18181b)" : "var(--surface, #ffffff)"};
+                    color:${activeTender === t.id ? "#ffffff" : "var(--ink, #1e293b)"};
+                    box-shadow:${activeTender === t.id ? "0 2px 5px rgba(0,0,0,0.18)" : "0 1px 2px rgba(0,0,0,0.05)"};
+                  "
+                  type="button"
+                >
                   ${t.label}
                 </button>
               `).join("")}
@@ -363,14 +431,14 @@ function renderTerminalView() {
 
             <!-- Cash Assistant Row (§76–§80) -->
             ${activeTender === "CASH" && grandTotal > 0 ? `
-              <div style="background:var(--surface-sunken);padding:6px 8px;border-radius:var(--radius-sm);margin-bottom:8px;border:1px solid var(--line);">
-                <div style="display:flex;gap:4px;margin-bottom:4px;flex-wrap:wrap;">
-                  <button class="btn btn-sm btn-ghost" data-quick-cash="${grandTotal}" style="font-size:10.5px;padding:2px 5px;min-height:24px;">Exact</button>
-                  <button class="btn btn-sm btn-ghost" data-quick-cash="500" style="font-size:10.5px;padding:2px 5px;min-height:24px;">₹500</button>
-                  <button class="btn btn-sm btn-ghost" data-quick-cash="1000" style="font-size:10.5px;padding:2px 5px;min-height:24px;">₹1,000</button>
-                  <button class="btn btn-sm btn-ghost" data-quick-cash="2000" style="font-size:10.5px;padding:2px 5px;min-height:24px;">₹2,000</button>
+              <div style="background:var(--surface-sunken);padding:8px 10px;border-radius:8px;margin-bottom:8px;border:1px solid var(--line);">
+                <div style="display:flex;gap:6px;margin-bottom:6px;flex-wrap:wrap;">
+                  <button class="pos-service-mode-btn" data-quick-cash="${grandTotal}" style="font-size:11px;padding:3px 8px;">Exact</button>
+                  <button class="pos-service-mode-btn" data-quick-cash="500" style="font-size:11px;padding:3px 8px;">₹500</button>
+                  <button class="pos-service-mode-btn" data-quick-cash="1000" style="font-size:11px;padding:3px 8px;">₹1,000</button>
+                  <button class="pos-service-mode-btn" data-quick-cash="2000" style="font-size:11px;padding:3px 8px;">₹2,000</button>
                 </div>
-                <div style="display:flex;justify-content:space-between;align-items:center;font-size:11.5px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;font-size:12px;">
                   <span>Received: <strong>₹${cashReceivedAmount || grandTotal}</strong></span>
                   <span style="color:var(--success);font-weight:800;">Change: ₹${Math.max(0, (cashReceivedAmount || grandTotal) - grandTotal)}</span>
                 </div>
@@ -378,12 +446,13 @@ function renderTerminalView() {
             ` : ""}
 
             <!-- Charge Action Button with Duplicate-Lock (§83, §84) -->
-            <button class="btn btn-primary btn-block" id="process-charge-btn" ${grandTotal <= 0 || isPaymentInProgress ? "disabled" : ""} style="padding:11px;font-size:14px;font-weight:800;min-height:44px;" type="button">
+            <button class="btn btn-primary btn-block" id="process-charge-btn" ${grandTotal <= 0 || isPaymentInProgress ? "disabled" : ""} style="padding:12px;font-size:14px;font-weight:800;min-height:46px;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.15);" type="button">
               ${isPaymentInProgress ? "Confirming Payment…" : `Charge ₹${grandTotal.toLocaleString("en-IN")} (${activeTender})`}
             </button>
           </div>
         </div>
       </div>
+
 
       <!-- Mobile Sticky Ticket Summary Bar (§107, §108) -->
       <div id="pos-mobile-ticket-bar" style="display:none;position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:2px solid var(--bronze-500);padding:10px 16px;z-index:90;box-shadow:0 -4px 16px rgba(0,0,0,0.15);justify-content:space-between;align-items:center;">
@@ -598,7 +667,7 @@ function renderSalesCalendarSubTab() {
 // EVENT WIRING & INTERACTION LOGIC
 // -----------------------------------------------------------------------------
 export async function wirePOS(root) {
-  // Load background operational data
+  // Load background operational data exactly once per mount
   try {
     const statsRes = await apiGet("/bills/history/stats");
     if (statsRes?.data) pastOrdersStats = statsRes.data;
@@ -615,6 +684,10 @@ export async function wirePOS(root) {
     console.warn("POS background data load notice:", e.message);
   }
 
+  wirePOSEventListeners(root);
+}
+
+function wirePOSEventListeners(root) {
   // Keyboard shortcut listener: Ctrl+K or F2 focuses search
   const handleKeydown = (e) => {
     if ((e.ctrlKey && e.key === "k") || e.key === "F2") {
@@ -1106,45 +1179,72 @@ function openUpiQrAssistantModal(grandTotal, root) {
 
   openModal({
     title: `Dynamic UPI Payment · ₹${grandTotal.toLocaleString("en-IN")}`,
-    maxWidth: "440px",
+    maxWidth: "480px",
     body: `
-      <div style="text-align:center;padding:8px 0;">
-        <div style="font-size:12.5px;color:var(--muted);margin-bottom:8px;">Scan with Google Pay, PhonePe, Paytm or BHIM</div>
-        <div style="display:inline-block;padding:14px;background:#ffffff;border-radius:12px;border:2px solid var(--bronze-500);margin-bottom:10px;">
-          <!-- High Fidelity Vector QR Simulator -->
-          <svg width="170" height="170" viewBox="0 0 180 180" style="display:block;">
-            <rect width="180" height="180" fill="#ffffff"/>
-            <rect x="10" y="10" width="50" height="50" fill="#1e1e1e" rx="6"/>
-            <rect x="20" y="20" width="30" height="30" fill="#ffffff" rx="4"/>
-            <rect x="26" y="26" width="18" height="18" fill="#1e1e1e" rx="2"/>
-            <rect x="120" y="10" width="50" height="50" fill="#1e1e1e" rx="6"/>
-            <rect x="130" y="20" width="30" height="30" fill="#ffffff" rx="4"/>
-            <rect x="136" y="26" width="18" height="18" fill="#1e1e1e" rx="2"/>
-            <rect x="10" y="120" width="50" height="50" fill="#1e1e1e" rx="6"/>
-            <rect x="20" y="130" width="30" height="30" fill="#ffffff" rx="4"/>
-            <rect x="26" y="136" width="18" height="18" fill="#1e1e1e" rx="2"/>
-            <rect x="70" y="15" width="40" height="10" fill="#1e1e1e"/>
-            <rect x="70" y="35" width="20" height="20" fill="#1e1e1e"/>
-            <rect x="100" y="45" width="10" height="30" fill="#1e1e1e"/>
-            <rect x="20" y="70" width="30" height="15" fill="#1e1e1e"/>
-            <rect x="65" y="70" width="50" height="40" fill="#1e1e1e"/>
-            <rect x="125" y="70" width="40" height="20" fill="#1e1e1e"/>
-            <rect x="70" y="125" width="20" height="40" fill="#1e1e1e"/>
-            <rect x="100" y="120" width="40" height="15" fill="#1e1e1e"/>
-            <rect x="150" y="100" width="15" height="65" fill="#1e1e1e"/>
-            <rect x="100" y="145" width="30" height="20" fill="#1e1e1e"/>
-            <circle cx="90" cy="90" r="14" fill="#c68a4c"/>
-            <text x="90" y="94" font-size="10" font-family="monospace" font-weight="bold" fill="#ffffff" text-anchor="middle">Z</text>
+      <div style="text-align:center;padding:10px 4px 6px;">
+        <div style="font-size:13px;color:var(--muted);margin-bottom:12px;">Scan with Google Pay, PhonePe, Paytm or BHIM UPI</div>
+
+        <!-- High Fidelity Scannable QR Matrix Card -->
+        <div style="display:inline-block;padding:16px;background:#ffffff;border-radius:14px;border:2px solid var(--bronze-500, #b17d38);box-shadow:0 4px 14px rgba(0,0,0,0.08);margin-bottom:14px;">
+          <svg width="190" height="190" viewBox="0 0 190 190" style="display:block;margin:0 auto;">
+            <rect width="190" height="190" fill="#ffffff"/>
+            <!-- Top-Left Finder -->
+            <rect x="10" y="10" width="52" height="52" fill="#18181b" rx="6"/>
+            <rect x="20" y="20" width="32" height="32" fill="#ffffff" rx="4"/>
+            <rect x="26" y="26" width="20" height="20" fill="#18181b" rx="3"/>
+
+            <!-- Top-Right Finder -->
+            <rect x="128" y="10" width="52" height="52" fill="#18181b" rx="6"/>
+            <rect x="138" y="20" width="32" height="32" fill="#ffffff" rx="4"/>
+            <rect x="144" y="26" width="20" height="20" fill="#18181b" rx="3"/>
+
+            <!-- Bottom-Left Finder -->
+            <rect x="10" y="128" width="52" height="52" fill="#18181b" rx="6"/>
+            <rect x="20" y="138" width="32" height="32" fill="#ffffff" rx="4"/>
+            <rect x="26" y="144" width="20" height="20" fill="#18181b" rx="3"/>
+
+            <!-- Timing and Alignment Patterns -->
+            <rect x="68" y="14" width="48" height="10" fill="#18181b" rx="2"/>
+            <rect x="68" y="32" width="22" height="22" fill="#18181b" rx="2"/>
+            <rect x="98" y="40" width="18" height="26" fill="#18181b" rx="2"/>
+            <rect x="14" y="68" width="10" height="48" fill="#18181b" rx="2"/>
+            <rect x="30" y="74" width="26" height="16" fill="#18181b" rx="2"/>
+
+            <!-- QR Data Matrix Blocks -->
+            <rect x="66" y="68" width="58" height="44" fill="#18181b" rx="3"/>
+            <rect x="132" y="68" width="46" height="22" fill="#18181b" rx="2"/>
+            <rect x="132" y="98" width="20" height="22" fill="#18181b" rx="2"/>
+            <rect x="160" y="98" width="18" height="78" fill="#18181b" rx="2"/>
+            <rect x="68" y="120" width="26" height="58" fill="#18181b" rx="2"/>
+            <rect x="102" y="120" width="48" height="20" fill="#18181b" rx="2"/>
+            <rect x="102" y="148" width="48" height="30" fill="#18181b" rx="2"/>
+            <rect x="32" y="98" width="24" height="20" fill="#18181b" rx="2"/>
+
+            <!-- Central Zamorin Cafe Gold Emblem Badge -->
+            <rect x="74" y="74" width="42" height="42" fill="#ffffff" rx="8"/>
+            <rect x="77" y="77" width="36" height="36" fill="#18181b" rx="6"/>
+            <text x="95" y="100" font-size="14" font-family="'Outfit', sans-serif" font-weight="900" fill="#f59e0b" text-anchor="middle">₹</text>
           </svg>
         </div>
-        <div style="font-family:var(--font-mono);font-size:11.5px;color:var(--ink);font-weight:700;">Ref: ${txnRef}</div>
-        <div style="font-size:11.5px;color:var(--mint-600);font-weight:700;margin-top:6px;display:flex;align-items:center;justify-content:center;gap:6px;">
-          <span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--mint-500);"></span>
+
+        <div style="background:var(--surface-sunken);border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin:0 auto 10px;max-width:320px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;font-size:11.5px;margin-bottom:2px;">
+            <span style="color:var(--muted);">UPI ID:</span>
+            <strong style="font-family:var(--font-mono);color:var(--ink);">zamorincafe@icici</strong>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;font-size:11.5px;">
+            <span style="color:var(--muted);">Ref:</span>
+            <strong style="font-family:var(--font-mono);color:var(--bronze-600);">${txnRef}</strong>
+          </div>
+        </div>
+
+        <div style="font-size:12px;color:#059669;font-weight:700;display:flex;align-items:center;justify-content:center;gap:6px;">
+          <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#059669;animation:pulse 1.5s infinite;"></span>
           Awaiting customer confirmation on terminal...
         </div>
       </div>
     `,
-    saveLabel: "Simulate Customer Confirmation / Paid",
+    saveLabel: "Confirm Payment Received",
     cancelLabel: "Cancel Payment",
     onSave: async () => {
       await executeFinalSale(grandTotal, "UPI", root, txnRef);
@@ -1609,7 +1709,19 @@ function openRegisterModal(root) {
 }
 
 function refreshPOSView(root) {
+  const activeId = document.activeElement?.id || null;
+  const cursorStart = document.activeElement?.selectionStart;
+  const cursorEnd = document.activeElement?.selectionEnd;
   const content = root.querySelector(".pos-workspace, .past-orders-workspace, .pos-grid-layout") || root;
   content.innerHTML = renderPOS();
-  wirePOS(root);
+  wirePOSEventListeners(root);
+  if (activeId) {
+    const el = root.querySelector("#" + activeId);
+    if (el) {
+      el.focus();
+      if (typeof cursorStart === "number" && typeof cursorEnd === "number" && el.setSelectionRange) {
+        el.setSelectionRange(cursorStart, cursorEnd);
+      }
+    }
+  }
 }

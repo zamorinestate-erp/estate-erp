@@ -25,6 +25,8 @@ const {
   seedSystemCommunicationSettings,
 } = require('./seedInitialData');
 
+const { seedPassbookData } = require('./seedPassbookData');
+
 async function main() {
   console.log('[dev] Starting in-memory MongoDB...');
 
@@ -70,6 +72,8 @@ async function main() {
     organisationId,
     masterEmail,
   });
+
+  await seedPassbookData();
 
   console.log(
     `[dev] Seed complete — login: ${masterEmail} / ${masterPassword}`

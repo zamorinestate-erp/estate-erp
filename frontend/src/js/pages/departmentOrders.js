@@ -96,6 +96,67 @@ const SAMPLE_ORDERS = [
   },
 ];
 
+const SAMPLE_QUOTES = [
+  {
+    quoteId: "QUO-2026-0042",
+    institutionName: "Farook College Autonomous",
+    departmentName: "Postgraduate Commerce Dept",
+    contactPerson: "Dr. Basheer A.",
+    validUntil: "2026-08-30",
+    headcount: 60,
+    amount: 22500,
+    status: "SENT",
+    items: "Executive High Tea Platter with Specialty Pour-Over & Pastries",
+  },
+  {
+    quoteId: "QUO-2026-0043",
+    institutionName: "Kozhikode Medical College",
+    departmentName: "Annual Alumni Meet Committee",
+    contactPerson: "Dr. Reshma Menon",
+    validUntil: "2026-09-05",
+    headcount: 120,
+    amount: 45000,
+    status: "SENT",
+    items: "Cold Brew Barista Station with Artisanal Croissants & Savouries",
+  },
+];
+
+const SAMPLE_ACCOUNTS = [
+  {
+    accountId: "INST-001",
+    institutionName: "University of Calicut",
+    departmentName: "Academic Affairs",
+    creditLimit: 100000,
+    currentExposure: 5670,
+    poRequired: true,
+    billingCycle: "MONTHLY",
+    status: "ACTIVE",
+    paymentTerms: "NET 30",
+  },
+  {
+    accountId: "INST-002",
+    institutionName: "NIT Calicut",
+    departmentName: "Computer Science",
+    creditLimit: 150000,
+    currentExposure: 9805,
+    poRequired: true,
+    billingCycle: "PER_ORDER",
+    status: "ACTIVE",
+    paymentTerms: "NET 15",
+  },
+  {
+    accountId: "INST-003",
+    institutionName: "IIM Kozhikode",
+    departmentName: "Executive Programmes",
+    creditLimit: 200000,
+    currentExposure: 0,
+    poRequired: true,
+    billingCycle: "MONTHLY",
+    status: "ACTIVE",
+    paymentTerms: "NET 30",
+  },
+];
+
 export function renderDepartmentOrders(subroute) {
   if (subroute !== undefined) {
     setDepartmentOrdersActiveTab(subroute);
@@ -279,9 +340,8 @@ function renderOverviewTab(orders, totalOutstanding, totalSettled, upcomingCount
                 <span class="module-tile-title">${t.title}</span>
                 ${t.badge ? `<span class="module-tile-badge ${t.badgeType || ""}">${t.badge}</span>` : ""}
               </div>
-              <p class="module-tile-subtitle">${t.subtitle}</p>
+              <div class="module-tile-sub">${t.subtitle}</div>
             </div>
-            <div class="module-tile-arrow">→</div>
           </button>
         `).join("")}
       </div>
@@ -289,82 +349,124 @@ function renderOverviewTab(orders, totalOutstanding, totalSettled, upcomingCount
 
     <!-- Top KPI Grid -->
     <div class="grid grid-3" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px;margin-bottom:20px;">
-      <article class="card kpi-card" style="padding:18px;border-left:4px solid var(--warning, #f59e0b);">
-        <div class="kpi-label" style="font-size:12px;text-transform:uppercase;color:var(--muted);font-weight:600;">Outstanding Institutional Credit</div>
-        <div class="kpi-value" style="font-size:24px;font-weight:700;color:var(--warning);margin:4px 0;">₹${(totalOutstanding / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</div>
+      <article class="card kpi-card" style="padding:18px;border-left:4px solid var(--warning, #f59e0b);border-radius:var(--radius-card, 12px);border:1px solid var(--line);border-left:4px solid var(--warning, #f59e0b);box-shadow:var(--shadow-xs);background:var(--surface);">
+        <div class="kpi-label" style="font-size:11.5px;text-transform:uppercase;color:var(--muted);font-weight:700;letter-spacing:0.04em;">Outstanding Institutional Credit</div>
+        <div class="kpi-value" style="font-size:24px;font-weight:800;color:var(--warning);margin:4px 0;font-family:var(--font-mono);">₹${(totalOutstanding / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</div>
         <div class="kpi-trend trend-down" style="font-size:12px;color:var(--muted);">Institutional Tab Receivable</div>
       </article>
-      <article class="card kpi-card" style="padding:18px;border-left:4px solid var(--success, #10b981);">
-        <div class="kpi-label" style="font-size:12px;text-transform:uppercase;color:var(--muted);font-weight:600;">Reconciled &amp; Settled (Month)</div>
-        <div class="kpi-value" style="font-size:24px;font-weight:700;color:var(--success);margin:4px 0;">₹${(totalSettled / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</div>
+      <article class="card kpi-card" style="padding:18px;border-left:4px solid var(--success, #10b981);border-radius:var(--radius-card, 12px);border:1px solid var(--line);border-left:4px solid var(--success, #10b981);box-shadow:var(--shadow-xs);background:var(--surface);">
+        <div class="kpi-label" style="font-size:11.5px;text-transform:uppercase;color:var(--muted);font-weight:700;letter-spacing:0.04em;">Reconciled &amp; Settled (Month)</div>
+        <div class="kpi-value" style="font-size:24px;font-weight:800;color:var(--success);margin:4px 0;font-family:var(--font-mono);">₹${(totalSettled / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</div>
         <div class="kpi-trend trend-up" style="font-size:12px;color:var(--muted);">Payment Received &amp; Posted</div>
       </article>
-      <article class="card kpi-card" style="padding:18px;border-left:4px solid var(--bronze-500, #b45309);">
-        <div class="kpi-label" style="font-size:12px;text-transform:uppercase;color:var(--muted);font-weight:600;">Upcoming Commitments (7 Days)</div>
-        <div class="kpi-value" style="font-size:24px;font-weight:700;color:var(--ink);margin:4px 0;">${upcomingCount} Orders</div>
+      <article class="card kpi-card" style="padding:18px;border-left:4px solid var(--bronze-500, #b45309);border-radius:var(--radius-card, 12px);border:1px solid var(--line);border-left:4px solid var(--bronze-500, #b45309);box-shadow:var(--shadow-xs);background:var(--surface);">
+        <div class="kpi-label" style="font-size:11.5px;text-transform:uppercase;color:var(--muted);font-weight:700;letter-spacing:0.04em;">Upcoming Commitments (7 Days)</div>
+        <div class="kpi-value" style="font-size:24px;font-weight:800;color:var(--ink);margin:4px 0;">${upcomingCount} Orders</div>
         <div class="kpi-trend trend-up" style="font-size:12px;color:var(--muted);">Scheduled / Confirmed</div>
       </article>
     </div>
 
     <!-- Operational Control Strip -->
-    <div class="card" style="padding:14px 20px;margin-bottom:20px;background:var(--surface);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
-      <div style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--muted);">Operational Control Strip:</div>
-      <div style="display:flex;gap:12px;flex-wrap:wrap;">
-        <span class="badge" style="background:#e0f2fe;color:#0369a1;padding:4px 10px;font-size:12px;font-weight:600;border-radius:6px;">TODAY: 1 ORDER</span>
-        <span class="badge" style="background:#fef3c7;color:#92400e;padding:4px 10px;font-size:12px;font-weight:600;border-radius:6px;">NEXT 7 DAYS: ${upcomingCount}</span>
-        <span class="badge" style="background:#f1f5f9;color:#475569;padding:4px 10px;font-size:12px;font-weight:600;border-radius:6px;">AWAITING APPROVAL: 0</span>
-        <span class="badge" style="background:#fee2e2;color:#991b1b;padding:4px 10px;font-size:12px;font-weight:600;border-radius:6px;">OVERDUE: ₹0.00</span>
-        <span class="badge" style="background:#f0fdf4;color:#166534;padding:4px 10px;font-size:12px;font-weight:600;border-radius:6px;">PO COMPLIANCE: 100%</span>
+    <div class="card" style="padding:14px 20px;margin-bottom:20px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-card, 12px);box-shadow:var(--shadow-xs);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span style="font-size:14px;">⚡</span>
+        <span style="font-size:12px;font-weight:700;text-transform:uppercase;color:var(--muted);letter-spacing:0.04em;">Operational Pulse:</span>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+        <span class="badge-tag badge-accent" style="font-weight:700;font-size:11.5px;padding:4px 10px;">TODAY: 1 ORDER</span>
+        <span class="badge-tag badge-neutral" style="font-weight:600;font-size:11.5px;padding:4px 10px;">NEXT 7 DAYS: ${upcomingCount}</span>
+        <span class="badge-tag badge-neutral" style="font-weight:600;font-size:11.5px;padding:4px 10px;">AWAITING APPROVAL: 0</span>
+        <span class="badge-tag badge-success" style="font-weight:700;font-size:11.5px;padding:4px 10px;">OVERDUE: ₹0.00</span>
+        <span class="badge-tag badge-success" style="font-weight:700;font-size:11.5px;padding:4px 10px;">● PO COMPLIANCE: 100%</span>
       </div>
     </div>
 
     <!-- 7-Day Forecasting Load & Recent Register Preview -->
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:20px;margin-bottom:20px;">
-      <div class="card" style="padding:20px;">
-        <h3 style="font-size:16px;font-weight:700;margin:0 0 12px;color:var(--ink);">Next 7 Days Institutional Load</h3>
+      <div class="card" style="padding:22px;border:1px solid var(--line);background:var(--surface);border-radius:var(--radius-card, 12px);box-shadow:var(--shadow-xs);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--line);">
+          <div>
+            <h3 style="font-size:15px;font-weight:700;margin:0 0 2px;color:var(--ink);display:flex;align-items:center;gap:6px;">
+              <span>📅</span> Next 7 Days Institutional Load
+            </h3>
+            <p style="font-size:11.5px;color:var(--muted);margin:0;">Kitchen batch preparation &amp; scheduled dispatch slots</p>
+          </div>
+          <span class="badge-tag badge-accent" style="font-weight:700;font-size:11px;">${upcomingCount} Active</span>
+        </div>
         <div style="display:flex;flex-direction:column;gap:10px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--background);border-radius:6px;">
-            <span style="font-weight:600;font-size:13px;">Thu, 20 Aug</span>
-            <span class="badge" style="background:var(--bronze-100);color:var(--bronze-800);font-weight:600;">1 Order • 20 Heads • ₹5,670</span>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px;background:var(--surface-sunken, rgba(0,0,0,0.02));border-radius:8px;border:1px solid var(--line);flex-wrap:wrap;gap:8px;">
+            <div>
+              <div style="font-weight:700;font-size:13px;color:var(--ink);">Thu, 20 Aug 2026</div>
+              <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">Univ. of Calicut (Dean Office) · Senate Hall</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+              <span class="badge-tag badge-accent" style="font-size:11px;font-weight:700;">1 Order</span>
+              <span class="badge-tag badge-neutral" style="font-size:11px;font-weight:600;">👥 20 Heads</span>
+              <span style="font-family:var(--font-mono);font-weight:800;color:var(--ink);font-size:13px;">₹5,670.00</span>
+            </div>
           </div>
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--background);border-radius:6px;">
-            <span style="font-weight:600;font-size:13px;">Fri, 21 Aug</span>
-            <span class="badge" style="background:var(--bronze-100);color:var(--bronze-800);font-weight:600;">1 Order • 30 Heads • ₹14,805</span>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px;background:var(--surface-sunken, rgba(0,0,0,0.02));border-radius:8px;border:1px solid var(--line);flex-wrap:wrap;gap:8px;">
+            <div>
+              <div style="font-weight:700;font-size:13px;color:var(--ink);">Fri, 21 Aug 2026</div>
+              <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">NIT Calicut (CS Dept) · Seminar Complex</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+              <span class="badge-tag badge-accent" style="font-size:11px;font-weight:700;">1 Order</span>
+              <span class="badge-tag badge-neutral" style="font-size:11px;font-weight:600;">👥 30 Heads</span>
+              <span style="font-family:var(--font-mono);font-weight:800;color:var(--ink);font-size:13px;">₹14,805.00</span>
+            </div>
           </div>
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--background);border-radius:6px;">
-            <span style="font-weight:600;font-size:13px;">Sat, 22 Aug</span>
-            <span style="font-size:12px;color:var(--muted);">No scheduled institutional orders</span>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:var(--surface);border-radius:8px;border:1px dashed var(--line);">
+            <span style="font-weight:600;font-size:12.5px;color:var(--muted);">Sat, 22 Aug 2026</span>
+            <span style="font-size:11.5px;color:var(--muted);font-style:italic;">No scheduled institutional orders</span>
           </div>
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--background);border-radius:6px;">
-            <span style="font-weight:600;font-size:13px;">Sun, 23 Aug</span>
-            <span style="font-size:12px;color:var(--muted);">No scheduled institutional orders</span>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:var(--surface);border-radius:8px;border:1px dashed var(--line);">
+            <span style="font-weight:600;font-size:12.5px;color:var(--muted);">Sun, 23 Aug 2026</span>
+            <span style="font-size:11.5px;color:var(--muted);font-style:italic;">No scheduled institutional orders</span>
           </div>
         </div>
       </div>
 
-      <div class="card" style="padding:20px;">
-        <h3 style="font-size:16px;font-weight:700;margin:0 0 12px;color:var(--ink);">Active Institutional Accounts</h3>
+      <div class="card" style="padding:22px;border:1px solid var(--line);background:var(--surface);border-radius:var(--radius-card, 12px);box-shadow:var(--shadow-xs);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--line);">
+          <div>
+            <h3 style="font-size:15px;font-weight:700;margin:0 0 2px;color:var(--ink);display:flex;align-items:center;gap:6px;">
+              <span>🏛️</span> Active Institutional Accounts
+            </h3>
+            <p style="font-size:11.5px;color:var(--muted);margin:0;">Credit exposure against authorized credit ceilings</p>
+          </div>
+          <span class="badge-tag badge-neutral" style="font-weight:600;font-size:11px;">Governed AR</span>
+        </div>
         <div style="display:flex;flex-direction:column;gap:10px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--background);border-radius:6px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px;background:var(--surface-sunken, rgba(0,0,0,0.02));border-radius:8px;border:1px solid var(--line);flex-wrap:wrap;gap:8px;">
             <div>
-              <div style="font-weight:600;font-size:13px;color:var(--ink);">University of Calicut</div>
-              <div style="font-size:11px;color:var(--muted);">Academic Affairs • Net 30</div>
+              <div style="font-weight:700;font-size:13.5px;color:var(--ink);">University of Calicut</div>
+              <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">Academic Affairs • Net 30 Term</div>
             </div>
-            <span class="badge" style="background:#fef3c7;color:#92400e;font-weight:600;">₹5,670 / ₹1,00,000</span>
+            <div style="text-align:right;">
+              <div style="font-family:var(--font-mono);font-weight:800;font-size:13px;color:var(--ink);">₹5,670.00 <span style="font-size:11px;color:var(--muted);font-weight:normal;">/ ₹1,00,000</span></div>
+              <div style="font-size:10.5px;color:var(--bronze-600);font-weight:600;margin-top:2px;">5.7% Exposure · PO Required</div>
+            </div>
           </div>
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--background);border-radius:6px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px;background:var(--surface-sunken, rgba(0,0,0,0.02));border-radius:8px;border:1px solid var(--line);flex-wrap:wrap;gap:8px;">
             <div>
-              <div style="font-weight:600;font-size:13px;color:var(--ink);">NIT Calicut</div>
-              <div style="font-size:11px;color:var(--muted);">Computer Science • Net 15</div>
+              <div style="font-weight:700;font-size:13.5px;color:var(--ink);">NIT Calicut</div>
+              <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">Computer Science • Net 15 Term</div>
             </div>
-            <span class="badge" style="background:#fef3c7;color:#92400e;font-weight:600;">₹9,805 / ₹1,00,000</span>
+            <div style="text-align:right;">
+              <div style="font-family:var(--font-mono);font-weight:800;font-size:13px;color:var(--ink);">₹9,805.00 <span style="font-size:11px;color:var(--muted);font-weight:normal;">/ ₹1,50,000</span></div>
+              <div style="font-size:10.5px;color:var(--bronze-600);font-weight:600;margin-top:2px;">6.5% Exposure · PO Required</div>
+            </div>
           </div>
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--background);border-radius:6px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px;background:var(--surface-sunken, rgba(0,0,0,0.02));border-radius:8px;border:1px solid var(--line);flex-wrap:wrap;gap:8px;">
             <div>
-              <div style="font-weight:600;font-size:13px;color:var(--ink);">IIM Kozhikode</div>
-              <div style="font-size:11px;color:var(--muted);">Executive Programmes • Net 30</div>
+              <div style="font-weight:700;font-size:13.5px;color:var(--ink);">IIM Kozhikode</div>
+              <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">Executive Programmes • Net 30 Term</div>
             </div>
-            <span class="badge" style="background:#dcfce7;color:#166534;font-weight:600;">Settled (₹0 Bal)</span>
+            <span class="badge-tag badge-success" style="font-size:11.5px;font-weight:700;display:inline-flex;align-items:center;gap:5px;padding:4px 10px;">
+              <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#10b981;"></span>
+              Settled (₹0.00 Bal)
+            </span>
           </div>
         </div>
       </div>
@@ -414,48 +516,48 @@ export function wireDepartmentOrders(root, subroute) {
   }
 
   // Add Order Modal
-  const addBtn = root.querySelector("#add-dept-order-btn");
-  if (addBtn) {
-    addBtn.addEventListener("click", () => openNewOrderWizard(root));
-  }
+  root.querySelectorAll("#add-dept-order-btn").forEach((btn) => {
+    btn.addEventListener("click", () => openNewOrderWizard(root));
+  });
 
   // Create Quote
-  const quoteBtn = root.querySelector("#new-quote-btn") || root.querySelector("#create-quote-top-btn");
-  if (quoteBtn) {
-    quoteBtn.addEventListener("click", () => openCreateQuoteModal(root));
-  }
+  root.querySelectorAll("#new-quote-btn, #create-quote-top-btn").forEach((btn) => {
+    btn.addEventListener("click", () => openCreateQuoteModal(root));
+  });
 
-  // Add Client
-  const addClientBtn = root.querySelector("#add-client-btn");
-  if (addClientBtn) {
-    addClientBtn.addEventListener("click", () => {
-      showToast("Institution onboarding form opened.", "info");
+  // Add Client / Institution
+  root.querySelectorAll("#add-client-btn, #add-client-top-btn").forEach((btn) => {
+    btn.addEventListener("click", () => openAddInstitutionModal(root));
+  });
+
+  // Convert Quote to Order
+  root.querySelectorAll("[data-convert-quote]").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      const quoteId = e.currentTarget.dataset.convertQuote;
+      openConvertQuoteModal(quoteId, root);
     });
-  }
+  });
 
   // Sync Calendar
-  const syncCalBtn = root.querySelector("#dept-sync-calendar-btn");
-  if (syncCalBtn) {
-    syncCalBtn.addEventListener("click", () => {
+  root.querySelectorAll("#dept-sync-calendar-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
       showToast("Fulfilment schedule synced with kitchen display.", "mint");
     });
-  }
+  });
 
   // Export Receivables
-  const exportCreditBtn = root.querySelector("#export-credit-btn");
-  if (exportCreditBtn) {
-    exportCreditBtn.addEventListener("click", () => {
+  root.querySelectorAll("#export-credit-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
       showToast("Institutional receivables report downloaded.", "mint");
     });
-  }
+  });
 
   // Export ZURF
-  const exportZurfBtn = root.querySelector("#export-zurf-btn");
-  if (exportZurfBtn) {
-    exportZurfBtn.addEventListener("click", () => {
+  root.querySelectorAll("#export-zurf-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
       showToast("ZURF Department Orders audit certificate generated.", "mint");
     });
-  }
+  });
 
   // Order Actions
   root.querySelectorAll("[data-view-360]").forEach((btn) => {
@@ -494,18 +596,18 @@ function renderOrdersTab(orders, totalCount) {
       </div>
 
       <!-- Orders Table -->
-      <div class="table-wrap" style="overflow-x:auto;">
-        <table class="table" style="width:100%;border-collapse:collapse;">
+      <div class="table-wrap" style="overflow-x:auto;width:100%;border-radius:var(--radius-sm, 6px);border:1px solid var(--line);">
+        <table class="table" style="width:100%;border-collapse:collapse;font-size:12.5px;">
           <thead>
-            <tr style="border-bottom:2px solid var(--border-color, #e2e8f0);text-align:left;font-size:12px;color:var(--muted);text-transform:uppercase;">
-              <th style="padding:10px 12px;">Order #</th>
-              <th style="padding:10px 12px;">Institution &amp; Department</th>
-              <th style="padding:10px 12px;">Date &amp; Window</th>
-              <th style="padding:10px 12px;">Headcount &amp; Items</th>
-              <th style="padding:10px 12px;">Amount</th>
-              <th style="padding:10px 12px;">Fulfilment Status</th>
-              <th style="padding:10px 12px;">Institutional Credit</th>
-              <th style="padding:10px 12px;text-align:right;">Actions</th>
+            <tr style="border-bottom:1px solid var(--line);background:var(--surface-sunken, rgba(0,0,0,0.02));text-align:left;font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em;">
+              <th style="padding:10px 14px;white-space:nowrap;">Order #</th>
+              <th style="padding:10px 14px;">Institution &amp; Department</th>
+              <th style="padding:10px 14px;white-space:nowrap;">Date &amp; Window</th>
+              <th style="padding:10px 14px;">Headcount &amp; Items</th>
+              <th style="padding:10px 14px;white-space:nowrap;">Amount</th>
+              <th style="padding:10px 14px;white-space:nowrap;text-align:center;">Fulfilment</th>
+              <th style="padding:10px 14px;white-space:nowrap;text-align:center;">Credit Status</th>
+              <th style="padding:10px 14px;text-align:right;white-space:nowrap;">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -523,56 +625,56 @@ function renderOrdersTab(orders, totalCount) {
                         : "Catering Items";
 
                       return `
-                <tr style="border-bottom:1px solid var(--border-color, #f1f5f9);">
-                  <td style="padding:12px;font-family:var(--font-mono);font-weight:600;color:var(--bronze-600);">
-                    ${o.orderId}
-                    ${o.poNumber ? `<div style="font-size:10.5px;color:var(--muted);">PO: ${o.poNumber}</div>` : ""}
+                <tr style="border-bottom:1px solid var(--line);transition:background 120ms ease;">
+                  <td style="padding:12px 14px;white-space:nowrap;vertical-align:top;">
+                    <div style="font-family:var(--font-mono);font-weight:700;color:var(--bronze-600);font-size:13px;">${o.orderId}</div>
+                    ${o.poNumber ? `<div style="font-size:11px;color:var(--muted);white-space:nowrap;margin-top:2px;">PO: ${o.poNumber}</div>` : ""}
                   </td>
-                  <td style="padding:12px;">
-                    <div style="font-weight:700;color:var(--ink);">${o.institutionName || "Institutional Account"}</div>
-                    <div style="font-size:12px;color:var(--muted);">${o.departmentName || o.department || "General Department"}</div>
-                    <div style="font-size:11px;color:var(--bronze-700);">C/O: ${o.careOfContact || o.careOf || "Auth Rep"}</div>
+                  <td style="padding:12px 14px;min-width:180px;vertical-align:top;">
+                    <div style="font-weight:700;color:var(--ink);font-size:13.5px;">${o.institutionName || "Institutional Account"}</div>
+                    <div style="font-size:12px;color:var(--muted);margin-top:2px;">${o.departmentName || o.department || "General Department"}</div>
+                    <div style="font-size:11px;color:var(--bronze-700);margin-top:2px;font-weight:600;">C/O: ${o.careOfContact || o.careOf || "Auth Rep"}</div>
                   </td>
-                  <td style="padding:12px;font-size:12px;">
-                    <div style="font-family:var(--font-mono);">${o.fulfilmentDate || o.orderDate}</div>
-                    <div style="font-size:11px;color:var(--muted);">${o.promisedTimeWindow || "10:00 AM"}</div>
+                  <td style="padding:12px 14px;white-space:nowrap;vertical-align:top;">
+                    <div style="font-family:var(--font-mono);font-weight:600;color:var(--ink);">${o.fulfilmentDate || o.orderDate}</div>
+                    <div style="font-size:11px;color:var(--muted);margin-top:2px;">${o.promisedTimeWindow || "10:00 AM"}</div>
                   </td>
-                  <td style="padding:12px;font-size:12.5px;max-width:220px;">
-                    <div style="font-weight:600;">${o.headcount?.final || o.headcount?.estimated || "—"} Guests</div>
-                    <div style="font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${itemsSummary}</div>
+                  <td style="padding:12px 14px;max-width:220px;vertical-align:top;">
+                    <div style="font-weight:700;color:var(--ink);">${o.headcount?.final || o.headcount?.estimated || "—"} Guests</div>
+                    <div style="font-size:11.5px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${itemsSummary}">${itemsSummary}</div>
                   </td>
-                  <td style="padding:12px;font-family:var(--font-mono);font-size:13px;">
-                    <div style="font-weight:700;color:var(--ink);">₹${((o.totalPaisa || (o.amount ? o.amount * 100 : 0)) / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</div>
+                  <td style="padding:12px 14px;white-space:nowrap;vertical-align:top;">
+                    <div style="font-family:var(--font-mono);font-weight:700;color:var(--ink);font-size:13.5px;">₹${((o.totalPaisa || (o.amount ? o.amount * 100 : 0)) / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</div>
                     ${
                       balance > 0
-                        ? `<div style="font-size:11px;color:var(--warning);font-weight:600;">Bal: ₹${(balance / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</div>`
-                        : `<div style="font-size:11px;color:var(--success);font-weight:600;">Paid in Full</div>`
+                        ? `<div style="font-size:11px;color:var(--warning);font-weight:600;margin-top:2px;">Bal: ₹${(balance / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</div>`
+                        : `<div style="font-size:11px;color:var(--success);font-weight:600;margin-top:2px;">Paid in Full</div>`
                     }
                   </td>
-                  <td style="padding:12px;">
-                    <span class="badge" style="background:${isFulfilled ? "#dcfce7;color:#166534" : "#e0f2fe;color:#0369a1"};font-weight:600;font-size:11.5px;">
+                  <td style="padding:12px 14px;text-align:center;white-space:nowrap;vertical-align:top;">
+                    <span class="badge-tag ${isFulfilled ? "badge-success" : "badge-accent"}" style="font-size:11px;font-weight:700;">
                       ${o.fulfilmentStatus || "SCHEDULED"}
                     </span>
                   </td>
-                  <td style="padding:12px;">
-                    <span class="badge" style="background:${isSettled ? "#dcfce7;color:#166534" : "#fef3c7;color:#92400e"};font-weight:600;font-size:11.5px;">
+                  <td style="padding:12px 14px;text-align:center;white-space:nowrap;vertical-align:top;">
+                    <span class="badge-tag ${isSettled ? "badge-success" : "badge-warning"}" style="font-size:11px;font-weight:700;">
                       ${isSettled ? "SETTLED" : "CREDIT OPEN"}
                     </span>
                   </td>
-                  <td style="padding:12px;text-align:right;">
-                    <div style="display:inline-flex;gap:6px;">
-                      <button class="btn btn-sm btn-ghost" data-view-360="${o.orderId}" type="button">View 360</button>
+                  <td style="padding:12px 14px;text-align:right;white-space:nowrap;vertical-align:top;">
+                    <div style="display:inline-flex;gap:6px;align-items:center;">
+                      <button class="btn btn-xs btn-ghost" data-view-360="${o.orderId}" type="button" style="padding:4px 9px;font-size:11.5px;font-weight:600;">View 360</button>
                       ${
                         !isFulfilled
-                          ? `<button class="btn btn-sm btn-ghost" data-fulfil-dept="${o.orderId}" type="button" style="color:var(--bronze-700);">Fulfil</button>`
+                          ? `<button class="btn btn-xs btn-ghost" data-fulfil-dept="${o.orderId}" type="button" style="padding:4px 9px;font-size:11.5px;font-weight:600;color:var(--bronze-700);">Fulfil</button>`
                           : ""
                       }
                       ${
                         !isSettled
-                          ? `<button class="btn btn-sm btn-primary" data-settle-dept="${o.orderId}" type="button">Settle</button>`
+                          ? `<button class="btn btn-xs btn-primary" data-settle-dept="${o.orderId}" type="button" style="padding:4px 10px;font-size:11.5px;font-weight:700;">Settle</button>`
                           : ""
                       }
-                      <button class="btn btn-sm btn-ghost" data-print-dept="${o.orderId}" type="button">Order Sheet</button>
+                      <button class="btn btn-xs btn-ghost" data-print-dept="${o.orderId}" type="button" style="padding:4px 9px;font-size:11.5px;font-weight:600;">Order Sheet</button>
                     </div>
                   </td>
                 </tr>`;
@@ -588,44 +690,59 @@ function renderOrdersTab(orders, totalCount) {
 }
 
 function renderQuotesTab() {
+  const quotes = liveQuotes || SAMPLE_QUOTES;
   return `
     <div class="card" style="padding:24px;margin-bottom:20px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
         <div>
           <h3 style="font-size:18px;font-weight:700;margin:0 0 4px;color:var(--ink);">Institutional Quotes &amp; Enquiries</h3>
           <p style="font-size:13px;color:var(--muted);margin:0;">Formal institutional quotes with effective pricing, validity dates, and one-click order conversion.</p>
         </div>
-        <button class="btn btn-primary" id="create-quote-top-btn" type="button">+ Create Quote</button>
+        <button class="btn btn-primary" id="create-quote-top-btn" type="button" style="font-size:12.5px; font-weight:700;">+ Create Quote</button>
       </div>
 
-      <div class="table-wrap">
-        <table class="table" style="width:100%;border-collapse:collapse;">
+      <div class="table-wrap" style="overflow-x:auto;width:100%;border-radius:var(--radius-sm, 6px);border:1px solid var(--line);">
+        <table class="table" style="width:100%;border-collapse:collapse;font-size:12.5px;">
           <thead>
-            <tr style="border-bottom:2px solid var(--border-color, #e2e8f0);text-align:left;font-size:12px;color:var(--muted);text-transform:uppercase;">
-              <th style="padding:10px 12px;">Quote #</th>
-              <th style="padding:10px 12px;">Institution &amp; Contact</th>
-              <th style="padding:10px 12px;">Valid Until</th>
-              <th style="padding:10px 12px;">Headcount</th>
-              <th style="padding:10px 12px;">Quote Amount</th>
-              <th style="padding:10px 12px;">Status</th>
-              <th style="padding:10px 12px;text-align:right;">Actions</th>
+            <tr style="border-bottom:1px solid var(--line);background:var(--surface-sunken, rgba(0,0,0,0.02));text-align:left;font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em;">
+              <th style="padding:10px 14px;white-space:nowrap;">Quote #</th>
+              <th style="padding:10px 14px;">Institution &amp; Contact</th>
+              <th style="padding:10px 14px;white-space:nowrap;">Valid Until</th>
+              <th style="padding:10px 14px;white-space:nowrap;">Headcount</th>
+              <th style="padding:10px 14px;white-space:nowrap;">Quote Amount</th>
+              <th style="padding:10px 14px;white-space:nowrap;text-align:center;">Status</th>
+              <th style="padding:10px 14px;text-align:right;white-space:nowrap;">Actions</th>
             </tr>
           </thead>
           <tbody>
-            <tr style="border-bottom:1px solid var(--border-color, #f1f5f9);">
-              <td style="padding:12px;font-family:var(--font-mono);font-weight:600;color:var(--bronze-600);">QUO-2026-0042</td>
-              <td style="padding:12px;">
-                <div style="font-weight:700;color:var(--ink);">Farook College Autonomous</div>
-                <div style="font-size:12px;color:var(--muted);">Postgraduate Commerce Dept • Dr. Basheer A.</div>
-              </td>
-              <td style="padding:12px;font-family:var(--font-mono);font-size:12px;">2026-08-30</td>
-              <td style="padding:12px;font-size:13px;">60 Guests</td>
-              <td style="padding:12px;font-family:var(--font-mono);font-weight:700;color:var(--ink);">₹22,500.00</td>
-              <td style="padding:12px;"><span class="badge" style="background:#e0f2fe;color:#0369a1;font-weight:600;">SENT</span></td>
-              <td style="padding:12px;text-align:right;">
-                <button class="btn btn-sm btn-primary" data-convert-quote="QUO-2026-0042" type="button">Convert to Order</button>
-              </td>
-            </tr>
+            ${
+              quotes.map((q) => `
+                <tr style="border-bottom:1px solid var(--line);">
+                  <td style="padding:12px 14px;font-family:var(--font-mono);font-weight:700;color:var(--bronze-600);white-space:nowrap;">${q.quoteId}</td>
+                  <td style="padding:12px 14px;min-width:180px;">
+                    <div style="font-weight:700;color:var(--ink);font-size:13.5px;">${q.institutionName}</div>
+                    <div style="font-size:12px;color:var(--muted);margin-top:2px;">${q.departmentName} • ${q.contactPerson}</div>
+                  </td>
+                  <td style="padding:12px 14px;font-family:var(--font-mono);font-size:12px;white-space:nowrap;">${q.validUntil}</td>
+                  <td style="padding:12px 14px;font-size:13px;white-space:nowrap;font-weight:600;">${q.headcount} Guests</td>
+                  <td style="padding:12px 14px;font-family:var(--font-mono);font-weight:700;color:var(--ink);white-space:nowrap;font-size:13.5px;">₹${q.amount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
+                  <td style="padding:12px 14px;text-align:center;white-space:nowrap;">
+                    ${
+                      q.status === "CONVERTED"
+                        ? `<span class="badge-tag badge-success" style="font-weight:700;font-size:11px;">CONVERTED</span>`
+                        : `<span class="badge-tag badge-accent" style="font-weight:700;font-size:11px;">SENT</span>`
+                    }
+                  </td>
+                  <td style="padding:12px 14px;text-align:right;white-space:nowrap;">
+                    ${
+                      q.status === "CONVERTED"
+                        ? `<span style="font-size:11.5px; color:#059669; font-weight:700;">✓ Active Order</span>`
+                        : `<button class="btn btn-xs btn-primary" data-convert-quote="${q.quoteId}" type="button" style="padding:5px 12px;font-size:11.5px;font-weight:700;">Convert to Order</button>`
+                    }
+                  </td>
+                </tr>
+              `).join("")
+            }
           </tbody>
         </table>
       </div>
@@ -635,42 +752,58 @@ function renderQuotesTab() {
 
 function renderScheduleTab(orders) {
   return `
-    <div class="card" style="padding:24px;margin-bottom:20px;">
-      <div class="card-head" style="margin-bottom:16px;">
-        <h3 style="font-size:18px;font-weight:700;margin:0 0 4px;color:var(--ink);">Institutional Catering Schedule</h3>
-        <p style="font-size:13px;color:var(--muted);margin:0;">Daily and weekly institutional delivery manifests across all café branches.</p>
+    <div class="card" style="padding:22px;margin-bottom:20px;border:1px solid var(--line);background:var(--surface);border-radius:var(--radius-card, 12px);box-shadow:var(--shadow-xs);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:10px;">
+        <div>
+          <h3 style="font-size:16px;font-weight:700;margin:0 0 3px;color:var(--ink);">Institutional Fulfilment Schedule</h3>
+          <p style="font-size:12px;color:var(--muted);margin:0;">Daily and weekly institutional delivery manifests across all authorized café branches.</p>
+        </div>
+        <span class="badge-tag badge-neutral" style="font-size:11px;font-weight:600;">
+          <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#10b981;margin-right:4px;"></span>
+          Kitchen Dispatch Synchronized
+        </span>
       </div>
 
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;">
-        <div class="card" style="background:var(--background);border:1px solid var(--border-color, #e2e8f0);padding:16px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-            <div style="font-weight:700;font-size:14px;color:var(--ink);">Thursday, 20 Aug 2026</div>
-            <span class="badge" style="background:#e0f2fe;color:#0369a1;font-weight:600;">1 Order</span>
-          </div>
-          <div style="padding:12px;background:var(--surface);border-radius:6px;border:1px solid var(--border-color,#f1f5f9);">
-            <div style="display:flex;justify-content:space-between;">
-              <span style="font-weight:700;color:var(--bronze-600);font-family:var(--font-mono);">DO-2026-0001</span>
-              <span style="font-size:11.5px;color:var(--muted);">10:00 - 10:30 AM</span>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;">
+        <div class="card" style="background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-card, 12px);padding:18px;box-shadow:var(--shadow-xs);">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--line);">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span style="font-size:15px;">📅</span>
+              <span style="font-weight:700;font-size:13.5px;color:var(--ink);">Thursday, 20 Aug 2026</span>
             </div>
-            <div style="font-weight:600;font-size:13px;margin-top:4px;">University of Calicut (Dean Office)</div>
-            <div style="font-size:12px;color:var(--muted);">20 Guests • Pour-Over Coffee, Croissants</div>
-            <div style="font-size:11px;color:var(--bronze-700);margin-top:4px;">Delivery: Senate Hall, Floor 2</div>
+            <span class="badge-tag badge-accent" style="font-weight:700;font-size:11px;padding:3px 9px;">1 Delivery Scheduled</span>
+          </div>
+          <div style="padding:14px;background:var(--surface-sunken, rgba(0,0,0,0.02));border-radius:8px;border:1px solid var(--line);">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <span style="font-weight:700;color:var(--bronze-600);font-family:var(--font-mono);font-size:13px;">DO-2026-0001</span>
+              <span class="badge-tag badge-neutral" style="font-size:11px;font-weight:600;">⏰ 10:00 - 10:30 AM</span>
+            </div>
+            <div style="font-weight:700;font-size:13.5px;color:var(--ink);margin-bottom:2px;">University of Calicut (Dean Office)</div>
+            <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">20 Guests • Pour-Over Specialty Coffee, Croissants</div>
+            <div style="font-size:11.5px;color:var(--bronze-700);font-weight:600;display:flex;align-items:center;gap:5px;">
+              <span>📍</span> Delivery: Senate Hall, Floor 2
+            </div>
           </div>
         </div>
 
-        <div class="card" style="background:var(--background);border:1px solid var(--border-color, #e2e8f0);padding:16px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-            <div style="font-weight:700;font-size:14px;color:var(--ink);">Friday, 21 Aug 2026</div>
-            <span class="badge" style="background:#e0f2fe;color:#0369a1;font-weight:600;">1 Order</span>
-          </div>
-          <div style="padding:12px;background:var(--surface);border-radius:6px;border:1px solid var(--border-color,#f1f5f9);">
-            <div style="display:flex;justify-content:space-between;">
-              <span style="font-weight:700;color:var(--bronze-600);font-family:var(--font-mono);">DO-2026-0002</span>
-              <span style="font-size:11.5px;color:var(--muted);">01:00 - 01:30 PM</span>
+        <div class="card" style="background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-card, 12px);padding:18px;box-shadow:var(--shadow-xs);">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--line);">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span style="font-size:15px;">📅</span>
+              <span style="font-weight:700;font-size:13.5px;color:var(--ink);">Friday, 21 Aug 2026</span>
             </div>
-            <div style="font-weight:600;font-size:13px;margin-top:4px;">NIT Calicut (Computer Science)</div>
-            <div style="font-size:12px;color:var(--muted);">30 Guests • Cold Brew Bottles, Panini</div>
-            <div style="font-size:11px;color:var(--bronze-700);margin-top:4px;">Delivery: Seminar Complex Block B</div>
+            <span class="badge-tag badge-accent" style="font-weight:700;font-size:11px;padding:3px 9px;">1 Delivery Scheduled</span>
+          </div>
+          <div style="padding:14px;background:var(--surface-sunken, rgba(0,0,0,0.02));border-radius:8px;border:1px solid var(--line);">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <span style="font-weight:700;color:var(--bronze-600);font-family:var(--font-mono);font-size:13px;">DO-2026-0002</span>
+              <span class="badge-tag badge-neutral" style="font-size:11px;font-weight:600;">⏰ 01:00 - 01:30 PM</span>
+            </div>
+            <div style="font-weight:700;font-size:13.5px;color:var(--ink);margin-bottom:2px;">NIT Calicut (Computer Science)</div>
+            <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">30 Guests • Cold Brew Bottles, Panini</div>
+            <div style="font-size:11.5px;color:var(--bronze-700);font-weight:600;display:flex;align-items:center;gap:5px;">
+              <span>📍</span> Delivery: Seminar Complex Block B
+            </div>
           </div>
         </div>
       </div>
@@ -679,47 +812,49 @@ function renderScheduleTab(orders) {
 }
 
 function renderAccountsTab() {
+  const accounts = liveAccounts || SAMPLE_ACCOUNTS;
   return `
     <div class="card" style="padding:24px;margin-bottom:20px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
         <div>
           <h3 style="font-size:18px;font-weight:700;margin:0 0 4px;color:var(--ink);">Institutional Credit Accounts</h3>
           <p style="font-size:13px;color:var(--muted);margin:0;">Governed credit limits, purchase order mandates, and billing cycle configurations.</p>
         </div>
+        <button class="btn btn-primary" id="add-client-top-btn" type="button" style="font-size:12.5px; font-weight:700;">+ Add Institution</button>
       </div>
 
-      <div class="table-wrap">
-        <table class="table" style="width:100%;border-collapse:collapse;">
+      <div class="table-wrap" style="overflow-x:auto;width:100%;border-radius:var(--radius-sm, 6px);border:1px solid var(--line);">
+        <table class="table" style="width:100%;border-collapse:collapse;font-size:12.5px;">
           <thead>
-            <tr style="border-bottom:2px solid var(--border-color, #e2e8f0);text-align:left;font-size:12px;color:var(--muted);text-transform:uppercase;">
-              <th style="padding:10px 12px;">Account ID</th>
-              <th style="padding:10px 12px;">Institution</th>
-              <th style="padding:10px 12px;">Credit Limit</th>
-              <th style="padding:10px 12px;">Current Exposure</th>
-              <th style="padding:10px 12px;">PO Required</th>
-              <th style="padding:10px 12px;">Billing Cycle</th>
-              <th style="padding:10px 12px;">Status</th>
+            <tr style="border-bottom:1px solid var(--line);background:var(--surface-sunken, rgba(0,0,0,0.02));text-align:left;font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:0.04em;">
+              <th style="padding:10px 14px;white-space:nowrap;">Account ID</th>
+              <th style="padding:10px 14px;">Institution</th>
+              <th style="padding:10px 14px;white-space:nowrap;">Credit Limit</th>
+              <th style="padding:10px 14px;white-space:nowrap;">Current Exposure</th>
+              <th style="padding:10px 14px;white-space:nowrap;text-align:center;">PO Required</th>
+              <th style="padding:10px 14px;white-space:nowrap;">Billing Terms</th>
+              <th style="padding:10px 14px;white-space:nowrap;text-align:center;">Status</th>
             </tr>
           </thead>
           <tbody>
-            <tr style="border-bottom:1px solid var(--border-color, #f1f5f9);">
-              <td style="padding:12px;font-family:var(--font-mono);font-weight:600;color:var(--bronze-600);">INST-001</td>
-              <td style="padding:12px;font-weight:700;color:var(--ink);">University of Calicut</td>
-              <td style="padding:12px;font-family:var(--font-mono);">₹1,00,000.00</td>
-              <td style="padding:12px;font-family:var(--font-mono);font-weight:600;color:var(--warning);">₹5,670.00</td>
-              <td style="padding:12px;"><span class="badge" style="background:#dcfce7;color:#166534;">YES</span></td>
-              <td style="padding:12px;">MONTHLY</td>
-              <td style="padding:12px;"><span class="badge" style="background:#dcfce7;color:#166534;">ACTIVE</span></td>
-            </tr>
-            <tr style="border-bottom:1px solid var(--border-color, #f1f5f9);">
-              <td style="padding:12px;font-family:var(--font-mono);font-weight:600;color:var(--bronze-600);">INST-002</td>
-              <td style="padding:12px;font-weight:700;color:var(--ink);">NIT Calicut</td>
-              <td style="padding:12px;font-family:var(--font-mono);">₹1,50,000.00</td>
-              <td style="padding:12px;font-family:var(--font-mono);font-weight:600;color:var(--warning);">₹9,805.00</td>
-              <td style="padding:12px;"><span class="badge" style="background:#dcfce7;color:#166534;">YES</span></td>
-              <td style="padding:12px;">PER_ORDER</td>
-              <td style="padding:12px;"><span class="badge" style="background:#dcfce7;color:#166534;">ACTIVE</span></td>
-            </tr>
+            ${
+              accounts.map((acc) => `
+                <tr style="border-bottom:1px solid var(--line);">
+                  <td style="padding:12px 14px;font-family:var(--font-mono);font-weight:700;color:var(--bronze-600);white-space:nowrap;">${acc.accountId}</td>
+                  <td style="padding:12px 14px;">
+                    <div style="font-weight:700;color:var(--ink);font-size:13.5px;">${acc.institutionName}</div>
+                    <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">${acc.departmentName}</div>
+                  </td>
+                  <td style="padding:12px 14px;font-family:var(--font-mono);white-space:nowrap;">₹${acc.creditLimit.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
+                  <td style="padding:12px 14px;font-family:var(--font-mono);font-weight:700;color:${acc.currentExposure > 0 ? "var(--warning)" : "var(--ink)"};white-space:nowrap;">₹${acc.currentExposure.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</td>
+                  <td style="padding:12px 14px;text-align:center;white-space:nowrap;">
+                    <span class="badge-tag badge-${acc.poRequired ? "success" : "neutral"}" style="font-weight:700;font-size:11px;">${acc.poRequired ? "YES" : "NO"}</span>
+                  </td>
+                  <td style="padding:12px 14px;white-space:nowrap;font-weight:600;color:var(--ink);">${acc.paymentTerms || acc.billingCycle}</td>
+                  <td style="padding:12px 14px;text-align:center;white-space:nowrap;"><span class="badge-tag badge-success" style="font-weight:700;font-size:11px;">${acc.status}</span></td>
+                </tr>
+              `).join("")
+            }
           </tbody>
         </table>
       </div>
@@ -729,24 +864,30 @@ function renderAccountsTab() {
 
 function renderCreditTab(orders, totalOutstanding, totalSettled) {
   return `
-    <div class="card" style="padding:24px;margin-bottom:20px;">
-      <div class="card-head" style="margin-bottom:16px;">
-        <h3 style="font-size:18px;font-weight:700;margin:0 0 4px;color:var(--ink);">Institutional Credit &amp; Settlement Register</h3>
-        <p style="font-size:13px;color:var(--muted);margin:0;">Aging breakdown, outstanding receivables, and recorded settlement transactions.</p>
+    <div class="card" style="padding:22px;margin-bottom:20px;border:1px solid var(--line);background:var(--surface);border-radius:var(--radius-card, 12px);box-shadow:var(--shadow-xs);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:10px;">
+        <div>
+          <h3 style="font-size:16px;font-weight:700;margin:0 0 3px;color:var(--ink);">Institutional Credit &amp; Receivables Ledger</h3>
+          <p style="font-size:12px;color:var(--muted);margin:0;">Aging analysis, outstanding credit exposure, and recorded bank settlement postings.</p>
+        </div>
+        <span class="badge-tag badge-neutral" style="font-size:11px;font-weight:600;">Real-Time AR Ledger</span>
       </div>
 
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:20px;">
-        <div style="padding:14px;background:var(--background);border-radius:6px;border-left:3px solid #10b981;">
-          <div style="font-size:11.5px;color:var(--muted);text-transform:uppercase;font-weight:600;">Current (0-30 Days)</div>
-          <div style="font-size:18px;font-weight:700;color:var(--ink);margin-top:2px;">₹${(totalOutstanding / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin-bottom:20px;">
+        <div class="card" style="padding:16px;background:var(--surface);border:1px solid var(--line);border-left:4px solid #10b981;border-radius:var(--radius-sm);box-shadow:var(--shadow-xs);">
+          <div style="font-size:11.5px;color:var(--muted);text-transform:uppercase;font-weight:700;letter-spacing:0.04em;">Current (0–30 Days)</div>
+          <div style="font-size:22px;font-weight:800;color:var(--ink);font-family:var(--font-mono);margin:6px 0 2px;">₹${(totalOutstanding / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</div>
+          <div style="font-size:11.5px;color:#10b981;font-weight:600;">Within credit terms (Active)</div>
         </div>
-        <div style="padding:14px;background:var(--background);border-radius:6px;border-left:3px solid #f59e0b;">
-          <div style="font-size:11.5px;color:var(--muted);text-transform:uppercase;font-weight:600;">31-60 Days</div>
-          <div style="font-size:18px;font-weight:700;color:var(--ink);margin-top:2px;">₹0.00</div>
+        <div class="card" style="padding:16px;background:var(--surface);border:1px solid var(--line);border-left:4px solid #f59e0b;border-radius:var(--radius-sm);box-shadow:var(--shadow-xs);">
+          <div style="font-size:11.5px;color:var(--muted);text-transform:uppercase;font-weight:700;letter-spacing:0.04em;">Aging (31–60 Days)</div>
+          <div style="font-size:22px;font-weight:800;color:var(--ink);font-family:var(--font-mono);margin:6px 0 2px;">₹0.00</div>
+          <div style="font-size:11.5px;color:var(--muted);">Zero overdue balances</div>
         </div>
-        <div style="padding:14px;background:var(--background);border-radius:6px;border-left:3px solid #ef4444;">
-          <div style="font-size:11.5px;color:var(--muted);text-transform:uppercase;font-weight:600;">60+ Days (Overdue)</div>
-          <div style="font-size:18px;font-weight:700;color:var(--ink);margin-top:2px;">₹0.00</div>
+        <div class="card" style="padding:16px;background:var(--surface);border:1px solid var(--line);border-left:4px solid #ef4444;border-radius:var(--radius-sm);box-shadow:var(--shadow-xs);">
+          <div style="font-size:11.5px;color:var(--muted);text-transform:uppercase;font-weight:700;letter-spacing:0.04em;">Overdue (60+ Days)</div>
+          <div style="font-size:22px;font-weight:800;color:var(--ink);font-family:var(--font-mono);margin:6px 0 2px;">₹0.00</div>
+          <div style="font-size:11.5px;color:var(--muted);">Zero default exposure</div>
         </div>
       </div>
     </div>
@@ -755,35 +896,65 @@ function renderCreditTab(orders, totalOutstanding, totalSettled) {
 
 function renderIntegrityTab(orders) {
   return `
-    <div class="card" style="padding:24px;margin-bottom:20px;">
-      <div class="card-head" style="margin-bottom:16px;">
-        <h3 style="font-size:18px;font-weight:700;margin:0 0 4px;color:var(--ink);">Three-Way Reconciliation &amp; Integrity Health</h3>
-        <p style="font-size:13px;color:var(--muted);margin:0;">Verification between Ordered items, Fulfilment proofs, and Invoiced/Settled amounts.</p>
+    <div class="card" style="padding:22px;margin-bottom:20px;border:1px solid var(--line);background:var(--surface);border-radius:var(--radius-card, 12px);box-shadow:var(--shadow-xs);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid var(--line);flex-wrap:wrap;gap:10px;">
+        <div>
+          <h3 style="font-size:16px;font-weight:700;margin:0 0 3px;color:var(--ink);">Three-Way Reconciliation &amp; Integrity Health</h3>
+          <p style="font-size:12px;color:var(--muted);margin:0;">Authoritative cross-check between Ordered items, Delivery acknowledgements, and Settlements.</p>
+        </div>
+        <span class="badge-tag badge-success" style="font-size:11.5px;font-weight:700;display:inline-flex;align-items:center;gap:6px;padding:4px 10px;">
+          <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#10b981;"></span>
+          100% Integrity Score
+        </span>
       </div>
 
       <div style="display:flex;flex-direction:column;gap:12px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#f0fdf4;border-radius:6px;border:1px solid #bbf7d0;">
-          <div>
-            <strong style="color:#166534;">PO Number Validation Check</strong>
-            <div style="font-size:12px;color:#15803d;">All active orders over ₹10,000 have valid Purchase Order references attached.</div>
+        <div class="card" style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;background:var(--surface);border-radius:var(--radius-card, 10px);border:1px solid var(--line);border-left:4px solid #10b981;box-shadow:var(--shadow-xs);flex-wrap:wrap;gap:12px;">
+          <div style="display:flex;align-items:center;gap:14px;">
+            <div style="width:38px;height:38px;border-radius:8px;background:rgba(16,185,129,0.12);color:#10b981;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;flex-shrink:0;">
+              🛡️
+            </div>
+            <div>
+              <div style="font-size:13.5px;font-weight:700;color:var(--ink);">PO Number Validation Check</div>
+              <div style="font-size:12px;color:var(--muted);margin-top:2px;">All active orders over ₹10,000 have valid Purchase Order references attached.</div>
+            </div>
           </div>
-          <span class="badge" style="background:#166534;color:var(--ink);font-weight:700;">PASS</span>
+          <span class="badge-tag badge-success" style="font-size:11.5px;font-weight:700;padding:4px 12px;display:inline-flex;align-items:center;gap:6px;">
+            <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#10b981;"></span>
+            VERIFIED PASS
+          </span>
         </div>
 
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#f0fdf4;border-radius:6px;border:1px solid #bbf7d0;">
-          <div>
-            <strong style="color:#166534;">Fulfilment Proof &amp; Receiving Acknowledgement</strong>
-            <div style="font-size:12px;color:#15803d;">All completed orders contain recorded receiving contact names and device acknowledgements.</div>
+        <div class="card" style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;background:var(--surface);border-radius:var(--radius-card, 10px);border:1px solid var(--line);border-left:4px solid #10b981;box-shadow:var(--shadow-xs);flex-wrap:wrap;gap:12px;">
+          <div style="display:flex;align-items:center;gap:14px;">
+            <div style="width:38px;height:38px;border-radius:8px;background:rgba(16,185,129,0.12);color:#10b981;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;flex-shrink:0;">
+              📦
+            </div>
+            <div>
+              <div style="font-size:13.5px;font-weight:700;color:var(--ink);">Fulfilment Proof &amp; Receiving Acknowledgement</div>
+              <div style="font-size:12px;color:var(--muted);margin-top:2px;">All completed orders contain recorded receiving contact names and device acknowledgements.</div>
+            </div>
           </div>
-          <span class="badge" style="background:#166534;color:var(--ink);font-weight:700;">PASS</span>
+          <span class="badge-tag badge-success" style="font-size:11.5px;font-weight:700;padding:4px 12px;display:inline-flex;align-items:center;gap:6px;">
+            <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#10b981;"></span>
+            VERIFIED PASS
+          </span>
         </div>
 
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#f0fdf4;border-radius:6px;border:1px solid #bbf7d0;">
-          <div>
-            <strong style="color:#166534;">Credit Exposure vs Authorized Limit</strong>
-            <div style="font-size:12px;color:#15803d;">No institutional account exceeds its approved credit ceiling.</div>
+        <div class="card" style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;background:var(--surface);border-radius:var(--radius-card, 10px);border:1px solid var(--line);border-left:4px solid #10b981;box-shadow:var(--shadow-xs);flex-wrap:wrap;gap:12px;">
+          <div style="display:flex;align-items:center;gap:14px;">
+            <div style="width:38px;height:38px;border-radius:8px;background:rgba(16,185,129,0.12);color:#10b981;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;flex-shrink:0;">
+              💳
+            </div>
+            <div>
+              <div style="font-size:13.5px;font-weight:700;color:var(--ink);">Credit Exposure vs Authorized Limit</div>
+              <div style="font-size:12px;color:var(--muted);margin-top:2px;">No institutional account exceeds its approved credit ceiling.</div>
+            </div>
           </div>
-          <span class="badge" style="background:#166534;color:var(--ink);font-weight:700;">PASS</span>
+          <span class="badge-tag badge-success" style="font-size:11.5px;font-weight:700;padding:4px 12px;display:inline-flex;align-items:center;gap:6px;">
+            <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#10b981;"></span>
+            VERIFIED PASS
+          </span>
         </div>
       </div>
     </div>
@@ -906,34 +1077,269 @@ function openCreateQuoteModal(root) {
     body: `
       <form id="create-quote-form" class="form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
         <div class="field" style="grid-column:1/-1;">
-          <label class="label" style="font-weight:600;">Institution Name *</label>
+          <label class="label" style="font-weight:600;font-size:12.5px;">Institution Name *</label>
           <input type="text" id="quote-inst" class="input" placeholder="e.g. Farook College Autonomous" required />
         </div>
         <div class="field">
-          <label class="label" style="font-weight:600;">Department *</label>
-          <input type="text" id="quote-dept" class="input" placeholder="e.g. Commerce Department" required />
+          <label class="label" style="font-weight:600;font-size:12.5px;">Department *</label>
+          <input type="text" id="quote-dept" class="input" placeholder="e.g. Postgraduate Commerce Dept" required />
         </div>
         <div class="field">
-          <label class="label" style="font-weight:600;">Contact Person *</label>
+          <label class="label" style="font-weight:600;font-size:12.5px;">Contact Person *</label>
           <input type="text" id="quote-contact" class="input" placeholder="e.g. Dr. Basheer A." required />
         </div>
         <div class="field">
-          <label class="label" style="font-weight:600;">Valid Until *</label>
+          <label class="label" style="font-weight:600;font-size:12.5px;">Valid Until *</label>
           <input type="date" id="quote-valid" class="input" value="${new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10)}" required />
         </div>
         <div class="field">
-          <label class="label" style="font-weight:600;">Total Proposed Amount (₹) *</label>
-          <input type="number" id="quote-amount" class="input" placeholder="e.g. 22500" required />
+          <label class="label" style="font-weight:600;font-size:12.5px;">Estimated Headcount *</label>
+          <input type="number" id="quote-headcount" class="input" min="1" value="50" required />
         </div>
         <div class="field" style="grid-column:1/-1;">
-          <label class="label" style="font-weight:600;">Menu Package Description *</label>
-          <textarea id="quote-items" class="textarea" rows="2" placeholder="e.g. Executive High Tea Service with Cold Brew & Mini Croissants" required></textarea>
+          <label class="label" style="font-weight:600;font-size:12.5px;">Total Proposed Amount (₹) *</label>
+          <input type="number" id="quote-amount" class="input" min="1" placeholder="e.g. 22500" required />
+        </div>
+        <div class="field" style="grid-column:1/-1;">
+          <label class="label" style="font-weight:600;font-size:12.5px;">Menu Package Description *</label>
+          <textarea id="quote-items" class="textarea" rows="2" placeholder="e.g. Executive High Tea Service with Specialty Pour-Over & Artisanal Pastries" required></textarea>
         </div>
       </form>
     `,
-    saveLabel: "Issue Quote",
+    saveLabel: "Issue Formal Quote",
     onSave: async (modalEl) => {
-      showToast("Institutional quote issued successfully!", "mint");
+      const inst = modalEl.querySelector("#quote-inst")?.value?.trim();
+      const dept = modalEl.querySelector("#quote-dept")?.value?.trim();
+      const contact = modalEl.querySelector("#quote-contact")?.value?.trim();
+      const validUntil = modalEl.querySelector("#quote-valid")?.value;
+      const headcount = Number(modalEl.querySelector("#quote-headcount")?.value || 50);
+      const amount = Number(modalEl.querySelector("#quote-amount")?.value || 0);
+      const items = modalEl.querySelector("#quote-items")?.value?.trim();
+
+      if (!inst || !dept || !contact || amount <= 0 || !items) {
+        showToast("Please fill in all mandatory fields with valid values.", "coral");
+        return false;
+      }
+
+      if (!liveQuotes) {
+        liveQuotes = [...SAMPLE_QUOTES];
+      }
+
+      const newQuoteNum = liveQuotes.length + 44;
+      const newQuote = {
+        quoteId: `QUO-2026-00${newQuoteNum}`,
+        institutionName: inst,
+        departmentName: dept,
+        contactPerson: contact,
+        validUntil: validUntil || new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10),
+        headcount: headcount,
+        amount: amount,
+        status: "SENT",
+        items: items,
+      };
+
+      liveQuotes.unshift(newQuote);
+      showToast(`Institutional quote ${newQuote.quoteId} issued for ${inst}!`, "mint");
+      refreshDeptView(root);
+      return true;
+    },
+  });
+}
+
+function openConvertQuoteModal(quoteId, root) {
+  const quotes = liveQuotes || SAMPLE_QUOTES;
+  const quote = quotes.find((q) => q.quoteId === quoteId) || quotes[0];
+
+  openModal({
+    title: `Convert Quote to Order — ${quote.quoteId}`,
+    maxWidth: "600px",
+    body: `
+      <form id="convert-quote-form" class="form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+        <div style="grid-column:1/-1;padding:12px 14px;background:var(--surface-sunken, rgba(0,0,0,0.02));border:1px solid var(--line);border-radius:6px;font-size:12.5px;">
+          <div style="font-weight:700;color:var(--ink);font-size:13.5px;">${quote.institutionName}</div>
+          <div style="color:var(--muted);margin-top:2px;">${quote.departmentName} • Contact: ${quote.contactPerson}</div>
+          <div style="margin-top:6px;font-weight:600;color:var(--bronze-600);">Quote Amount: ₹${quote.amount.toLocaleString("en-IN", { minimumFractionDigits: 2 })} (${quote.headcount} Guests)</div>
+        </div>
+        <div class="field">
+          <label class="label" style="font-weight:600;font-size:12.5px;">Purchase Order (PO) Number</label>
+          <input type="text" id="convert-po" class="input" placeholder="e.g. PO-2026-${quote.quoteId.replace('QUO-', '')}" />
+        </div>
+        <div class="field">
+          <label class="label" style="font-weight:600;font-size:12.5px;">Fulfilment Date *</label>
+          <input type="date" id="convert-date" class="input" value="${new Date().toISOString().slice(0, 10)}" required />
+        </div>
+        <div class="field">
+          <label class="label" style="font-weight:600;font-size:12.5px;">Promised Time Window *</label>
+          <input type="text" id="convert-window" class="input" value="10:00 - 10:30 AM" required />
+        </div>
+        <div class="field">
+          <label class="label" style="font-weight:600;font-size:12.5px;">Café Location *</label>
+          <select id="convert-cafe" class="select" required>
+            <option value="ZC-0001">ZC-0001 · Koramangala Main</option>
+            <option value="ZC-0002">ZC-0002 · Indiranagar Central</option>
+            <option value="ZC-0003">ZC-0003 · Calicut Beach</option>
+          </select>
+        </div>
+        <div class="field" style="grid-column:1/-1;">
+          <label class="label" style="font-weight:600;font-size:12.5px;">Delivery Location (Campus / Floor / Room)</label>
+          <input type="text" id="convert-loc" class="input" placeholder="e.g. Main Auditorium Green Room" />
+        </div>
+      </form>
+    `,
+    saveLabel: "Confirm & Create Department Order",
+    onSave: async (modalEl) => {
+      const po = modalEl.querySelector("#convert-po")?.value?.trim() || `PO-${quote.quoteId.replace('QUO-', '')}`;
+      const date = modalEl.querySelector("#convert-date")?.value;
+      const windowTime = modalEl.querySelector("#convert-window")?.value?.trim();
+      const cafeId = modalEl.querySelector("#convert-cafe")?.value || "ZC-0001";
+      const loc = modalEl.querySelector("#convert-loc")?.value?.trim();
+
+      if (!date || !windowTime) {
+        showToast("Please provide delivery date and service window.", "coral");
+        return false;
+      }
+
+      // Mark quote as converted
+      if (!liveQuotes) liveQuotes = [...SAMPLE_QUOTES];
+      const targetQuote = liveQuotes.find((q) => q.quoteId === quote.quoteId);
+      if (targetQuote) targetQuote.status = "CONVERTED";
+
+      // Create new department order
+      if (!liveOrders) liveOrders = [...SAMPLE_ORDERS];
+      const newOrderId = `DO-2026-000${liveOrders.length + 1}`;
+      const newOrder = {
+        orderId: newOrderId,
+        institutionName: quote.institutionName,
+        departmentName: quote.departmentName,
+        careOfContact: quote.contactPerson,
+        cafeId: cafeId,
+        orderDate: new Date().toISOString().slice(0, 10),
+        fulfilmentDate: date,
+        promisedTimeWindow: windowTime,
+        items: [
+          {
+            name: quote.items || "Institutional Catering Menu",
+            quantity: quote.headcount,
+            unit: "guests",
+            unitPricePaisa: Math.round((quote.amount * 100) / quote.headcount),
+            totalPaisa: quote.amount * 100,
+          },
+        ],
+        headcount: { estimated: quote.headcount, guaranteed: quote.headcount, final: quote.headcount, actual: quote.headcount },
+        totalPaisa: quote.amount * 100,
+        settledPaisa: 0,
+        orderStatus: "CONFIRMED",
+        fulfilmentStatus: "SCHEDULED",
+        creditStatus: "CREDIT_OPEN",
+        poNumber: po,
+      };
+
+      liveOrders.unshift(newOrder);
+
+      // Attempt backend API sync
+      try {
+        await apiPost("/department-orders", {
+          body: {
+            institutionName: quote.institutionName,
+            departmentName: quote.departmentName,
+            careOfContact: quote.contactPerson,
+            poNumber: po,
+            cafeId,
+            fulfilmentDate: date,
+            promisedTimeWindow: windowTime,
+            headcount: newOrder.headcount,
+            items: newOrder.items,
+            deliveryLocation: { notes: loc },
+          },
+        });
+      } catch (e) {
+        // Fallback gracefully
+      }
+
+      showToast(`Quote ${quote.quoteId} successfully converted to Order ${newOrderId}!`, "mint");
+      refreshDeptView(root);
+      return true;
+    },
+  });
+}
+
+function openAddInstitutionModal(root) {
+  openModal({
+    title: "Onboard Institutional Credit Account",
+    maxWidth: "600px",
+    body: `
+      <form id="add-inst-form" class="form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+        <div class="field" style="grid-column:1/-1;">
+          <label class="label" style="font-weight:600;font-size:12.5px;">Institution Name *</label>
+          <input type="text" id="inst-name" class="input" placeholder="e.g. Indian Institute of Management Kozhikode" required />
+        </div>
+        <div class="field">
+          <label class="label" style="font-weight:600;font-size:12.5px;">Primary Department / Division *</label>
+          <input type="text" id="inst-dept" class="input" placeholder="e.g. Executive Education Centre" required />
+        </div>
+        <div class="field">
+          <label class="label" style="font-weight:600;font-size:12.5px;">Authorized Signatory / Contact *</label>
+          <input type="text" id="inst-contact" class="input" placeholder="e.g. Registrar Office / Dean" required />
+        </div>
+        <div class="field">
+          <label class="label" style="font-weight:600;font-size:12.5px;">Approved Credit Limit (₹) *</label>
+          <input type="number" id="inst-credit-limit" class="input" min="10000" step="5000" value="150000" required />
+        </div>
+        <div class="field">
+          <label class="label" style="font-weight:600;font-size:12.5px;">Billing Cycle &amp; Terms *</label>
+          <select id="inst-terms" class="select" required>
+            <option value="NET 30">Monthly Statement · NET 30</option>
+            <option value="NET 15">Bi-Weekly Statement · NET 15</option>
+            <option value="PER_ORDER">Invoice Per Order · NET 7</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="label" style="font-weight:600;font-size:12.5px;">Purchase Order Mandate *</label>
+          <select id="inst-po-mandate" class="select" required>
+            <option value="YES">Mandatory (PO required before dispatch)</option>
+            <option value="NO">Optional (Authorized email approval accepted)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="label" style="font-weight:600;font-size:12.5px;">GSTIN / Tax ID</label>
+          <input type="text" id="inst-gstin" class="input" placeholder="e.g. 32AAAAA0000A1Z5" />
+        </div>
+      </form>
+    `,
+    saveLabel: "Activate Credit Account",
+    onSave: async (modalEl) => {
+      const name = modalEl.querySelector("#inst-name")?.value?.trim();
+      const dept = modalEl.querySelector("#inst-dept")?.value?.trim();
+      const contact = modalEl.querySelector("#inst-contact")?.value?.trim();
+      const creditLimit = Number(modalEl.querySelector("#inst-credit-limit")?.value || 100000);
+      const terms = modalEl.querySelector("#inst-terms")?.value || "NET 30";
+      const poRequired = modalEl.querySelector("#inst-po-mandate")?.value === "YES";
+
+      if (!name || !dept || !contact || creditLimit <= 0) {
+        showToast("Please provide all required institution details.", "coral");
+        return false;
+      }
+
+      if (!liveAccounts) {
+        liveAccounts = [...SAMPLE_ACCOUNTS];
+      }
+
+      const newId = `INST-00${liveAccounts.length + 1}`;
+      const newAccount = {
+        accountId: newId,
+        institutionName: name,
+        departmentName: dept,
+        creditLimit: creditLimit,
+        currentExposure: 0,
+        poRequired: poRequired,
+        billingCycle: terms.includes("PER_ORDER") ? "PER_ORDER" : "MONTHLY",
+        status: "ACTIVE",
+        paymentTerms: terms,
+      };
+
+      liveAccounts.unshift(newAccount);
+      showToast(`Institutional account ${newId} registered for ${name}!`, "mint");
+      refreshDeptView(root);
       return true;
     },
   });
@@ -1121,9 +1527,21 @@ function openOrderSheetModal(orderId) {
 }
 
 function refreshDeptView(root) {
+  const activeId = document.activeElement?.id || null;
+  const cursorStart = document.activeElement?.selectionStart;
+  const cursorEnd = document.activeElement?.selectionEnd;
   const container = root.querySelector("#view-root") || root;
   container.innerHTML = renderDepartmentOrders();
   wireDepartmentOrders(container);
+  if (activeId) {
+    const el = container.querySelector("#" + activeId);
+    if (el) {
+      el.focus();
+      if (typeof cursorStart === "number" && typeof cursorEnd === "number" && el.setSelectionRange) {
+        el.setSelectionRange(cursorStart, cursorEnd);
+      }
+    }
+  }
 }
 
 async function fetchDeptOrdersFromServer(root) {

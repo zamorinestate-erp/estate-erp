@@ -432,8 +432,9 @@ function renderActiveSubpanel() {
     <div style="display:flex; flex-direction:column; gap:16px;">
       <div style="display:flex; justify-content:space-between; align-items:center; padding:12px 16px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-md, 10px);">
         <div style="display:flex; align-items:center; gap:12px;">
-          <button class="btn btn-sm btn-ghost" id="bills-back-to-hub-btn" type="button" style="font-weight:700; display:inline-flex; align-items:center; gap:6px;">
-            ← Back to Bills Hub
+          <button class="btn-back-nav" id="bills-back-to-hub-btn" type="button">
+            <span class="back-icon">←</span>
+            <span>Back to Bills Hub</span>
           </button>
           <div style="border-left:1px solid var(--line); padding-left:12px;">
             <h2 style="font-size:16px; font-weight:700; color:var(--ink); margin:0; display:flex; align-items:center; gap:8px;">
@@ -1481,27 +1482,6 @@ export async function wireOwnerBills(root, subroute) {
     });
   }
 
-  // Bills Hub Tiles
-  root.querySelectorAll("[data-bills-hub-tile]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const tileId = btn.dataset.billsHubTile;
-      navigate("bills/" + tileId);
-    });
-  });
-
-  // Back to Bills Hub Button
-  root.querySelector("#bills-back-to-hub-btn")?.addEventListener("click", () => {
-    navigate("bills");
-  });
-
-  // Navigation tabs (legacy)
-  root.querySelectorAll(".bills-nav-tab").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      activeSubTab = btn.dataset.tab;
-      refreshView(root);
-    });
-  });
-
   // Cafe Scope Selector
   const cafeSel = root.querySelector("#scope-cafe-selector");
   if (cafeSel) {
@@ -1538,82 +1518,20 @@ export async function wireOwnerBills(root, subroute) {
     });
   }
 
-  // Drilldown to Reconciliation
-  const drillReconBtn = root.querySelector("#drill-reconciliation-btn");
-  if (drillReconBtn) {
-    drillReconBtn.addEventListener("click", () => {
-      activeSubTab = "reconciliation";
-      refreshView(root);
+  // EOD Action Buttons
+  const openEodBtn = root.querySelector("#open-eod-close-btn");
+  if (openEodBtn) {
+    openEodBtn.addEventListener("click", () => {
+      navigate("bills/reconciliation");
     });
   }
 
-  // Review EOD Readiness
   const reviewEodBtn = root.querySelector("#review-eod-readiness-btn");
   if (reviewEodBtn) {
     reviewEodBtn.addEventListener("click", () => {
-      activeSubTab = "reconciliation";
-      refreshView(root);
+      navigate("bills/reconciliation");
     });
   }
-
-  // Search input
-  const searchInput = root.querySelector("#bills-search-input");
-  if (searchInput) {
-    searchInput.addEventListener("input", (e) => {
-      billsSearchQuery = e.target.value.trim();
-      refreshSubpanelOnly(root);
-    });
-  }
-
-  // Bills Status filter
-  const statusFilter = root.querySelector("#bills-status-filter");
-  if (statusFilter) {
-    statusFilter.addEventListener("change", (e) => {
-      billsStatusFilter = e.target.value;
-      refreshSubpanelOnly(root);
-    });
-  }
-
-  // Bills Payment filter
-  const paymentFilter = root.querySelector("#bills-payment-filter");
-  if (paymentFilter) {
-    paymentFilter.addEventListener("change", (e) => {
-      billsPaymentFilter = e.target.value;
-      refreshSubpanelOnly(root);
-    });
-  }
-
-  // Bills Sort filter
-  const sortFilter = root.querySelector("#bills-sort-filter");
-  if (sortFilter) {
-    sortFilter.addEventListener("change", (e) => {
-      billsSortBy = e.target.value;
-      refreshSubpanelOnly(root);
-    });
-  }
-
-  // Preview Receipt Modal
-  root.querySelectorAll(".preview-receipt-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const billId = btn.dataset.bill;
-      openReceiptModal(billId);
-    });
-  });
-
-  // View Bill 360 Detail Modal
-  root.querySelectorAll(".view-bill-360-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const billId = btn.dataset.bill;
-      openBillDetailModal(billId);
-    });
-  });
-
-  // Export buttons
-  root.querySelectorAll(".export-action-btn, #export-gst-csv-btn, #export-gst-xlsx-btn").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      showToast("Report exported successfully!", "mint");
-    });
-  });
 
   // Upload Invoice / Receipt Header Button
   const uploadInvoiceBtn = root.querySelector("#upload-invoice-btn");
@@ -1648,13 +1566,16 @@ export async function wireOwnerBills(root, subroute) {
   // Wire actions in the active subpanel
   wireSubpanelActions(root);
 
-  // Initial data fetch
-  if (!cachedOverview) {
+  // Initial data fetch — exactly once
+  if (!hasInitialFetchedBills) {
+    hasInitialFetchedBills = true;
     fetchOverviewData().then(() => {
       refreshSubpanelOnly(root);
     });
   }
 }
+
+let hasInitialFetchedBills = false;
 
 async function fetchOverviewData() {
   try {
@@ -1686,19 +1607,86 @@ async function fetchBillsData() {
 
 function refreshView(root) {
   if (!root) return;
-  root.innerHTML = renderOwnerBills();
-  wireOwnerBills(root);
+  root.innerHTML = renderOwnerBills(activeSubTab);
+  wireOwnerBills(root, activeSubTab);
 }
 
 function refreshSubpanelOnly(root) {
+  const activeId = document.activeElement?.id || null;
+  const cursorStart = document.activeElement?.selectionStart;
+  const cursorEnd = document.activeElement?.selectionEnd;
   const container = root.querySelector("#bills-subpanel-root");
   if (container) {
     container.innerHTML = renderActiveSubpanel();
     wireSubpanelActions(root);
+    if (activeId) {
+      const el = container.querySelector("#" + activeId);
+      if (el) {
+        el.focus();
+        if (typeof cursorStart === "number" && typeof cursorEnd === "number" && el.setSelectionRange) {
+          el.setSelectionRange(cursorStart, cursorEnd);
+        }
+      }
+    }
   }
 }
 
 function wireSubpanelActions(root) {
+  // 1. Workspace Hub Tiles
+  root.querySelectorAll("[data-bills-hub-tile]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const tileId = btn.dataset.billsHubTile;
+      navigate("bills/" + tileId);
+    });
+  });
+
+  // 2. Back to Hub Button
+  root.querySelector("#bills-back-to-hub-btn")?.addEventListener("click", () => {
+    navigate("bills");
+  });
+
+  // 3. Drilldown to Reconciliation
+  root.querySelectorAll("#drill-reconciliation-btn, #review-eod-readiness-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      navigate("bills/reconciliation");
+    });
+  });
+
+  // 4. Bills Search input
+  const searchInput = root.querySelector("#bills-search-input");
+  if (searchInput) {
+    searchInput.addEventListener("input", (e) => {
+      billsSearchQuery = e.target.value.trim();
+      refreshSubpanelOnly(root);
+    });
+  }
+
+  // 5. Bills Filters
+  const statusFilter = root.querySelector("#bills-status-filter");
+  if (statusFilter) {
+    statusFilter.addEventListener("change", (e) => {
+      billsStatusFilter = e.target.value;
+      refreshSubpanelOnly(root);
+    });
+  }
+
+  const paymentFilter = root.querySelector("#bills-payment-filter");
+  if (paymentFilter) {
+    paymentFilter.addEventListener("change", (e) => {
+      billsPaymentFilter = e.target.value;
+      refreshSubpanelOnly(root);
+    });
+  }
+
+  const sortFilter = root.querySelector("#bills-sort-filter");
+  if (sortFilter) {
+    sortFilter.addEventListener("change", (e) => {
+      billsSortBy = e.target.value;
+      refreshSubpanelOnly(root);
+    });
+  }
+
+  // 6. Preview Receipt Modal
   root.querySelectorAll(".preview-receipt-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       const billId = btn.dataset.bill;
@@ -1706,14 +1694,15 @@ function wireSubpanelActions(root) {
     });
   });
 
-  root.querySelectorAll(".view-bill-360-btn").forEach((btn) => {
+  // 7. View Bill 360 Detail Modal
+  root.querySelectorAll(".view-bill-360-btn, .view-bill-detail-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
-      const billId = btn.dataset.bill;
+      const billId = btn.dataset.bill || btn.dataset.billId;
       openBillDetailModal(billId);
     });
   });
 
-  // Wire Upload Form Submit in Upload Subpanel
+  // 8. Wire Upload Form Submit in Upload Subpanel
   const submitUploadBillBtn = root.querySelector("#submit-upload-bill-btn");
   if (submitUploadBillBtn) {
     wireFileUploadZone(root, {
@@ -1770,7 +1759,7 @@ function wireSubpanelActions(root) {
     });
   }
 
-  // Wire Document Preview & Download in Upload Subpanel
+  // 9. Wire Document Preview & Download
   root.querySelectorAll(".view-doc-attachment-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       const fileName = btn.dataset.docName;
@@ -1805,6 +1794,7 @@ function wireSubpanelActions(root) {
     });
   });
 
+  // 10. Receipts Modal & Export
   const uploadReceiptModalBtn = root.querySelector("#btn-upload-receipt-modal");
   if (uploadReceiptModalBtn) {
     uploadReceiptModalBtn.addEventListener("click", () => {
@@ -1827,6 +1817,7 @@ function wireSubpanelActions(root) {
     });
   }
 
+  // 11. View Uploaded Bill Details Modal
   root.querySelectorAll(".view-uploaded-bill-detail-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       const billId = btn.dataset.billId;
@@ -1858,6 +1849,13 @@ function wireSubpanelActions(root) {
         showSave: false,
         cancelLabel: "Close",
       });
+    });
+  });
+
+  // 12. Export Buttons
+  root.querySelectorAll(".export-action-btn, #export-gst-csv-btn, #export-gst-xlsx-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      showToast("Report exported successfully!", "mint");
     });
   });
 }

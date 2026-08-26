@@ -56,6 +56,8 @@ import { renderCafeOperationsDevices, wireCafeOperationsDevices, setCafeDevicesA
 import { renderCafeOperatorSignIn, wireCafeOperatorSignIn } from "./pages/cafeOperatorSignIn.js";
 import { renderCafeOperationsState, wireCafeOperationsState } from "./pages/cafeOperationsState.js";
 import { startCafeOpsInactivityTimer, stopCafeOpsInactivityTimer } from "./cafeOpsInactivity.js";
+import { renderPassbook, wirePassbook } from "./pages/passbook.js";
+import { renderOrgIdentity, wireOrgIdentity } from "./pages/organisationIdentity.js";
 
 // ROLE_LABELS: display-safe generic labels used only for topbar scope chip
 // until /auth/me bootstrap provides the real user's display name.
@@ -300,6 +302,21 @@ async function renderPage() {
       }
       break;
 
+    case "passbook":
+    case "passbook-treasury":
+      // SCR-PASSBOOK Rule: Primary Master or Owner ONLY.
+      // Normal Master, CAFE_ADMIN, STAFF are strictly denied.
+      if (
+        (state.role === ROLES.MASTER && !state.isPrimaryMaster) ||
+        (state.role !== ROLES.MASTER && state.role !== ROLES.OWNER)
+      ) {
+        content.innerHTML = renderNotAvailable();
+        break;
+      }
+      content.innerHTML = renderPassbook(subroute);
+      await wirePassbook(content, subroute);
+      break;
+
     case "ledger":
     case "personal-ledger":
       // SCR-018 Rule: Primary Master or Owner only. Normal Master, CAFE_ADMIN, STAFF denied.
@@ -355,6 +372,20 @@ async function renderPage() {
       setAdminActiveTab?.(subroute || "overview");
       content.innerHTML = renderAdmin(subroute);
       wireAdmin(content, subroute);
+      break;
+
+    case "org-identity":
+    case "organisation-identity":
+      // Section 364–395: Organisation Identity Master — Primary Master or Owner only
+      if (
+        (state.role === ROLES.MASTER && !state.isPrimaryMaster) ||
+        (state.role !== ROLES.MASTER && state.role !== ROLES.OWNER)
+      ) {
+        content.innerHTML = renderNotAvailable();
+        break;
+      }
+      content.innerHTML = renderOrgIdentity(subroute);
+      await wireOrgIdentity(content, subroute);
       break;
 
     case "sales-cash":

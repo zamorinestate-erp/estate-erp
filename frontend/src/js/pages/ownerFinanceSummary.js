@@ -844,8 +844,7 @@ function renderPersonalLedgerAndReportsTab(data) {
         <a href="#performance" class="btn btn-ghost" style="display:flex; align-items:center; justify-content:space-between; padding:12px 14px; text-decoration:none; font-size:12.5px; border:1px solid var(--border-subtle); border-radius:6px; color:var(--ink);">
           <span>📈 Café Performance</span>
           <span style="color:var(--color-accent-amber);">→</span>
-        </a>
-        <a href="#expenses" class="btn btn-ghost" style="display:flex; align-items:center; justify-content:space-between; padding:12px 14px; text-decoration:none; font-size:12.5px; border:1px solid var(--border-subtle); border-radius:6px; color:var(--ink);">
+          <a href="#expenses" class="btn btn-ghost" style="display:flex; align-items:center; justify-content:space-between; padding:12px 14px; text-decoration:none; font-size:12.5px; border:1px solid var(--border-subtle); border-radius:6px; color:var(--ink);">
           <span>💸 Expense Summary</span>
           <span style="color:var(--color-accent-amber);">→</span>
         </a>
@@ -868,7 +867,22 @@ function kpiBox(title, val, sub, color, tooltip = "") {
   `;
 }
 
+let hasInitialFetchedFinance = false;
+
 export async function wireOwnerFinanceSummary(root) {
+  if (!root) return;
+  wireFinanceEventListeners(root);
+
+  // Initial Data Fetch exactly once
+  if (!hasInitialFetchedFinance) {
+    hasInitialFetchedFinance = true;
+    fetchFinanceSummaryData().then(() => {
+      refreshView(root);
+    });
+  }
+}
+
+function wireFinanceEventListeners(root) {
   if (!root) return;
 
   // Subnav Tab Click Handlers
@@ -878,7 +892,10 @@ export async function wireOwnerFinanceSummary(root) {
       tabBtns.forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
       activeTab = btn.dataset.tab;
-      refreshView(root);
+      const content = root.querySelector("#finance-tab-content");
+      if (content) {
+        content.innerHTML = renderActiveTabContent();
+      }
     });
   });
 
@@ -933,46 +950,33 @@ export async function wireOwnerFinanceSummary(root) {
   if (exportBtn) {
     exportBtn.addEventListener("click", () => openExportModal());
   }
-
-  // Health Audit Buttons
-  const healthBtns = root.querySelectorAll(".btn-health-audit");
-  healthBtns.forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const cafeId = btn.dataset.cafeid;
-      const cafe = (cachedFinanceSummary || DEFAULT_FINANCE_DATA).cafes.find((c) => c.cafeId === cafeId);
-      if (cafe) openHealthAuditModal(cafe);
-    });
-  });
-
-  // Initial Data Fetch
-  if (!cachedFinanceSummary) {
-    fetchFinanceSummaryData().then(() => {
-      refreshView(root);
-    });
-  }
 }
 
 async function fetchFinanceSummaryData() {
   try {
     const res = await apiGet(`/finance/overview?cafeId=${selectedCafeFilter !== "ALL" ? selectedCafeFilter : ""}`);
-    if (res?.kpis) {
+    if (res?.kpis || res?.data?.kpis) {
+      const kpis = res.kpis || res.data.kpis;
       cachedFinanceSummary = {
         ...DEFAULT_FINANCE_DATA,
         kpis: {
           ...DEFAULT_FINANCE_DATA.kpis,
-          netSales: (res.kpis.revenueMtdPaisa || 14852000) / 100,
-          operatingExpenses: (res.kpis.expensesMtdPaisa || 6245000) / 100,
+          netSales: (kpis.revenueMtdPaisa || 14852000) / 100,
+          operatingExpenses: (kpis.expensesMtdPaisa || 6245000) / 100,
         },
       };
+    } else {
+      cachedFinanceSummary = { ...DEFAULT_FINANCE_DATA };
     }
   } catch (err) {
     console.warn("Could not fetch remote finance summary, using baseline:", err);
+    if (!cachedFinanceSummary) cachedFinanceSummary = { ...DEFAULT_FINANCE_DATA };
   }
 }
 
 function refreshView(root) {
   root.innerHTML = renderOwnerFinanceSummary();
-  wireOwnerFinanceSummary(root);
+  wireFinanceEventListeners(root);
 }
 
 function openDataCoverageModal() {
