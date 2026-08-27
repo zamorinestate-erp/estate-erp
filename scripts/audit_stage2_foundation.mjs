@@ -5,16 +5,21 @@
 // 2. Known Regressions (POS, Inventory, Payslips, Reports, Menu, ZURF Export)
 // 3. Universal Shared UI Components (Modals, Selects, DatePickers, Search, Notifs)
 // 4. Four-Profile Parity (Primary Master, Normal Master, Owner, Cafe Operations)
-// 5. Staff Frozen Scope Regression Smoke
+// 5. Staff Frozen Scope Regression Smoke (Condition-Based Readiness)
 // 6. Four-Theme Visual Stability & 0 Runtime Console Exceptions
 // =============================================================================
 
 import http from 'http';
 import { spawn } from 'child_process';
 import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 const CDP_PORT = 9223;
 const FRONTEND_URL = 'http://localhost:3000';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const frontendDir = path.resolve(__dirname, '../frontend');
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -89,16 +94,32 @@ class SimpleCDP {
     await wait(800);
   }
 
+  async waitForCondition(expression, timeoutMs = 4000, pollIntervalMs = 50) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      try {
+        const val = await this.evaluate(expression);
+        if (val && val.isReady) {
+          return { ...val, readinessTimeMs: Date.now() - start };
+        }
+      } catch (e) {
+        // continue polling until timeout
+      }
+      await wait(pollIntervalMs);
+    }
+    // Return final attempt for detailed diagnostics
+    try {
+      const finalVal = await this.evaluate(expression);
+      return { ...finalVal, timedOut: true, readinessTimeMs: Date.now() - start };
+    } catch (err) {
+      return { timedOut: true, readinessTimeMs: Date.now() - start, error: err.message };
+    }
+  }
+
   close() {
     if (this.ws) this.ws.close();
   }
 }
-
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const frontendDir = path.resolve(__dirname, '../frontend');
 
 function startStaticServer(port = 3000) {
   const mimeTypes = {
@@ -165,6 +186,21 @@ async function runStage2Suite() {
   await wait(1500);
 
   let cdp;
+  let passedChecks = 0;
+  let failedChecks = 0;
+
+  function assert(name, condition, details = {}) {
+    if (condition) {
+      passedChecks++;
+      console.log(`  [PASS] ${name}`);
+      return true;
+    } else {
+      failedChecks++;
+      console.error(`  [FAIL] ${name}`, details);
+      return false;
+    }
+  }
+
   const auditResults = {
     timestamp: new Date().toISOString(),
     apiSessionFoundation: {},
@@ -240,7 +276,11 @@ async function runStage2Suite() {
       `);
 
       auditResults.apiSessionFoundation[p.name] = sessionEval;
-      console.log(`Profile [${p.name}] API Transport:`, sessionEval.hasMissingSessionError ? 'FAIL' : 'PASS', sessionEval);
+      assert(
+        `Profile [${p.name}] API Transport`,
+        sessionEval.deviceIdPresent && !sessionEval.hasMissingSessionError,
+        sessionEval
+      );
     }
 
     // =========================================================================
@@ -271,7 +311,7 @@ async function runStage2Suite() {
       })()
     `);
     auditResults.knownRegressions.posCharge = posEval;
-    console.log('POS Charge Session Transport:', posEval.hasMissingSessionError ? 'FAIL' : 'PASS (0 missing session errors)');
+    assert('POS Charge Session Transport (0 missing session errors)', !posEval.hasMissingSessionError, posEval);
 
     // Inventory Transport Check
     await cdp.navigate(`${FRONTEND_URL}/?devRole=master#inventory`);
@@ -293,7 +333,7 @@ async function runStage2Suite() {
       })()
     `);
     auditResults.knownRegressions.inventory = invEval;
-    console.log('Inventory API Transport:', invEval.hasMissingSessionError ? 'FAIL' : 'PASS');
+    assert('Inventory API Transport', !invEval.hasMissingSessionError, invEval);
 
     // Menu API Check
     const menuEval = await cdp.evaluate(`
@@ -314,7 +354,7 @@ async function runStage2Suite() {
       })()
     `);
     auditResults.knownRegressions.menu = menuEval;
-    console.log('Menu Management API Transport:', menuEval.hasMissingSessionError ? 'FAIL' : 'PASS');
+    assert('Menu Management API Transport', !menuEval.hasMissingSessionError, menuEval);
 
     // File Download / Blob Contract Check
     const exportEval = await cdp.evaluate(`
@@ -324,7 +364,7 @@ async function runStage2Suite() {
       })()
     `);
     auditResults.knownRegressions.downloadFileUtility = exportEval;
-    console.log('Download File Transport Utility:', exportEval ? 'PASS' : 'FAIL');
+    assert('Download File Transport Utility', Boolean(exportEval), { exportEval });
 
     // =========================================================================
     // 3. UNIVERSAL SHARED UI COMPONENTS (Modals, Dropdowns, DatePickers, Search, Notifs)
@@ -374,7 +414,7 @@ async function runStage2Suite() {
       })()
     `);
     auditResults.sharedComponents.modalSystem = modalTest;
-    console.log('Universal Modal System (0 Home Icons):', !modalTest.hasHomeIcon ? 'PASS' : 'FAIL', modalTest);
+    assert('Universal Modal System (0 Home Icons)', !modalTest.hasHomeIcon, modalTest);
 
     // B. Shared Select / Dropdown Component
     const selectTest = await cdp.evaluate(`
@@ -414,7 +454,7 @@ async function runStage2Suite() {
       })()
     `);
     auditResults.sharedComponents.selectPrimitive = selectTest;
-    console.log('Shared Select / Dropdown Primitive:', selectTest.created && selectTest.updatedValue ? 'PASS' : 'FAIL');
+    assert('Shared Select / Dropdown Primitive', selectTest.created && selectTest.updatedValue, selectTest);
 
     // C. Shared DatePicker Component
     const dateTest = await cdp.evaluate(`
@@ -447,7 +487,7 @@ async function runStage2Suite() {
       })()
     `);
     auditResults.sharedComponents.datePickerPrimitive = dateTest;
-    console.log('Shared DatePicker Primitive:', dateTest.created && dateTest.updatedDate ? 'PASS' : 'FAIL');
+    assert('Shared DatePicker Primitive', dateTest.created && dateTest.updatedDate, dateTest);
 
     // D. Global Topbar System Status & 3-Tab Notifications
     const topbarTest = await cdp.evaluate(`
@@ -465,40 +505,51 @@ async function runStage2Suite() {
       })()
     `);
     auditResults.sharedComponents.topbarControls = topbarTest;
-    console.log('Global Topbar Status & 3-Tab Notifications:', topbarTest.hasSystemStatus && topbarTest.notifTabCount === 3 ? 'PASS' : 'FAIL', topbarTest);
+    assert('Global Topbar Status & 3-Tab Notifications', topbarTest.hasSystemStatus && topbarTest.notifTabCount === 3, topbarTest);
 
     // =========================================================================
-    // 4. STAFF REGRESSION SMOKE TEST (Frozen Scope)
+    // 4. STAFF REGRESSION SMOKE TEST (Condition-Based Readiness)
     // =========================================================================
     console.log('\n--- 4. STAFF SHARED-INFRASTRUCTURE SMOKE ---');
     await cdp.navigate(`${FRONTEND_URL}/?role=staff#staff-home`);
-    await wait(600);
 
-    const staffSmoke = await cdp.evaluate(`
+    const staffSmoke = await cdp.waitForCondition(`
       (() => {
         const links = Array.from(document.querySelectorAll('.sidebar .nav-link'));
         const linkRoutes = links.map(l => l.dataset.route);
         const forbiddenRoutes = ['dashboard', 'finance', 'payroll', 'revenue-share', 'admin', 'inventory'];
         const hasForbidden = forbiddenRoutes.some(r => linkRoutes.includes(r));
         const scopePill = document.querySelector('.scope-pill')?.textContent?.trim() || '';
+        const currentHash = window.location.hash;
+        const isReady = linkRoutes.length === 5 && !hasForbidden;
 
         return {
+          isReady,
           landingPage: 'staff-home',
+          currentHash,
           visibleLinks: linkRoutes,
           count: linkRoutes.length,
           forbiddenRoutesExposed: hasForbidden,
-          scopePill
+          scopePill,
+          readyState: document.readyState
         };
       })()
-    `);
+    `, 4000);
+
     auditResults.staffSmoke = staffSmoke;
-    console.log('Staff Regression Smoke Test:', !staffSmoke.forbiddenRoutesExposed && staffSmoke.count === 5 ? 'PASS' : 'FAIL', staffSmoke);
+    assert(
+      'Staff Shared-Infrastructure Smoke Test (5 Self-Service Routes, 0 Forbidden)',
+      staffSmoke.isReady && staffSmoke.count === 5 && !staffSmoke.forbiddenRoutesExposed,
+      staffSmoke
+    );
 
     // =========================================================================
     // 5. FOUR-THEME STABILITY MATRIX
     // =========================================================================
     console.log('\n--- 5. FOUR-THEME STABILITY MATRIX ---');
     const themes = ['paper', 'pearl', 'midnight', 'noir'];
+    let themeMatrixValid = true;
+
     for (const t of themes) {
       await cdp.evaluate(`
         document.documentElement.dataset.theme = '${t}';
@@ -510,12 +561,13 @@ async function runStage2Suite() {
         (() => {
           const bodyBg = getComputedStyle(document.body).backgroundColor;
           const inkColor = getComputedStyle(document.body).color;
-          return { theme: '${t}', bodyBg, inkColor };
+          return { theme: '${t}', bodyBg, inkColor, hasValidBg: Boolean(bodyBg && bodyBg !== 'rgba(0, 0, 0, 0)') };
         })()
       `);
       auditResults.themeMatrix[t] = themeCheck;
-      console.log(`Theme [${t.toUpperCase()}]: PASS`, themeCheck);
+      if (!themeCheck.hasValidBg) themeMatrixValid = false;
     }
+    assert('Four-Theme Stability Matrix (Paper, Pearl, Midnight, Noir)', themeMatrixValid, auditResults.themeMatrix);
 
     // =========================================================================
     // 6. RUNTIME CONSOLE ERROR CHECK
@@ -523,14 +575,26 @@ async function runStage2Suite() {
     const errors = await cdp.evaluate(`window.__STAGE2_CONSOLE_ERRORS || []`);
     auditResults.consoleErrors = errors;
     console.log('\n--- 6. RUNTIME CONSOLE AUDIT ---');
-    console.log('Uncaught Stage-2 Runtime Errors:', errors.length);
+    assert('Uncaught Stage-2 Runtime Errors (0 Errors)', errors.length === 0, { errorCount: errors.length, errors });
 
     fs.writeFileSync('docs/STAGE_2_TEST_EVIDENCE_AUTOMATED.json', JSON.stringify(auditResults, null, 2));
     console.log('Saved automated evidence to docs/STAGE_2_TEST_EVIDENCE_AUTOMATED.json');
 
-    console.log('\n=== ALL STAGE 2 FOUNDATION AUDITS COMPLETED SUCCESSFULLY ===');
+    console.log('\n=============================================================================');
+    console.log(`STAGE 2 FOUNDATION AUDIT: ${passedChecks + failedChecks} CHECKS | PASSED: ${passedChecks} | FAILED: ${failedChecks}`);
+    console.log(`Uncaught Console Errors: ${errors.length}`);
+    console.log('=============================================================================\n');
+
+    if (failedChecks > 0 || errors.length > 0) {
+      console.error(`\n❌ STAGE 2 FOUNDATION AUDIT FAILED with ${failedChecks} failed assertion(s).`);
+      process.exit(1);
+    } else {
+      console.log('\n=== ALL STAGE 2 FOUNDATION AUDITS COMPLETED SUCCESSFULLY ===');
+      process.exit(0);
+    }
   } catch (err) {
-    console.error('Stage 2 Audit Failure:', err);
+    console.error('Stage 2 Audit Runtime Exception:', err);
+    process.exit(1);
   } finally {
     if (cdp) cdp.close();
     chromeProc.kill();

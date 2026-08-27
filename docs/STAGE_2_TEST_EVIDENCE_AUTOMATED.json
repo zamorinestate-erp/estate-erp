@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-08-27T17:56:30.488Z",
+  "timestamp": "2026-08-27T18:41:07.329Z",
   "apiSessionFoundation": {
     "Primary Master": {
       "deviceIdPresent": true,
@@ -70,7 +70,9 @@
   },
   "fourProfileParity": {},
   "staffSmoke": {
+    "isReady": true,
     "landingPage": "staff-home",
+    "currentHash": "#staff-home",
     "visibleLinks": [
       "staff-home",
       "announcements",
@@ -80,28 +82,34 @@
     ],
     "count": 5,
     "forbiddenRoutesExposed": false,
-    "scopePill": "Staff"
+    "scopePill": "Staff",
+    "readyState": "complete",
+    "readinessTimeMs": 485
   },
   "themeMatrix": {
     "paper": {
       "theme": "paper",
       "bodyBg": "rgb(250, 249, 245)",
-      "inkColor": "rgb(23, 20, 15)"
+      "inkColor": "rgb(23, 20, 15)",
+      "hasValidBg": true
     },
     "pearl": {
       "theme": "pearl",
       "bodyBg": "rgb(247, 240, 226)",
-      "inkColor": "rgb(34, 27, 16)"
+      "inkColor": "rgb(34, 27, 16)",
+      "hasValidBg": true
     },
     "midnight": {
       "theme": "midnight",
       "bodyBg": "rgb(10, 15, 28)",
-      "inkColor": "rgb(243, 239, 228)"
+      "inkColor": "rgb(243, 239, 228)",
+      "hasValidBg": true
     },
     "noir": {
       "theme": "noir",
       "bodyBg": "rgb(13, 13, 13)",
-      "inkColor": "rgb(242, 242, 240)"
+      "inkColor": "rgb(242, 242, 240)",
+      "hasValidBg": true
     }
   },
   "consoleErrors": []

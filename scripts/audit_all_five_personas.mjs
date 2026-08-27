@@ -220,7 +220,7 @@ async function main() {
 
   await cdp.send('Page.navigate', { url: `http://localhost:${HTTP_PORT}/?role=master#dashboard` });
   await delay(1200);
-  await cdp.waitForSelector('.sidebar, #sidebar, .nav-link', 3000);
+  await cdp.waitForSelector('.sidebar .nav-link', 4000);
 
   const pmNav = await cdp.eval(`
     (() => {
@@ -259,7 +259,7 @@ async function main() {
 
   await cdp.send('Page.navigate', { url: `http://localhost:${HTTP_PORT}/?role=master_normal#dashboard` });
   await delay(1200);
-  await cdp.waitForSelector('.sidebar, #sidebar, .nav-link', 3000);
+  await cdp.waitForSelector('.sidebar .nav-link', 4000);
 
   const nmNav = await cdp.eval(`
     (() => {
@@ -294,7 +294,7 @@ async function main() {
 
   await cdp.send('Page.navigate', { url: `http://localhost:${HTTP_PORT}/?role=owner#dashboard` });
   await delay(1200);
-  await cdp.waitForSelector('.sidebar, #sidebar, .nav-link', 3000);
+  await cdp.waitForSelector('.sidebar .nav-link', 4000);
 
   const ownerNav = await cdp.eval(`
     (() => {
@@ -330,7 +330,7 @@ async function main() {
 
   await cdp.send('Page.navigate', { url: `http://localhost:${HTTP_PORT}/?role=cafe_admin#dashboard` });
   await delay(1200);
-  await cdp.waitForSelector('.sidebar, #sidebar, .nav-link', 3000);
+  await cdp.waitForSelector('.sidebar .nav-link', 4000);
 
   const cafeNav = await cdp.eval(`
     (() => {
@@ -380,7 +380,7 @@ async function main() {
 
   await cdp.send('Page.navigate', { url: `http://localhost:${HTTP_PORT}/?role=staff#staff-home` });
   await delay(1200);
-  await cdp.waitForSelector('.sidebar, #sidebar, .nav-link', 3000);
+  await cdp.waitForSelector('.sidebar .nav-link', 4000);
 
   const staffNav = await cdp.eval(`
     (() => {
