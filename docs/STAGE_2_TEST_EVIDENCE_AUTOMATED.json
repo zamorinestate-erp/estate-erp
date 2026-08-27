@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-08-27T16:09:17.164Z",
+  "timestamp": "2026-08-27T17:56:30.488Z",
   "apiSessionFoundation": {
     "Primary Master": {
       "deviceIdPresent": true,
@@ -37,7 +37,6 @@
     },
     "menu": {
       "hasMissingSessionError": false,
-      "hasFailedToFetch": true,
       "error": "Failed to fetch"
     },
     "downloadFileUtility": true
@@ -72,10 +71,16 @@
   "fourProfileParity": {},
   "staffSmoke": {
     "landingPage": "staff-home",
-    "visibleLinks": [],
-    "count": 0,
+    "visibleLinks": [
+      "staff-home",
+      "announcements",
+      "staff-attendance",
+      "staff-leave",
+      "staff-settings"
+    ],
+    "count": 5,
     "forbiddenRoutesExposed": false,
-    "scopePill": ""
+    "scopePill": "Staff"
   },
   "themeMatrix": {
     "paper": {

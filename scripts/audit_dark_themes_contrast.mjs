@@ -16,8 +16,8 @@ import { spawn } from 'node:child_process';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FRONTEND_DIR = path.resolve(__dirname, '../frontend');
 const CHROME_PATH = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
-const HTTP_PORT = 3537;
-const CDP_PORT = 9299;
+const HTTP_PORT = 3542;
+const CDP_PORT = 9288;
 
 const mimeTypes = {
   ".html": "text/html",

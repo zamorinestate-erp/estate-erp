@@ -1486,4 +1486,102 @@
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15) !important;
 }
 
+/* =============================================================================
+   INSTANT RESPONSE & PERFORMANCE ENHANCEMENT STYLES
+   ============================================================================= */
 
+/* 1. Global Non-Blocking Top Route Navigation Progress Bar */
+.zamorin-nav-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 2.5px;
+  width: 0;
+  background: linear-gradient(90deg, var(--color-accent-amber, #d4a359), var(--bronze-500, #b17d38), #f59e0b);
+  z-index: 99999;
+  opacity: 0;
+  pointer-events: none;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.15s ease;
+  box-shadow: 0 0 8px rgba(212, 163, 89, 0.6);
+}
+
+.zamorin-nav-progress.active {
+  opacity: 1;
+  width: 75%;
+}
+
+.zamorin-nav-progress.completed {
+  width: 100%;
+  opacity: 0;
+  transition: width 0.15s ease, opacity 0.25s ease 0.1s;
+}
+
+/* 2. Instant Click Acknowledgement & Active Micro-feedback */
+.nav-link:active,
+.btn:active,
+.tab-btn:active,
+.hub-tile:active,
+.btn-active-feedback {
+  transform: scale(0.985);
+  filter: brightness(0.95);
+  transition: transform 0.04s ease, filter 0.04s ease;
+}
+
+/* 3. Lightweight Zamorin Skeleton Shimmers */
+.zamorin-skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.04) 25%,
+    rgba(255, 255, 255, 0.08) 50%,
+    rgba(255, 255, 255, 0.04) 75%
+  );
+  background-size: 200% 100%;
+  animation: zamorinSkeletonShimmer 1.4s infinite ease-in-out;
+  border-radius: var(--radius-sm, 4px);
+  display: inline-block;
+}
+
+[data-theme="paper"] .zamorin-skeleton,
+[data-theme="pearl"] .zamorin-skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.04) 25%,
+    rgba(0, 0, 0, 0.09) 50%,
+    rgba(0, 0, 0, 0.04) 75%
+  );
+  background-size: 200% 100%;
+}
+
+@keyframes zamorinSkeletonShimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.skeleton-text {
+  height: 14px;
+  width: 80%;
+  margin-bottom: 6px;
+}
+
+.skeleton-title {
+  height: 24px;
+  width: 40%;
+  margin-bottom: 12px;
+}
+
+.skeleton-card {
+  height: 96px;
+  width: 100%;
+  border-radius: var(--radius-md, 8px);
+}
+
+.skeleton-table-row {
+  height: 42px;
+  width: 100%;
+  margin-bottom: 4px;
+  border-radius: var(--radius-sm, 4px);
+}

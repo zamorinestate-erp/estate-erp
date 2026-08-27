@@ -33,10 +33,15 @@ function requestContext(request, response, next) {
   request.correlationId = correlationId;
   request.requestStartedAt = new Date();
 
-  response.setHeader(
-    'x-correlation-id',
-    correlationId
-  );
+  const startTime = process.hrtime.bigint();
+  const originalEnd = response.end;
+  response.end = function (...args) {
+    if (!response.headersSent) {
+      const elapsedMs = Number(process.hrtime.bigint() - startTime) / 1e6;
+      response.setHeader('Server-Timing', `total;dur=${elapsedMs.toFixed(2)}`);
+    }
+    return originalEnd.apply(this, args);
+  };
 
   next();
 }

@@ -58,6 +58,7 @@ import { renderCafeOperationsState, wireCafeOperationsState } from "./pages/cafe
 import { startCafeOpsInactivityTimer, stopCafeOpsInactivityTimer } from "./cafeOpsInactivity.js";
 import { renderPassbook, wirePassbook } from "./pages/passbook.js";
 import { renderOrgIdentity, wireOrgIdentity } from "./pages/organisationIdentity.js";
+import { cancelPendingRouteReads, clearApiCacheAndInFlight } from "./apiClient.js";
 
 // ROLE_LABELS: display-safe generic labels used only for topbar scope chip
 // until /auth/me bootstrap provides the real user's display name.
@@ -68,7 +69,35 @@ const ROLE_LABELS = {
   [ROLES.STAFF]: "Staff",
 };
 
+export function showNavProgressBar() {
+  if (typeof document === "undefined") return;
+  let bar = document.getElementById("zamorin-nav-progress");
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.id = "zamorin-nav-progress";
+    bar.className = "zamorin-nav-progress";
+    document.body.appendChild(bar);
+  }
+  bar.classList.remove("completed");
+  bar.classList.add("active");
+}
+
+export function hideNavProgressBar() {
+  if (typeof document === "undefined") return;
+  const bar = document.getElementById("zamorin-nav-progress");
+  if (bar) {
+    bar.classList.add("completed");
+    setTimeout(() => {
+      bar.classList.remove("active", "completed");
+    }, 250);
+  }
+}
+
 export function navigate(route) {
+  // Cancel stale read requests from previous route
+  cancelPendingRouteReads();
+  showNavProgressBar();
+
   // Route-layer guard: deny by default, exactly per Part B.3 / Part R's
   // closing rule ("any action not explicitly marked defaults to no access").
   const isPrimary = Boolean(
@@ -79,6 +108,7 @@ export function navigate(route) {
   if (route !== "notifications" && !isRouteAllowed(state.role, route, isPrimary)) {
     setState({ route: "__blocked__" });
     renderShell();
+    hideNavProgressBar();
     return;
   }
 
@@ -94,6 +124,10 @@ export function navigate(route) {
   renderShell();
 }
 
+if (typeof window !== "undefined") {
+  window.zamorinNavigate = navigate;
+}
+
 export function renderShell() {
   const app = document.getElementById("app");
   if (!app) return;
@@ -103,6 +137,9 @@ export function renderShell() {
   const existingTopbar = document.getElementById("topbar");
 
   if (!existingSidebar || !existingTopbar || app.dataset.shellRole !== state.role) {
+    if (app.dataset.shellRole && app.dataset.shellRole !== state.role) {
+      clearApiCacheAndInFlight();
+    }
     app.dataset.shellRole = state.role;
     app.innerHTML = `
       <div class="app-shell">
@@ -132,7 +169,9 @@ export function renderShell() {
     updateSidebarActive(state.route);
   }
 
-  renderPage();
+  renderPage().finally(() => {
+    hideNavProgressBar();
+  });
 }
 
 async function renderPage() {
@@ -249,7 +288,7 @@ async function renderPage() {
       break;
 
     case "settings":
-      setSettingsActiveSection("overview");
+      setSettingsActiveSection(subroute || "overview");
       content.innerHTML = renderSettingsShared();
       wireSettingsShared(content);
       break;

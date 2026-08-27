@@ -1,4 +1,8 @@
-// Secure authenticated API client and transport foundation for the Zamorin Cafe ERP frontend.
+// =============================================================================
+// ZAMORIN CAFE ERP — HIGH-PERFORMANCE AUTHENTICATED API CLIENT
+// Features: Single-Flight Request Deduplication, SWR Client Cache,
+// Automatic Mutation Invalidation, Stale Request Cancellation & Zero-Lag Transport.
+// =============================================================================
 
 const DEFAULT_API_BASE_URL =
   typeof globalThis.location !== "undefined" &&
@@ -23,6 +27,189 @@ const DEVICE_ID_STORAGE_KEY = "zamorin-device-id";
 
 let stepUpAuthenticationHandler = null;
 let singleFlightRefreshPromise = null;
+
+import { state } from "./state.js";
+
+// =============================================================================
+// IN-FLIGHT GET DEDUPLICATION & CLIENT-SIDE READ CACHE
+// =============================================================================
+const MAX_CACHE_ENTRIES = 150;
+const inFlightGetRequests = new Map();
+const apiReadCache = new Map();
+
+export const RequestScope = Object.freeze({
+  ROUTE_OWNED: "ROUTE_OWNED",
+  GLOBAL_APPLICATION: "GLOBAL_APPLICATION",
+  USER_ACTION: "USER_ACTION",
+  BACKGROUND_REVALIDATION: "BACKGROUND_REVALIDATION",
+});
+
+export const CachePolicy = Object.freeze({
+  IMMUTABLE: "IMMUTABLE",           // 1 hour TTL (enum metadata, static schemas)
+  SESSION_STATIC: "SESSION_STATIC", // 10 min TTL (cafes, user profile, role rules)
+  SHORT_LIVED: "SHORT_LIVED",       // 30 sec TTL (entity lists, summaries)
+  SWR: "SWR",                       // Stale-While-Revalidate (instant return + bg sync)
+  SENSITIVE_NO_CACHE: "NO_CACHE",   // Never cache (Passbook balance, cash till, live mutations)
+});
+
+const DEFAULT_POLICY_MAP = [
+  { prefix: "/passbook", policy: CachePolicy.SENSITIVE_NO_CACHE },
+  { prefix: "/personal-ledger", policy: CachePolicy.SENSITIVE_NO_CACHE },
+  { prefix: "/payroll/runs", policy: CachePolicy.SENSITIVE_NO_CACHE },
+  { prefix: "/payroll/advances", policy: CachePolicy.SENSITIVE_NO_CACHE },
+  { prefix: "/sales-cash", policy: CachePolicy.SENSITIVE_NO_CACHE },
+  { prefix: "/pos", policy: CachePolicy.SENSITIVE_NO_CACHE },
+  { prefix: "/finance/gl-journals", policy: CachePolicy.SENSITIVE_NO_CACHE },
+  { prefix: "/cafe-operations/operator/sign-in", policy: CachePolicy.SENSITIVE_NO_CACHE },
+  { prefix: "/cafe-device-state", policy: CachePolicy.SENSITIVE_NO_CACHE },
+  { prefix: "/auth/refresh", policy: CachePolicy.SENSITIVE_NO_CACHE },
+  { prefix: "/auth/step-up", policy: CachePolicy.SENSITIVE_NO_CACHE },
+  { prefix: "/auth/login", policy: CachePolicy.SENSITIVE_NO_CACHE },
+  { prefix: "/auth/me", policy: CachePolicy.SESSION_STATIC },
+  { prefix: "/cafes", policy: CachePolicy.SESSION_STATIC },
+  { prefix: "/reports/catalogue", policy: CachePolicy.SESSION_STATIC },
+  { prefix: "/settings/system", policy: CachePolicy.SESSION_STATIC },
+  { prefix: "/settings/diagnostics", policy: CachePolicy.SESSION_STATIC },
+  { prefix: "/settings", policy: CachePolicy.SHORT_LIVED },
+  { prefix: "/inventory", policy: CachePolicy.SHORT_LIVED },
+  { prefix: "/procurement", policy: CachePolicy.SHORT_LIVED },
+  { prefix: "/vendors", policy: CachePolicy.SHORT_LIVED },
+  { prefix: "/customers", policy: CachePolicy.SHORT_LIVED },
+  { prefix: "/employees", policy: CachePolicy.SHORT_LIVED },
+  { prefix: "/bills", policy: CachePolicy.SHORT_LIVED },
+  { prefix: "/expenses", policy: CachePolicy.SHORT_LIVED },
+  { prefix: "/finance", policy: CachePolicy.SHORT_LIVED },
+  { prefix: "/dashboard", policy: CachePolicy.SHORT_LIVED },
+  { prefix: "/notifications", policy: CachePolicy.SHORT_LIVED },
+  { prefix: "/tasks", policy: CachePolicy.SHORT_LIVED },
+  { prefix: "/quality", policy: CachePolicy.SHORT_LIVED },
+  { prefix: "/assets", policy: CachePolicy.SHORT_LIVED },
+  { prefix: "/dept-orders", policy: CachePolicy.SHORT_LIVED },
+  { prefix: "/menu", policy: CachePolicy.SHORT_LIVED },
+  { prefix: "/revenue-share", policy: CachePolicy.SHORT_LIVED },
+  { prefix: "/trash", policy: CachePolicy.SHORT_LIVED },
+];
+
+export function determineCachePolicy(path) {
+  for (const rule of DEFAULT_POLICY_MAP) {
+    if (path.startsWith(rule.prefix)) {
+      return rule.policy;
+    }
+  }
+  return CachePolicy.SHORT_LIVED;
+}
+
+export function getPolicyTTL(policy) {
+  switch (policy) {
+    case CachePolicy.IMMUTABLE:
+      return 60 * 60 * 1000; // 1 hr
+    case CachePolicy.SESSION_STATIC:
+      return 10 * 60 * 1000; // 10 min
+    case CachePolicy.SHORT_LIVED:
+    case CachePolicy.SWR:
+      return 30 * 1000; // 30 sec
+    default:
+      return 0;
+  }
+}
+
+/**
+ * Derives a complete security & tenant-scoped cache key.
+ * Format: k:{orgId}::{userId}::{role}::{cafeId}::{deviceId}::{method}:{normalizedPath}
+ */
+export function generateCacheKey(path, options = {}) {
+  const normalizedPath = normalizeApiPath(path);
+  const orgId = options.organisationId || state?.auth?.user?.organisationId || state?.user?.organisationId || "ORG_DEFAULT";
+  const userId = options.userId || state?.auth?.user?.userId || state?.user?.userId || "ANON";
+  const role = options.role || state?.role || "GUEST";
+  const cafeId = options.cafeId || state?.currentCafeId || (typeof localStorage !== "undefined" ? localStorage.getItem("zamorin_bound_cafe_id") : null) || "ALL";
+  const deviceId = options.deviceId || getOrCreateDeviceId();
+  const method = (options.method || "GET").toUpperCase();
+
+  return `k:${orgId}::${userId}::${role}::${cafeId}::${deviceId}::${method}:${normalizedPath}`;
+}
+
+function setCacheEntry(key, data, ttl) {
+  if (apiReadCache.size >= MAX_CACHE_ENTRIES) {
+    // LRU eviction: delete oldest inserted key
+    const oldestKey = apiReadCache.keys().next().value;
+    if (oldestKey) {
+      apiReadCache.delete(oldestKey);
+    }
+  }
+  apiReadCache.set(key, {
+    data,
+    timestamp: Date.now(),
+    ttl,
+  });
+}
+
+export function clearApiCache(pathPrefix = null) {
+  if (!pathPrefix) {
+    apiReadCache.clear();
+    return;
+  }
+  const norm = normalizeApiPath(pathPrefix);
+  for (const key of apiReadCache.keys()) {
+    const pathPart = key.split(/::(?:GET|POST|PUT|PATCH|DELETE):/)[1] || "";
+    if (pathPart.startsWith(norm)) {
+      apiReadCache.delete(key);
+    }
+  }
+}
+
+export function clearApiCacheAndInFlight() {
+  apiReadCache.clear();
+  inFlightGetRequests.clear();
+  cancelPendingRouteReads();
+}
+
+export function invalidateRelatedCaches(mutationPath) {
+  const norm = normalizeApiPath(mutationPath);
+  if (norm.startsWith("/inventory")) {
+    clearApiCache("/inventory");
+    clearApiCache("/dashboard");
+  } else if (norm.startsWith("/vendors") || norm.startsWith("/procurement")) {
+    clearApiCache("/vendors");
+    clearApiCache("/procurement");
+    clearApiCache("/dashboard");
+  } else if (norm.startsWith("/customers")) {
+    clearApiCache("/customers");
+    clearApiCache("/dashboard");
+  } else if (norm.startsWith("/employees") || norm.startsWith("/payroll") || norm.startsWith("/attendance")) {
+    clearApiCache("/employees");
+    clearApiCache("/payroll");
+    clearApiCache("/attendance");
+    clearApiCache("/dashboard");
+  } else if (norm.startsWith("/expenses") || norm.startsWith("/bills") || norm.startsWith("/finance")) {
+    clearApiCache("/expenses");
+    clearApiCache("/bills");
+    clearApiCache("/finance");
+    clearApiCache("/dashboard");
+  } else if (norm.startsWith("/settings")) {
+    clearApiCache("/settings");
+  } else {
+    // Evict direct path prefix
+    clearApiCache(norm);
+  }
+}
+
+// Active Route Abort Controller for Stale Navigation Cancellation
+let activeRouteAbortController = null;
+
+export function getRouteAbortSignal() {
+  if (!activeRouteAbortController) {
+    activeRouteAbortController = new AbortController();
+  }
+  return activeRouteAbortController.signal;
+}
+
+export function cancelPendingRouteReads() {
+  if (activeRouteAbortController) {
+    activeRouteAbortController.abort();
+    activeRouteAbortController = new AbortController();
+  }
+}
 
 export const SessionState = Object.freeze({
   INITIALISING: "INITIALISING",
@@ -52,10 +239,18 @@ export function setStepUpAuthenticationHandler(handler) {
   stepUpAuthenticationHandler = handler;
 }
 
+let memoryCachedDeviceId = null;
+
 export function getOrCreateDeviceId() {
+  if (memoryCachedDeviceId) {
+    return memoryCachedDeviceId;
+  }
   try {
     const existing = globalThis.localStorage?.getItem(DEVICE_ID_STORAGE_KEY);
-    if (existing && existing.trim()) return existing.trim();
+    if (existing && existing.trim()) {
+      memoryCachedDeviceId = existing.trim();
+      return memoryCachedDeviceId;
+    }
   } catch {}
 
   const cryptoApi = globalThis.crypto;
@@ -71,6 +266,7 @@ export function getOrCreateDeviceId() {
     deviceId = "dev-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
   }
 
+  memoryCachedDeviceId = deviceId;
   try {
     globalThis.localStorage?.setItem(DEVICE_ID_STORAGE_KEY, deviceId);
   } catch {}
@@ -136,7 +332,6 @@ export function normalizeApiPath(path) {
   let clean = path.trim();
   if (!clean.startsWith("/")) clean = "/" + clean;
 
-  // Automatically strip duplicate /api/v1 or /api prefixes so all callers resolve to canonical API_BASE_URL
   if (clean.startsWith("/api/v1/")) {
     clean = clean.substring(7);
   } else if (clean === "/api/v1") {
@@ -174,7 +369,6 @@ async function readResponsePayload(response) {
     }
   }
 
-  // Handle unexpected HTML responses (e.g. 404/500 proxy error pages) gracefully without throwing JSON syntax error
   if (contentType.includes("text/html") || text.startsWith("<!DOCTYPE") || text.startsWith("<html")) {
     return {
       success: false,
@@ -312,67 +506,164 @@ export async function requestJson(
   {
     signal,
     body,
+    scope = RequestScope.ROUTE_OWNED,
     allowStepUpRetry = true,
     allowRefreshRetry = true,
+    bypassCache = false,
+    cachePolicy = null,
   } = {}
 ) {
-  let response = await performRequest(path, {
-    method,
-    signal,
-    body,
-  });
-
   const normalized = normalizeApiPath(path);
+  const isGet = method.toUpperCase() === "GET";
+  const policy = cachePolicy || determineCachePolicy(normalized);
+  const cacheKey = generateCacheKey(path, { method });
 
-  if (
-    response.status === 401 &&
-    allowRefreshRetry &&
-    !NON_REFRESHABLE_AUTH_PATHS.has(normalized)
-  ) {
-    try {
-      await refreshAuthenticatedSession();
-
-      response = await performRequest(path, {
-        method,
-        signal,
-        body,
-      });
-    } catch (refreshErr) {
-      // If refresh fails deterministically, throw controlled session error
-      throw new ApiClientError({
-        status: 401,
-        code: "AUTH_SESSION_INVALID",
-        message: "Authenticated session has expired.",
-        userMessage: "Your authenticated session could not be validated. Please sign in again.",
-      });
+  // Check Read Cache for GET
+  if (isGet && !bypassCache && policy !== CachePolicy.SENSITIVE_NO_CACHE) {
+    const cached = apiReadCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && now - cached.timestamp < cached.ttl) {
+      // SWR background refresh
+      if (policy === CachePolicy.SWR || now - cached.timestamp > cached.ttl / 2) {
+        queueMicrotask(() => {
+          performRequest(path, { method: "GET" }).then(async (res) => {
+            if (res.ok) {
+              const freshPayload = await readResponsePayload(res);
+              setCacheEntry(cacheKey, freshPayload, getPolicyTTL(policy));
+            }
+          }).catch(() => {});
+        });
+      }
+      return cached.data;
     }
   }
 
-  const payload = await readResponsePayload(response);
+  // Single-Flight GET Request Deduplication
+  if (isGet) {
+    const activeFlight = inFlightGetRequests.get(cacheKey);
+    if (activeFlight) {
+      if (signal) {
+        return new Promise((resolve, reject) => {
+          const onAbort = () => {
+            reject(new ApiClientError({
+              status: 0,
+              code: "REQUEST_ABORTED",
+              message: "The request was cancelled.",
+              userMessage: "The request was cancelled.",
+            }));
+          };
+          if (signal.aborted) {
+            return onAbort();
+          }
+          signal.addEventListener("abort", onAbort, { once: true });
+          activeFlight.then(
+            (val) => { signal.removeEventListener("abort", onAbort); resolve(val); },
+            (err) => { signal.removeEventListener("abort", onAbort); reject(err); }
+          );
+        });
+      }
+      return activeFlight;
+    }
+  }
 
-  if (
-    !response.ok &&
-    response.status === 403 &&
-    payload?.error?.code === "STEP_UP_AUTHENTICATION_REQUIRED" &&
-    allowStepUpRetry &&
-    normalized !== "/auth/step-up" &&
-    typeof stepUpAuthenticationHandler === "function"
-  ) {
-    await stepUpAuthenticationHandler();
-
-    return requestJson(method, path, {
-      signal,
+  const executionPromise = (async () => {
+    let response = await performRequest(path, {
+      method,
+      signal: isGet ? undefined : signal, // Shared GET fetch is not aborted by single consumer
       body,
-      allowStepUpRetry: false,
-      allowRefreshRetry,
+    });
+
+    if (
+      response.status === 401 &&
+      allowRefreshRetry &&
+      !NON_REFRESHABLE_AUTH_PATHS.has(normalized)
+    ) {
+      try {
+        await refreshAuthenticatedSession();
+
+        response = await performRequest(path, {
+          method,
+          signal: isGet ? undefined : signal,
+          body,
+        });
+      } catch (refreshErr) {
+        throw new ApiClientError({
+          status: 401,
+          code: "AUTH_SESSION_INVALID",
+          message: "Authenticated session has expired.",
+          userMessage: "Your authenticated session could not be validated. Please sign in again.",
+        });
+      }
+    }
+
+    const payload = await readResponsePayload(response);
+
+    if (
+      !response.ok &&
+      response.status === 403 &&
+      payload?.error?.code === "STEP_UP_AUTHENTICATION_REQUIRED" &&
+      allowStepUpRetry &&
+      normalized !== "/auth/step-up" &&
+      typeof stepUpAuthenticationHandler === "function"
+    ) {
+      await stepUpAuthenticationHandler();
+
+      return requestJson(method, path, {
+        signal,
+        body,
+        scope,
+        allowStepUpRetry: false,
+        allowRefreshRetry,
+      });
+    }
+
+    if (!response.ok) {
+      throw createApiError(response, payload);
+    }
+
+    // Invalidate relevant cache keys ONLY upon successful state mutation
+    if (!isGet) {
+      invalidateRelatedCaches(normalized);
+    }
+
+    // Cache successful GET responses according to policy
+    if (isGet && policy !== CachePolicy.SENSITIVE_NO_CACHE) {
+      setCacheEntry(cacheKey, payload, getPolicyTTL(policy));
+    }
+
+    return payload;
+  })();
+
+  if (isGet) {
+    executionPromise.catch(() => {});
+    inFlightGetRequests.set(cacheKey, executionPromise);
+    executionPromise.finally(() => {
+      inFlightGetRequests.delete(cacheKey);
     });
   }
 
-  if (!response.ok) {
-    throw createApiError(response, payload);
+  if (signal) {
+    return new Promise((resolve, reject) => {
+      const onAbort = () => {
+        reject(new ApiClientError({
+          status: 0,
+          code: "REQUEST_ABORTED",
+          message: "The request was cancelled.",
+          userMessage: "The request was cancelled.",
+        }));
+      };
+      if (signal.aborted) {
+        return onAbort();
+      }
+      signal.addEventListener("abort", onAbort, { once: true });
+      executionPromise.then(
+        (val) => { signal.removeEventListener("abort", onAbort); resolve(val); },
+        (err) => { signal.removeEventListener("abort", onAbort); reject(err); }
+      );
+    });
   }
 
-  return payload;
+  return executionPromise;
 }
 
 export function apiGet(path, options = {}) {
@@ -399,9 +690,6 @@ export function apiJson(method, path, options = {}) {
   return requestJson(method, path, options);
 }
 
-/**
- * Fetch a binary file (PDF, XLSX, CSV, ZIP) with explicit response validation.
- */
 export async function apiBlob(path, { signal, headers = {} } = {}) {
   const response = await performRequest(path, {
     method: "GET",
@@ -420,9 +708,6 @@ export async function apiBlob(path, { signal, headers = {} } = {}) {
   return await response.blob();
 }
 
-/**
- * Downloads a file blob directly to the user's browser with a safe filename.
- */
 export async function downloadFile({
   url,
   filename = "zamorin_export.pdf",
@@ -465,9 +750,6 @@ export async function downloadFile({
   }
 }
 
-/**
- * Multipart file upload wrapper.
- */
 export async function apiUpload(path, formData, { signal, headers = {} } = {}) {
   if (!(formData instanceof FormData)) {
     throw new TypeError("apiUpload expects a FormData instance as body.");

@@ -64,9 +64,9 @@ export function renderTrashBin() {
       <!-- Title & Header -->
       <div style="margin-bottom:20px; display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:14px; border-bottom:1px solid var(--border-subtle); padding-bottom:16px;">
         <div>
-          <div style="color:var(--ink); font-size:22px; font-weight:800; font-family:var(--font-display); letter-spacing:-0.3px;">
+          <h1 class="page-title" style="color:var(--ink); font-size:22px; font-weight:800; font-family:var(--font-display); letter-spacing:-0.3px; margin:0;">
             Trash Bin, Recovery &amp; Data Disposition
-          </div>
+          </h1>
           <div style="color:var(--muted); font-size:13px; margin-top:3px;">
             Administration → Data Management · Governed recovery, retention holds &amp; multi-store purge
           </div>

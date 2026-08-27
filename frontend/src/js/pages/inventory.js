@@ -72,15 +72,13 @@ export function renderInventory(subroute) {
 
       <!-- Main Workspace Container -->
       <div id="inv-workspace-wrap">
-        <div style="display:flex; justify-content:center; padding:40px;">
-          <div class="spinner"></div>
-        </div>
+        ${renderOverviewContentHtml()}
       </div>
     </div>
   `;
 }
 
-export async function wireInventory(root, subroute) {
+export function wireInventory(root, subroute) {
   if (subroute !== undefined) {
     activeTab = subroute || "overview";
   }
@@ -147,8 +145,7 @@ function renderCurrentWorkspace(wrap) {
   }
 }
 
-// ── 1. Overview Tab ──────────────────────────────────────────────────────────
-function renderOverviewTab(wrap) {
+function renderOverviewContentHtml() {
   const kpis = liveOverview?.kpis || {
     totalValuationPaisa: 148500000,
     totalActiveSkus: 52,
@@ -179,7 +176,7 @@ function renderOverviewTab(wrap) {
     ] : []),
   ];
 
-  wrap.innerHTML = `
+  return `
     <div style="display:flex; flex-direction:column; gap:24px;">
       <!-- Control Centre Button Hub Section -->
       <div class="module-hub-section">
@@ -218,24 +215,14 @@ function renderOverviewTab(wrap) {
           <div style="font-size:11.5px; color:var(--muted);">Replenishment required</div>
         </div>
         <div class="kpi-card glass" style="padding:14px;">
-          <div class="kpi-label" style="font-size:11px; color:var(--muted); font-weight:600; text-transform:uppercase;">Stock In-Transit</div>
-          <div class="kpi-value" style="font-size:20px; font-weight:800; color:var(--ink); margin:4px 0;">${kpis.inTransitQuantity || 0} units</div>
-          <div style="font-size:11.5px; color:var(--muted);">${kpis.activeTransfersCount || 0} transfers active</div>
-        </div>
-        <div class="kpi-card glass" style="padding:14px;">
-          <div class="kpi-label" style="font-size:11px; color:var(--muted); font-weight:600; text-transform:uppercase;">Active Food Recalls</div>
-          <div class="kpi-value" style="font-size:20px; font-weight:800; color:${kpis.activeRecallsCount > 0 ? "var(--danger)" : "var(--color-accent-mint-bright)"}; margin:4px 0;">${kpis.activeRecallsCount || 0}</div>
-          <div style="font-size:11.5px; color:var(--muted);">Quarantined lots</div>
-        </div>
-        <div class="kpi-card glass" style="padding:14px;">
-          <div class="kpi-label" style="font-size:11px; color:var(--muted); font-weight:600; text-transform:uppercase;">Stocktake Approvals</div>
+          <div class="kpi-label" style="font-size:11px; color:var(--muted); font-weight:600; text-transform:uppercase;">Pending Stocktake</div>
           <div class="kpi-value" style="font-size:20px; font-weight:800; color:var(--ink); margin:4px 0;">${kpis.pendingCountsApproval || 0}</div>
-          <div style="font-size:11.5px; color:var(--muted);">Awaiting review</div>
+          <div style="font-size:11.5px; color:var(--muted);">Cycle count variances</div>
         </div>
       </div>
 
-      <!-- Needs Attention & Recent Activity Section -->
-      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:16px;">
+      <!-- Attention & Recent Strip -->
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:16px;">
         <div class="card card-pad" style="background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-md, 12px);">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
             <div style="font-size:14px; font-weight:700; color:var(--ink); display:flex; align-items:center; gap:6px;">
@@ -281,6 +268,11 @@ function renderOverviewTab(wrap) {
       </div>
     </div>
   `;
+}
+
+// ── 1. Overview Tab ──────────────────────────────────────────────────────────
+function renderOverviewTab(wrap) {
+  wrap.innerHTML = renderOverviewContentHtml();
 
   // Wire Hub Tiles
   wrap.querySelectorAll("[data-inv-hub-tile]").forEach((btn) => {

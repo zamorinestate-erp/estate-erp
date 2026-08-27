@@ -1,7 +1,10 @@
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
-const routerContent = fs.readFileSync('src/js/router.js', 'utf8');
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const routerFile = path.resolve(__dirname, 'src/js/router.js');
+const routerContent = fs.readFileSync(routerFile, 'utf8');
 const lines = routerContent.split('\n');
 const missing = [];
 
@@ -11,7 +14,7 @@ for (const line of lines) {
     if (importMatch) {
       const namedImports = importMatch[1].split(',').map(s => s.trim()).filter(Boolean);
       const importPath = importMatch[2].split('?')[0];
-      const targetFile = path.resolve('src/js', importPath);
+      const targetFile = path.resolve(__dirname, 'src/js', importPath);
       
       if (!fs.existsSync(targetFile)) {
         console.error('File not found:', targetFile);
@@ -33,6 +36,8 @@ for (const line of lines) {
 
 if (missing.length === 0) {
   console.log('ALL ROUTER IMPORTS EXIST AND ARE EXPORTED CORRECTLY!');
+  process.exit(0);
 } else {
   console.log('Total missing exports:', missing.length);
+  process.exit(1);
 }

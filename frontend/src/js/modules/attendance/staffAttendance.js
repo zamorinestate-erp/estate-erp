@@ -59,10 +59,10 @@ function renderHeader() {
   return `
     <div class="flex items-center justify-between flex-wrap gap-md" style="margin-bottom:16px;">
       <div>
-        <div style="font-size:22px; font-weight:800; color:var(--text-primary); letter-spacing:-0.02em; display:flex; align-items:center; gap:8px;">
+        <h1 class="page-title" style="font-size:22px; font-weight:800; color:var(--text-primary); letter-spacing:-0.02em; display:flex; align-items:center; gap:8px; margin:0;">
           <span>⏱️</span>
           <span>My Attendance &amp; Shifts</span>
-        </div>
+        </h1>
         <div style="font-size:13px; color:var(--text-muted); margin-top:2px;">
           Dawn Roast — Koramangala · Employee Self-Service
         </div>

@@ -1674,12 +1674,12 @@ export function renderStaffPayslips() {
         style="gap:12px; margin-bottom:18px; flex-wrap:wrap;"
       >
         <div>
-          <div
-            style="color:var(--ink); font-weight:700; font-size:18px;"
-            class="font-display"
+          <h1
+            style="color:var(--ink); font-weight:700; font-size:18px; margin:0;"
+            class="page-title font-display"
           >
             My Payslips & Wage Slips (SCR-015)
-          </div>
+          </h1>
           <div style="color:var(--muted);" style="font-size:12px; margin-top:3px;">
             View your issued salary statements, earnings, deductions, payment history, annual tax documents and payroll queries.
           </div>

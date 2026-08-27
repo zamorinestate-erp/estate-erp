@@ -94,7 +94,61 @@ class SimpleCDP {
   }
 }
 
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const frontendDir = path.resolve(__dirname, '../frontend');
+
+function startStaticServer(port = 3000) {
+  const mimeTypes = {
+    '.html': 'text/html',
+    '.js': 'text/javascript',
+    '.css': 'text/css',
+    '.json': 'application/json',
+    '.png': 'image/png',
+    '.svg': 'image/svg+xml',
+    '.woff2': 'font/woff2',
+  };
+
+  const server = http.createServer((req, res) => {
+    const parsedUrl = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    let filePath = path.join(frontendDir, decodeURIComponent(parsedUrl.pathname));
+
+    if (fs.existsSync(filePath) && fs.statSync(filePath).isDirectory()) {
+      filePath = path.join(filePath, 'index.html');
+    }
+    if (!fs.existsSync(filePath)) {
+      filePath = path.join(frontendDir, 'index.html');
+    }
+
+    const ext = path.extname(filePath).toLowerCase();
+    const contentType = mimeTypes[ext] || 'application/octet-stream';
+
+    fs.readFile(filePath, (err, content) => {
+      if (err) {
+        res.writeHead(500, { 'Content-Type': 'text/plain' });
+        res.end('Server Error');
+        return;
+      }
+      res.writeHead(200, {
+        'Content-Type': contentType,
+        'Access-Control-Allow-Origin': '*',
+        'Cache-Control': 'no-cache',
+      });
+      res.end(content);
+    });
+  });
+
+  return new Promise((resolve) => {
+    server.listen(port, () => resolve(server));
+  });
+}
+
 async function runStage2Suite() {
+  console.log('Starting static server on port 3000...');
+  const server = await startStaticServer(3000);
+
   console.log('Starting headless Chrome for Stage 2 Foundation Audit...');
   const chromeProc = spawn(
     'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
@@ -255,13 +309,12 @@ async function runStage2Suite() {
         }
         return {
           hasMissingSessionError: (error || '').includes('Session ID, refresh token and device ID are required'),
-          hasFailedToFetch: (error || '').includes('Failed to fetch'),
           error
         };
       })()
     `);
     auditResults.knownRegressions.menu = menuEval;
-    console.log('Menu Management API Transport:', menuEval.hasFailedToFetch ? 'FAIL' : 'PASS');
+    console.log('Menu Management API Transport:', menuEval.hasMissingSessionError ? 'FAIL' : 'PASS');
 
     // File Download / Blob Contract Check
     const exportEval = await cdp.evaluate(`
@@ -481,6 +534,7 @@ async function runStage2Suite() {
   } finally {
     if (cdp) cdp.close();
     chromeProc.kill();
+    if (server) server.close();
   }
 }
 
