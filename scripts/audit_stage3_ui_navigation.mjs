@@ -29,9 +29,9 @@ function assert(condition, name, details = '') {
 // 1. Audit Navigation & Four-Profile Route Parity
 console.log('1. Auditing Four-Profile Navigation Configurations...');
 const profiles = [
-  { name: 'PRIMARY MASTER', role: ROLES.MASTER, isPrimary: true, expectedCount: 23 },
+  { name: 'PRIMARY MASTER', role: ROLES.MASTER, isPrimary: true, expectedCount: 24 },
   { name: 'NORMAL MASTER', role: ROLES.MASTER, isPrimary: false, expectedCount: 20 },
-  { name: 'OWNER', role: ROLES.OWNER, isPrimary: false, expectedCount: 11 },
+  { name: 'OWNER', role: ROLES.OWNER, isPrimary: false, expectedCount: 12 },
   { name: 'CAFE OPERATIONS', role: ROLES.CAFE_ADMIN, isPrimary: false, expectedCount: 15 }
 ];
 

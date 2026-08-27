@@ -1,11 +1,10 @@
 node_modules/
 .env
 .env.*
-dist/
-.next/
-coverage/
-*.log
+**/.env
+**/.env.*
 !.env.example
+!**/.env.example
 .local-private-storage/
 .local-evidence-storage/
 logs/

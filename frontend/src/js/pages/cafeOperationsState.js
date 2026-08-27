@@ -318,7 +318,10 @@ export function wireCafeOperationsState(root, {
         break;
       case 'retry':
         if (typeof onRetry === 'function') onRetry();
-        else window.location.reload();
+        else {
+          // Re-render this page without full browser reload (preserves session/device/shell).
+          import('../router.js').then(({ renderShell }) => renderShell()).catch(() => {});
+        }
         break;
     }
   };

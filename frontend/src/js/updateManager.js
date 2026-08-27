@@ -265,7 +265,7 @@ export function applyUpdate() {
     };
   }
 
-  window.location.reload();
+  window.location.reload(); // SW update fallback: no waiting worker, force fresh fetch from network
 
   return {
     applied: false,

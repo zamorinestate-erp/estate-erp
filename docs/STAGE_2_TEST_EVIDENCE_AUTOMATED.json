@@ -1,35 +1,35 @@
 {
-  "timestamp": "2026-08-23T13:06:39.505Z",
+  "timestamp": "2026-08-27T16:09:17.164Z",
   "apiSessionFoundation": {
     "Primary Master": {
       "deviceIdPresent": true,
-      "sessionState": "EXPIRED",
-      "getError": "Authenticated session has expired.",
+      "sessionState": "AUTHENTICATED",
+      "getError": "Failed to fetch",
       "hasMissingSessionError": false
     },
     "Normal Master": {
       "deviceIdPresent": true,
-      "sessionState": "EXPIRED",
-      "getError": "Authenticated session has expired.",
+      "sessionState": "AUTHENTICATED",
+      "getError": "Failed to fetch",
       "hasMissingSessionError": false
     },
     "Owner": {
       "deviceIdPresent": true,
-      "sessionState": "EXPIRED",
-      "getError": "Authenticated session has expired.",
+      "sessionState": "AUTHENTICATED",
+      "getError": "Failed to fetch",
       "hasMissingSessionError": false
     },
     "Cafe Operations": {
       "deviceIdPresent": true,
-      "sessionState": "EXPIRED",
-      "getError": "Authenticated session has expired.",
+      "sessionState": "AUTHENTICATED",
+      "getError": "Failed to fetch",
       "hasMissingSessionError": false
     }
   },
   "knownRegressions": {
     "posCharge": {
       "hasMissingSessionError": false,
-      "error": "Authenticated session has expired."
+      "error": "Failed to fetch"
     },
     "inventory": {
       "hasMissingSessionError": false,
@@ -37,8 +37,8 @@
     },
     "menu": {
       "hasMissingSessionError": false,
-      "hasFailedToFetch": false,
-      "error": "Authenticated session has expired."
+      "hasFailedToFetch": true,
+      "error": "Failed to fetch"
     },
     "downloadFileUtility": true
   },
@@ -72,16 +72,10 @@
   "fourProfileParity": {},
   "staffSmoke": {
     "landingPage": "staff-home",
-    "visibleLinks": [
-      "staff-home",
-      "announcements",
-      "staff-attendance",
-      "staff-leave",
-      "staff-settings"
-    ],
-    "count": 5,
+    "visibleLinks": [],
+    "count": 0,
     "forbiddenRoutesExposed": false,
-    "scopePill": "Staff"
+    "scopePill": ""
   },
   "themeMatrix": {
     "paper": {

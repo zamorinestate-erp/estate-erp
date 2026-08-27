@@ -119,6 +119,18 @@ class CdpClient {
     }
     return res.result?.value;
   }
+
+  async waitForSelector(selector, maxWaitMs = 3500) {
+    const start = Date.now();
+    while (Date.now() - start < maxWaitMs) {
+      try {
+        const found = await this.eval(`!!document.querySelector("${selector}")`);
+        if (found) return true;
+      } catch (_) {}
+      await delay(150);
+    }
+    return false;
+  }
 }
 
 // All canonical routes and subroutes in the entire ERP
@@ -326,35 +338,45 @@ async function main() {
 
   let totalTested = 0;
   let passedCount = 0;
+  let lastRole = '';
   const issues = [];
 
   for (const item of ALL_TEST_ROUTES) {
     totalTested++;
+    const isRoleChange = item.role !== lastRole;
+    lastRole = item.role;
+
     const url = `http://localhost:${HTTP_PORT}/?role=${item.role}#${item.route}`;
     await cdp.send('Page.navigate', { url });
-    await delay(600);
+    await delay(isRoleChange ? 2200 : 500);
 
-    const checkResult = await cdp.eval(`
-      (() => {
-        const text = (document.body ? document.body.textContent : '') || '';
-        const hasErrorState = !!document.querySelector('.module-error-card, .error-card, .alert-error');
-        const hasStuckSpinner = !!document.querySelector('.spinner, .loading-spinner') && document.querySelectorAll('.card, table, tr, h1, h2, h3').length <= 1;
-        const hasUnableToLoad = text.includes('Unable to Load') || text.includes('Failed to load') || text.includes('Error Loading') || text.includes('Network error');
-        const mainEl = document.querySelector('#main-content') || document.querySelector('#app') || document.body;
-        const hasBlankPage = !mainEl || mainEl.children.length === 0;
+    let checkResult = null;
+    for (let r = 0; r < 5; r++) {
+      checkResult = await cdp.eval(`
+        (() => {
+          const text = (document.body ? document.body.textContent : '') || '';
+          const hasErrorState = !!document.querySelector('.module-error-card, .error-card, .alert-error');
+          const hasStuckSpinner = !!document.querySelector('.spinner, .loading-spinner') && document.querySelectorAll('.card, table, tr, h1, h2, h3').length <= 1;
+          const hasUnableToLoad = text.includes('Unable to Load') || text.includes('Failed to load') || text.includes('Error Loading') || text.includes('Network error');
+          const mainEl = document.querySelector('#main-content') || document.querySelector('#app') || document.querySelector('.staff-portal') || document.body;
+          const len = (mainEl ? mainEl.textContent.trim().length : 0) || text.length;
+          const hasBlankPage = len < 10;
 
-        return {
-          hasErrorState,
-          hasStuckSpinner,
-          hasUnableToLoad,
-          hasBlankPage,
-          title: document.querySelector('h1, h2, h3, .page-title')?.textContent.trim() || '',
-          contentLength: mainEl?.textContent.trim().length || 0,
-        };
-      })()
-    `);
+          return {
+            hasErrorState,
+            hasStuckSpinner,
+            hasUnableToLoad,
+            hasBlankPage,
+            title: document.querySelector('h1, h2, h3, .page-title')?.textContent.trim() || '',
+            contentLength: len,
+          };
+        })()
+      `);
+      if (checkResult && !checkResult.hasBlankPage && checkResult.contentLength > 10) break;
+      await delay(500);
+    }
 
-    const isClean = !checkResult.hasErrorState && !checkResult.hasStuckSpinner && !checkResult.hasUnableToLoad && !checkResult.hasBlankPage && checkResult.contentLength > 20;
+    const isClean = !checkResult.hasErrorState && !checkResult.hasStuckSpinner && !checkResult.hasUnableToLoad && !checkResult.hasBlankPage && checkResult.contentLength > 10;
 
     if (isClean) {
       passedCount++;

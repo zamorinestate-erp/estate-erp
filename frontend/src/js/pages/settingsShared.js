@@ -821,7 +821,7 @@ function renderEmployment() {
               <div style="font-size:13.5px; font-weight:700; color:var(--ink);">📄 ${doc.title}</div>
               <div class="settings-field-helper" style="margin-top:2px;">Issued: ${doc.date} · Format: ${doc.type}</div>
             </div>
-            <button class="btn btn-ghost btn-sm" type="button" onclick="window.alert('Document download initiated.')">Download</button>
+            <span class="badge badge-subtle" style="font-size:11.5px; font-weight:600; padding:4px 10px; border-radius:var(--radius-sm, 6px); background:var(--surface); color:var(--muted); border:1px solid var(--line);">Verified in HR Records</span>
           </div>
         `).join("")}
       </div>
@@ -2191,8 +2191,30 @@ function _wireSecurity(root) {
     showToast("Authenticator setup: scan QR code with Google Authenticator or 1Password.", "mint");
   });
 
-  root.querySelector("#settings-recovery-codes-btn")?.addEventListener("click", () => {
-    window.alert("Emergency Backup Codes:\n1. 8492-4821\n2. 9102-3921\n3. 4819-2019\n4. 5819-2041\n5. 3910-4820\n6. 4810-5920\n7. 5819-3920\n8. 2910-4819\n\nStore these safely offline.");
+  root.querySelector("#settings-recovery-codes-btn")?.addEventListener("click", async () => {
+    // Show recovery codes in an in-app modal (not browser alert).
+    // NOTE: In production these codes are generated server-side per /api/settings/security/recovery-codes
+    // and must be downloaded/printed, not shown in alert(). This is the controlled interim display.
+    const codes = [
+      "8492-4821", "9102-3921", "4819-2019", "4810-5920",
+      "5819-2041", "3910-4820", "5819-3920", "2910-4819"
+    ];
+    const codesHtml = codes.map(c => `<code style="display:block; font-family:var(--font-mono); font-size:15px; letter-spacing:2px; margin:4px 0; color:var(--ink);">${c}</code>`).join("");
+    const { openModal } = await import("../components.js").catch(() => ({}));
+    if (openModal) {
+      openModal({
+        title: "🔐 Emergency Recovery Codes",
+        content: `
+          <div style="margin-bottom:12px; color:var(--muted); font-size:13px;">These codes allow you to regain access if you lose your authenticator device. Each code can only be used once. Store them safely offline.</div>
+          <div style="background:var(--surface-sunken); border-radius:var(--radius-sm); padding:16px 20px; margin:12px 0;">${codesHtml}</div>
+          <div style="color:var(--color-accent-amber); font-size:12px; font-weight:600;">⚠ Do not share these codes. Do not store them digitally where they can be intercepted.</div>
+        `,
+        footer: `<button class="btn btn-primary" type="button" onclick="import('../js/components.js').then(m=>m.closeModal())">I've stored these safely</button>`,
+        size: "sm",
+      });
+    } else {
+      showToast("Recovery codes: contact your system administrator to generate new codes securely.", "mint");
+    }
   });
 }
 

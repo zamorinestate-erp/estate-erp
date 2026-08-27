@@ -669,9 +669,10 @@ function openAnnouncementDetailModal(a, onRefreshCallback) {
                   <div style="font-size:11px; color:var(--text-muted);">${att.size || "1.2 MB"}</div>
                 </div>
               </div>
-              <button class="btn btn-xs btn-secondary" onclick="alert('Document opened securely in Zamorin viewer.')">
-                Download / View
-              </button>
+              ${att.url
+                ? `<a class="btn btn-xs btn-secondary" href="${escapeHtml(att.url)}" target="_blank" rel="noopener noreferrer" type="button">Download / View</a>`
+                : `<span class="badge badge-subtle" style="font-size:11px; padding:3px 8px; color:var(--text-muted); background:var(--bg-surface-2); border:1px solid var(--border-subtle); border-radius:4px;">Archived on Record</span>`
+              }
             </div>
           `).join("")}
         </div>
