@@ -303,13 +303,13 @@ export function wireCafeOperationsState(root, {
         if (typeof onUnlock === 'function') onUnlock();
         else {
           // Dynamic import to avoid circular deps
-          import('./components.js').then(({ openOperatorLockModal }) => openOperatorLockModal()).catch(() => {});
+          import('../components.js').then(({ openOperatorLockModal }) => openOperatorLockModal()).catch(() => {});
         }
         break;
       case 'switch':
         if (typeof onSwitch === 'function') onSwitch();
         else {
-          import('./components.js').then(({ openSwitchOperatorModal }) => openSwitchOperatorModal()).catch(() => {});
+          import('../components.js').then(({ openSwitchOperatorModal }) => openSwitchOperatorModal()).catch(() => {});
         }
         break;
       case 'kiosk':

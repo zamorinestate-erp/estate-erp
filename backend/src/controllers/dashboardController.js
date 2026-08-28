@@ -34,6 +34,7 @@ const { User } = require('../models/User');
 const { RegisterSession } = require('../models/RegisterSession');
 const { PersonalLedgerEntry } = require('../models/PersonalLedger');
 const { SequenceCounter } = require('../models/SequenceCounter');
+const { AuditEvent } = require('../models/AuditEvent');
 const { asyncHandler } = require('../utils/asyncHandler');
 const { ApiError } = require('../utils/ApiError');
 
@@ -1426,41 +1427,39 @@ async function getCafeDeptOrderSummary(orgId, cafeId, today) {
  * Recent operational activity from audit/task records.
  */
 async function getCafeRecentActivity(orgId, cafeId, limit = 8) {
-  const { AuditLog } = (() => {
-    try { return require('../models/AuditLog'); } catch { return {}; }
-  })();
-
-  if (!AuditLog) {
-    // Fallback: recent tasks
-    const tasks = await Task.find({
+  try {
+    const logs = await AuditEvent.find({
       organisationId: orgId,
       cafeId,
-      updatedAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
     })
-      .sort({ updatedAt: -1 })
+      .sort({ createdAt: -1 })
       .limit(limit)
-      .select('title status updatedAt')
+      .select('action entityType description createdAt actorName actor')
       .lean();
 
-    return tasks.map((t) => ({
-      description: `${t.title} — ${t.status}`,
-      timestamp: t.updatedAt,
-    }));
-  }
+    if (logs && logs.length > 0) {
+      return logs.map((l) => ({
+        description: l.description || `${l.action} ${l.entityType || ''}`.trim(),
+        timestamp: l.createdAt,
+        actor: l.actorName || (l.actor && l.actor.name) || 'System',
+      }));
+    }
+  } catch {}
 
-  const logs = await AuditLog.find({
+  // Fallback: recent tasks
+  const tasks = await Task.find({
     organisationId: orgId,
     cafeId,
+    updatedAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
   })
-    .sort({ createdAt: -1 })
+    .sort({ updatedAt: -1 })
     .limit(limit)
-    .select('action entityType description createdAt actorName')
+    .select('title status updatedAt')
     .lean();
 
-  return logs.map((l) => ({
-    description: l.description || `${l.action} ${l.entityType}`,
-    timestamp: l.createdAt,
-    actor: l.actorName,
+  return tasks.map((t) => ({
+    description: `${t.title} — ${t.status}`,
+    timestamp: t.updatedAt,
   }));
 }
 

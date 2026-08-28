@@ -262,21 +262,23 @@ async function renderPage() {
   const subroute = subSegments.join("/");
 
   switch (baseRoute) {
-    case "dashboard":
-      if (state.role === ROLES.CAFE_ADMIN) {
+    case "dashboard": {
+      const normalizedRole = (state.role || "").toLowerCase();
+      if (normalizedRole === ROLES.CAFE_ADMIN || normalizedRole === "admin") {
         content.innerHTML = renderAdminDashboard();
         hydrateAdminDashboard(content);
-      } else if (state.role === ROLES.OWNER) {
+      } else if (normalizedRole === ROLES.OWNER) {
         content.innerHTML = renderOwnerDashboard();
         hydrateOwnerDashboard(content);
-      } else if (state.role === ROLES.STAFF) {
+      } else if (normalizedRole === ROLES.STAFF || normalizedRole === "employee") {
         content.innerHTML = renderStaffHome();
         wireStaffHome(content);
       } else {
-        content.innerHTML = renderMasterDashboard({ roleLabel: ROLE_LABELS[state.role] });
+        content.innerHTML = renderMasterDashboard({ roleLabel: ROLE_LABELS[state.role] || "Master" });
         hydrateMasterDashboard(content);
       }
       break;
+    }
 
     case "staff-home":
       content.innerHTML = renderStaffHome();
