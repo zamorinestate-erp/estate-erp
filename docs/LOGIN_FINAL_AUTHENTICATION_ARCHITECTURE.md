@@ -25,9 +25,10 @@ graph TD
 
 ### 2. Core Cryptographic Subsystems
 
-1. **Password Authentication & Hashing**:
-   - **Algorithm**: `bcrypt` with work factor 12 (`PASSWORD_HASH_ROUNDS = 12`).
-   - **Policy**: Minimum 15 characters (single factor) / 8 characters (MFA-enforced), passphrases allowed, spaces permitted, 0 mandatory composition rules, offline common password blocklist.
+1. **Password Authentication & Modern Memory-Hard KDF**:
+   - **Canonical Scheme**: Memory-hard `scrypt` (`$scrypt$v=1$N=65536,r=8,p=1`) with 128-bit CSPRNG salt and 512-bit key.
+   - **Legacy & Intermediate Migration**: Version-aware verifier supporting legacy raw bcrypt (`$2b$`) and intermediate `$v2$` with transparent on-login upgrade.
+   - **Policy**: Minimum 15 characters (single factor) / 8 characters (MFA-enforced), maximum 128 characters, passphrases and Unicode with NFC normalization, 0 mandatory composition rules, offline common password blocklist. Zero 72-byte truncation. Zero password-shucking risk.
 2. **Multi-Factor Authentication (MFA)**:
    - **Algorithm**: RFC 6238 TOTP (SHA1, 6 digits, 30s step, drift window ±1).
    - **Storage**: Secret key encrypted at rest with `AES-256-GCM` using `MFA_ENCRYPTION_KEY` environment key.

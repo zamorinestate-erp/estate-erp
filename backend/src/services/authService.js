@@ -150,20 +150,102 @@ function validatePasswordStrength(password, { requiresMfa = false, minLength = n
   return errors;
 }
 
-const PASSWORD_HASH_PREFIX_V2 = '$v2$';
+const SCRYPT_PREFIX = '$scrypt$v=1$';
+const SCRYPT_DEFAULTS = {
+  N: 65536,
+  r: 8,
+  p: 1,
+  keylen: 64,
+  maxmem: 128 * 1024 * 1024,
+};
 
 /**
- * Pre-hashes password with SHA-256 to produce a fixed 44-character Base64 digest.
- * This completely eliminates bcrypt's 72-byte truncation limitation and ensures
- * all 128 characters and multibyte UTF-8 characters are fully evaluated.
+ * Normalizes password with Unicode NFC normalization to guarantee consistent
+ * representation across diverse client platforms.
  */
-function preparePasswordForBcrypt(password) {
-  return crypto
-    .createHash('sha256')
-    .update(Buffer.from(password, 'utf8'))
-    .digest('base64');
+function normalizePassword(password) {
+  if (typeof password !== 'string') {
+    return '';
+  }
+  return password.normalize('NFC');
 }
 
+/**
+ * Identifies whether a stored password verifier needs opportunistic upgrade
+ * to the canonical modern memory-hard scrypt KDF.
+ */
+function needsPasswordRehash(passwordHash) {
+  if (typeof passwordHash !== 'string') {
+    return false;
+  }
+  return !passwordHash.startsWith(SCRYPT_PREFIX);
+}
+
+/**
+ * Hashes a normalized password using the memory-hard scrypt KDF with a 128-bit CSPRNG salt.
+ */
+function hashPasswordScrypt(normalizedPassword, options = {}) {
+  const N = options.N || SCRYPT_DEFAULTS.N;
+  const r = options.r || SCRYPT_DEFAULTS.r;
+  const p = options.p || SCRYPT_DEFAULTS.p;
+  const keylen = options.keylen || SCRYPT_DEFAULTS.keylen;
+  const maxmem = options.maxmem || SCRYPT_DEFAULTS.maxmem;
+
+  const salt = crypto.randomBytes(16);
+  const derivedKey = crypto.scryptSync(
+    Buffer.from(normalizedPassword, 'utf8'),
+    salt,
+    keylen,
+    { N, r, p, maxmem }
+  );
+
+  return `${SCRYPT_PREFIX}N=${N},r=${r},p=${p}$${salt.toString('hex')}$${derivedKey.toString('hex')}`;
+}
+
+/**
+ * Verifies a normalized password against a stored scrypt verifier using constant-time comparison.
+ */
+function verifyPasswordScrypt(normalizedPassword, storedHash) {
+  if (!storedHash.startsWith(SCRYPT_PREFIX)) {
+    return false;
+  }
+
+  const parts = storedHash.slice(SCRYPT_PREFIX.length).split('$');
+  if (parts.length !== 3) {
+    return false;
+  }
+
+  const [paramsStr, saltHex, keyHex] = parts;
+  const params = {};
+  for (const pair of paramsStr.split(',')) {
+    const [k, v] = pair.split('=');
+    if (k && v) params[k] = parseInt(v, 10);
+  }
+
+  const N = params.N || SCRYPT_DEFAULTS.N;
+  const r = params.r || SCRYPT_DEFAULTS.r;
+  const p = params.p || SCRYPT_DEFAULTS.p;
+  const salt = Buffer.from(saltHex, 'hex');
+  const expectedKey = Buffer.from(keyHex, 'hex');
+
+  const actualKey = crypto.scryptSync(
+    Buffer.from(normalizedPassword, 'utf8'),
+    salt,
+    expectedKey.length,
+    { N, r, p, maxmem: SCRYPT_DEFAULTS.maxmem }
+  );
+
+  if (actualKey.length !== expectedKey.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(actualKey, expectedKey);
+}
+
+/**
+ * Canonical password hasher: Enforces NIST SP 800-63B-4 length bounds,
+ * blocklists, and hashes using the modern memory-hard scrypt KDF.
+ */
 async function hashPassword(password, options = { requiresMfa: true }) {
   const validationErrors =
     validatePasswordStrength(password, options);
@@ -172,15 +254,16 @@ async function hashPassword(password, options = { requiresMfa: true }) {
     throw new Error(validationErrors.join(' '));
   }
 
-  const prehashed = preparePasswordForBcrypt(password);
-  const rawBcryptHash = await bcrypt.hash(
-    prehashed,
-    PASSWORD_HASH_ROUNDS
-  );
-
-  return `${PASSWORD_HASH_PREFIX_V2}${rawBcryptHash}`;
+  const normalized = normalizePassword(password);
+  return hashPasswordScrypt(normalized);
 }
 
+/**
+ * Multi-tier version-aware password verification:
+ * 1. Tier 1 (Current Canonical): Memory-hard scrypt ($scrypt$v=1$)
+ * 2. Tier 2 (Intermediate): $v2$ (SHA-256 + bcrypt)
+ * 3. Tier 3 (Legacy): Direct raw bcrypt ($2a$, $2b$, $2y$)
+ */
 async function verifyPassword(
   password,
   passwordHash
@@ -194,20 +277,42 @@ async function verifyPassword(
     return false;
   }
 
-  // Version 2 (Current): SHA-256 pre-hashed before bcrypt (72-byte safe)
-  if (passwordHash.startsWith(PASSWORD_HASH_PREFIX_V2)) {
-    const rawBcryptHash = passwordHash.slice(PASSWORD_HASH_PREFIX_V2.length);
-    const prehashed = preparePasswordForBcrypt(password);
-    return bcrypt.compare(prehashed, rawBcryptHash);
+  const normalized = normalizePassword(password);
+
+  // 1. Current Canonical Scheme: Memory-hard scrypt KDF ($scrypt$v=1$)
+  if (passwordHash.startsWith(SCRYPT_PREFIX)) {
+    try {
+      return verifyPasswordScrypt(normalized, passwordHash);
+    } catch {
+      return false;
+    }
   }
 
-  // Version 1 (Legacy): Direct raw bcrypt ($2a$, $2b$, $2y$)
+  // 2. Intermediate Migration Scheme: $v2$ (SHA-256 + bcrypt)
+  if (passwordHash.startsWith('$v2$')) {
+    try {
+      const rawBcryptHash = passwordHash.slice(4);
+      const prehashed = crypto
+        .createHash('sha256')
+        .update(Buffer.from(normalized, 'utf8'))
+        .digest('base64');
+      return await bcrypt.compare(prehashed, rawBcryptHash);
+    } catch {
+      return false;
+    }
+  }
+
+  // 3. Legacy Scheme: Direct raw bcrypt ($2a$, $2b$, $2y$)
   if (
     passwordHash.startsWith('$2a$') ||
     passwordHash.startsWith('$2b$') ||
     passwordHash.startsWith('$2y$')
   ) {
-    return bcrypt.compare(password, passwordHash);
+    try {
+      return await bcrypt.compare(normalized, passwordHash);
+    } catch {
+      return false;
+    }
   }
 
   return false;
@@ -399,6 +504,18 @@ async function authenticatePassword({
     throw new Error(
       'Invalid email or password.'
     );
+  }
+
+  // Transparent opportunistic upgrade to canonical scrypt KDF on successful login
+  if (needsPasswordRehash(user.passwordHash)) {
+    try {
+      const upgradedHash = await hashPassword(password, {
+        requiresMfa: user.mfaEnabled || user.role !== 'staff',
+      });
+      user.passwordHash = upgradedHash;
+    } catch (_rehashErr) {
+      // Rehash error is non-fatal to login
+    }
   }
 
   user.failedLoginAttempts = 0;
@@ -863,6 +980,11 @@ async function revokeUserSession({
 
 module.exports = {
   MFA_REQUIRED_ROLES,
+  SCRYPT_PREFIX,
+  normalizePassword,
+  needsPasswordRehash,
+  hashPasswordScrypt,
+  verifyPasswordScrypt,
   validatePasswordStrength,
   hashPassword,
   verifyPassword,
