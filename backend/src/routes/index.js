@@ -314,6 +314,12 @@ router.use(
 );
 
 const mailOpsRoutes = require('./mailOpsRoutes');
+const cafeOpsRoutes = require('../cafe-operations/routes');
+
+router.use(
+  '/cafe-ops',
+  cafeOpsRoutes
+);
 
 router.use(
   '/mailops',

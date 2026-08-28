@@ -1,0 +1,579 @@
+/* =====================================================================
+   CAFE-OPERATIONS.CSS
+   ---------------------------------------------------------------------
+   Extends components.base.css (the REAL, unmodified login page CSS —
+   see that file's own header comment). Load order matters:
+
+     <link rel="stylesheet" href="css/components.base.css" />
+     <link rel="stylesheet" href="css/cafe-operations.css" />
+
+   This file does NOT redeclare :root — every color/radius/shadow/font
+   token below (--ink-900, --bronze-500, --radius-card, --shadow-card,
+   --font-display, --ease, etc.) comes from components.base.css, loaded
+   first. Existing .auth-card / .auth-brand / .auth-btn-primary /
+   .auth-input / .auth-error / .auth-modal / .auth-spinner classes are
+   reused AS-IS everywhere the same treatment applies (see the screen
+   JS files) — nothing here duplicates them. Only genuinely new surface
+   area gets a class in here, all prefixed .cafeops- so it's obvious at
+   a glance which rules belong to which module if these files are later
+   merged into the app's real global stylesheet.
+   ===================================================================== */
+
+/* ---------------------------------------------------------------------
+   Brand header — logo only, no separate "Zamorin" text heading, because
+   the real logo/zamorin-logo-stacked.svg already bakes the full
+   ZAMORIN / ESTATE / PVT. LTD. wordmark in as SVG text. Replaces the
+   56px icon-in-a-rounded-square treatment on every Cafe Operations
+   screen — see ARCHITECTURE_DECISIONS.md for why.
+   --------------------------------------------------------------------- */
+.cafeops-logo {
+  width: 132px;
+  height: auto;
+  margin-bottom: 16px;
+  filter: drop-shadow(0 10px 20px rgba(16, 26, 48, .16));
+  transition: transform .3s var(--ease);
+}
+.auth-card:hover .cafeops-logo { transform: scale(1.02); }
+@media (max-width: 480px) {
+  .cafeops-logo { width: 108px; }
+}
+
+/* ---------------------------------------------------------------------
+   Device identity strip — cafe name + device name, shown under the logo
+   on every pre-session screen (Kiosk, Sign-In, Register Device, status
+   screens) so the physical terminal's identity is never ambiguous.
+   --------------------------------------------------------------------- */
+.cafeops-device-strip {
+  display: grid;
+  gap: 2px;
+  margin-bottom: 22px;
+  text-align: center;
+}
+.cafeops-device-strip .cafeops-cafe-name {
+  font-family: var(--font-display);
+  font-weight: 650;
+  font-size: 1.05rem;
+  color: var(--ink-900);
+}
+.cafeops-device-strip .cafeops-device-name {
+  font-size: .78rem;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  letter-spacing: .01em;
+}
+
+/* ---------------------------------------------------------------------
+   Numeric PIN pad — large touch targets, per login spec Section 43.
+   3x4 grid: 1-9, Clear, 0, Backspace.
+   --------------------------------------------------------------------- */
+.cafeops-pin-dots {
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  margin: 4px 0 26px;
+}
+.cafeops-pin-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1.5px solid var(--line-strong);
+  background: var(--surface);
+  transition: background .14s var(--ease), border-color .14s var(--ease), transform .14s var(--ease);
+}
+.cafeops-pin-dot--filled {
+  background: var(--ink-900);
+  border-color: var(--ink-900);
+  transform: scale(1.1);
+}
+.cafeops-pin-dots--invalid .cafeops-pin-dot {
+  border-color: var(--danger);
+  animation: auth-shake .32s var(--ease);
+}
+.cafeops-pin-dots--invalid .cafeops-pin-dot--filled { background: var(--danger); border-color: var(--danger); }
+
+.cafeops-keypad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 22px;
+}
+.cafeops-key {
+  height: 64px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-input);
+  background: var(--surface);
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  font-weight: 600;
+  color: var(--ink-900);
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(23, 20, 15, .04);
+  transition: background .12s var(--ease), border-color .12s var(--ease), transform .08s var(--ease), box-shadow .12s var(--ease);
+  -webkit-tap-highlight-color: transparent;
+}
+.cafeops-key:hover { border-color: var(--bronze-400); background: #fffdf9; }
+.cafeops-key:active { transform: scale(.94); background: var(--bronze-100); box-shadow: none; }
+.cafeops-key:focus-visible { outline: 2px solid var(--bronze-500); outline-offset: 2px; }
+.cafeops-key--sub {
+  font-family: var(--font-ui);
+  font-size: .78rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+.cafeops-key--sub:active { color: var(--ink-900); }
+.cafeops-key--backspace svg { width: 22px; height: 22px; }
+.cafeops-key:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+
+@media (max-width: 360px) {
+  .cafeops-keypad { gap: 9px; }
+  .cafeops-key { height: 58px; }
+}
+
+/* ---------------------------------------------------------------------
+   Secondary entry points under the primary action — "Sign in with
+   Master Account", "Forgot Operator PIN?", "Help & Device Status",
+   "Back to Attendance". A quiet divider + stacked text links, never
+   competing visually with the primary button.
+   --------------------------------------------------------------------- */
+.cafeops-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 18px 0 14px;
+  color: var(--muted);
+  font-size: .7rem;
+  font-weight: 650;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+.cafeops-divider::before,
+.cafeops-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+.cafeops-textlinks {
+  display: grid;
+  gap: 4px;
+  justify-items: center;
+  margin-top: 6px;
+}
+.cafeops-textlink {
+  background: none;
+  border: none;
+  padding: 7px 4px;
+  font: inherit;
+  font-size: .8rem;
+  font-weight: 650;
+  color: var(--bronze-700);
+  cursor: pointer;
+  border-radius: 8px;
+  transition: color .14s var(--ease), background .14s var(--ease);
+}
+.cafeops-textlink:hover { color: var(--bronze-600); background: var(--bronze-100); }
+.cafeops-textlink--muted { color: var(--muted); font-weight: 600; }
+.cafeops-textlink--muted:hover { color: var(--ink-700); background: var(--surface-sunken, #f2f0e9); }
+.cafeops-textlink:focus-visible { outline: 2px solid var(--bronze-500); outline-offset: 2px; }
+
+/* ---------------------------------------------------------------------
+   Connection state — small icon+text, never color alone (Section 90/105).
+   --------------------------------------------------------------------- */
+.cafeops-connection {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin-top: 18px;
+  font-size: .74rem;
+  font-weight: 650;
+  color: var(--muted);
+}
+.cafeops-connection-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--success);
+  flex: none;
+}
+.cafeops-connection--offline .cafeops-connection-dot { background: var(--danger); }
+.cafeops-connection--offline { color: var(--danger); }
+
+/* ---------------------------------------------------------------------
+   Generic status screen — Registration Unavailable, Device Deactivated,
+   Session Expired, Maintenance, Offline, Update Required, etc. One
+   shared shell (see js/components/statusShell.js) driven by a tone.
+   --------------------------------------------------------------------- */
+.cafeops-status-icon {
+  width: 60px;
+  height: 60px;
+  margin: 4px auto 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-sunken, #f2f0e9);
+  color: var(--muted);
+}
+.cafeops-status-icon svg { width: 28px; height: 28px; }
+.cafeops-status-icon--danger { background: var(--danger-soft); color: var(--danger); }
+.cafeops-status-icon--warning { background: var(--bronze-100); color: var(--bronze-700); }
+.cafeops-status-icon--success { background: var(--success-soft, #e5f3ea); color: var(--success); }
+.cafeops-status-icon--muted { background: var(--surface-sunken, #f2f0e9); color: var(--muted); }
+
+.cafeops-status-title {
+  margin: 0 0 8px;
+  text-align: center;
+  font-family: var(--font-display);
+  font-weight: 650;
+  font-size: 1.3rem;
+  color: var(--ink-900);
+}
+.cafeops-status-message {
+  margin: 0 0 24px;
+  text-align: center;
+  font-size: .88rem;
+  line-height: 1.55;
+  color: var(--muted);
+}
+.cafeops-status-actions {
+  display: grid;
+  gap: 10px;
+}
+.cafeops-support-ref {
+  margin-top: 16px;
+  text-align: center;
+  font-size: .72rem;
+  color: var(--muted-2, var(--muted));
+}
+.cafeops-support-ref code {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--ink-700);
+  background: var(--surface-sunken, #f2f0e9);
+  padding: 2px 7px;
+  border-radius: 6px;
+}
+
+/* ---------------------------------------------------------------------
+   Kiosk — the default safe screen. Public-safe only: clock, cafe name,
+   rotating QR, countdown ring, "Open Cafe Operations" secondary action.
+   --------------------------------------------------------------------- */
+.cafeops-kiosk-clock {
+  font-family: var(--font-mono);
+  font-size: 2.4rem;
+  font-weight: 600;
+  color: var(--ink-900);
+  text-align: center;
+  letter-spacing: .01em;
+  font-variant-numeric: tabular-nums;
+}
+.cafeops-kiosk-date {
+  text-align: center;
+  font-size: .84rem;
+  color: var(--muted);
+  margin-top: 2px;
+  margin-bottom: 26px;
+}
+
+.cafeops-qr-wrap {
+  position: relative;
+  width: 208px;
+  height: 208px;
+  margin: 0 auto 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cafeops-qr-ring {
+  position: absolute;
+  inset: 0;
+  transform: rotate(-90deg);
+}
+.cafeops-qr-ring circle {
+  fill: none;
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+.cafeops-qr-ring .cafeops-qr-ring-track { stroke: var(--line); }
+.cafeops-qr-ring .cafeops-qr-ring-progress {
+  stroke: var(--bronze-500);
+  transition: stroke-dashoffset 1s linear;
+}
+.cafeops-qr-surface {
+  width: 168px;
+  height: 168px;
+  border-radius: var(--radius-input);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  box-shadow: inset 0 1px 2px rgba(23, 20, 15, .04);
+}
+.cafeops-qr-surface img,
+.cafeops-qr-surface svg { width: 100%; height: 100%; display: block; }
+.cafeops-qr-refreshing {
+  color: var(--muted);
+  font-size: .74rem;
+  font-weight: 650;
+}
+
+.cafeops-kiosk-instructions {
+  text-align: center;
+  font-size: .82rem;
+  color: var(--muted);
+  margin-bottom: 22px;
+  line-height: 1.5;
+}
+
+/* ---------------------------------------------------------------------
+   Master badge — subtle, on-brand elevated-identity indicator
+   (master spec Section 44). Gold treatment, never full warning red.
+   --------------------------------------------------------------------- */
+.cafeops-master-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px 3px 8px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--bronze-500), var(--bronze-600));
+  color: #fffaf0;
+  font-size: .66rem;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+.cafeops-master-badge svg { width: 11px; height: 11px; }
+
+/* ---------------------------------------------------------------------
+   MFA code entry (Master sign-in, second step) — reuses .auth-code-digit
+   sizing/treatment from components.base.css, this just wraps the row
+   with the step's own status text.
+   --------------------------------------------------------------------- */
+.cafeops-mfa-hint {
+  text-align: center;
+  font-size: .82rem;
+  color: var(--muted);
+  margin-bottom: 18px;
+  line-height: 1.5;
+}
+
+/* ---------------------------------------------------------------------
+   Context bar — persistent once a session is ACTIVE. Cafe · Business
+   Date · Operator/Master · connection state. Collapses on small screens.
+   --------------------------------------------------------------------- */
+.cafeops-context-bar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 18px;
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line);
+  font-size: .82rem;
+}
+.cafeops-context-bar .cafeops-context-cafe {
+  font-family: var(--font-display);
+  font-weight: 650;
+  color: var(--ink-900);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cafeops-context-bar .cafeops-context-sep { color: var(--line-strong); }
+.cafeops-context-bar .cafeops-context-date { color: var(--muted); white-space: nowrap; }
+.cafeops-context-bar .cafeops-context-spacer { flex: 1; }
+
+.cafeops-context-operator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  cursor: pointer;
+  font: inherit;
+  color: var(--ink-700);
+  font-weight: 650;
+  transition: border-color .14s var(--ease), transform .14s var(--ease), box-shadow .14s var(--ease);
+}
+.cafeops-context-operator:hover { border-color: var(--bronze-400); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(16,26,48,.08); }
+.cafeops-context-avatar {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: var(--ink-900);
+  color: #fdfbf6;
+  display: flex; align-items: center; justify-content: center;
+  font-size: .66rem; font-weight: 700;
+  flex: none;
+}
+
+@media (max-width: 640px) {
+  .cafeops-context-bar { gap: 8px; padding: 10px 12px; }
+  .cafeops-context-date { display: none; }
+  .cafeops-context-sep:nth-of-type(1) { display: none; }
+}
+
+/* ---------------------------------------------------------------------
+   Session/operator menu — sheet-style dropdown from the context bar.
+   --------------------------------------------------------------------- */
+.cafeops-menu-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: transparent;
+}
+.cafeops-menu {
+  position: absolute;
+  top: 60px;
+  right: 18px;
+  width: 260px;
+  background: var(--surface);
+  border: 1px solid var(--line-strong);
+  border-radius: 18px;
+  box-shadow: var(--shadow-card);
+  padding: 8px;
+  animation: auth-rise .18s var(--ease) both;
+}
+@media (max-width: 640px) {
+  .cafeops-menu { right: 12px; left: 12px; width: auto; }
+}
+.cafeops-menu-header {
+  padding: 12px 12px 10px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 6px;
+}
+.cafeops-menu-header .cafeops-menu-name { font-family: var(--font-display); font-weight: 650; color: var(--ink-900); font-size: .95rem; }
+.cafeops-menu-header .cafeops-menu-meta { font-size: .72rem; color: var(--muted); font-family: var(--font-mono); margin-top: 2px; }
+.cafeops-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  background: none;
+  border-radius: 10px;
+  font: inherit;
+  font-size: .84rem;
+  font-weight: 600;
+  color: var(--ink-700);
+  cursor: pointer;
+  text-align: left;
+  transition: background .12s var(--ease);
+}
+.cafeops-menu-item:hover { background: var(--surface-sunken, #f2f0e9); }
+.cafeops-menu-item svg { width: 16px; height: 16px; flex: none; color: var(--muted); }
+.cafeops-menu-item--danger { color: var(--danger); }
+.cafeops-menu-item--danger svg { color: var(--danger); }
+.cafeops-menu-divider { height: 1px; background: var(--line); margin: 6px 4px; }
+
+/* ---------------------------------------------------------------------
+   Session details / device status diagnostic rows.
+   --------------------------------------------------------------------- */
+.cafeops-diag-list { display: grid; gap: 0; margin: 6px 0 18px; }
+.cafeops-diag-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 2px;
+  border-bottom: 1px solid var(--line);
+  font-size: .82rem;
+}
+.cafeops-diag-row:last-child { border-bottom: none; }
+.cafeops-diag-label { color: var(--muted); font-weight: 600; }
+.cafeops-diag-value { color: var(--ink-900); font-weight: 650; text-align: right; }
+.cafeops-diag-value--mono { font-family: var(--font-mono); font-weight: 600; font-size: .78rem; }
+
+.cafeops-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: .7rem;
+  font-weight: 700;
+  background: var(--success-soft, #e5f3ea);
+  color: var(--success);
+}
+.cafeops-pill--muted { background: var(--surface-sunken, #f2f0e9); color: var(--muted); }
+.cafeops-pill--danger { background: var(--danger-soft); color: var(--danger); }
+.cafeops-pill--warning { background: var(--bronze-100); color: var(--bronze-700); }
+
+/* ---------------------------------------------------------------------
+   Handover / pending-work confirmation list ("Before You Switch").
+   --------------------------------------------------------------------- */
+.cafeops-pending-list { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 7px; text-align: left; }
+.cafeops-pending-list li {
+  display: flex; align-items: center; gap: 9px;
+  font-size: .8rem; font-weight: 600; color: var(--ink-700);
+  padding: 9px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-sunken, #f2f0e9);
+}
+.cafeops-pending-list li svg { width: 15px; height: 15px; flex: none; color: var(--bronze-600); }
+
+.cafeops-textarea {
+  width: 100%;
+  min-height: 76px;
+  padding: 10px 12px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-input);
+  background: var(--surface);
+  font: inherit;
+  font-size: .85rem;
+  color: var(--ink);
+  resize: vertical;
+  transition: border-color .16s var(--ease), box-shadow .16s var(--ease);
+}
+.cafeops-textarea:focus {
+  outline: none;
+  border-color: var(--bronze-500);
+  box-shadow: 0 0 0 4px rgba(177, 125, 56, .14);
+}
+
+/* Pre-timeout warning toast — small, unobtrusive, bottom-anchored */
+.cafeops-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--ink-900);
+  color: #fdfbf6;
+  border-radius: 14px;
+  box-shadow: var(--shadow-card);
+  font-size: .82rem;
+  font-weight: 600;
+  animation: auth-rise .25s var(--ease) both;
+  max-width: calc(100vw - 32px);
+}
+.cafeops-toast button {
+  background: var(--bronze-500);
+  border: none;
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  padding: 7px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cafeops-logo, .auth-card:hover .cafeops-logo,
+  .cafeops-key, .cafeops-pin-dot, .cafeops-menu, .cafeops-toast,
+  .cafeops-qr-ring-progress {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
+}

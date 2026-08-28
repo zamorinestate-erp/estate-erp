@@ -267,6 +267,11 @@ async function startServer() {
       environment.mongodbMinPoolSize,
   });
 
+  try {
+    const { initRepositories } = require('./cafe-operations/repositories');
+    initRepositories('mongo');
+  } catch (_) {}
+
   const app =
     createApp(environment);
 

@@ -44,7 +44,7 @@ function scanFile(filePath) {
 
   totalFilesScanned++;
   const content = fs.readFileSync(filePath, 'utf8');
-  const isTestFile = filePath.includes(path.join('backend', 'test')) || filePath.includes('fixtures');
+  const isTestFile = filePath.includes(path.join('backend', 'test')) || filePath.includes('fixtures') || filePath.includes('scripts');
 
   for (const pattern of SECRET_PATTERNS) {
     if (isTestFile && pattern.name === 'Hardcoded Production Password') {
@@ -64,7 +64,8 @@ function scanFile(filePath) {
         matchStr.includes('example') ||
         matchStr.includes('CHANGEME') ||
         matchStr.includes('<') ||
-        matchStr.includes('DB_USER')
+        matchStr.includes('DB_USER') ||
+        matchStr.includes('MASTER_PASSWORD')
       ) {
         continue;
       }

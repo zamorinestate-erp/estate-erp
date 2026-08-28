@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#faf9f6" />
+  <meta name="description" content="Zamorin Cafe Operations — Attendance Kiosk and Operator Sign-In" />
+  <title>Cafe Operations — Zamorin Cafe ERP</title>
+
+  <!-- Official icon-role assets (icon/ folder in the brand kit) — favicon
+       and PWA home-screen icon ONLY. Nowhere else in this module. The
+       full logo (logo/zamorin-logo-stacked.svg) is what every screen's
+       brand header actually shows — see js/components/brandHeader.js. -->
+  <link rel="icon" href="assets/favicon.ico" />
+  <link rel="apple-touch-icon" href="assets/icon-192.png" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+  <!-- The real, unmodified login page stylesheet, then this module's
+       additions. Order matters — see cafe-operations.css's own header. -->
+  <link rel="stylesheet" href="../src/styles/tokens.css">
+  <link rel="stylesheet" href="../src/styles/components.css">
+  <link rel="stylesheet" href="../src/styles/zamorin.css">
+  <link rel="stylesheet" href="css/cafe-operations.css">
+</head>
+<body>
+  <!-- Sticky, full-width, hidden except while an authenticated session is
+       active (toggled by js/cafeOpsApp.js) — deliberately OUTSIDE
+       .auth-page so it isn't affected by that container's centering. -->
+  <div id="cafeOpsContextBar" style="display:none"></div>
+
+  <div id="app" class="auth-page">
+    <!-- Persistent background — identical structure to the real login
+         page's, so every Cafe Operations screen shares its exact visual
+         shell. Never re-rendered by screen JS, so it never flickers or
+         resets between screens (same reasoning as the real page). -->
+    <div class="auth-bg" aria-hidden="true">
+      <div class="auth-glow"></div>
+      <div class="auth-blob auth-blob--1"></div>
+      <div class="auth-blob auth-blob--2"></div>
+      <div class="auth-blob auth-blob--3"></div>
+      <div class="auth-grid"></div>
+      <div class="auth-particles">
+        <span></span><span></span><span></span><span></span><span></span><span></span>
+      </div>
+    </div>
+
+    <!-- js/cafeOpsApp.js renders the current screen's card here -->
+    <div id="cafeOpsRoot"></div>
+  </div>
+
+  <script>
+    // Override point for API origin and app version — same convention as
+    // the real login page's window.ZAMORIN_API_BASE_URL.
+    // window.ZAMORIN_API_BASE_URL = 'https://api.zamorin.example.com/v1';
+    window.CAFE_OPS_APP_VERSION = '1.0.0';
+    // Set this once the real Attendance module's kiosk QR endpoint exists —
+    // see js/screens/attendanceKiosk.js for the exact expected response
+    // shape. Left unset here on purpose (see ARCHITECTURE_DECISIONS.md).
+    // window.CAFE_OPS_ATTENDANCE_QR_ENDPOINT = '/api/v1/attendance/kiosk/qr';
+  </script>
+
+  <script src="js/api/cafeOpsApi.js" defer></script>
+  <script src="js/state/sessionPolicyClient.js" defer></script>
+  <script src="js/components/brandHeader.js" defer></script>
+  <script src="js/components/pinPad.js" defer></script>
+  <script src="js/components/statusShell.js" defer></script>
+  <script src="js/screens/registerDevice.js" defer></script>
+  <script src="js/screens/attendanceKiosk.js" defer></script>
+  <script src="js/screens/operatorSignIn.js" defer></script>
+  <script src="js/screens/masterSignIn.js" defer></script>
+  <script src="js/screens/welcome.js" defer></script>
+  <script src="js/screens/sessionLocked.js" defer></script>
+  <script src="js/screens/cafeOperationsShell.js" defer></script>
+  <script src="js/screens/deviceStatusHelp.js" defer></script>
+  <script src="js/cafeOpsApp.js" defer></script>
+</body>
+</html>

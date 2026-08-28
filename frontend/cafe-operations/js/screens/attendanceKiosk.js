@@ -1,0 +1,140 @@
+/* =====================================================================
+   js/screens/attendanceKiosk.js
+   ---------------------------------------------------------------------
+   The default safe screen (login spec Section 31) for a registered,
+   ACTIVE device with no authenticated Operator/Master. Public-safe only
+   — no staff roster, no operational data, ever (Section 32).
+
+   INTEGRATION SEAM: the actual rotating QR / attendance check-in
+   mechanism lives in the existing Attendance module, which isn't part
+   of this conversation's context (see ARCHITECTURE_DECISIONS.md). This
+   screen calls a configurable endpoint for the QR payload
+   (window.CAFE_OPS_ATTENDANCE_QR_ENDPOINT) and, if that isn't wired up
+   yet, shows an honest "not connected yet" placeholder rather than a
+   fake or broken QR — this module owns the kiosk shell and the
+   Cafe Operations entry point, not attendance verification itself.
+   ===================================================================== */
+(function (global) {
+  'use strict';
+  const UI = global.CafeOpsUI;
+
+  const QR_ROTATE_SECONDS = 30;
+  let clockTimer = null;
+  let qrTimer = null;
+  let serverOffsetMs = 0;
+
+  function istFormatter(opts) {
+    return new Intl.DateTimeFormat('en-IN', Object.assign({ timeZone: 'Asia/Kolkata' }, opts));
+  }
+  const timeFmt = istFormatter({ hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+  const dateFmt = istFormatter({ weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+  function render(root, params) {
+    stopTimers();
+    const device = (params && params.device) || {};
+
+    root.innerHTML = `
+      <div class="auth-card">
+        ${UI.brandHeader({ device: { cafeName: device.cafeName || 'Cafe', deviceName: device.deviceName || 'Cafe Operations Device' } })}
+        <div class="cafeops-kiosk-clock" id="kioskClock">--:--:--</div>
+        <div class="cafeops-kiosk-date" id="kioskDate">&nbsp;</div>
+
+        <div class="cafeops-qr-wrap">
+          <svg class="cafeops-qr-ring" viewBox="0 0 208 208" aria-hidden="true">
+            <circle class="cafeops-qr-ring-track" cx="104" cy="104" r="98"></circle>
+            <circle class="cafeops-qr-ring-progress" id="qrRingProgress" cx="104" cy="104" r="98"
+                    stroke-dasharray="${2 * Math.PI * 98}" stroke-dashoffset="0"></circle>
+          </svg>
+          <div class="cafeops-qr-surface" id="qrSurface">
+            <span class="cafeops-qr-refreshing">Loading…</span>
+          </div>
+        </div>
+        <p class="cafeops-kiosk-instructions">Scan with your Zamorin app to check in or out for your shift.</p>
+
+        <button type="button" class="auth-btn-secondary" id="openCafeOpsBtn">
+          <span class="auth-btn-label">Open Cafe Operations</span>
+        </button>
+
+        <div class="cafeops-connection" id="connectionIndicator">
+          <span class="cafeops-connection-dot"></span><span>Online</span>
+        </div>
+      </div>`;
+
+    root.querySelector('#openCafeOpsBtn').addEventListener('click', () => global.CafeOpsApp.navigate('operatorSignIn', { device }));
+
+    startClock();
+    refreshQr(root);
+    qrTimer = setInterval(() => refreshQr(root), QR_ROTATE_SECONDS * 1000);
+    tickRing(root);
+
+    global.CafeOpsApi.deviceStatus()
+      .then((data) => {
+        if (data.serverTime) serverOffsetMs = new Date(data.serverTime).getTime() - Date.now();
+        setConnection(root, true);
+      })
+      .catch(() => setConnection(root, false));
+  }
+
+  function setConnection(root, online) {
+    const el = root.querySelector('#connectionIndicator');
+    if (!el) return;
+    el.classList.toggle('cafeops-connection--offline', !online);
+    el.querySelector('span:last-child').textContent = online ? 'Online' : "You're Offline";
+  }
+
+  function startClock() {
+    stopClock();
+    clockTimer = setInterval(tickClock, 1000);
+    tickClock();
+  }
+  function stopClock() { if (clockTimer) clearInterval(clockTimer); clockTimer = null; }
+
+  function tickClock() {
+    const clockEl = document.getElementById('kioskClock');
+    const dateEl = document.getElementById('kioskDate');
+    if (!clockEl) { stopClock(); return; } // screen navigated away
+    const now = new Date(Date.now() + serverOffsetMs);
+    clockEl.textContent = timeFmt.format(now);
+    dateEl.textContent = dateFmt.format(now) + ' · IST';
+  }
+
+  let qrElapsed = 0;
+  function tickRing(root) {
+    const ring = root.querySelector('#qrRingProgress');
+    if (!ring) return; // navigated away
+    qrElapsed = (qrElapsed + 1) % QR_ROTATE_SECONDS;
+    const circumference = 2 * Math.PI * 98;
+    const fraction = qrElapsed / QR_ROTATE_SECONDS;
+    ring.style.strokeDashoffset = String(circumference * fraction);
+    requestAnimationFrame(() => setTimeout(() => tickRing(root), 1000));
+  }
+
+  async function refreshQr(root) {
+    const surface = root.querySelector('#qrSurface');
+    if (!surface) return; // navigated away
+    qrElapsed = 0;
+    const endpoint = global.CAFE_OPS_ATTENDANCE_QR_ENDPOINT;
+    if (!endpoint) {
+      surface.innerHTML = '<span class="cafeops-qr-refreshing" style="padding:0 14px;text-align:center;line-height:1.4">Attendance check-in connects here once the Attendance module is wired up</span>';
+      return;
+    }
+    try {
+      const res = await fetch(endpoint);
+      const body = await res.json();
+      if (body && body.qrSvg) surface.innerHTML = body.qrSvg;
+      else if (body && body.qrImageUrl) surface.innerHTML = `<img src="${body.qrImageUrl}" alt="Attendance check-in QR code" />`;
+      else throw new Error('no QR payload');
+    } catch (e) {
+      surface.innerHTML = '<span class="cafeops-qr-refreshing">Unable to load check-in code</span>';
+    }
+  }
+
+  function stopTimers() {
+    stopClock();
+    if (qrTimer) clearInterval(qrTimer);
+    qrTimer = null;
+  }
+
+  global.CafeOpsScreens = global.CafeOpsScreens || {};
+  global.CafeOpsScreens.kiosk = { render, stopTimers };
+})(window);
