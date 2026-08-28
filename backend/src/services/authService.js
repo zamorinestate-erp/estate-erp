@@ -82,16 +82,48 @@ function generateOpaqueToken() {
   return crypto.randomBytes(64).toString('base64url');
 }
 
-function validatePasswordStrength(password) {
+const COMMON_PASSWORD_BLOCKLIST = new Set([
+  'password123456',
+  'password1234567',
+  'password12345678',
+  '123456789012345',
+  '1234567890123456',
+  'qwertyuiop12345',
+  'administrator123',
+  'administrator1234',
+  'zamorincafe1234',
+  'zamorincafe12345',
+  'changeme1234567',
+  'welcome12345678',
+  'letmein12345678',
+  'supersecret1234',
+  'iloveyou1234567',
+]);
+
+/**
+ * Modern NIST SP 800-63B-4 aligned password strength validator.
+ *
+ * Requirements:
+ * - Length-first security: 15+ chars for password-only, 8+ chars when MFA is enforced.
+ * - Max length: 128 characters without truncation.
+ * - Full support for spaces, punctuation, printable ASCII, and Unicode passphrases.
+ * - Zero mandatory composition rules (no forced uppercase, lowercase, digit, or symbol).
+ * - Offline blocklist of common, compromised, and repetitive passwords.
+ */
+function validatePasswordStrength(password, { requiresMfa = false, minLength = null } = {}) {
   const errors = [];
 
   if (typeof password !== 'string') {
     return ['Password must be text.'];
   }
 
-  if (password.length < 12) {
+  const effectiveMinLength = typeof minLength === 'number'
+    ? minLength
+    : (requiresMfa ? 8 : 15);
+
+  if (password.length < effectiveMinLength) {
     errors.push(
-      'Password must contain at least 12 characters.'
+      `Password must contain at least ${effectiveMinLength} characters.`
     );
   }
 
@@ -101,25 +133,17 @@ function validatePasswordStrength(password) {
     );
   }
 
-  if (!/[a-z]/.test(password)) {
+  const normalized = password.toLowerCase().trim();
+
+  if (COMMON_PASSWORD_BLOCKLIST.has(normalized)) {
     errors.push(
-      'Password must contain a lowercase letter.'
+      'This password is too common or easily guessed. Please choose a unique passphrase.'
     );
   }
 
-  if (!/[A-Z]/.test(password)) {
+  if (/^(.)\1+$/.test(password) && password.length >= 8) {
     errors.push(
-      'Password must contain an uppercase letter.'
-    );
-  }
-
-  if (!/[0-9]/.test(password)) {
-    errors.push('Password must contain a number.');
-  }
-
-  if (!/[^A-Za-z0-9]/.test(password)) {
-    errors.push(
-      'Password must contain a special character.'
+      'Password must not consist of a single repeated character.'
     );
   }
 

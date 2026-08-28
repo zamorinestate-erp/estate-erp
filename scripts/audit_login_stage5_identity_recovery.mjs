@@ -155,18 +155,46 @@ async function main() {
     assert.equal(isExpiredValid, false, "Expired reset token must be rejected");
     pass("Expired reset token is strictly denied by server-time validation");
 
-    // 9. Enterprise Password Strength Policy Enforcement
-    const shortErr = validatePasswordStrength("Short1!");
-    assert(shortErr.length > 0, "Password under 12 characters must fail");
-    const noUpperErr = validatePasswordStrength("lowercaseonly123!");
-    assert(noUpperErr.length > 0, "Password without uppercase must fail");
-    const noNumErr = validatePasswordStrength("NoNumbersInPassword!");
-    assert(noNumErr.length > 0, "Password without numbers must fail");
-    const noSymErr = validatePasswordStrength("NoSymbolsInPassword123");
-    assert(noSymErr.length > 0, "Password without symbols must fail");
-    const validErr = validatePasswordStrength("StrongCompliantPassword2026!");
-    assert.equal(validErr.length, 0, "Compliant password passes validation");
-    pass("Enterprise password strength policy enforced (min 12 chars, upper, lower, num, symbol)");
+    // 9. Modern NIST SP 800-63B-4 Password Policy Enforcement
+    // (a) Single-factor password-only minimum length: 15 chars
+    const shortSingleFactorErr = validatePasswordStrength("ShortPass123");
+    assert(shortSingleFactorErr.length > 0, "Password under 15 characters without MFA must fail");
+
+    // (b) Multi-factor (MFA-enforced) minimum length: 8 chars
+    const shortMfaErr = validatePasswordStrength("short", { requiresMfa: true });
+    assert(shortMfaErr.length > 0, "Password under 8 characters with MFA must fail");
+    const validMfaShort = validatePasswordStrength("ValidMfa8", { requiresMfa: true });
+    assert.equal(validMfaShort.length, 0, "8-character password with MFA passes validation");
+
+    // (c) Long passphrases with spaces permitted
+    const passphraseSpaces = validatePasswordStrength("correct horse battery staple");
+    assert.equal(passphraseSpaces.length, 0, "Passphrase with spaces passes validation");
+
+    // (d) 64-character password supported without truncation
+    const long64 = validatePasswordStrength("a".repeat(32) + "b".repeat(32));
+    assert.equal(long64.length, 0, "64-character password passes validation");
+
+    // (e) Unicode and international characters supported
+    const unicodePass = validatePasswordStrength("zämorin cafés 2026 secure passphrase");
+    assert.equal(unicodePass.length, 0, "Unicode characters in passphrase pass validation");
+
+    // (f) Offline common password blocklist enforced
+    const blocklistedErr = validatePasswordStrength("password12345678");
+    assert(blocklistedErr.length > 0, "Common/blocklisted password must be rejected");
+
+    // (g) Zero mandatory composition rules (no forced uppercase, number, or symbol)
+    const noUpper = validatePasswordStrength("alllowercaselongpassphrase2026");
+    assert.equal(noUpper.length, 0, "Strong passphrase without uppercase passes");
+    const noSymbols = validatePasswordStrength("Passphrase Without Symbols 2026");
+    assert.equal(noSymbols.length, 0, "Strong passphrase without symbols passes");
+    const noNumbers = validatePasswordStrength("Passphrase Without Any Numbers Here");
+    assert.equal(noNumbers.length, 0, "Strong passphrase without numbers passes");
+
+    // (h) Repetitive pattern rejection
+    const repetitiveErr = validatePasswordStrength("aaaaaaaaaaaaaaaa");
+    assert(repetitiveErr.length > 0, "Repetitive character password must fail");
+
+    pass("Modern NIST SP 800-63B-4 password policy enforced (15+ length, passphrases, blocklist, 0 composition)");
 
     // 10. Password Reset Completion & Session Revocation Postcondition
     const session1 = await createSession({
