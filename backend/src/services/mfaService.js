@@ -185,9 +185,10 @@ function generateOtpauthUri({ email, secretBase32, issuer = 'Zamorin Cafe ERP' }
 function generateRecoveryCodes(count = 10) {
   const codes = [];
   for (let i = 0; i < count; i++) {
-    const part1 = crypto.randomBytes(3).toString('hex').toUpperCase();
-    const part2 = crypto.randomBytes(3).toString('hex').toUpperCase();
-    codes.push(`${part1}-${part2}`);
+    // 16 cryptographically secure random bytes = 128 bits of raw entropy per code
+    const raw = crypto.randomBytes(16).toString('hex').toUpperCase();
+    const formatted = raw.match(/.{1,4}/g).join('-');
+    codes.push(formatted);
   }
   return codes;
 }

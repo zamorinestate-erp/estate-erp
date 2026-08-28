@@ -150,9 +150,9 @@ function validatePasswordStrength(password, { requiresMfa = false, minLength = n
   return errors;
 }
 
-async function hashPassword(password) {
+async function hashPassword(password, options = { requiresMfa: true }) {
   const validationErrors =
-    validatePasswordStrength(password);
+    validatePasswordStrength(password, options);
 
   if (validationErrors.length > 0) {
     throw new Error(validationErrors.join(' '));
