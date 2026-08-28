@@ -167,7 +167,7 @@ async function main() {
   try {
     // 1. Initial Page Load
     await cdp.send('Page.navigate', { url: `http://localhost:${HTTP_PORT}/` });
-    await delay(600);
+    await delay(1500);
 
     const appRendered = await cdp.eval(`
       Boolean(document.querySelector('#app') || document.body)
