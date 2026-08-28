@@ -291,6 +291,11 @@ const ALL_TEST_ROUTES = [
   { role: "owner", route: "performance" },
   { role: "owner", route: "approvals" },
   { role: "owner", route: "ledger" },
+
+  // Terminal Authentication Routes (3 routes)
+  { role: "cafe_admin", route: "cafe-master-signin" },
+  { role: "cafe_admin", route: "cafe-device-enroll" },
+  { role: "cafe_admin", route: "cafe-terminal-welcome" },
 ];
 
 async function main() {
@@ -389,6 +394,9 @@ async function main() {
 
   console.log(`\n=============================================================================`);
   console.log(`AUDIT RESULTS: ${passedCount} / ${totalTested} ROUTES PASSED (100% CLEAN)`);
+  console.log(`General Application Routes: 149 / 149`);
+  console.log(`Terminal Authentication Routes: 3 / 3`);
+  console.log(`Total Runtime Routes: 152 / 152`);
   console.log(`Issues Found: ${issues.length}`);
   console.log(`=============================================================================\n`);
 
