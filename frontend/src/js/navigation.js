@@ -178,6 +178,10 @@ const IMPLICIT_ROUTES_ALL = new Set([
 const IMPLICIT_ROUTES_CAFE_ADMIN = new Set([
   'cafe-operator-signin',
   'cafe-device-state',
+  // Stage-2 Login Integration: additive terminal auth screens
+  'cafe-master-signin',
+  'cafe-device-enroll',
+  'cafe-terminal-welcome',
 ]);
 
 // ─── Route allowlist check ─────────────────────────────────────────────────────

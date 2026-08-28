@@ -1590,3 +1590,328 @@ tr:last-child td { border-bottom: 0; }
 @media (max-width: 900px) {
   .dash-grid-two-col { grid-template-columns: 1fr !important; }
 }
+
+/* ============================================================
+   CAFE OPERATIONS TERMINAL AUTH — SCOPED COMPONENT STYLES
+   ------------------------------------------------------------
+   All classes are prefixed .cafeops- to avoid collisions with
+   any other module.
+   Tokens used here are all defined by the Zamorin design system
+   (tokens.css / zamorin.css :root). No second :root is declared.
+   Adapted from Claude package frontend/css/cafe-operations.css.
+   Activated: Stage 2 Login Integration.
+   ============================================================ */
+
+/* Alias: radius-input maps to Zamorin's control radius */
+:root { --radius-input: var(--radius-control); }
+
+/* ── Logo / brand header ───────────────────────────────────── */
+.cafeops-logo {
+  width: 132px; height: auto;
+  margin-bottom: 16px;
+  filter: drop-shadow(0 10px 20px rgba(16,26,48,.16));
+  transition: transform .3s var(--ease);
+}
+.auth-card:hover .cafeops-logo,
+.login-card:hover .cafeops-logo { transform: scale(1.02); }
+@media (max-width: 480px) { .cafeops-logo { width: 108px; } }
+
+/* ── Device identity strip ────────────────────────────────── */
+.cafeops-device-strip {
+  display: grid; gap: 2px;
+  margin-bottom: 22px; text-align: center;
+}
+.cafeops-device-strip .cafeops-cafe-name {
+  font-family: var(--font-display); font-weight: 650;
+  font-size: 1.05rem; color: var(--ink-900);
+}
+.cafeops-device-strip .cafeops-device-name {
+  font-size: .78rem; color: var(--muted);
+  font-family: var(--font-mono); letter-spacing: .01em;
+}
+
+/* ── PIN dots ─────────────────────────────────────────────── */
+.cafeops-pin-dots {
+  display: flex; justify-content: center;
+  gap: 14px; margin: 4px 0 26px;
+}
+.cafeops-pin-dot {
+  width: 16px; height: 16px; border-radius: 50%;
+  border: 1.5px solid var(--line-strong);
+  background: var(--surface);
+  transition: background .14s var(--ease), border-color .14s var(--ease), transform .14s var(--ease);
+}
+.cafeops-pin-dot--filled {
+  background: var(--ink-900); border-color: var(--ink-900); transform: scale(1.1);
+}
+.cafeops-pin-dots--invalid .cafeops-pin-dot {
+  border-color: var(--danger);
+  animation: cafeops-shake .32s var(--ease);
+}
+.cafeops-pin-dots--invalid .cafeops-pin-dot--filled {
+  background: var(--danger); border-color: var(--danger);
+}
+
+@keyframes cafeops-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-4px); }
+  40% { transform: translateX(4px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(3px); }
+}
+
+/* ── PIN keypad ──────────────────────────────────────────── */
+.cafeops-keypad {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 12px; margin-bottom: 22px;
+}
+.cafeops-key {
+  height: 64px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius-input);
+  background: var(--surface);
+  font-family: var(--font-display); font-size: 1.35rem; font-weight: 600;
+  color: var(--ink-900); cursor: pointer;
+  box-shadow: 0 1px 2px rgba(23,20,15,.04);
+  transition: background .12s var(--ease), border-color .12s var(--ease),
+              transform .08s var(--ease), box-shadow .12s var(--ease);
+  -webkit-tap-highlight-color: transparent;
+}
+.cafeops-key:hover { border-color: var(--bronze-400); background: var(--surface-hover); }
+.cafeops-key:active { transform: scale(.94); background: var(--bronze-100); box-shadow: none; }
+.cafeops-key:focus-visible { outline: 2px solid var(--bronze-500); outline-offset: 2px; }
+.cafeops-key--sub { font-family: var(--font-ui); font-size: .78rem; font-weight: 700; color: var(--muted); }
+.cafeops-key--sub:active { color: var(--ink-900); }
+.cafeops-key--backspace svg { width: 22px; height: 22px; }
+.cafeops-key:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+@media (max-width: 360px) { .cafeops-keypad { gap: 9px; } .cafeops-key { height: 58px; } }
+
+/* ── Text links & divider ─────────────────────────────────── */
+.cafeops-divider {
+  display: flex; align-items: center; gap: 10px;
+  margin: 18px 0 14px; color: var(--muted);
+  font-size: .7rem; font-weight: 650; letter-spacing: .04em; text-transform: uppercase;
+}
+.cafeops-divider::before, .cafeops-divider::after {
+  content: ""; flex: 1; height: 1px; background: var(--line);
+}
+.cafeops-textlinks { display: grid; gap: 4px; justify-items: center; margin-top: 6px; }
+.cafeops-textlink {
+  background: none; border: none; padding: 7px 4px;
+  font: inherit; font-size: .8rem; font-weight: 650;
+  color: var(--bronze-700); cursor: pointer;
+  border-radius: 8px;
+  transition: color .14s var(--ease), background .14s var(--ease);
+}
+.cafeops-textlink:hover { color: var(--bronze-600); background: var(--bronze-100); }
+.cafeops-textlink--muted { color: var(--muted); font-weight: 600; }
+.cafeops-textlink--muted:hover { color: var(--ink-700); background: var(--surface-sunken); }
+.cafeops-textlink:focus-visible { outline: 2px solid var(--bronze-500); outline-offset: 2px; }
+
+/* ── Connection indicator ─────────────────────────────────── */
+.cafeops-connection {
+  display: flex; align-items: center; justify-content: center;
+  gap: 7px; margin-top: 18px;
+  font-size: .74rem; font-weight: 650; color: var(--muted);
+}
+.cafeops-connection-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--success); flex: none;
+}
+.cafeops-connection--offline .cafeops-connection-dot { background: var(--danger); }
+.cafeops-connection--offline { color: var(--danger); }
+
+/* ── Status icon / status screen ─────────────────────────── */
+.cafeops-status-icon {
+  width: 60px; height: 60px; margin: 4px auto 18px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--surface-sunken); color: var(--muted);
+}
+.cafeops-status-icon svg { width: 28px; height: 28px; }
+.cafeops-status-icon--danger { background: var(--danger-soft); color: var(--danger); }
+.cafeops-status-icon--warning { background: var(--bronze-100); color: var(--bronze-700); }
+.cafeops-status-icon--success { background: var(--success-soft); color: var(--success); }
+.cafeops-status-icon--muted { background: var(--surface-sunken); color: var(--muted); }
+.cafeops-status-title {
+  margin: 0 0 8px; text-align: center;
+  font-family: var(--font-display); font-weight: 650; font-size: 1.3rem; color: var(--ink-900);
+}
+.cafeops-status-message {
+  margin: 0 0 24px; text-align: center;
+  font-size: .88rem; line-height: 1.55; color: var(--muted);
+}
+.cafeops-status-actions { display: grid; gap: 10px; }
+.cafeops-support-ref { margin-top: 16px; text-align: center; font-size: .72rem; color: var(--muted-2, var(--muted)); }
+.cafeops-support-ref code {
+  font-family: var(--font-mono); font-weight: 600; color: var(--ink-700);
+  background: var(--surface-sunken); padding: 2px 7px; border-radius: 6px;
+}
+
+/* ── Master badge ─────────────────────────────────────────── */
+.cafeops-master-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 10px 3px 8px; border-radius: 999px;
+  background: linear-gradient(180deg, var(--bronze-500), var(--bronze-600));
+  color: #fffaf0; font-size: .66rem; font-weight: 700;
+  letter-spacing: .05em; text-transform: uppercase;
+}
+.cafeops-master-badge svg { width: 11px; height: 11px; }
+
+/* ── MFA hint ─────────────────────────────────────────────── */
+.cafeops-mfa-hint {
+  text-align: center; font-size: .82rem; color: var(--muted);
+  margin-bottom: 18px; line-height: 1.5;
+}
+
+/* ── Diagnostic rows ──────────────────────────────────────── */
+.cafeops-diag-list { display: grid; gap: 0; margin: 6px 0 18px; }
+.cafeops-diag-row {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 12px; padding: 11px 2px; border-bottom: 1px solid var(--line);
+  font-size: .82rem;
+}
+.cafeops-diag-row:last-child { border-bottom: none; }
+.cafeops-diag-label { color: var(--muted); font-weight: 600; }
+.cafeops-diag-value { color: var(--ink-900); font-weight: 650; text-align: right; }
+.cafeops-diag-value--mono { font-family: var(--font-mono); font-weight: 600; font-size: .78rem; }
+
+/* ── Pills ────────────────────────────────────────────────── */
+.cafeops-pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 10px; border-radius: 999px;
+  font-size: .7rem; font-weight: 700;
+  background: var(--success-soft); color: var(--success);
+}
+.cafeops-pill--muted { background: var(--surface-sunken); color: var(--muted); }
+.cafeops-pill--danger { background: var(--danger-soft); color: var(--danger); }
+.cafeops-pill--warning { background: var(--bronze-100); color: var(--bronze-700); }
+
+/* ── Context bar (post-auth identity strip) ───────────────── */
+.cafeops-context-bar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: 14px; padding: 12px 18px;
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line); font-size: .82rem;
+}
+.cafeops-context-bar .cafeops-context-cafe {
+  font-family: var(--font-display); font-weight: 650; color: var(--ink-900);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cafeops-context-bar .cafeops-context-sep { color: var(--line-strong); }
+.cafeops-context-bar .cafeops-context-date { color: var(--muted); white-space: nowrap; }
+.cafeops-context-bar .cafeops-context-spacer { flex: 1; }
+.cafeops-context-operator {
+  display: flex; align-items: center; gap: 8px; padding: 6px 12px 6px 8px;
+  border: 1px solid var(--line); border-radius: 999px; background: var(--surface);
+  cursor: pointer; font: inherit; color: var(--ink-700); font-weight: 650;
+  transition: border-color .14s var(--ease), transform .14s var(--ease), box-shadow .14s var(--ease);
+}
+.cafeops-context-operator:hover {
+  border-color: var(--bronze-400); transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(16,26,48,.08);
+}
+.cafeops-context-avatar {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--ink-900); color: #fdfbf6;
+  display: flex; align-items: center; justify-content: center;
+  font-size: .66rem; font-weight: 700; flex: none;
+}
+@media (max-width: 640px) {
+  .cafeops-context-bar { gap: 8px; padding: 10px 12px; }
+  .cafeops-context-date { display: none; }
+}
+
+/* ── Session/operator dropdown menu ───────────────────────── */
+.cafeops-menu-overlay { position: fixed; inset: 0; z-index: 30; background: transparent; }
+.cafeops-menu {
+  position: absolute; top: 60px; right: 18px; width: 260px;
+  background: var(--surface); border: 1px solid var(--line-strong);
+  border-radius: 18px; box-shadow: var(--shadow-md); padding: 8px;
+  animation: cafeops-rise .18s var(--ease) both;
+}
+@keyframes cafeops-rise {
+  from { opacity: 0; transform: translateY(-8px) scale(.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@media (max-width: 640px) { .cafeops-menu { right: 12px; left: 12px; width: auto; } }
+.cafeops-menu-header { padding: 12px 12px 10px; border-bottom: 1px solid var(--line); margin-bottom: 6px; }
+.cafeops-menu-header .cafeops-menu-name { font-family: var(--font-display); font-weight: 650; color: var(--ink-900); font-size: .95rem; }
+.cafeops-menu-header .cafeops-menu-meta { font-size: .72rem; color: var(--muted); font-family: var(--font-mono); margin-top: 2px; }
+.cafeops-menu-item {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 10px 12px; border: none; background: none; border-radius: 10px;
+  font: inherit; font-size: .84rem; font-weight: 600; color: var(--ink-700);
+  cursor: pointer; text-align: left; transition: background .12s var(--ease);
+}
+.cafeops-menu-item:hover { background: var(--surface-sunken); }
+.cafeops-menu-item svg { width: 16px; height: 16px; flex: none; color: var(--muted); }
+.cafeops-menu-item--danger { color: var(--danger); }
+.cafeops-menu-item--danger svg { color: var(--danger); }
+.cafeops-menu-divider { height: 1px; background: var(--line); margin: 6px 4px; }
+
+/* ── Textarea (operator switch handover notes) ────────────── */
+.cafeops-textarea {
+  width: 100%; min-height: 76px; padding: 10px 12px;
+  border: 1.5px solid var(--line-strong); border-radius: var(--radius-input);
+  background: var(--surface); font: inherit; font-size: .85rem; color: var(--ink);
+  resize: vertical; transition: border-color .16s var(--ease), box-shadow .16s var(--ease);
+}
+.cafeops-textarea:focus {
+  outline: none; border-color: var(--bronze-500);
+  box-shadow: 0 0 0 4px rgba(177,125,56,.14);
+}
+
+/* ── Kiosk clock ─────────────────────────────────────────── */
+.cafeops-kiosk-clock {
+  font-family: var(--font-mono); font-size: 2.4rem; font-weight: 600;
+  color: var(--ink-900); text-align: center; letter-spacing: .01em;
+  font-variant-numeric: tabular-nums;
+}
+.cafeops-kiosk-date { text-align: center; font-size: .84rem; color: var(--muted); margin-top: 2px; margin-bottom: 26px; }
+
+/* ── Theme overrides: Midnight ───────────────────────────── */
+[data-theme="midnight"] .cafeops-key {
+  background: var(--surface-raised); border-color: var(--line-strong); color: var(--ink-900);
+}
+[data-theme="midnight"] .cafeops-key:hover { background: var(--surface-hover); border-color: var(--bronze-400); }
+[data-theme="midnight"] .cafeops-key:active { background: var(--bronze-100); }
+[data-theme="midnight"] .cafeops-pin-dot { background: var(--surface-raised); border-color: var(--line-strong); }
+[data-theme="midnight"] .cafeops-pin-dot--filled { background: var(--ink-900); border-color: var(--ink-900); }
+[data-theme="midnight"] .cafeops-textlink { color: var(--bronze-300); }
+[data-theme="midnight"] .cafeops-textlink:hover { color: var(--bronze-400); background: var(--bronze-050); }
+[data-theme="midnight"] .cafeops-textlink--muted { color: var(--muted); }
+[data-theme="midnight"] .cafeops-textlink--muted:hover { color: var(--ink-700); background: var(--surface-hover); }
+[data-theme="midnight"] .cafeops-menu { background: var(--surface-raised); border-color: var(--line-strong); }
+[data-theme="midnight"] .cafeops-menu-item:hover { background: var(--surface-hover); }
+
+/* ── Theme overrides: Noir ───────────────────────────────── */
+[data-theme="noir"] .cafeops-key {
+  background: var(--surface-raised); border-color: var(--line-strong); color: var(--ink-900);
+}
+[data-theme="noir"] .cafeops-key:hover { background: var(--surface-hover); border-color: var(--bronze-400); }
+[data-theme="noir"] .cafeops-key:active { background: var(--bronze-100); }
+[data-theme="noir"] .cafeops-pin-dot { background: var(--surface-raised); border-color: var(--line-strong); }
+[data-theme="noir"] .cafeops-pin-dot--filled { background: var(--ink-900); border-color: var(--ink-900); }
+[data-theme="noir"] .cafeops-textlink { color: var(--bronze-300); }
+[data-theme="noir"] .cafeops-textlink:hover { color: var(--bronze-400); background: var(--bronze-050); }
+[data-theme="noir"] .cafeops-textlink--muted { color: var(--muted); }
+[data-theme="noir"] .cafeops-textlink--muted:hover { color: var(--ink-700); background: var(--surface-hover); }
+[data-theme="noir"] .cafeops-menu { background: var(--surface-raised); border-color: var(--line-strong); }
+[data-theme="noir"] .cafeops-menu-item:hover { background: var(--surface-hover); }
+
+/* ── Pearl overrides ─────────────────────────────────────── */
+[data-theme="pearl"] .cafeops-key { background: var(--surface); border-color: var(--line-strong); }
+[data-theme="pearl"] .cafeops-key:hover { background: var(--surface-hover); border-color: var(--bronze-400); }
+
+/* ── Reduced motion ──────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .cafeops-logo, .auth-card:hover .cafeops-logo, .login-card:hover .cafeops-logo,
+  .cafeops-key, .cafeops-pin-dot, .cafeops-menu, .cafeops-toast,
+  .cafeops-qr-ring-progress {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
+}
+/* END CAFE OPERATIONS TERMINAL AUTH STYLES */

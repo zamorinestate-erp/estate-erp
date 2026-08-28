@@ -59,6 +59,10 @@ import { startCafeOpsInactivityTimer, stopCafeOpsInactivityTimer } from "./cafeO
 import { renderPassbook, wirePassbook } from "./pages/passbook.js";
 import { renderOrgIdentity, wireOrgIdentity } from "./pages/organisationIdentity.js";
 import { cancelPendingRouteReads, clearApiCacheAndInFlight } from "./apiClient.js";
+// ── Stage-2 Login Integration: Terminal auth screens (additive, no backend auth change) ──
+import { renderCafeMasterSignIn, wireCafeMasterSignIn, resetCafeMasterSignInUi } from "./pages/cafeMasterSignIn.js";
+import { renderCafeDeviceEnroll, wireCafeDeviceEnroll, resetCafeDeviceEnrollUi } from "./pages/cafeDeviceEnroll.js";
+import { renderCafeTerminalWelcome, wireCafeTerminalWelcome } from "./pages/cafeTerminalWelcome.js";
 
 // ROLE_LABELS: display-safe generic labels used only for topbar scope chip
 // until /auth/me bootstrap provides the real user's display name.
@@ -602,6 +606,47 @@ async function renderPage() {
     case "not-built":
       content.innerHTML = renderNotBuiltYet();
       break;
+
+    // ── Stage-2 Login Integration: Terminal auth screens ─────────────────────
+    // These three cases are CAFE_ADMIN implicit routes (see navigation.js).
+    // They stop the inactivity timer while pre-session auth UI is visible.
+    // Auth callbacks are Stage-3 seams — no production auth logic here.
+
+    case "cafe-master-signin":
+      stopCafeOpsInactivityTimer();
+      resetCafeMasterSignInUi();
+      content.innerHTML = renderCafeMasterSignIn();
+      wireCafeMasterSignIn(content, {
+        // STAGE-3 SEAM: Wire to authController.authenticatePassword + mfaService
+        onSignIn: undefined,
+        onMfaVerify: undefined,
+        onBack: () => navigate('cafe-operator-signin'),
+      });
+      break;
+
+    case "cafe-device-enroll":
+      stopCafeOpsInactivityTimer();
+      resetCafeDeviceEnrollUi();
+      content.innerHTML = renderCafeDeviceEnroll();
+      wireCafeDeviceEnroll(content, {
+        // STAGE-3 SEAM: Wire to deviceService.enrollDevice
+        onEnroll: undefined,
+        onBack: () => navigate('cafe-operator-signin'),
+        onSuccess: () => navigate('cafe-operator-signin'),
+      });
+      break;
+
+    case "cafe-terminal-welcome":
+      stopCafeOpsInactivityTimer();
+      content.innerHTML = renderCafeTerminalWelcome();
+      wireCafeTerminalWelcome(content, {
+        onOperatorSignIn: () => navigate('cafe-operator-signin'),
+        onMasterSignIn: () => navigate('cafe-master-signin'),
+        onEnroll: () => navigate('cafe-device-enroll'),
+        onKiosk: () => navigate('kiosk-attendance'),
+      });
+      break;
+    // ── End Stage-2 Terminal Auth ─────────────────────────────────────────────
 
     default:
       content.innerHTML = renderNotAvailable();
