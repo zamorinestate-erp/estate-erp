@@ -102,17 +102,17 @@ const targetTemplateFile = path.join(ROOT_DIR, 'backend/src/services/TemplateEng
 const origTemplateContent = fs.readFileSync(targetTemplateFile, 'utf8');
 
 try {
-  // Inject a synthetic template failure by breaking scheduled languages length
-  fs.writeFileSync(targetTemplateFile, origTemplateContent.replace("'en',  // English (Default)", "// Removed en"), 'utf8');
+  // Inject a synthetic template failure by renaming a required template dependency
+  fs.writeFileSync(targetTemplateFile, origTemplateContent.replace("SECURITY_ALERT:", "NON_EXISTENT_TEMPLATE:"), 'utf8');
 
   let failedAsExpected = false;
   try {
     execSync('node scripts/audit_template_dependencies.mjs', { cwd: ROOT_DIR, stdio: 'pipe' });
   } catch (err) {
     failedAsExpected = true;
-    console.log(`  ✔ Correctly detected template standard violation. Exit code: ${err.status}`);
+    console.log(`  ✔ Correctly detected missing template dependency. Exit code: ${err.status}`);
   }
-  assert.ok(failedAsExpected, 'Template dependency audit must fail on standard violation');
+  assert.ok(failedAsExpected, 'Template dependency audit must fail on missing template');
   results.push({ name: 'Template Audit Negative Control', detected: true, exitCode: 1 });
 } finally {
   fs.writeFileSync(targetTemplateFile, origTemplateContent, 'utf8');

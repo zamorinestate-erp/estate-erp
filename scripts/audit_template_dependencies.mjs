@@ -30,8 +30,23 @@ async function runTemplateAudit() {
   assert.ok(fs.existsSync(companyIdentityPath), 'companyIdentityService.js must exist');
   assert.ok(fs.existsSync(opReportServicePath), 'OperationalReportService.js must exist');
 
-  const { TemplateEngine, SCHEDULED_LANGUAGES, escapeHtml } = await import(pathToFileURL(templateEnginePath).href);
+  const { TemplateEngine, SCHEDULED_LANGUAGES, escapeHtml, TEMPLATES } = await import(pathToFileURL(templateEnginePath).href);
   const { ZurfService } = await import(pathToFileURL(zurfServicePath).href);
+
+  // Assert all required email/notification document templates exist
+  const REQUIRED_TEMPLATES = [
+    'SECURITY_ALERT',
+    'INCIDENT_OPEN',
+    'INCIDENT_RECOVERED',
+    'CAFE_OPENING_READINESS',
+    'CAFE_CLOSING_CONTROL',
+    'EXECUTIVE_EXCEPTION_DIGEST',
+    'SUPPORT_CASE_UPDATE'
+  ];
+
+  for (const tplId of REQUIRED_TEMPLATES) {
+    assert.ok(TEMPLATES && TEMPLATES[tplId], `Template ${tplId} must exist in TemplateEngine`);
+  }
 
   // Test 1: TemplateEngine renders with HTML escape and 23-language support
   totalTemplatesAudited++;
