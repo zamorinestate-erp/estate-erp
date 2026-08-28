@@ -53,7 +53,7 @@ async function createPasswordResetChallenge(user) {
 async function verifyPasswordResetCode({ challengeId, code }) {
   const id = typeof challengeId === 'string' ? challengeId.trim().toUpperCase() : '';
   const value = typeof code === 'string' ? code.trim() : '';
-  if (!id || !/^\\d{6}$/.test(value)) return null;
+  if (!id || !/^\d{6}$/.test(value)) return null;
   const challenge = await PasswordResetChallenge.findOne({ challengeId: id }).select('+codeHash +resetTokenHash');
   if (!challenge || challenge.status !== 'PENDING') return null;
   const now = new Date();

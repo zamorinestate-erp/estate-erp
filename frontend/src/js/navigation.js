@@ -185,7 +185,8 @@ const IMPLICIT_ROUTES_CAFE_ADMIN = new Set([
 ]);
 
 // ─── Route allowlist check ─────────────────────────────────────────────────────
-export function isRouteAllowed(role, route, isPrimaryMaster = false) {
+export function isRouteAllowed(role, rawRoute, isPrimaryMaster = false) {
+  const route = (rawRoute || '').replace(/^#/, '');
   // Implicit routes allowed for all authenticated roles
   if (IMPLICIT_ROUTES_ALL.has(route)) return true;
 

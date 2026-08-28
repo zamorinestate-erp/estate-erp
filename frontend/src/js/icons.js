@@ -83,3 +83,4 @@ export function icon(name, size = 20) {
   return `<span class="nav-icon" style="display:inline-flex;align-items:center;justify-content:center;width:${size}px;height:${size}px;vertical-align:middle;flex-shrink:0;"><svg viewBox="0 0 24 24" width="${size}" height="${size}" style="width:${size}px;height:${size}px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;display:block;">${path}</svg></span>`;
 }
 
+export const icons = ICONS;

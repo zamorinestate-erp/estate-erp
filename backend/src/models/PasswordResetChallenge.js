@@ -19,7 +19,7 @@ const passwordResetChallengeSchema = new mongoose.Schema(
       immutable: true,
       trim: true,
       uppercase: true,
-      match: /^PRC-\\d{8}-\\d{4,}$/,
+      match: /^PRC-\d{8}-\d{4,}$/,
     },
     organisationId: {
       type: String,
