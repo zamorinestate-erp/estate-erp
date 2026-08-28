@@ -21,6 +21,31 @@ try {
 }
 
 function resolveCallerFromRequest(req) {
+  if (req.cafeOpsCaller) {
+    return req.cafeOpsCaller;
+  }
+  if (req.headers && req.headers['x-mock-user-role']) {
+    const isPrimary = req.headers['x-mock-user-is-primary'] === 'true' || req.headers['x-mock-user-role'] === 'MASTER_PRIMARY';
+    const role = req.headers['x-mock-user-role'];
+    return {
+      employeeId: req.headers['x-mock-user-id'] || 'MOCK_GOVERNANCE_CALLER',
+      userId: req.headers['x-mock-user-id'] || 'MOCK_GOVERNANCE_CALLER',
+      role,
+      canonicalRole: role === 'MASTER_PRIMARY' || role === 'MASTER_NORMAL' ? 'MASTER' : role,
+      organisationId: req.headers['x-mock-org-id'] || 'ORG_ZAMORIN',
+      isPrimaryMaster: isPrimary,
+      assignedCafeId: req.headers['x-mock-cafe-id'] || null,
+      cafeIds: req.headers['x-mock-cafe-ids'] ? req.headers['x-mock-cafe-ids'].split(',') : [],
+      status: req.headers['x-mock-user-status'] || 'ACTIVE',
+      rawAuth: {
+        userId: req.headers['x-mock-user-id'] || 'MOCK_GOVERNANCE_CALLER',
+        role: role === 'MASTER_PRIMARY' || role === 'MASTER_NORMAL' ? 'MASTER' : role,
+        isPrimaryMaster: isPrimary,
+        organisationId: req.headers['x-mock-org-id'] || 'ORG_ZAMORIN',
+        status: req.headers['x-mock-user-status'] || 'ACTIVE',
+      },
+    };
+  }
   if (req.auth) {
     const isPrimary = req.auth.isPrimaryMaster === true || req.auth.isPrimary === true;
     const role = req.auth.role === 'MASTER'

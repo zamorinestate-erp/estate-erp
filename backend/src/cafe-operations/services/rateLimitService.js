@@ -40,4 +40,12 @@ function recordFailure(deviceId, scope = 'PIN', now = new Date()) {
 function recordSuccess(deviceId, scope = 'PIN') { store.delete(key(deviceId, scope)); }
 function _reset() { store.clear(); }
 
-module.exports = { isLocked, recordFailure, recordSuccess, _reset };
+const MULTI_INSTANCE_PRODUCTION_LIMITATION = true;
+
+module.exports = {
+  isLocked,
+  recordFailure,
+  recordSuccess,
+  _reset,
+  MULTI_INSTANCE_PRODUCTION_LIMITATION,
+};
