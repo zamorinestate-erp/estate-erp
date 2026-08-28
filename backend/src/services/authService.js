@@ -1,8 +1,11 @@
 'use strict';
 
 const crypto = require('crypto');
+const util = require('util');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+
+const scryptAsync = util.promisify(crypto.scrypt);
 
 const { User } = require('../models/User');
 const { Session } = require('../models/Session');
@@ -154,9 +157,9 @@ const SCRYPT_PREFIX = '$scrypt$v=1$';
 const SCRYPT_DEFAULTS = {
   N: 65536,
   r: 8,
-  p: 1,
+  p: 2,
   keylen: 64,
-  maxmem: 128 * 1024 * 1024,
+  maxmem: 256 * 1024 * 1024,
 };
 
 /**
@@ -172,19 +175,44 @@ function normalizePassword(password) {
 
 /**
  * Identifies whether a stored password verifier needs opportunistic upgrade
- * to the canonical modern memory-hard scrypt KDF.
+ * to the canonical modern memory-hard scrypt KDF (or if stored scrypt parameters are below target).
  */
 function needsPasswordRehash(passwordHash) {
   if (typeof passwordHash !== 'string') {
     return false;
   }
-  return !passwordHash.startsWith(SCRYPT_PREFIX);
+  if (!passwordHash.startsWith(SCRYPT_PREFIX)) {
+    return true;
+  }
+
+  const parts = passwordHash.slice(SCRYPT_PREFIX.length).split('$');
+  if (parts.length !== 3) {
+    return true;
+  }
+
+  const [paramsStr] = parts;
+  const params = {};
+  for (const pair of paramsStr.split(',')) {
+    const [k, v] = pair.split('=');
+    if (k && v) params[k] = parseInt(v, 10);
+  }
+
+  if (
+    (params.N || 0) < SCRYPT_DEFAULTS.N ||
+    (params.r || 0) < SCRYPT_DEFAULTS.r ||
+    (params.p || 0) < SCRYPT_DEFAULTS.p
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 /**
- * Hashes a normalized password using the memory-hard scrypt KDF with a 128-bit CSPRNG salt.
+ * Asynchronously hashes a normalized password using the memory-hard scrypt KDF with a 128-bit CSPRNG salt.
+ * Operates on libuv worker threads to keep the Node.js event loop completely responsive.
  */
-function hashPasswordScrypt(normalizedPassword, options = {}) {
+async function hashPasswordScrypt(normalizedPassword, options = {}) {
   const N = options.N || SCRYPT_DEFAULTS.N;
   const r = options.r || SCRYPT_DEFAULTS.r;
   const p = options.p || SCRYPT_DEFAULTS.p;
@@ -192,7 +220,7 @@ function hashPasswordScrypt(normalizedPassword, options = {}) {
   const maxmem = options.maxmem || SCRYPT_DEFAULTS.maxmem;
 
   const salt = crypto.randomBytes(16);
-  const derivedKey = crypto.scryptSync(
+  const derivedKey = await scryptAsync(
     Buffer.from(normalizedPassword, 'utf8'),
     salt,
     keylen,
@@ -203,9 +231,10 @@ function hashPasswordScrypt(normalizedPassword, options = {}) {
 }
 
 /**
- * Verifies a normalized password against a stored scrypt verifier using constant-time comparison.
+ * Asynchronously verifies a normalized password against a stored scrypt verifier using constant-time comparison.
+ * Extracts individual parameters (N, r, p) from stored hash to verify legacy/intermediate scrypt versions safely.
  */
-function verifyPasswordScrypt(normalizedPassword, storedHash) {
+async function verifyPasswordScrypt(normalizedPassword, storedHash) {
   if (!storedHash.startsWith(SCRYPT_PREFIX)) {
     return false;
   }
@@ -228,7 +257,7 @@ function verifyPasswordScrypt(normalizedPassword, storedHash) {
   const salt = Buffer.from(saltHex, 'hex');
   const expectedKey = Buffer.from(keyHex, 'hex');
 
-  const actualKey = crypto.scryptSync(
+  const actualKey = await scryptAsync(
     Buffer.from(normalizedPassword, 'utf8'),
     salt,
     expectedKey.length,
@@ -244,7 +273,7 @@ function verifyPasswordScrypt(normalizedPassword, storedHash) {
 
 /**
  * Canonical password hasher: Enforces NIST SP 800-63B-4 length bounds,
- * blocklists, and hashes using the modern memory-hard scrypt KDF.
+ * blocklists, and asynchronously hashes using the modern memory-hard scrypt KDF.
  */
 async function hashPassword(password, options = { requiresMfa: true }) {
   const validationErrors =
@@ -255,12 +284,12 @@ async function hashPassword(password, options = { requiresMfa: true }) {
   }
 
   const normalized = normalizePassword(password);
-  return hashPasswordScrypt(normalized);
+  return await hashPasswordScrypt(normalized);
 }
 
 /**
  * Multi-tier version-aware password verification:
- * 1. Tier 1 (Current Canonical): Memory-hard scrypt ($scrypt$v=1$)
+ * 1. Tier 1 (Current Canonical): Memory-hard scrypt ($scrypt$v=1$) with dynamic (N,r,p) decoding
  * 2. Tier 2 (Intermediate): $v2$ (SHA-256 + bcrypt)
  * 3. Tier 3 (Legacy): Direct raw bcrypt ($2a$, $2b$, $2y$)
  */
@@ -282,7 +311,7 @@ async function verifyPassword(
   // 1. Current Canonical Scheme: Memory-hard scrypt KDF ($scrypt$v=1$)
   if (passwordHash.startsWith(SCRYPT_PREFIX)) {
     try {
-      return verifyPasswordScrypt(normalized, passwordHash);
+      return await verifyPasswordScrypt(normalized, passwordHash);
     } catch {
       return false;
     }

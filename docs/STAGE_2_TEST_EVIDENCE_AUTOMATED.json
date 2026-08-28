@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-08-28T14:02:16.877Z",
+  "timestamp": "2026-08-28T14:34:25.846Z",
   "apiSessionFoundation": {
     "Primary Master": {
       "deviceIdPresent": true,
@@ -84,7 +84,7 @@
     "forbiddenRoutesExposed": false,
     "scopePill": "Staff",
     "readyState": "complete",
-    "readinessTimeMs": 528
+    "readinessTimeMs": 564
   },
   "themeMatrix": {
     "paper": {

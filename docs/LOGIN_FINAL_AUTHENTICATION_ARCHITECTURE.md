@@ -26,9 +26,9 @@ graph TD
 ### 2. Core Cryptographic Subsystems
 
 1. **Password Authentication & Modern Memory-Hard KDF**:
-   - **Canonical Scheme**: Memory-hard `scrypt` (`$scrypt$v=1$N=65536,r=8,p=1`) with 128-bit CSPRNG salt and 512-bit key.
-   - **Legacy & Intermediate Migration**: Version-aware verifier supporting legacy raw bcrypt (`$2b$`) and intermediate `$v2$` with transparent on-login upgrade.
-   - **Policy**: Minimum 15 characters (single factor) / 8 characters (MFA-enforced), maximum 128 characters, passphrases and Unicode with NFC normalization, 0 mandatory composition rules, offline common password blocklist. Zero 72-byte truncation. Zero password-shucking risk.
+   - **Canonical Scheme**: Memory-hard `scrypt` (`$scrypt$v=1$N=65536,r=8,p=2`) with 128-bit CSPRNG salt, 512-bit key, and async non-blocking libuv execution.
+   - **Legacy & Intermediate Migration**: Version-aware verifier supporting legacy raw bcrypt (`$2b$`), intermediate `$v2$`, and legacy scrypt ($p=1$) with transparent on-login upgrade.
+   - **Policy**: Minimum 15 characters (single factor) / 8 characters (MFA-enforced), maximum 128 characters, passphrases and Unicode with NFC normalization, 0 mandatory composition rules, offline common password blocklist. Zero 72-byte truncation. Zero password-shucking risk. Zero event-loop blocking.
 2. **Multi-Factor Authentication (MFA)**:
    - **Algorithm**: RFC 6238 TOTP (SHA1, 6 digits, 30s step, drift window ±1).
    - **Storage**: Secret key encrypted at rest with `AES-256-GCM` using `MFA_ENCRYPTION_KEY` environment key.

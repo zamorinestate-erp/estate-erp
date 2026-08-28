@@ -8,7 +8,7 @@
 
 | Primitive | Mechanism | Parameters / Construction | Threat / Vulnerability Mitigated |
 |---|---|---|---|
-| **Password Storage** | Canonical Memory-Hard `scrypt` | `N=65536, r=8, p=1`, 128-bit CSPRNG salt, 512-bit key, NFC norm | Eliminates 72-byte truncation & password-shucking; memory-hard GPU resistance |
+| **Password Storage** | Canonical Memory-Hard `scrypt` | `N=65536, r=8, p=2`, 128-bit CSPRNG salt, 512-bit key, NFC norm, async libuv | Eliminates 72-byte truncation & password-shucking; OWASP memory-hard GPU resistance |
 | **Recovery Codes** | CSPRNG 128-Bit Tokens | `crypto.randomBytes(16)` (128 bits), SHA-256 hash at rest | Eliminates offline dictionary enumeration; single-use atomic consumption |
 | **MFA TOTP** | RFC 6238 TOTP | SHA1, 6 digits, 30s step, $\pm 1$ window, `lastMfaCounter` | Replay attacks, adjacent window reuse, concurrent race conditions |
 | **MFA Secret Storage** | AES-256-GCM | Encrypted at rest with environment key `MFA_ENCRYPTION_KEY` | Database dump compromise of TOTP shared secrets |
