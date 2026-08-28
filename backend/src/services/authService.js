@@ -150,6 +150,20 @@ function validatePasswordStrength(password, { requiresMfa = false, minLength = n
   return errors;
 }
 
+const PASSWORD_HASH_PREFIX_V2 = '$v2$';
+
+/**
+ * Pre-hashes password with SHA-256 to produce a fixed 44-character Base64 digest.
+ * This completely eliminates bcrypt's 72-byte truncation limitation and ensures
+ * all 128 characters and multibyte UTF-8 characters are fully evaluated.
+ */
+function preparePasswordForBcrypt(password) {
+  return crypto
+    .createHash('sha256')
+    .update(Buffer.from(password, 'utf8'))
+    .digest('base64');
+}
+
 async function hashPassword(password, options = { requiresMfa: true }) {
   const validationErrors =
     validatePasswordStrength(password, options);
@@ -158,21 +172,45 @@ async function hashPassword(password, options = { requiresMfa: true }) {
     throw new Error(validationErrors.join(' '));
   }
 
-  return bcrypt.hash(
-    password,
+  const prehashed = preparePasswordForBcrypt(password);
+  const rawBcryptHash = await bcrypt.hash(
+    prehashed,
     PASSWORD_HASH_ROUNDS
   );
+
+  return `${PASSWORD_HASH_PREFIX_V2}${rawBcryptHash}`;
 }
 
 async function verifyPassword(
   password,
   passwordHash
 ) {
-  if (!password || !passwordHash) {
+  if (
+    !password ||
+    !passwordHash ||
+    typeof password !== 'string' ||
+    typeof passwordHash !== 'string'
+  ) {
     return false;
   }
 
-  return bcrypt.compare(password, passwordHash);
+  // Version 2 (Current): SHA-256 pre-hashed before bcrypt (72-byte safe)
+  if (passwordHash.startsWith(PASSWORD_HASH_PREFIX_V2)) {
+    const rawBcryptHash = passwordHash.slice(PASSWORD_HASH_PREFIX_V2.length);
+    const prehashed = preparePasswordForBcrypt(password);
+    return bcrypt.compare(prehashed, rawBcryptHash);
+  }
+
+  // Version 1 (Legacy): Direct raw bcrypt ($2a$, $2b$, $2y$)
+  if (
+    passwordHash.startsWith('$2a$') ||
+    passwordHash.startsWith('$2b$') ||
+    passwordHash.startsWith('$2y$')
+  ) {
+    return bcrypt.compare(password, passwordHash);
+  }
+
+  return false;
 }
 
 function calculateTokenDates() {

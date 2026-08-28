@@ -528,7 +528,8 @@ class OperatorSessionService {
       throw new ApiError(403, 'ACCOUNT_INACTIVE', 'Master account is not active.');
     }
 
-    const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
+    const { verifyPassword } = require('./authService');
+    const isPasswordValid = await verifyPassword(password, user.passwordHash);
     if (!isPasswordValid) {
       await AuditEvent.create({
         organisationId: orgId,
