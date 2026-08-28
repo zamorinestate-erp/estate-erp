@@ -3,6 +3,13 @@ const { getRepositories } = require('../repositories');
 const { sha256Hex } = require('../utils/ids');
 const { DEVICE_STATUS } = require('../utils/constants');
 const { fail } = require('../utils/responses');
+let DeviceRegistration;
+try {
+  ({ DeviceRegistration } = require('../../models/DeviceRegistration'));
+} catch (e) {
+  // Not loaded in standalone unit tests without Mongo
+  DeviceRegistration = null;
+}
 
 function extractDeviceToken(req) {
   const header = req.headers['x-cafeops-device-token'];
@@ -39,6 +46,24 @@ async function deviceContext(req, res, next) {
     if (device.lifecycleStatus !== DEVICE_STATUS.ACTIVE) {
       return fail(res, 403, `DEVICE_${device.lifecycleStatus}`, LIFECYCLE_MESSAGE[device.lifecycleStatus] || 'This device cannot access Cafe Operations.');
     }
+
+    // Cross-reference canonical DeviceRegistration trust if available
+    if (DeviceRegistration && typeof DeviceRegistration.findOne === 'function') {
+      try {
+        const canonical = await DeviceRegistration.findOne({
+          $or: [
+            { deviceId: String(device.id) },
+            { deviceId: String(device.deviceId || '') },
+          ],
+        }).lean();
+        if (canonical && canonical.status !== 'ACTIVE') {
+          return fail(res, 403, `DEVICE_${canonical.status}`, LIFECYCLE_MESSAGE[canonical.status] || 'This device is not authorized in canonical registry.');
+        }
+      } catch (err) {
+        // Ignore DB connection errors in non-mongo test runs
+      }
+    }
+
     await repos.devices.touchLastSeen(device.id, new Date());
     req.cafeOpsDevice = device;
     next();
@@ -46,3 +71,4 @@ async function deviceContext(req, res, next) {
 }
 
 module.exports = { deviceContext, extractDeviceToken };
+
