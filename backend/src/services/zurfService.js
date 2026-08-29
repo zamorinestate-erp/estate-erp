@@ -340,6 +340,42 @@ class ZurfService {
   }
 
   /**
+   * Generates a standard binary PDF Buffer conforming to %PDF-1.4
+   */
+  static async renderBinaryPdf({ reportTitle, reportCode, qrCodeData, scope, period, columns = [], rows = [], kpiCards = [], cafeId = null, sensitivityLevel = 'INTERNAL', runId = null }) {
+    const branding = await getCompanyConfig({ cafeId, sensitivityLevel });
+    const { generatePdf } = require('../utils/exportGenerators');
+    return generatePdf({
+      reportTitle,
+      reportCode,
+      qrCodeData,
+      scope,
+      period,
+      columns,
+      rows,
+      kpiCards,
+      branding,
+      runId
+    });
+  }
+
+  /**
+   * Generates a standard binary Microsoft Excel OpenXML package (.xlsx)
+   */
+  static async renderXlsx({ sheetName = 'Report', reportTitle = 'Export', columns = [], rows = [], cafeId = null, sensitivityLevel = 'INTERNAL', runId = null }) {
+    const branding = await getCompanyConfig({ cafeId, sensitivityLevel });
+    const { generateXlsx } = require('../utils/exportGenerators');
+    return generateXlsx({
+      sheetName,
+      reportTitle,
+      columns,
+      rows,
+      branding,
+      runId
+    });
+  }
+
+  /**
    * Asynchronously schedules an export job in the queue.
    */
   static enqueueExportJob({ reportId, format = 'PDF', scope, period, userId }) {

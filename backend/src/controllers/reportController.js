@@ -801,7 +801,7 @@ const generateZurfExport = asyncHandler(async (request, response) => {
   ];
 
   if (format === 'PDF' || format === 'HTML') {
-    const [html, branding] = await Promise.all([
+    const [html, branding, binaryPdf] = await Promise.all([
       ZurfService.renderZurfHtml({
         reportTitle: reportId === 'pl-statement' ? 'Profit & Loss Statement & Waterfall' : 'Daily Sales & Operations Summary',
         scope: scope || 'All Cafés — Global Portfolio',
@@ -814,20 +814,67 @@ const generateZurfExport = asyncHandler(async (request, response) => {
         notes: 'ZURF v1 certified export. Figures reconciled against General Ledger posting.',
       }),
       getCompanyConfig(),
+      ZurfService.renderBinaryPdf({
+        reportTitle: reportId === 'pl-statement' ? 'Profit & Loss Statement & Waterfall' : 'Daily Sales & Operations Summary',
+        reportCode: reportId ? `ZURF-${reportId.toUpperCase()}` : 'ZURF-STD-01',
+        scope: scope || 'All Cafés — Global Portfolio',
+        period: period || 'August 2026',
+        columns,
+        rows,
+        kpiCards,
+      })
     ]);
 
-    const runId = ZurfService.generateRunId();
+    const runId = binaryPdf.runId || ZurfService.generateRunId();
+
+    if (request.query?.download === 'true' || request.headers?.accept === 'application/pdf') {
+      response.setHeader('Content-Type', 'application/pdf');
+      response.setHeader('Content-Disposition', `attachment; filename="${binaryPdf.filename}"`);
+      return response.status(200).send(binaryPdf.buffer);
+    }
+
     return response.status(200).json({
       success: true,
       data: {
         runId,
         format: 'PDF',
         html,
+        pdfBase64: binaryPdf.buffer.toString('base64'),
+        pdfBytes: binaryPdf.buffer.length,
         classification,
         hasWatermark: true,
         companyName: branding.legalName,
         gstin: branding.gstin,
         companyDetailsVersionId: branding.companyDetailsVersionId,
+        downloadUrl: `/api/v1/reports/export/${runId}/download.pdf`,
+      },
+      correlationId: request.correlationId || null,
+    });
+  }
+
+  if (format === 'XLSX' || format === 'EXCEL') {
+    const xlsxResult = await ZurfService.renderXlsx({
+      sheetName: 'Operations Summary',
+      reportTitle: 'Daily Sales & Operations Summary',
+      columns,
+      rows,
+    });
+
+    if (request.query?.download === 'true' || request.headers?.accept === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
+      response.setHeader('Content-Type', xlsxResult.mimeType);
+      response.setHeader('Content-Disposition', `attachment; filename="${xlsxResult.filename}"`);
+      return response.status(200).send(xlsxResult.buffer);
+    }
+
+    return response.status(200).json({
+      success: true,
+      data: {
+        runId: xlsxResult.runId,
+        format: 'XLSX',
+        xlsxBase64: xlsxResult.buffer.toString('base64'),
+        xlsxBytes: xlsxResult.buffer.length,
+        filename: xlsxResult.filename,
+        downloadUrl: `/api/v1/reports/export/${xlsxResult.runId}/download.xlsx`,
       },
       correlationId: request.correlationId || null,
     });
@@ -841,6 +888,12 @@ const generateZurfExport = asyncHandler(async (request, response) => {
       columns,
       rows,
     });
+
+    if (request.query?.download === 'true' || request.headers?.accept === 'text/csv') {
+      response.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      response.setHeader('Content-Disposition', `attachment; filename="report_${csvResult.runId}.csv"`);
+      return response.status(200).send(csvResult.csv);
+    }
 
     return response.status(200).json({
       success: true,

@@ -49,7 +49,6 @@ import { renderQuality, wireQuality, setQualityActiveTab } from "./pages/quality
 import { renderAssets, wireAssets, setAssetsActiveTab } from "./pages/assets.js";
 import { renderDepartmentOrders, wireDepartmentOrders, setDepartmentOrdersActiveTab } from "./pages/departmentOrders.js";
 import { renderTrashBin, wireTrashBin } from "./pages/trashBin.js";
-import { renderMailOpsCommandCentre, wireMailOpsCommandCentre } from "./pages/mailOpsCommandCentre.js";
 import { CafeAttendanceDisplayPage } from "./pages/cafeAttendanceDisplay.js";
 import { renderRevenueShare, wireRevenueShare, setRevenueShareActiveTab } from "./pages/revenueShare.js";
 import { renderCafeOperationsDevices, wireCafeOperationsDevices, setCafeDevicesActiveTab } from "./pages/cafeOperationsDevices.js";

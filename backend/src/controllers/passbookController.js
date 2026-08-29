@@ -225,7 +225,44 @@ const exportPassbookPdf = asyncHandler(async (req, res) => {
     balance: `₹${(t.runningBalancePaisa / 100).toFixed(2)}`,
   }));
 
-  const html = ZurfService.renderZurfHtml({
+  if (req.query.format === 'XLSX') {
+    const xlsx = await ZurfService.renderXlsx({
+      sheetName: 'Passbook Statement',
+      reportTitle: account ? `Passbook Statement - ${account.accountName}` : 'Consolidated Treasury Passbook',
+      columns,
+      rows,
+    });
+    res.setHeader('Content-Type', xlsx.mimeType);
+    res.setHeader('Content-Disposition', `attachment; filename="${xlsx.filename}"`);
+    return res.send(xlsx.buffer);
+  }
+
+  if (req.query.format === 'CSV') {
+    const csv = await ZurfService.renderCsv({
+      reportTitle: account ? `Passbook Statement - ${account.accountName}` : 'Consolidated Treasury Passbook',
+      columns,
+      rows,
+    });
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="passbook_${csv.runId}.csv"`);
+    return res.send(csv.csv);
+  }
+
+  if (req.query.format === 'PDF' || req.headers.accept === 'application/pdf') {
+    const pdf = await ZurfService.renderBinaryPdf({
+      reportTitle: account ? `PASSBOOK STATEMENT — ${account.accountName} (${account.maskedAccountNumber})` : 'CONSOLIDATED TREASURY PASSBOOK STATEMENT',
+      reportCode: 'ZURF-PB-01',
+      scope: account ? `Account: ${account.accountName}` : 'All Accounts — Global Portfolio',
+      period: period || 'August 2026',
+      columns,
+      rows,
+    });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${pdf.filename}"`);
+    return res.send(pdf.buffer);
+  }
+
+  const html = await ZurfService.renderZurfHtml({
     reportTitle: account ? `PASSBOOK STATEMENT — ${account.accountName} (${account.maskedAccountNumber})` : 'CONSOLIDATED TREASURY PASSBOOK STATEMENT',
     scope: account ? `Account: ${account.accountName}` : 'All Accounts — Global Portfolio',
     period: period || 'August 2026',

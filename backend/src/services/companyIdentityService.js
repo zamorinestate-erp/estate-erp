@@ -13,6 +13,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const mongoose = require('mongoose');
 const { CompanyIdentity } = require('../models/CompanyIdentity');
 const { Cafe } = require('../models/Cafe');
 const { AuditEvent } = require('../models/AuditEvent');
@@ -153,6 +154,10 @@ class CompanyIdentityService {
       changeReason: 'Initial Canonical Company Identity Provisioning',
     };
 
+    if (mongoose.connection.readyState !== 1) {
+      return fallbackIdentity;
+    }
+
     try {
       identity = await CompanyIdentity.findOne({
         $or: [{ organisationId }, { status: 'CURRENT' }],
@@ -181,7 +186,7 @@ class CompanyIdentityService {
     const isOutletScoped = Boolean(cafeId && cafeId !== 'ALL' && cafeId !== 'GLOBAL');
     let outletInfo = null;
 
-    if (isOutletScoped) {
+    if (isOutletScoped && mongoose.connection.readyState === 1) {
       try {
         outletInfo = await Cafe.findOne({ cafeId }).lean();
       } catch (err) {
