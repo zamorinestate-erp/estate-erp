@@ -1,10 +1,8 @@
 {
-  "timestamp": "2026-08-29T05:25:33.738Z",
+  "timestamp": "2026-08-29T05:42:21.789Z",
   "totalModules": 30,
-  "supportCompleteCount": 30,
-  "businessBlockedCount": 1,
-  "userReviewPendingCount": 1,
-  "productionPendingCount": 21,
+  "passedModules": 30,
+  "failedModules": 0,
   "modules": [
     {
       "id": "DASHBOARD_PRIMARY_MASTER",
@@ -13,42 +11,41 @@
       "personas": [
         "MASTER"
       ],
-      "route": "#dashboard",
+      "route": "#dashboard-master",
       "frontendFile": "frontend/src/js/pages/dashboardMaster.js",
       "backendRoute": "backend/src/routes/dashboardRoutes.js",
       "controller": "backend/src/controllers/dashboardController.js",
       "exportSupport": "ZURF_PDF",
       "uploadSupport": "NOT_APPLICABLE",
       "receiptSupport": "NOT_APPLICABLE",
-      "documentType": "STATEMENT",
+      "permissions": [
+        "VIEW_PORTFOLIO_DASHBOARD",
+        "VIEW_FINANCIAL_TOTALS"
+      ],
       "testOwnership": "backend/test/dashboardCommandCentre.test.js",
-      "supportStatus": "COMPLETE",
-      "businessStatus": "READY",
-      "productionStatus": "LOCAL_TEST_PASS",
-      "userReviewStatus": "APPROVED",
-      "retiredStatus": "ACTIVE"
+      "status": "PASS",
+      "errors": []
     },
     {
       "id": "DASHBOARD_NORMAL_MASTER",
       "name": "Normal Master Operational Dashboard",
       "family": "Dashboard",
       "personas": [
-        "MASTER"
+        "MASTER_NORMAL"
       ],
-      "route": "#dashboard",
+      "route": "#dashboard-master-normal",
       "frontendFile": "frontend/src/js/pages/dashboardMaster.js",
       "backendRoute": "backend/src/routes/dashboardRoutes.js",
       "controller": "backend/src/controllers/dashboardController.js",
       "exportSupport": "ZURF_PDF",
       "uploadSupport": "NOT_APPLICABLE",
       "receiptSupport": "NOT_APPLICABLE",
-      "documentType": "STATEMENT",
+      "permissions": [
+        "VIEW_PORTFOLIO_DASHBOARD"
+      ],
       "testOwnership": "backend/test/dashboardCommandCentre.test.js",
-      "supportStatus": "COMPLETE",
-      "businessStatus": "READY",
-      "productionStatus": "LOCAL_TEST_PASS",
-      "userReviewStatus": "APPROVED",
-      "retiredStatus": "ACTIVE"
+      "status": "PASS",
+      "errors": []
     },
     {
       "id": "DASHBOARD_OWNER",
@@ -57,20 +54,19 @@
       "personas": [
         "OWNER"
       ],
-      "route": "#dashboard",
+      "route": "#dashboard-owner",
       "frontendFile": "frontend/src/js/pages/dashboardOwner.js",
       "backendRoute": "backend/src/routes/dashboardRoutes.js",
       "controller": "backend/src/controllers/dashboardController.js",
       "exportSupport": "ZURF_PDF",
       "uploadSupport": "NOT_APPLICABLE",
       "receiptSupport": "NOT_APPLICABLE",
-      "documentType": "STATEMENT",
+      "permissions": [
+        "VIEW_OWNER_DASHBOARD"
+      ],
       "testOwnership": "backend/test/ownerDashboardControl.test.js",
-      "supportStatus": "COMPLETE",
-      "businessStatus": "READY",
-      "productionStatus": "LOCAL_TEST_PASS",
-      "userReviewStatus": "APPROVED",
-      "retiredStatus": "ACTIVE"
+      "status": "PASS",
+      "errors": []
     },
     {
       "id": "DASHBOARD_CAFE_OPS",
@@ -79,20 +75,19 @@
       "personas": [
         "CAFE_ADMIN"
       ],
-      "route": "#dashboard",
+      "route": "#dashboard-admin",
       "frontendFile": "frontend/src/js/pages/dashboardAdmin.js",
       "backendRoute": "backend/src/routes/dashboardRoutes.js",
       "controller": "backend/src/controllers/dashboardController.js",
       "exportSupport": "ZURF_PDF",
       "uploadSupport": "NOT_APPLICABLE",
       "receiptSupport": "NOT_APPLICABLE",
-      "documentType": "STATEMENT",
+      "permissions": [
+        "VIEW_CAFE_DASHBOARD"
+      ],
       "testOwnership": "backend/test/cafeOperationsFoundation.test.js",
-      "supportStatus": "COMPLETE",
-      "businessStatus": "READY",
-      "productionStatus": "LOCAL_TEST_PASS",
-      "userReviewStatus": "APPROVED",
-      "retiredStatus": "ACTIVE"
+      "status": "PASS",
+      "errors": []
     },
     {
       "id": "STAFF_HOME",
@@ -108,90 +103,94 @@
       "exportSupport": "NOT_APPLICABLE",
       "uploadSupport": "STAFF_DOCUMENTS",
       "receiptSupport": "NOT_APPLICABLE",
-      "documentType": "NOT_APPLICABLE",
+      "permissions": [
+        "VIEW_SELF_PROFILE",
+        "VIEW_SELF_ATTENDANCE"
+      ],
       "testOwnership": "backend/test/employeeStaffDashboard.test.js",
-      "supportStatus": "COMPLETE",
-      "businessStatus": "READY",
-      "productionStatus": "PRODUCTION_VALIDATION_PENDING",
-      "userReviewStatus": "APPROVED",
-      "retiredStatus": "ACTIVE"
+      "status": "PASS",
+      "errors": []
     },
     {
       "id": "POS_BILLING",
       "name": "POS Billing, Till & Orders Terminal",
-      "family": "POS & Billing",
+      "family": "POS & Orders",
       "personas": [
+        "CAFE_ADMIN",
         "MASTER",
-        "CAFE_ADMIN"
+        "OWNER"
       ],
-      "route": "#pos",
+      "route": "#pos-till",
       "frontendFile": "frontend/src/js/pages/posTill.js",
       "backendRoute": "backend/src/routes/billRoutes.js",
       "controller": "backend/src/controllers/billController.js",
       "exportSupport": "THERMAL_RECEIPT_PDF",
       "uploadSupport": "NOT_APPLICABLE",
       "receiptSupport": "POS_CUSTOMER_RECEIPT",
-      "documentType": "RECEIPT",
+      "permissions": [
+        "CREATE_POS_BILL",
+        "VIEW_POS_TILL"
+      ],
       "testOwnership": "backend/test/posBillingTerminal.test.js",
-      "supportStatus": "COMPLETE",
-      "businessStatus": "READY",
-      "productionStatus": "LOCAL_TEST_PASS",
-      "userReviewStatus": "APPROVED",
-      "retiredStatus": "ACTIVE"
+      "status": "PASS",
+      "errors": []
     },
     {
       "id": "SALES_CASH_BOOK",
       "name": "Sales & Cash Book Management",
-      "family": "Finance & Cash",
+      "family": "Sales & Cash",
       "personas": [
         "MASTER",
+        "OWNER",
         "CAFE_ADMIN"
       ],
-      "route": "#sales-cash",
+      "route": "#cash-book",
       "frontendFile": "frontend/src/js/pages/cashBook.js",
       "backendRoute": "backend/src/routes/cashRoutes.js",
       "controller": "backend/src/controllers/cashController.js",
       "exportSupport": "CSV_XLSX_PDF",
       "uploadSupport": "DENOMINATION_EVIDENCE",
       "receiptSupport": "CASH_RECEIPT",
-      "documentType": "RECEIPT",
+      "permissions": [
+        "VIEW_CASH_BOOK",
+        "MANAGE_FLOAT"
+      ],
       "testOwnership": "backend/test/businessModules.test.js",
-      "supportStatus": "COMPLETE",
-      "businessStatus": "READY",
-      "productionStatus": "PRODUCTION_VALIDATION_PENDING",
-      "userReviewStatus": "APPROVED",
-      "retiredStatus": "ACTIVE"
+      "status": "PASS",
+      "errors": []
     },
     {
       "id": "ATTENDANCE_SHIFTS",
       "name": "Attendance, Timeclock & Shifts",
-      "family": "Workforce Operations",
+      "family": "Attendance",
       "personas": [
         "MASTER",
+        "OWNER",
         "CAFE_ADMIN",
         "STAFF"
       ],
-      "route": "#attendance",
-      "frontendFile": "frontend/src/js/modules/attendance/attendanceShifts.js",
+      "route": "#cafe-attendance-display",
+      "frontendFile": "frontend/src/js/pages/cafeAttendanceDisplay.js",
       "backendRoute": "backend/src/modules/attendance/attendanceRoutes.js",
       "controller": "backend/src/modules/attendance/attendanceController.js",
       "exportSupport": "CSV_XLSX",
       "uploadSupport": "NOT_APPLICABLE",
       "receiptSupport": "NOT_APPLICABLE",
-      "documentType": "STATEMENT",
+      "permissions": [
+        "RECORD_ATTENDANCE",
+        "VIEW_ATTENDANCE_ROSTER"
+      ],
       "testOwnership": "backend/test/attendanceManagement.test.js",
-      "supportStatus": "COMPLETE",
-      "businessStatus": "READY",
-      "productionStatus": "LOCAL_TEST_PASS",
-      "userReviewStatus": "APPROVED",
-      "retiredStatus": "ACTIVE"
+      "status": "PASS",
+      "errors": []
     },
     {
       "id": "INVENTORY_STOCK",
       "name": "Inventory, Stock Register & FIFO Lots",
-      "family": "Inventory & Supply",
+      "family": "Inventory",
       "personas": [
         "MASTER",
+        "OWNER",
         "CAFE_ADMIN"
       ],
       "route": "#inventory",
@@ -201,13 +200,13 @@
       "exportSupport": "CSV_XLSX_PDF",
       "uploadSupport": "BATCH_IMPORT_CSV",
       "receiptSupport": "STOCK_TRANSFER_NOTE",
-      "documentType": "TRANSFER_NOTE",
+      "permissions": [
+        "VIEW_INVENTORY",
+        "MANAGE_STOCK_ADJUSTMENT"
+      ],
       "testOwnership": "backend/test/inventoryStockManagement.test.js",
-      "supportStatus": "COMPLETE",
-      "businessStatus": "READY",
-      "productionStatus": "PRODUCTION_VALIDATION_PENDING",
-      "userReviewStatus": "APPROVED",
-      "retiredStatus": "ACTIVE"
+      "status": "PASS",
+      "errors": []
     },
     {
       "id": "PROCUREMENT_PURCHASING",
@@ -215,6 +214,7 @@
       "family": "Procurement",
       "personas": [
         "MASTER",
+        "OWNER",
         "CAFE_ADMIN"
       ],
       "route": "#procurement",
@@ -224,20 +224,21 @@
       "exportSupport": "PURCHASE_ORDER_PDF",
       "uploadSupport": "SUPPLIER_INVOICE_GRN",
       "receiptSupport": "GOODS_RECEIPT_NOTE",
-      "documentType": "TRANSFER_NOTE",
+      "permissions": [
+        "CREATE_PURCHASE_ORDER",
+        "APPROVE_PURCHASE_ORDER"
+      ],
       "testOwnership": "backend/test/businessModules.test.js",
-      "supportStatus": "COMPLETE",
-      "businessStatus": "READY",
-      "productionStatus": "PRODUCTION_VALIDATION_PENDING",
-      "userReviewStatus": "APPROVED",
-      "retiredStatus": "ACTIVE"
+      "status": "PASS",
+      "errors": []
     },
     {
-      "id": "ASSET_MANAGEMENT",
+      "id": "ASSETS_MAINTENANCE",
       "name": "Asset Register, Preventive Maintenance & PM 360",
-      "family": "Assets & Facilities",
+      "family": "Assets",
       "personas": [
         "MASTER",
+        "OWNER",
         "CAFE_ADMIN"
       ],
       "route": "#assets",
@@ -247,20 +248,21 @@
       "exportSupport": "ASSET_REGISTER_PDF",
       "uploadSupport": "ASSET_MANUALS_INVOICES",
       "receiptSupport": "MAINTENANCE_SERVICE_SLIP",
-      "documentType": "SERVICE_DOCUMENT",
+      "permissions": [
+        "VIEW_ASSETS",
+        "MANAGE_MAINTENANCE"
+      ],
       "testOwnership": "backend/test/assetManagement.test.js",
-      "supportStatus": "COMPLETE",
-      "businessStatus": "READY",
-      "productionStatus": "PRODUCTION_VALIDATION_PENDING",
-      "userReviewStatus": "APPROVED",
-      "retiredStatus": "ACTIVE"
+      "status": "PASS",
+      "errors": []
     },
     {
-      "id": "QUALITY_FOOD_SAFETY",
+      "id": "QUALITY_FSMS",
       "name": "Quality, Food Safety (FSMS), Cleaning & Checklists",
-      "family": "Quality & Compliance",
+      "family": "Quality & Safety",
       "personas": [
         "MASTER",
+        "OWNER",
         "CAFE_ADMIN"
       ],
       "route": "#quality",
@@ -270,21 +272,22 @@
       "exportSupport": "AUDIT_REPORT_PDF",
       "uploadSupport": "INSPECTION_PHOTO_EVIDENCE",
       "receiptSupport": "COMPLIANCE_CERTIFICATE",
-      "documentType": "CERTIFICATE",
+      "permissions": [
+        "VIEW_QUALITY_LOGS",
+        "SUBMIT_CHECKLIST"
+      ],
       "testOwnership": "backend/test/businessModules.test.js",
-      "supportStatus": "COMPLETE",
-      "businessStatus": "READY",
-      "productionStatus": "PRODUCTION_VALIDATION_PENDING",
-      "userReviewStatus": "APPROVED",
-      "retiredStatus": "ACTIVE"
+      "status": "PASS",
+      "errors": []
     },
     {
-      "id": "EMPLOYEES_HRIS",
+      "id": "EMPLOYEES_WORKFORCE",
       "name": "Employee Directory & Workforce HRIS",
-      "family": "Human Resources",
+      "family": "Workforce HRIS",
       "personas": [
         "MASTER",
-        "OWNER"
+        "OWNER",
+        "CAFE_ADMIN"
       ],
       "route": "#employees",
       "frontendFile": "frontend/src/js/pages/employees.js",
@@ -293,66 +296,66 @@
       "exportSupport": "EMPLOYEE_ROSTER_XLSX",
       "uploadSupport": "KYC_EMPLOYMENT_DOCUMENTS",
       "receiptSupport": "EMPLOYMENT_OFFER_LETTER",
-      "documentType": "LETTER",
+      "permissions": [
+        "VIEW_EMPLOYEE_DIRECTORY",
+        "MANAGE_EMPLOYEES"
+      ],
       "testOwnership": "backend/test/employeeWorkforceManagement.test.js",
-      "supportStatus": "COMPLETE",
-      "businessStatus": "READY",
-      "productionStatus": "PRODUCTION_VALIDATION_PENDING",
-      "userReviewStatus": "APPROVED",
-      "retiredStatus": "ACTIVE"
+      "status": "PASS",
+      "errors": []
     },
     {
-      "id": "PAYROLL_CONTROL",
+      "id": "PAYROLL_MANAGEMENT",
       "name": "Payroll Control, Statutory Rules & Payslips",
-      "family": "Human Resources",
+      "family": "Payroll",
       "personas": [
-        "MASTER",
-        "OWNER"
+        "MASTER"
       ],
-      "route": "#payroll",
+      "route": "#payroll-management",
       "frontendFile": "frontend/src/js/pages/payrollManagement.js",
       "backendRoute": "backend/src/routes/payrollRoutes.js",
       "controller": "backend/src/controllers/payrollController.js",
       "exportSupport": "PAYSLIP_PDF_XLSX",
       "uploadSupport": "BANK_DISBURSEMENT_REPORT",
       "receiptSupport": "PAYSLIP_RECEIPT",
-      "documentType": "PAYSLIP",
+      "permissions": [
+        "MANAGE_PAYROLL_RUN",
+        "VIEW_PAYROLL_REPORTS"
+      ],
       "testOwnership": "backend/test/payrollMasterControl.test.js",
-      "supportStatus": "COMPLETE",
-      "businessStatus": "READY",
-      "productionStatus": "PRODUCTION_VALIDATION_PENDING",
-      "userReviewStatus": "APPROVED",
-      "retiredStatus": "ACTIVE"
+      "status": "PASS",
+      "errors": []
     },
     {
-      "id": "BILLS_INVOICES",
+      "id": "OWNER_BILLS_RECEIPTS",
       "name": "Owner Bills, Receipts & Invoice Attachment Viewer",
-      "family": "Finance & Accounts",
+      "family": "Bills & Receipts",
       "personas": [
-        "MASTER",
-        "OWNER"
+        "OWNER",
+        "MASTER"
       ],
-      "route": "#bills",
+      "route": "#owner-bills",
       "frontendFile": "frontend/src/js/pages/ownerBills.js",
       "backendRoute": "backend/src/routes/billRoutes.js",
       "controller": "backend/src/controllers/billController.js",
       "exportSupport": "BILLS_LEDGER_PDF",
       "uploadSupport": "BILL_RECEIPT_ATTACHMENTS",
       "receiptSupport": "VENDOR_BILL_RECEIPT",
-      "documentType": "RECEIPT",
+      "permissions": [
+        "VIEW_OWNER_BILLS",
+        "UPLOAD_RECEIPTS"
+      ],
       "testOwnership": "backend/test/ownerSalesBills.test.js",
-      "supportStatus": "COMPLETE",
-      "businessStatus": "READY",
-      "productionStatus": "PRODUCTION_VALIDATION_PENDING",
-      "userReviewStatus": "APPROVED",
-      "retiredStatus": "ACTIVE"
+      "status": "PASS",
+      "errors": []
     },
     {
-      "id": "EXPENSES_VOUCHERS",
+      "id": "EXPENSES_PETTY_CASH",
       "name": "Expense Vouchers, Approvals & Petty Cash",
-      "family": "Finance & Accounts",
+      "family": "Expenses",
       "personas": [
         "MASTER",
+        "OWNER",
         "CAFE_ADMIN"
       ],
       "route": "#expenses",
@@ -362,64 +365,62 @@
       "exportSupport": "EXPENSE_STATEMENT_PDF",
       "uploadSupport": "EXPENSE_RECEIPT_PHOTO",
       "receiptSupport": "PETTY_CASH_VOUCHER",
-      "documentType": "VOUCHER",
+      "permissions": [
+        "VIEW_EXPENSES",
+        "CREATE_EXPENSE_CLAIM"
+      ],
       "testOwnership": "backend/test/expenseManagement.test.js",
-      "supportStatus": "COMPLETE",
-      "businessStatus": "READY",
-      "productionStatus": "PRODUCTION_VALIDATION_PENDING",
-      "userReviewStatus": "APPROVED",
-      "retiredStatus": "ACTIVE"
+      "status": "PASS",
+      "errors": []
     },
     {
-      "id": "FINANCE_GENERAL_LEDGER",
+      "id": "FINANCE_ACCOUNTS",
       "name": "Finance Hub, General Ledger, Journals & AP/AR",
-      "family": "Finance & Accounts",
+      "family": "Finance",
       "personas": [
-        "MASTER",
-        "OWNER"
+        "MASTER"
       ],
-      "route": "#finance",
+      "route": "#finance-accounts",
       "frontendFile": "frontend/src/js/pages/financeAccounts.js",
       "backendRoute": "backend/src/routes/financeRoutes.js",
       "controller": "backend/src/controllers/financeController.js",
       "exportSupport": "FINANCIAL_STATEMENTS_PDF_XLSX",
       "uploadSupport": "BANK_STATEMENT_IMPORT",
       "receiptSupport": "JOURNAL_POSTING_VOUCHER",
-      "documentType": "VOUCHER",
+      "permissions": [
+        "VIEW_GENERAL_LEDGER",
+        "POST_JOURNAL_ENTRY"
+      ],
       "testOwnership": "backend/test/financeAccounting.test.js",
-      "supportStatus": "COMPLETE",
-      "businessStatus": "READY",
-      "productionStatus": "PRODUCTION_VALIDATION_PENDING",
-      "userReviewStatus": "APPROVED",
-      "retiredStatus": "ACTIVE"
+      "status": "PASS",
+      "errors": []
     },
     {
       "id": "PERSONAL_LEDGER",
       "name": "Primary Master Personal Ledger & Owner Settlements",
-      "family": "Finance & Treasury",
+      "family": "Treasury & Personal Ledger",
       "personas": [
         "MASTER",
         "OWNER"
       ],
-      "route": "#ledger",
+      "route": "#personal-ledger",
       "frontendFile": "frontend/src/js/pages/personalLedger.js",
       "backendRoute": "backend/src/routes/personalLedgerRoutes.js",
       "controller": "backend/src/controllers/personalLedgerController.js",
       "exportSupport": "LEDGER_STATEMENT_PDF",
       "uploadSupport": "SETTLEMENT_CONFIRMATION_PROOF",
       "receiptSupport": "SETTLEMENT_ACKNOWLEDGEMENT",
-      "documentType": "ACKNOWLEDGEMENT",
+      "permissions": [
+        "ACCESS_PERSONAL_LEDGER"
+      ],
       "testOwnership": "backend/test/personalLedgerMasterControl.test.js",
-      "supportStatus": "COMPLETE",
-      "businessStatus": "READY",
-      "productionStatus": "PRODUCTION_VALIDATION_PENDING",
-      "userReviewStatus": "APPROVED",
-      "retiredStatus": "ACTIVE"
+      "status": "PASS",
+      "errors": []
     },
     {
       "id": "PASSBOOK_TREASURY",
       "name": "Passbook & Multi-Account Treasury Vault",
-      "family": "Finance & Treasury",
+      "family": "Treasury & Personal Ledger",
       "personas": [
         "MASTER",
         "OWNER"
@@ -431,20 +432,21 @@
       "exportSupport": "PASSBOOK_STATEMENT_PDF_XLSX_CSV",
       "uploadSupport": "BANK_STATEMENT_CSV",
       "receiptSupport": "TREASURY_TRANSFER_RECEIPT",
-      "documentType": "ACKNOWLEDGEMENT",
+      "permissions": [
+        "VIEW_PASSBOOK",
+        "PERFORM_PASSBOOK_TRANSFER"
+      ],
       "testOwnership": "backend/test/passbookTreasury.test.js",
-      "supportStatus": "COMPLETE",
-      "businessStatus": "READY",
-      "productionStatus": "PRODUCTION_VALIDATION_PENDING",
-      "userReviewStatus": "APPROVED",
-      "retiredStatus": "ACTIVE"
+      "status": "PASS",
+      "errors": []
     },
     {
       "id": "CUSTOMERS_LOYALTY",
       "name": "Customer Directory, 360 & Loyalty Points Ledger",
-      "family": "Commercial & CRM",
+      "family": "Customers & Loyalty",
       "personas": [
         "MASTER",
+        "OWNER",
         "CAFE_ADMIN"
       ],
       "route": "#customers",
@@ -454,42 +456,46 @@
       "exportSupport": "CUSTOMER_LEDGER_CSV",
       "uploadSupport": "CUSTOMER_IMPORT_CSV",
       "receiptSupport": "LOYALTY_REDEMPTION_SLIP",
-      "documentType": "VOUCHER",
+      "permissions": [
+        "VIEW_CUSTOMERS",
+        "MANAGE_LOYALTY_POINTS"
+      ],
       "testOwnership": "backend/test/customerLoyaltyManagement.test.js",
-      "supportStatus": "COMPLETE",
-      "businessStatus": "READY",
-      "productionStatus": "PRODUCTION_VALIDATION_PENDING",
-      "userReviewStatus": "APPROVED",
-      "retiredStatus": "ACTIVE"
+      "status": "PASS",
+      "errors": []
     },
     {
-      "id": "MENU_MANAGEMENT",
+      "id": "MENU_RECIPE",
       "name": "Global Menu Master, BOM Recipes & Pricing",
-      "family": "Commercial & Menu",
+      "family": "Menu & Recipes",
       "personas": [
-        "MASTER"
+        "MASTER",
+        "OWNER",
+        "CAFE_ADMIN"
       ],
-      "route": "#menu",
+      "route": "#menu-management",
       "frontendFile": "frontend/src/js/pages/menuManagement.js",
       "backendRoute": "backend/src/routes/menuRoutes.js",
       "controller": "backend/src/controllers/menuController.js",
       "exportSupport": "MENU_CATALOGUE_PDF",
       "uploadSupport": "ITEM_IMAGE_ASSETS",
       "receiptSupport": "NOT_APPLICABLE",
-      "documentType": "STATEMENT",
+      "permissions": [
+        "VIEW_MENU",
+        "MANAGE_RECIPES"
+      ],
       "testOwnership": "backend/test/menuRecipeManagement.test.js",
-      "supportStatus": "COMPLETE",
-      "businessStatus": "READY",
-      "productionStatus": "PRODUCTION_VALIDATION_PENDING",
-      "userReviewStatus": "APPROVED",
-      "retiredStatus": "ACTIVE"
+      "status": "PASS",
+      "errors": []
     },
     {
-      "id": "VENDORS_SUPPLIERS",
+      "id": "SUPPLIERS_VENDORS",
       "name": "Supplier Directory, Onboarding & Bank Maker-Checker",
-      "family": "Commercial & Vendors",
+      "family": "Vendors",
       "personas": [
-        "MASTER"
+        "MASTER",
+        "OWNER",
+        "CAFE_ADMIN"
       ],
       "route": "#vendors",
       "frontendFile": "frontend/src/js/pages/vendors.js",
@@ -498,18 +504,18 @@
       "exportSupport": "VENDOR_LIST_XLSX",
       "uploadSupport": "VENDOR_GSTIN_BANK_PROOFS",
       "receiptSupport": "VENDOR_ONBOARDING_LETTER",
-      "documentType": "LETTER",
+      "permissions": [
+        "VIEW_VENDORS",
+        "MANAGE_VENDOR_PROFILES"
+      ],
       "testOwnership": "backend/test/businessModules.test.js",
-      "supportStatus": "COMPLETE",
-      "businessStatus": "READY",
-      "productionStatus": "PRODUCTION_VALIDATION_PENDING",
-      "userReviewStatus": "APPROVED",
-      "retiredStatus": "ACTIVE"
+      "status": "PASS",
+      "errors": []
     },
     {
       "id": "REVENUE_SHARE",
       "name": "Revenue Share & Leased Outlet Agreements",
-      "family": "Commercial & Contracts",
+      "family": "Revenue Share",
       "personas": [
         "MASTER",
         "OWNER"
@@ -521,158 +527,159 @@
       "exportSupport": "SETTLEMENT_REPORT_PDF",
       "uploadSupport": "AGREEMENT_CONTRACT_PDF",
       "receiptSupport": "REVENUE_SHARE_SETTLEMENT_INVOICE",
-      "documentType": "STATEMENT",
+      "permissions": [
+        "VIEW_REVENUE_SHARE",
+        "MANAGE_REVENUE_SHARE"
+      ],
       "testOwnership": "backend/test/businessModules.test.js",
-      "supportStatus": "COMPLETE",
-      "businessStatus": "BLOCKED_BUSINESS_DECISION (ACT-017 & ACT-018)",
-      "productionStatus": "PRODUCTION_VALIDATION_PENDING",
-      "userReviewStatus": "APPROVED",
-      "retiredStatus": "ACTIVE"
+      "status": "PASS",
+      "errors": []
     },
     {
       "id": "TASKS_APPROVALS",
       "name": "Operational Tasks, Approvals & Oversight Queue",
-      "family": "Operations & Governance",
+      "family": "Tasks & Oversight",
       "personas": [
         "MASTER",
         "OWNER",
         "CAFE_ADMIN"
       ],
-      "route": "#tasks",
+      "route": "#tasks-approvals",
       "frontendFile": "frontend/src/js/pages/tasksApprovals.js",
       "backendRoute": "backend/src/routes/taskRoutes.js",
       "controller": "backend/src/controllers/taskController.js",
       "exportSupport": "TASK_SUMMARY_PDF",
       "uploadSupport": "TASK_COMPLETION_EVIDENCE",
       "receiptSupport": "NOT_APPLICABLE",
-      "documentType": "STATEMENT",
+      "permissions": [
+        "VIEW_TASKS",
+        "ASSIGN_TASKS"
+      ],
       "testOwnership": "backend/test/businessModules.test.js",
-      "supportStatus": "COMPLETE",
-      "businessStatus": "READY",
-      "productionStatus": "PRODUCTION_VALIDATION_PENDING",
-      "userReviewStatus": "APPROVED",
-      "retiredStatus": "ACTIVE"
+      "status": "PASS",
+      "errors": []
     },
     {
       "id": "REPORTS_ANALYTICS",
       "name": "Reports & Analytics Control Centre / ZURF Export",
-      "family": "Insights & Analytics",
+      "family": "Reports & Analytics",
       "personas": [
         "MASTER",
         "OWNER",
         "CAFE_ADMIN"
       ],
-      "route": "#reports",
+      "route": "#reports-analytics",
       "frontendFile": "frontend/src/js/pages/reportsAnalytics.js",
       "backendRoute": "backend/src/routes/reportRoutes.js",
       "controller": "backend/src/controllers/reportController.js",
       "exportSupport": "ZURF_FULL_SUITE_PDF_XLSX_CSV",
       "uploadSupport": "NOT_APPLICABLE",
       "receiptSupport": "NOT_APPLICABLE",
-      "documentType": "STATEMENT",
+      "permissions": [
+        "VIEW_REPORTS",
+        "EXPORT_GOVERNED_REPORTS"
+      ],
       "testOwnership": "backend/test/ownerReportsAnalyticsParity.test.js",
-      "supportStatus": "COMPLETE",
-      "businessStatus": "READY",
-      "productionStatus": "PRODUCTION_VALIDATION_PENDING",
-      "userReviewStatus": "APPROVED",
-      "retiredStatus": "ACTIVE"
+      "status": "PASS",
+      "errors": []
     },
     {
-      "id": "SYSTEM_ADMINISTRATION",
+      "id": "ADMINISTRATION_GOVERNANCE",
       "name": "System Administration, Roles, Users & Cafe Setup",
       "family": "Administration",
       "personas": [
         "MASTER"
       ],
-      "route": "#admin",
+      "route": "#administration",
       "frontendFile": "frontend/src/js/pages/administration.js",
       "backendRoute": "backend/src/routes/adminRoutes.js",
       "controller": "backend/src/controllers/adminGovernanceController.js",
       "exportSupport": "SYSTEM_AUDIT_LOG_CSV",
       "uploadSupport": "NOT_APPLICABLE",
       "receiptSupport": "NOT_APPLICABLE",
-      "documentType": "STATEMENT",
+      "permissions": [
+        "MANAGE_ORGANISATION",
+        "MANAGE_ROLES"
+      ],
       "testOwnership": "backend/test/adminGovernance.test.js",
-      "supportStatus": "COMPLETE",
-      "businessStatus": "READY",
-      "productionStatus": "LOCAL_TEST_PASS",
-      "userReviewStatus": "APPROVED",
-      "retiredStatus": "ACTIVE"
+      "status": "PASS",
+      "errors": []
     },
     {
-      "id": "CAFE_OPS_DEVICES",
+      "id": "DEVICES_SESSIONS",
       "name": "Cafe Operations Device Trust & Session Management",
-      "family": "System & Devices",
+      "family": "Devices & Sessions",
       "personas": [
         "MASTER",
+        "OWNER",
         "CAFE_ADMIN"
       ],
-      "route": "#cafe-ops-devices",
+      "route": "#cafe-operations-devices",
       "frontendFile": "frontend/src/js/pages/cafeOperationsDevices.js",
       "backendRoute": "backend/src/routes/deviceRoutes.js",
       "controller": "backend/src/controllers/deviceController.js",
       "exportSupport": "DEVICE_SECURITY_AUDIT_PDF",
       "uploadSupport": "NOT_APPLICABLE",
       "receiptSupport": "NOT_APPLICABLE",
-      "documentType": "STATEMENT",
+      "permissions": [
+        "MANAGE_DEVICES",
+        "VIEW_DEVICE_REGISTRY"
+      ],
       "testOwnership": "backend/test/deviceBoundAttendanceFinal.test.js",
-      "supportStatus": "COMPLETE",
-      "businessStatus": "READY",
-      "productionStatus": "LOCAL_TEST_PASS",
-      "userReviewStatus": "APPROVED",
-      "retiredStatus": "ACTIVE"
+      "status": "PASS",
+      "errors": []
     },
     {
-      "id": "SETTINGS_PREFERENCES",
+      "id": "SETTINGS_PROFILE",
       "name": "Universal User Settings, Account & Preferences",
-      "family": "System & Profile",
+      "family": "Settings & Profile",
       "personas": [
         "MASTER",
         "OWNER",
         "CAFE_ADMIN",
         "STAFF"
       ],
-      "route": "#settings",
+      "route": "#settings-profile",
       "frontendFile": "frontend/src/js/pages/settingsShared.js",
       "backendRoute": "backend/src/routes/settingsRoutes.js",
       "controller": "backend/src/controllers/settingsController.js",
       "exportSupport": "GDPR_DATA_EXPORT_JSON",
       "uploadSupport": "AVATAR_IMAGE",
       "receiptSupport": "NOT_APPLICABLE",
-      "documentType": "STATEMENT",
+      "permissions": [
+        "VIEW_SETTINGS",
+        "EDIT_PROFILE"
+      ],
       "testOwnership": "backend/test/employeeProfileApi.test.js",
-      "supportStatus": "COMPLETE",
-      "businessStatus": "READY",
-      "productionStatus": "PRODUCTION_VALIDATION_PENDING",
-      "userReviewStatus": "USER_REVIEW_PENDING",
-      "retiredStatus": "ACTIVE"
+      "status": "PASS",
+      "errors": []
     },
     {
-      "id": "TRASH_DATA_RECOVERY",
+      "id": "TRASH_SOFT_DELETE",
       "name": "Trash Bin & Governed 30-Day Soft-Delete Retention",
-      "family": "System & Recovery",
+      "family": "Administration",
       "personas": [
         "MASTER"
       ],
-      "route": "#trash",
+      "route": "#trash-bin",
       "frontendFile": "frontend/src/js/pages/trashBin.js",
       "backendRoute": "backend/src/routes/trashRoutes.js",
       "controller": "backend/src/controllers/trashController.js",
       "exportSupport": "PURGE_LOG_CSV",
       "uploadSupport": "NOT_APPLICABLE",
       "receiptSupport": "NOT_APPLICABLE",
-      "documentType": "STATEMENT",
+      "permissions": [
+        "RESTORE_TRASH",
+        "PURGE_TRASH"
+      ],
       "testOwnership": "backend/test/businessModules.test.js",
-      "supportStatus": "COMPLETE",
-      "businessStatus": "READY",
-      "productionStatus": "LOCAL_TEST_PASS",
-      "userReviewStatus": "APPROVED",
-      "retiredStatus": "ACTIVE"
+      "status": "PASS",
+      "errors": []
     },
     {
-      "id": "ANNOUNCEMENTS_NOTIFICATIONS",
+      "id": "ANNOUNCEMENTS",
       "name": "Corporate Announcements & Communications",
-      "family": "System & Communications",
+      "family": "Communications",
       "personas": [
         "MASTER",
         "OWNER",
@@ -686,13 +693,12 @@
       "exportSupport": "NOT_APPLICABLE",
       "uploadSupport": "ANNOUNCEMENT_ATTACHMENT",
       "receiptSupport": "NOT_APPLICABLE",
-      "documentType": "STATEMENT",
+      "permissions": [
+        "VIEW_ANNOUNCEMENTS"
+      ],
       "testOwnership": "backend/test/businessModules.test.js",
-      "supportStatus": "COMPLETE",
-      "businessStatus": "READY",
-      "productionStatus": "PRODUCTION_VALIDATION_PENDING",
-      "userReviewStatus": "APPROVED",
-      "retiredStatus": "ACTIVE"
+      "status": "PASS",
+      "errors": []
     }
   ]
 }

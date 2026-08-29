@@ -24,10 +24,12 @@ const crypto = require('crypto');
 function sanitizeCsvValue(val) {
   if (val === null || val === undefined) return '';
   let str = String(val);
-  if (/^[=+\-@\t\r]/.test(str)) {
+  // Neutralize standard formula prefixes (=, +, -, @, \t, \r, \n) and full-width Unicode equivalents (＝, ＋, －, ＠)
+  if (/^[=+\-@\t\r\n\uFF1D\uFF0B\uFF0D\uFF20]/.test(str)) {
     str = `'${str}`;
   }
-  if (str.includes('"') || str.includes(',') || str.includes('\n') || str.includes('\r')) {
+  // RFC 4180 standard escaping: quote field if it contains quotes, commas, semicolons, or newlines
+  if (str.includes('"') || str.includes(',') || str.includes(';') || str.includes('\n') || str.includes('\r')) {
     return `"${str.replace(/"/g, '""')}"`;
   }
   return str;

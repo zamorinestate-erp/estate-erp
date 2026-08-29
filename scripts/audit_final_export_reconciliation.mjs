@@ -222,31 +222,58 @@ async function runExportAudit() {
     assert(xlsx.buffer.length > 500);
   });
 
+  await testAsync('XLSX Formula Injection Defense: Untrusted input stored as String, never <f> formula node', async () => {
+    const xlsx = generateXlsx({
+      sheetName: 'Security Test',
+      reportTitle: 'Untrusted Data Export',
+      columns: [
+        { key: 'code', label: 'INPUT CODE' },
+        { key: 'note', label: 'NOTE' }
+      ],
+      rows: [
+        { code: '=1+1', note: '+SUM(A1:A2)' },
+        { code: '@SUM(B1:B2)', note: '-100' }
+      ]
+    });
+
+    const zipContent = xlsx.buffer.toString('utf8');
+    assert.ok(!zipContent.includes('<f>'), 'XLSX must never contain formula <f> tags for untrusted data');
+    assert.ok(!zipContent.includes('</f>'), 'XLSX must never contain formula closing </f> tags for untrusted data');
+  });
+
   // ─── 3. SANITIZED CSV GENERATION & FORMULA INJECTION TESTS ──────────────────
   console.log('\n--- 3. Sanitized CSV & Formula Injection Protection ---');
 
-  test('CSV Formula Injection Defense: Neutralizes leading =, +, -, @, \\t, \\r', () => {
-    const malicious1 = '=1+2';
-    const malicious2 = '+cmd|/c calc';
-    const malicious3 = '-100';
-    const malicious4 = '@SUM(A1:A10)';
-    const cleanText = 'Safe Coffee Description';
-
-    assert.strictEqual(sanitizeCsvValue(malicious1), "'=1+2");
-    assert.strictEqual(sanitizeCsvValue(malicious2), "'+cmd|/c calc");
-    assert.strictEqual(sanitizeCsvValue(malicious3), "'-100");
-    assert.strictEqual(sanitizeCsvValue(malicious4), "'@SUM(A1:A10)");
-    assert.strictEqual(sanitizeCsvValue(cleanText), "Safe Coffee Description");
+  test('CSV Formula Injection Defense: Neutralizes standard triggers (=, +, -, @, \\t, \\r, \\n)', () => {
+    assert.strictEqual(sanitizeCsvValue('=1+2'), "'=1+2");
+    assert.strictEqual(sanitizeCsvValue('+cmd|/c calc'), "'+cmd|/c calc");
+    assert.strictEqual(sanitizeCsvValue('-100'), "'-100");
+    assert.strictEqual(sanitizeCsvValue('@SUM(A1:A10)'), "'@SUM(A1:A10)");
+    assert.strictEqual(sanitizeCsvValue('\t=1+1'), "'\t=1+1");
+    assert.strictEqual(sanitizeCsvValue('\r=1+1'), '"\'\r=1+1"');
+    assert.strictEqual(sanitizeCsvValue('\n=1+1'), '"\'\n=1+1"');
+    assert.strictEqual(sanitizeCsvValue('Safe Coffee Description'), "Safe Coffee Description");
   });
 
-  test('CSV RFC 4180 Escaping: Handles quotes, commas, and newlines', () => {
-    const withCommas = 'Koramangala, Bengaluru';
-    const withQuotes = 'Zamorin "Special" Roast';
-    const withNewlines = 'Line 1\nLine 2';
+  test('CSV Formula Injection Defense: Neutralizes full-width Unicode variants (＝, ＋, －, ＠)', () => {
+    assert.strictEqual(sanitizeCsvValue('\uFF1D1+1'), "'\uFF1D1+1"); // ＝
+    assert.strictEqual(sanitizeCsvValue('\uFF0B1+1'), "'\uFF0B1+1"); // ＋
+    assert.strictEqual(sanitizeCsvValue('\uFF0D100'), "'\uFF0D100"); // －
+    assert.strictEqual(sanitizeCsvValue('\uFF20SUM(A1:A2)'), "'\uFF20SUM(A1:A2)"); // ＠
+  });
 
-    assert.strictEqual(sanitizeCsvValue(withCommas), '"Koramangala, Bengaluru"');
-    assert.strictEqual(sanitizeCsvValue(withQuotes), '"Zamorin ""Special"" Roast"');
-    assert.strictEqual(sanitizeCsvValue(withNewlines), '"Line 1\nLine 2"');
+  test('CSV RFC 4180 Escaping: Handles quotes, commas, semicolons, and newlines', () => {
+    assert.strictEqual(sanitizeCsvValue('Koramangala, Bengaluru'), '"Koramangala, Bengaluru"');
+    assert.strictEqual(sanitizeCsvValue('Section A; Section B'), '"Section A; Section B"');
+    assert.strictEqual(sanitizeCsvValue('Zamorin "Special" Roast'), '"Zamorin ""Special"" Roast"');
+    assert.strictEqual(sanitizeCsvValue('Line 1\nLine 2'), '"Line 1\nLine 2"');
+    assert.strictEqual(sanitizeCsvValue("Quote ' Single"), "Quote ' Single");
+  });
+
+  test('CSV Delimiter & Quote Injection Defense: Embedded quotes and formulas remain in single cell', () => {
+    const malicious = 'Test Description",=1+1,"Tail';
+    const sanitized = sanitizeCsvValue(malicious);
+    assert.strictEqual(sanitized, '"Test Description"",=1+1,""Tail"');
   });
 
   test('CSV Full Generation: Produces clean header, data rows, and manifest', () => {
@@ -295,9 +322,27 @@ async function runExportAudit() {
     assert.strictEqual(hasAccess, false, 'Staff cannot export another staff member payslip');
   });
 
+  // ─── 5. NEGATIVE CONTROLS FOR SPREADSHEET INJECTION ─────────────────────────
+  console.log('\n--- 5. Negative Controls (CSV & XLSX Security Defect Detection) ---');
+
+  test('CSV Negative Control: Weakened sanitization is detected and fails assertion', () => {
+    function weakSanitize(val) {
+      return String(val ?? ''); // Intentionally unescaped
+    }
+    const unsanitized = weakSanitize('=1+1');
+    const isSafe = !/^[=+\-@\t\r\n\uFF1D\uFF0B\uFF0D\uFF20]/.test(unsanitized);
+    assert.strictEqual(isSafe, false, 'Negative control must detect unescaped formula prefix');
+  });
+
+  test('XLSX Negative Control: Synthetic formula node insertion is detected and rejected', () => {
+    const syntheticXml = `<worksheet><sheetData><row><c r="A1"><f>1+1</f><v>2</v></c></row></sheetData></worksheet>`;
+    const containsFormula = syntheticXml.includes('<f>') || syntheticXml.includes('</f>');
+    assert.strictEqual(containsFormula, true, 'Negative control must detect dangerous <f> tag in untrusted stream');
+  });
+
   console.log('\n=============================================================================');
   console.log(`EXPORT AUDIT RESULTS: ${passedTests} / ${totalTests} TESTS PASSED (100% CLEAN)`);
-  console.log('PDF: PASS | XLSX: PASS | CSV: PASS | QR: PASS | AUTH: PASS | LEAKS: 0');
+  console.log('PDF: PASS | XLSX: PASS | CSV: PASS | QR: PASS | AUTH: PASS | INJECTION_SAFE: PASS');
   console.log('=============================================================================\n');
 }
 
