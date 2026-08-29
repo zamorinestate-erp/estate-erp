@@ -137,11 +137,19 @@ class DistributedEventBus extends EventEmitter {
   }
 
   /**
-   * Handles invalid / expired resume tokens with safe fallback and reconciliation.
+   * Builds resume options adhering to MongoDB change stream resume semantics.
    */
-  async handleInvalidResumeToken(collectionName, err, streamId = null) {
+  async buildResumeOptions(collectionName, options = {}) {
+    const targetStreamId = options.streamId || `stream-${collectionName}`;
+    return this.checkpointService.buildResumeOptions(targetStreamId, options);
+  }
+
+  /**
+   * Handles stream errors with canonical code 286 detection and non-destructive retry for transient errors.
+   */
+  async handleStreamError(collectionName, err, streamId = null) {
     const targetStreamId = streamId || `stream-${collectionName}`;
-    return this.checkpointService.handleInvalidResumeToken(targetStreamId, err);
+    return this.checkpointService.handleStreamError(targetStreamId, err);
   }
 
   getMetrics() {

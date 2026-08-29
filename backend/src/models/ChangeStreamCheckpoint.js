@@ -21,6 +21,16 @@ const changeStreamCheckpointSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Mixed,
       required: true,
     },
+    pipelineVersion: {
+      type: String,
+      default: 'v1',
+      trim: true,
+    },
+    optionsVersion: {
+      type: String,
+      default: 'v1',
+      trim: true,
+    },
     instanceId: {
       type: String,
       default: null,
