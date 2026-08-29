@@ -146,6 +146,7 @@ export function renderShell() {
     app.dataset.shellRole = state.role;
     app.innerHTML = `
       <div class="app-shell">
+        <div id="sidebar-overlay" class="sidebar-overlay" aria-hidden="true"></div>
         <aside id="sidebar" class="sidebar"></aside>
         <main class="main-shell">
           <header id="topbar" class="topbar"></header>
