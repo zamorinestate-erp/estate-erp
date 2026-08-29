@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // =============================================================================
-// ZAMORIN CAFE ERP — AUTHENTICATION TOKEN & SESSION RUNTIME TEST SUITE
+// ZAMORIN CAFE ERP — AUTHENTICATION TOKEN & SESSION SECURITY RUNTIME SUITE
 // =============================================================================
 
 import http from 'http';
@@ -13,8 +13,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const FRONTEND_DIR = path.resolve(__dirname, '../frontend');
 const CHROME_PATH = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
-const HTTP_PORT = 3525;
-const CDP_PORT = 9287;
+const HTTP_PORT = 3526;
+const CDP_PORT = 9288;
 
 const MIME_TYPES = {
   '.html': 'text/html',
@@ -106,13 +106,13 @@ class CdpClient {
 
 async function runTests() {
   console.log("===============================================================================");
-  console.log("ZAMORIN CAFÉ ERP — AUTH TOKEN & SESSION LIFECYCLE RUNTIME TEST SUITE");
+  console.log("ZAMORIN CAFÉ ERP — AUTH TOKEN & SESSION SECURITY RUNTIME TEST SUITE");
   console.log("===============================================================================\n");
 
   const server = await startServer();
   console.log(`[HTTP] Static file server running on http://127.0.0.1:${HTTP_PORT}`);
 
-  const userDataDir = path.resolve(__dirname, '../.chrome_token_test_profile');
+  const userDataDir = path.resolve(__dirname, '../.chrome_token_sec_profile');
   if (!fs.existsSync(userDataDir)) {
     fs.mkdirSync(userDataDir, { recursive: true });
   }
@@ -158,7 +158,7 @@ async function runTests() {
   const results = [];
 
   async function test(name, fn) {
-    process.stdout.write(`  • ${name.padEnd(68, '.')}`);
+    process.stdout.write(`  • ${name.padEnd(70, '.')}`);
     try {
       await fn();
       console.log(" PASS");
@@ -169,71 +169,52 @@ async function runTests() {
     }
   }
 
-  // Group 1: Token Management & Accessor Integrity
-  console.log("1. TOKEN ACCESSOR & STORAGE INTEGRITY");
-  await test("setAccessToken, getAccessToken, clearAccessToken roundtrip", async () => {
+  // Group 1: Storage Sanitization & Zero Client Refresh Token Holding
+  console.log("1. CREDENTIAL STORAGE HYGIENE & OWASP COMPLIANCE");
+  await test("Access token is stored in memory ONLY (never in localStorage/sessionStorage)", async () => {
     const res = await cdp.eval(`(async () => {
       const { setAccessToken, getAccessToken, clearAccessToken } = await import('/src/js/apiClient.js');
       clearAccessToken();
-      const initial = getAccessToken();
       setAccessToken("test_access_jwt_token_123");
-      const saved = getAccessToken();
+      const inMemory = getAccessToken();
+      const inLocalStorage = globalThis.localStorage?.getItem("zamorin-access-token");
+      const inSessionStorage = globalThis.sessionStorage?.getItem("zamorin-access-token");
       clearAccessToken();
-      const cleared = getAccessToken();
-      return { initial, saved, cleared };
+      return { inMemory, inLocalStorage, inSessionStorage };
     })()`);
-    if (res.initial !== null) throw new Error(`Initial token not null: ${res.initial}`);
-    if (res.saved !== "test_access_jwt_token_123") throw new Error(`Saved token mismatch: ${res.saved}`);
-    if (res.cleared !== null) throw new Error(`Cleared token not null: ${res.cleared}`);
+    if (res.inMemory !== "test_access_jwt_token_123") throw new Error(`Memory token mismatch: ${res.inMemory}`);
+    if (res.inLocalStorage !== null) throw new Error(`Access token leaked into localStorage!`);
+    if (res.inSessionStorage !== null) throw new Error(`Access token leaked into sessionStorage!`);
   });
 
-  await test("setRefreshToken, getRefreshToken, clearRefreshToken roundtrip", async () => {
+  await test("Refresh token is NEVER held or returned to JavaScript (getRefreshToken() === null)", async () => {
     const res = await cdp.eval(`(async () => {
       const { setRefreshToken, getRefreshToken, clearRefreshToken } = await import('/src/js/apiClient.js');
+      setRefreshToken("some_token");
+      const token = getRefreshToken();
+      const inLocalStorage = globalThis.localStorage?.getItem("zamorin-refresh-token");
+      const inSessionStorage = globalThis.sessionStorage?.getItem("zamorin-refresh-token");
       clearRefreshToken();
-      const initial = getRefreshToken();
-      setRefreshToken("opaque_refresh_token_xyz");
-      const saved = getRefreshToken();
-      clearRefreshToken();
-      const cleared = getRefreshToken();
-      return { initial, saved, cleared };
+      return { token, inLocalStorage, inSessionStorage };
     })()`);
-    if (res.initial !== null) throw new Error(`Initial refresh token not null`);
-    if (res.saved !== "opaque_refresh_token_xyz") throw new Error(`Saved refresh token mismatch: ${res.saved}`);
-    if (res.cleared !== null) throw new Error(`Cleared refresh token not null`);
+    if (res.token !== null) throw new Error(`getRefreshToken returned non-null: ${res.token}`);
+    if (res.inLocalStorage !== null) throw new Error(`Refresh token saved to localStorage!`);
+    if (res.inSessionStorage !== null) throw new Error(`Refresh token saved to sessionStorage!`);
   });
 
-  await test("setSessionId, getSessionId, clearSessionId roundtrip", async () => {
+  await test("clearAllAuthTokens() purges memory and cleans storage keys", async () => {
     const res = await cdp.eval(`(async () => {
-      const { setSessionId, getSessionId, clearSessionId } = await import('/src/js/apiClient.js');
-      clearSessionId();
-      const initial = getSessionId();
-      setSessionId("SS-20260829-0001");
-      const saved = getSessionId();
-      clearSessionId();
-      const cleared = getSessionId();
-      return { initial, saved, cleared };
-    })()`);
-    if (res.initial !== null) throw new Error(`Initial session ID not null`);
-    if (res.saved !== "SS-20260829-0001") throw new Error(`Saved session ID mismatch: ${res.saved}`);
-    if (res.cleared !== null) throw new Error(`Cleared session ID not null`);
-  });
-
-  await test("clearAllAuthTokens clears access, refresh, and session ID simultaneously", async () => {
-    const res = await cdp.eval(`(async () => {
-      const { setAccessToken, setRefreshToken, setSessionId, clearAllAuthTokens, getAccessToken, getRefreshToken, getSessionId } = await import('/src/js/apiClient.js');
+      const { setAccessToken, clearAllAuthTokens, getAccessToken } = await import('/src/js/apiClient.js');
       setAccessToken("tok1");
-      setRefreshToken("ref1");
-      setSessionId("sess1");
       clearAllAuthTokens();
       return {
         tok: getAccessToken(),
-        ref: getRefreshToken(),
-        sess: getSessionId(),
+        localAccess: globalThis.localStorage?.getItem("zamorin-access-token"),
+        localRefresh: globalThis.localStorage?.getItem("zamorin-refresh-token"),
       };
     })()`);
-    if (res.tok !== null || res.ref !== null || res.sess !== null) {
-      throw new Error(`clearAllAuthTokens did not clear all: ${JSON.stringify(res)}`);
+    if (res.tok !== null || res.localAccess !== null || res.localRefresh !== null) {
+      throw new Error(`clearAllAuthTokens did not clean all: ${JSON.stringify(res)}`);
     }
   });
 
@@ -283,7 +264,7 @@ async function runTests() {
     }
   });
 
-  await test("Rejects toxic token values ('undefined', 'null', whitespace)", async () => {
+  await test("Rejects toxic token values ('undefined', 'null', whitespace) — zero Bearer undefined", async () => {
     const res = await cdp.eval(`(async () => {
       const { setAccessToken, getAccessToken, clearAccessToken } = await import('/src/js/apiClient.js');
       setAccessToken("undefined");
@@ -328,28 +309,27 @@ async function runTests() {
     if (res?.['X-Custom-Report-Scope'] !== "ALL_CAFES") throw new Error(`Custom header lost`);
   });
 
-  // Group 3: 401 Interception, Single-Flight Refresh & Retry
-  console.log("\n3. SINGLE-FLIGHT REFRESH & 401 AUTO-RENEWAL");
-  await test("Single-flight refresh deduplicates concurrent 401s into ONE /auth/refresh call", async () => {
+  // Group 3: Single-Flight Refresh with HttpOnly Cookies (No JS refresh token body)
+  console.log("\n3. SINGLE-FLIGHT REFRESH & HTTPONLY COOKIE TRANSPORT");
+  await test("Single-flight refresh executes /auth/refresh using cookies and updates access token", async () => {
     const res = await cdp.eval(`(async () => {
-      const { setAccessToken, setRefreshToken, setSessionId, requestJson, clearAllAuthTokens } = await import('/src/js/apiClient.js');
+      const { setAccessToken, requestJson, clearAllAuthTokens } = await import('/src/js/apiClient.js');
       setAccessToken("stale_jwt");
-      setRefreshToken("valid_refresh_token");
-      setSessionId("SS-001");
 
       let refreshCalls = 0;
+      let refreshRequestBody = null;
       let dataCalls = 0;
       const originalFetch = window.fetch;
 
       window.fetch = async (url, init) => {
         if (url.includes('/auth/refresh')) {
           refreshCalls++;
+          refreshRequestBody = init?.body;
           await new Promise(r => setTimeout(r, 40));
           return new Response(JSON.stringify({
             success: true,
             data: {
-              accessToken: "fresh_new_jwt_555",
-              refreshToken: "rotated_refresh_666",
+              accessToken: "fresh_new_jwt_777",
               session: { sessionId: "SS-001" },
             },
           }), { status: 200, headers: { 'Content-Type': 'application/json' } });
@@ -379,6 +359,7 @@ async function runTests() {
 
         return {
           refreshCalls,
+          refreshRequestBody,
           dataCalls,
           reqA: reqA?.data?.result,
           reqB: reqB?.data?.result,
@@ -393,17 +374,18 @@ async function runTests() {
     if (res.refreshCalls !== 1) {
       throw new Error(`Expected exactly 1 refresh call, got ${res.refreshCalls}`);
     }
-    if (!res.reqA?.includes("fresh_new_jwt_555") || !res.reqB?.includes("fresh_new_jwt_555")) {
+    if (res.refreshRequestBody) {
+      throw new Error(`Refresh request body should be empty/undefined for cookie transport: ${res.refreshRequestBody}`);
+    }
+    if (!res.reqA?.includes("fresh_new_jwt_777") || !res.reqB?.includes("fresh_new_jwt_777")) {
       throw new Error(`Requests did not resume with fresh token: ${JSON.stringify(res)}`);
     }
   });
 
-  await test("Failed refresh transitions state to EXPIRED and cleans tokens without loop", async () => {
+  await test("Failed refresh transitions state to EXPIRED and cleans memory without loop", async () => {
     const res = await cdp.eval(`(async () => {
-      const { setAccessToken, setRefreshToken, setSessionId, requestJson, getSessionState, SessionState, getAccessToken, clearAllAuthTokens } = await import('/src/js/apiClient.js');
+      const { setAccessToken, requestJson, getSessionState, SessionState, getAccessToken, clearAllAuthTokens } = await import('/src/js/apiClient.js');
       setAccessToken("invalid_jwt");
-      setRefreshToken("revoked_refresh");
-      setSessionId("SS-999");
 
       let refreshAttempts = 0;
       const originalFetch = window.fetch;
@@ -413,7 +395,7 @@ async function runTests() {
           refreshAttempts++;
           return new Response(JSON.stringify({
             success: false,
-            error: { code: 'INVALID_OR_EXPIRED_SESSION', message: 'Session revoked.' },
+            error: { code: 'INVALID_REFRESH_SESSION', message: 'Session revoked.' },
           }), { status: 401, headers: { 'Content-Type': 'application/json' } });
         }
         return new Response(JSON.stringify({
@@ -497,8 +479,35 @@ async function runTests() {
     if (!res.userMsg?.includes("permission")) throw new Error(`Unexpected user message: ${res.userMsg}`);
   });
 
-  // Group 5: Error Message Normalization
-  console.log("\n5. ERROR MESSAGE NORMALIZATION & PRIVACY");
+  // Group 5: Multi-User Session Isolation
+  console.log("\n5. MULTI-USER ISOLATION & LOGOUT CLEANUP");
+  await test("User A session credentials do NOT survive User B login", async () => {
+    const res = await cdp.eval(`(async () => {
+      const { setAccessToken, getAccessToken, clearAllAuthTokens } = await import('/src/js/apiClient.js');
+      // User A signs in
+      setAccessToken("user_a_token_111");
+      const userAToken = getAccessToken();
+
+      // User A signs out
+      clearAllAuthTokens();
+      const loggedOutToken = getAccessToken();
+
+      // User B signs in
+      setAccessToken("user_b_token_222");
+      const userBToken = getAccessToken();
+
+      clearAllAuthTokens();
+
+      return { userAToken, loggedOutToken, userBToken };
+    })()`);
+
+    if (res.userAToken !== "user_a_token_111") throw new Error(`User A token mismatch`);
+    if (res.loggedOutToken !== null) throw new Error(`Logged out token not null: ${res.loggedOutToken}`);
+    if (res.userBToken !== "user_b_token_222") throw new Error(`User B token mismatch`);
+  });
+
+  // Group 6: Error Message Normalization
+  console.log("\n6. ERROR MESSAGE NORMALIZATION & PRIVACY");
   await test("mapErrorToUserMessage shields users from raw technical token terms", async () => {
     const res = await cdp.eval(`(async () => {
       const { mapErrorToUserMessage } = await import('/src/js/apiClient.js');
@@ -507,7 +516,7 @@ async function runTests() {
         'AUTH_TOKEN_INVALID',
         'AUTH_TOKEN_NOT_ACTIVE',
         'AUTH_SESSION_REVOKED',
-        'INVALID_OR_EXPIRED_SESSION',
+        'INVALID_REFRESH_SESSION',
         'REFRESH_SESSION_REQUIRED',
         'AUTHENTICATION_REQUIRED',
         'AUTH_SESSION_INVALID',
