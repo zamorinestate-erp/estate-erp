@@ -138,6 +138,11 @@
   --min-touch-target: 44px;
   --app-height: 100dvh;
 
+  --control-height: 40px;
+  --control-height-sm: 32px;
+  --control-height-lg: 48px;
+  --focus-ring: 0 0 0 3px rgba(177,125,56,0.22);
+
   --font-scale: 1;
 }
 
