@@ -1,0 +1,17 @@
+{
+  "managementAccount": true,
+  "managementAccountName": "Zamorin-Cloud-Management",
+  "organization": true,
+  "organizationFeatures": "ALL",
+  "nonProductionOU": "Zamorin-NonProduction",
+  "scaleAccount": "Zamorin-Scale-Staging",
+  "region": "ap-south-1",
+  "rootMfa": true,
+  "rootAccessKeys": 0,
+  "identityCenter": true,
+  "cliProfile": "zamorin-scale",
+  "cliAuth": "SSO",
+  "longLivedHumanKeys": 0,
+  "budget": "WAITING_USER_BUDGET_DECISION",
+  "readyForScaleInfrastructurePlanning": true
+}

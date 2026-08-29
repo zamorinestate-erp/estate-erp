@@ -12,3 +12,23 @@ logs/
 .chrome*
 .system_generated/
 scratch/
+
+# Terraform & Cloud State
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+.terraform.lock.hcl.tmp
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# AWS Credentials & Local Secrets
+.aws/
+credentials
+*.pem
+*.key
+*.id_rsa
