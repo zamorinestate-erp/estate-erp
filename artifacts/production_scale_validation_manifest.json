@@ -1,0 +1,39 @@
+{
+  "programme": "Enterprise Cluster Capacity Validation",
+  "branch": "feature/production-scale-validation",
+  "baseMainHead": "8be3027002b084f1e7d3686c45f024f387c514df",
+  "infrastructureStatus": "BLOCKED_INFRASTRUCTURE_ACCESS",
+  "stagingClusterPlan": {
+    "provider": "AWS",
+    "region": "ap-south-1",
+    "iacPath": "infra/scale-validation/main.tf",
+    "loadBalancer": "AWS ALB (SSE & HTTP/2 configured)",
+    "apiInstances": "4 to 16 ECS Fargate container tasks",
+    "redis": "AWS ElastiCache Redis Cluster (cache.m6g.large, 2 nodes)",
+    "mongo": "MongoDB Atlas M30/M40 (3-node replica set)",
+    "loadGenerators": "5 x c6i.2xlarge distributed EC2 instances",
+    "requiredTags": {
+      "Project": "ZamorinCafeERP",
+      "Purpose": "EnterpriseScaleValidation",
+      "Environment": "ScalabilityStaging",
+      "Owner": "Zamorin",
+      "AutoCleanup": "True"
+    }
+  },
+  "tests": [
+    {
+      "id": "SC-PROD-001",
+      "target": "50,000 Real Live Physical Device Connections",
+      "harness": "scripts/scale/live-device-client.mjs",
+      "status": "BLOCKED_INFRASTRUCTURE_ACCESS",
+      "localEvidence": "232 Real Persistent Sockets (Loopback ceiling) | 50,000 Device Heartbeat Simulation Verified"
+    },
+    {
+      "id": "SC-PROD-002",
+      "target": "10,000 Active Concurrent Virtual Users",
+      "harness": "scripts/scale/k6-interactive-users.js",
+      "status": "BLOCKED_INFRASTRUCTURE_ACCESS",
+      "localEvidence": "Stateless JWT Auth Benchmarked (1ms) | KDF Backpressure Queue Certified"
+    }
+  ]
+}
