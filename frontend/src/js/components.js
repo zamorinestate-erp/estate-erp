@@ -942,18 +942,38 @@ export function confirmAction({
 /* -------------------------------------------------------------------------
    Toast Notifications (Bottom Right Stack) — Premium Micro-Interactions
    ------------------------------------------------------------------------- */
+let lastToastMessage = "";
+let lastToastTimestamp = 0;
+
 export function showToast(message, type = "mint", title = "") {
+  if (!message) return;
+  const now = Date.now();
+  // Duplicate suppression within 1200ms
+  if (message === lastToastMessage && now - lastToastTimestamp < 1200) {
+    return;
+  }
+  lastToastMessage = message;
+  lastToastTimestamp = now;
+
   let stack = document.getElementById("toast-root");
   if (!stack) {
     stack = document.createElement("div");
     stack.id = "toast-root";
     stack.className = "toast-stack";
+    stack.setAttribute("aria-live", "polite");
     document.body.appendChild(stack);
   }
 
   const toast = document.createElement("div");
   const normalizedType = type === "success" ? "mint" : type === "error" || type === "danger" ? "coral" : type === "warning" ? "amber" : type === "info" ? "cobalt" : type;
   toast.className = `toast-card toast-${normalizedType}`;
+
+  // High-severity errors use role="alert", non-urgent messages use role="status"
+  if (normalizedType === "coral") {
+    toast.setAttribute("role", "alert");
+  } else {
+    toast.setAttribute("role", "status");
+  }
 
   const iconMap = {
     mint: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent-mint, #10b981); flex-shrink:0;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`,
@@ -962,15 +982,15 @@ export function showToast(message, type = "mint", title = "") {
     cobalt: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent-cobalt, #3b82f6); flex-shrink:0;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`,
   };
 
-function escapeHtml(str) {
-  if (typeof str !== 'string') return '';
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
+  function escapeHtml(str) {
+    if (typeof str !== 'string') return '';
+    return str
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
 
   const defaultTitles = {
     mint: "Success",
@@ -1004,11 +1024,11 @@ function escapeHtml(str) {
   };
   if (closeBtn) closeBtn.addEventListener("click", dismiss);
 
-  setTimeout(dismiss, 4200);
+  setTimeout(dismiss, normalizedType === "coral" ? 6000 : 4200);
 }
 
 /* -------------------------------------------------------------------------
-   Helper Components (KPI card, Empty state, Skeleton)
+   Helper Components (KPI card, Empty state, Skeleton, Button State)
    ------------------------------------------------------------------------- */
 export function kpiCard({ label, value, trend = "", trendType = "up", onClick }) {
   const trendClass = trendType === "up" ? "" : trendType === "down" ? " down" : "";
@@ -1021,18 +1041,50 @@ export function kpiCard({ label, value, trend = "", trendType = "up", onClick })
   `;
 }
 
-export function emptyState({ title = "No records found", body = "" }) {
+export function emptyState({ title = "No records found", body = "", iconName = "box", actionLabel = null, actionId = null }) {
   return `
-    <div class="empty-state-card">
-      <div class="empty-icon">${icon("box")}</div>
-      <h3 class="empty-title">${title}</h3>
-      ${body ? `<p class="empty-body">${body}</p>` : ""}
+    <div class="empty-state-card" style="text-align:center; padding:36px 20px;">
+      <div class="empty-icon" style="margin-bottom:12px; opacity:0.6;">${icon(iconName || "box")}</div>
+      <h3 class="empty-title" style="font-size:16px; font-weight:700; color:var(--ink); margin:0 0 6px;">${title}</h3>
+      ${body ? `<p class="empty-body" style="font-size:13.5px; color:var(--muted); margin:0 0 ${actionLabel ? "16px" : "0"}; line-height:1.5;">${body}</p>` : ""}
+      ${actionLabel ? `<button class="btn btn-secondary btn-sm" id="${actionId || "btn-empty-state-action"}" type="button">${actionLabel}</button>` : ""}
     </div>
   `;
 }
 
 export function skeleton(height = "80px") {
-  return `<div class="skeleton" style="height:${height};border-radius:var(--radius-md);"></div>`;
+  return `<div class="skeleton" style="height:${height};border-radius:var(--radius-md);" aria-busy="true"></div>`;
+}
+
+export function renderTableLoadingSkeleton(rows = 5, cols = 4) {
+  return `
+    <div class="table-skeleton-wrap" aria-busy="true" style="padding:16px; display:flex; flex-direction:column; gap:12px;">
+      ${Array.from({ length: rows }).map(() => `
+        <div style="display:grid; grid-template-columns:repeat(${cols}, 1fr); gap:16px;">
+          ${Array.from({ length: cols }).map(() => `<div class="skeleton" style="height:28px; border-radius:var(--radius-xs);"></div>`).join("")}
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+export function setButtonBusy(btn, isBusy = true, busyText = "Processing...") {
+  if (!btn) return;
+  if (isBusy) {
+    if (!btn.dataset.originalText) {
+      btn.dataset.originalText = btn.innerHTML;
+    }
+    btn.disabled = true;
+    btn.setAttribute("aria-busy", "true");
+    btn.innerHTML = `<span class="spinner-sm" style="display:inline-block; width:14px; height:14px; border:2px solid currentColor; border-top-color:transparent; border-radius:50%; animation:spin 0.6s linear infinite; vertical-align:middle; margin-right:6px;"></span>${busyText}`;
+  } else {
+    btn.disabled = false;
+    btn.removeAttribute("aria-busy");
+    if (btn.dataset.originalText) {
+      btn.innerHTML = btn.dataset.originalText;
+      delete btn.dataset.originalText;
+    }
+  }
 }
 
 /* -------------------------------------------------------------------------

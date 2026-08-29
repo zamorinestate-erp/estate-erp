@@ -10,7 +10,7 @@
 
 import { state, setState } from "./state.js";
 import { NAVIGATION, isRouteAllowed, ROLES } from "./navigation.js";
-import { renderSidebar, wireSidebar, renderTopbar, wireBell, updateBellBadge, updateSidebarActive } from "./components.js";
+import { renderSidebar, wireSidebar, renderTopbar, wireBell, updateBellBadge, updateSidebarActive, renderModuleErrorState } from "./components.js";
 import { renderNotificationCentre, wireNotificationCentre } from "./pages/notificationCentre.js";
 import { icon } from "./icons.js";
 import { renderMasterDashboard, hydrateMasterDashboard } from "./pages/dashboardMaster.js";
@@ -173,7 +173,22 @@ export function renderShell() {
     updateSidebarActive(state.route);
   }
 
-  renderPage().finally(() => {
+  renderPage().catch((err) => {
+    console.error("Router error during page mount:", err);
+    const content = document.getElementById("page-content");
+    if (content) {
+      content.innerHTML = renderModuleErrorState({
+        title: "Workspace Load Interrupted",
+        message: "An unexpected error occurred while preparing this workspace. Please retry.",
+        error: err,
+        retryActionId: "btn-retry-router-mount",
+        retryLabel: "Retry Loading",
+      });
+      content.querySelector("#btn-retry-router-mount")?.addEventListener("click", () => {
+        renderShell();
+      });
+    }
+  }).finally(() => {
     hideNavProgressBar();
   });
 }

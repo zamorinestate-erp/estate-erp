@@ -17,7 +17,7 @@
 //   - Real-time IST Clock & Date Range Pickers (Today, Yesterday, 7D, 30D, Month, Custom)
 // =============================================================================
 
-import { kpiCard, skeleton, showToast } from "../components.js";
+import { kpiCard, skeleton, showToast, confirmAction } from "../components.js";
 import { apiGet, apiPost, apiPut, apiDelete } from "../apiClient.js";
 import { navigate } from "../router.js";
 import { state } from "../state.js";
@@ -1827,17 +1827,24 @@ function openManageViewsModal(root) {
   });
 
   modalRoot.querySelectorAll("[data-delete-view]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
+    btn.addEventListener("click", () => {
       const id = btn.dataset.deleteView;
-      if (!confirm("Are you sure you want to delete this saved view preset?")) return;
-      try {
-        await apiDelete(`/dashboard/saved-views/${id}`);
-        showToast("Saved view deleted.", "info");
-        await loadSavedViews(root);
-        openManageViewsModal(root);
-      } catch (err) {
-        showToast(err.message || "Failed to delete saved view.", "danger");
-      }
+      confirmAction({
+        title: "Delete Saved View",
+        description: "Are you sure you want to delete this saved view preset?",
+        confirmLabel: "Delete View",
+        danger: true,
+        onConfirm: async () => {
+          try {
+            await apiDelete(`/dashboard/saved-views/${id}`);
+            showToast("Saved view deleted.", "info");
+            await loadSavedViews(root);
+            openManageViewsModal(root);
+          } catch (err) {
+            showToast(err.userMessage || err.message || "Failed to delete saved view.", "coral");
+          }
+        }
+      });
     });
   });
 }

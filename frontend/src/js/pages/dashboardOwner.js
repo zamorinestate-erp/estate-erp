@@ -17,7 +17,7 @@
 //   - Layer 10: System & Operational Risk Posture (P0/P1 Incidents, POS Terminal Uptime, Device Security)
 // =============================================================================
 
-import { skeleton, showToast } from "../components.js";
+import { skeleton, showToast, confirmAction } from "../components.js";
 import { apiGet, apiPost } from "../apiClient.js";
 import { navigate } from "../router.js";
 import { state } from "../state.js";
@@ -1447,29 +1447,33 @@ async function openCashDrawerManagement() {
         const variancePaisa = countedPaisa - expectedPaisa;
         const varianceRupees = (variancePaisa / 100).toFixed(2);
 
-        if (!confirm(`Are you sure you want to close this drawer session?\n\nExpected Cash: ₹${(expectedPaisa / 100).toFixed(2)}\nCounted Cash: ₹${countedRupees.toFixed(2)}\nCalculated Variance: ₹${varianceRupees}`)) {
-          return;
-        }
-
-        btnCloseSession.disabled = true;
-        try {
-          const closeRes = await apiPost("/bills/register/session/close", {
-            registerSessionId: currentSession.registerSessionId,
-            countedCashPaisa: countedPaisa,
-            closingDeclarationNote: note,
-          });
-          if (closeRes && closeRes.success) {
-            showToast(`Drawer session closed. Variance: ₹${varianceRupees}`, "success");
-            modal.style.display = "none";
-            loadDashboardData(true);
-          } else {
-            showToast(closeRes?.message || "Failed to close drawer session.", "error");
+        confirmAction({
+          title: "Close Cash Drawer Session",
+          description: `Expected Cash: ₹${(expectedPaisa / 100).toFixed(2)}<br>Counted Cash: ₹${countedRupees.toFixed(2)}<br><strong>Calculated Variance: ₹${varianceRupees}</strong><br><br>Are you sure you want to close this drawer session?`,
+          confirmLabel: "Close Session",
+          danger: variancePaisa !== 0,
+          onConfirm: async () => {
+            btnCloseSession.disabled = true;
+            try {
+              const closeRes = await apiPost("/bills/register/session/close", {
+                registerSessionId: currentSession.registerSessionId,
+                countedCashPaisa: countedPaisa,
+                closingDeclarationNote: note,
+              });
+              if (closeRes && closeRes.success) {
+                showToast(`Drawer session closed. Variance: ₹${varianceRupees}`, "mint");
+                modal.style.display = "none";
+                loadDashboardData(true);
+              } else {
+                showToast(closeRes?.message || "Failed to close drawer session.", "coral");
+              }
+            } catch (err) {
+              showToast(err.userMessage || err.message || "Failed to close drawer session.", "coral");
+            } finally {
+              btnCloseSession.disabled = false;
+            }
           }
-        } catch (err) {
-          showToast(err.message || "Failed to close drawer session.", "error");
-        } finally {
-          btnCloseSession.disabled = false;
-        }
+        });
       });
     }
 

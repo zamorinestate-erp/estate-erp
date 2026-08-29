@@ -5,6 +5,8 @@
 
 import { state } from "../state.js";
 import { icon } from "../icons.js";
+import { apiGet, apiPost } from "../apiClient.js";
+import { showToast, setButtonBusy } from "../components.js";
 
 // ─── State Management ────────────────────────────────────────────────────────
 let passbookData = null;
@@ -37,12 +39,9 @@ export function formatRupees(rupees) {
 // ─── API Client ──────────────────────────────────────────────────────────────
 async function fetchPassbookOverview() {
   try {
-    const res = await fetch(`/api/v1/passbook/overview?cafeId=${currentScope}&period=${currentPeriod}`, {
-      credentials: 'include',
-    });
-    if (res.ok) {
-      const json = await res.json();
-      passbookData = json.data;
+    const payload = await apiGet(`/passbook/overview?cafeId=${currentScope}&period=${currentPeriod}`);
+    if (payload?.data) {
+      passbookData = payload.data;
       return passbookData;
     }
   } catch (err) {
@@ -771,26 +770,22 @@ export async function wirePassbook() {
   if (adjForm) {
     adjForm.addEventListener('submit', async (e) => {
       e.preventDefault();
+      const submitBtn = adjForm.querySelector('button[type="submit"]');
       const accId = document.getElementById('adj-account-id').value;
       const newBal = document.getElementById('adj-new-balance').value;
       const reason = document.getElementById('adj-reason').value;
 
+      setButtonBusy(submitBtn, true, 'Applying Adjustment...');
       try {
-        const res = await fetch(`/api/v1/passbook/accounts/${accId}/adjust-balance`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ newBalance: newBal, reason }),
+        await apiPost(`/passbook/accounts/${accId}/adjust-balance`, {
+          body: { newBalance: newBal, reason }
         });
-        if (res.ok) {
-          alert('Direct balance adjustment applied successfully.');
-          window.location.hash = '#passbook/accounts';
-        } else {
-          const err = await res.json();
-          alert(`Adjustment Error: ${err.error?.message || 'Failed'}`);
-        }
+        showToast('Direct balance adjustment applied successfully.', 'mint');
+        window.location.hash = '#passbook/accounts';
       } catch (err) {
-        alert('Network error while applying adjustment.');
+        showToast(err.userMessage || err.message || 'Could not apply adjustment.', 'coral');
+      } finally {
+        setButtonBusy(submitBtn, false);
       }
     });
   }

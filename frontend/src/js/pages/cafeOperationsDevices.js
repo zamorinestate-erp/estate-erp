@@ -1,6 +1,6 @@
 import { state } from "../state.js";
 import { apiGet, apiPost } from "../apiClient.js";
-import { showToast, openModal, closeModal, kpiCard, skeleton, renderModuleErrorState } from "../components.js";
+import { showToast, openModal, closeModal, confirmAction, kpiCard, skeleton, renderModuleErrorState } from "../components.js";
 import { icon } from "../icons.js";
 import { navigate } from "../router.js";
 
@@ -360,40 +360,60 @@ function openDeviceActionModal(device, root) {
 
   modalEl?.querySelector("#dev-btn-close")?.addEventListener("click", () => closeModal());
 
-  modalEl?.querySelector("#dev-btn-lost")?.addEventListener("click", async () => {
-    if (!confirm(`Are you sure you want to mark ${device.deviceId} as LOST? All active sessions will be revoked.`)) return;
-    try {
-      await apiPost(`/devices/${device.deviceId}/lost`, { reason: "Reported lost by supervisor" });
-      showToast("Device marked as LOST.", "success");
-      closeModal();
-      loadFleetData(root);
-    } catch (err) {
-      showToast(err.message || "Failed to update device.", "error");
-    }
+  modalEl?.querySelector("#dev-btn-lost")?.addEventListener("click", () => {
+    confirmAction({
+      title: "Mark Device as Lost",
+      description: `Are you sure you want to mark <strong>${device.deviceId}</strong> as LOST? All active sessions will be immediately revoked.`,
+      confirmLabel: "Mark as Lost",
+      danger: true,
+      onConfirm: async () => {
+        try {
+          await apiPost(`/devices/${device.deviceId}/lost`, { reason: "Reported lost by supervisor" });
+          showToast("Device marked as LOST.", "mint");
+          closeModal();
+          loadFleetData(root);
+        } catch (err) {
+          showToast(err.userMessage || err.message || "Failed to update device.", "coral");
+        }
+      }
+    });
   });
 
-  modalEl?.querySelector("#dev-btn-retire")?.addEventListener("click", async () => {
-    if (!confirm(`Are you sure you want to retire ${device.deviceId}?`)) return;
-    try {
-      await apiPost(`/devices/${device.deviceId}/retire`, { reason: "Hardware retired" });
-      showToast("Device retired.", "success");
-      closeModal();
-      loadFleetData(root);
-    } catch (err) {
-      showToast(err.message || "Failed to retire device.", "error");
-    }
+  modalEl?.querySelector("#dev-btn-retire")?.addEventListener("click", () => {
+    confirmAction({
+      title: "Retire Device",
+      description: `Are you sure you want to retire <strong>${device.deviceId}</strong>?`,
+      confirmLabel: "Retire Device",
+      onConfirm: async () => {
+        try {
+          await apiPost(`/devices/${device.deviceId}/retire`, { reason: "Hardware retired" });
+          showToast("Device retired.", "mint");
+          closeModal();
+          loadFleetData(root);
+        } catch (err) {
+          showToast(err.userMessage || err.message || "Failed to retire device.", "coral");
+        }
+      }
+    });
   });
 
-  modalEl?.querySelector("#dev-btn-revoke")?.addEventListener("click", async () => {
-    if (!confirm(`EMERGENCY: Revoke ${device.deviceId}? This immediately blocks all terminal access.`)) return;
-    try {
-      await apiPost(`/devices/${device.deviceId}/revoke`, { reason: "Master emergency revocation" });
-      showToast("Device revoked immediately.", "success");
-      closeModal();
-      loadFleetData(root);
-    } catch (err) {
-      showToast(err.message || "Failed to revoke device.", "error");
-    }
+  modalEl?.querySelector("#dev-btn-revoke")?.addEventListener("click", () => {
+    confirmAction({
+      title: "Emergency Revocation",
+      description: `<strong>EMERGENCY:</strong> Revoke <strong>${device.deviceId}</strong>?<br>This immediately terminates all active sessions and blocks all terminal access.`,
+      confirmLabel: "Revoke Device",
+      danger: true,
+      onConfirm: async () => {
+        try {
+          await apiPost(`/devices/${device.deviceId}/revoke`, { reason: "Master emergency revocation" });
+          showToast("Device revoked immediately.", "mint");
+          closeModal();
+          loadFleetData(root);
+        } catch (err) {
+          showToast(err.userMessage || err.message || "Failed to revoke device.", "coral");
+        }
+      }
+    });
   });
 }
 

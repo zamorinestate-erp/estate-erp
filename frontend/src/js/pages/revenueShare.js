@@ -9,7 +9,7 @@
 
 import { state } from '../state.js';
 import { icon } from '../icons.js';
-import { showToast, renderModuleErrorState } from '../components.js';
+import { showToast, renderModuleErrorState, confirmAction } from '../components.js';
 import { apiGet, apiPost, downloadFile } from '../apiClient.js';
 import { navigate } from '../router.js';
 
@@ -1106,19 +1106,24 @@ function wireSettlementsTab() {
   });
 
   document.querySelectorAll('.btn-approve-settlement').forEach((btn) => {
-    btn.addEventListener('click', async () => {
+    btn.addEventListener('click', () => {
       const id = btn.dataset.id;
-      if (!confirm(`Are you sure you want to authoritatively approve settlement ${id} and post to Finance?`)) return;
-
-      try {
-        const json = await apiPost(`/revenue-share/settlements/${id}/approve`, { notes: 'Approved by Primary Master / Owner' });
-        if (json.success) {
-          showToast(`Settlement ${id} approved and posted to Finance ledger.`, 'success');
-          await loadAllData();
+      confirmAction({
+        title: "Approve Settlement",
+        description: `Are you sure you want to authoritatively approve settlement <strong>${id}</strong> and post to Finance General Ledger?`,
+        confirmLabel: "Approve Settlement",
+        onConfirm: async () => {
+          try {
+            const json = await apiPost(`/revenue-share/settlements/${id}/approve`, { notes: 'Approved by Primary Master / Owner' });
+            if (json.success) {
+              showToast(`Settlement ${id} approved and posted to Finance ledger.`, 'mint');
+              await loadAllData();
+            }
+          } catch (e) {
+            showToast('Approval failed: ' + (e.userMessage || e.message), 'coral');
+          }
         }
-      } catch (e) {
-        showToast('Approval failed: ' + (e.userMessage || e.message), 'error');
-      }
+      });
     });
   });
 }

@@ -294,11 +294,22 @@ export class ApiClientError extends Error {
 }
 
 export function mapErrorToUserMessage(code, status, fallbackMessage) {
+  const sanitizeFallback = (msg) => {
+    if (!msg || typeof msg !== "string") return null;
+    if (/MongoServerError|MongooseError|CastError|ValidationError|at\s+[\w\.]+\s+\(|\\Users\\|\/home\/|localhost|\.js:\d+/i.test(msg)) {
+      return "The request could not be completed.";
+    }
+    return msg;
+  };
+
+  const safeFallback = sanitizeFallback(fallbackMessage);
+
   switch (code) {
     case "REFRESH_SESSION_REQUIRED":
     case "INVALID_OR_EXPIRED_SESSION":
     case "AUTHENTICATION_REQUIRED":
     case "AUTH_SESSION_INVALID":
+    case "INVALID_CREDENTIALS":
       return "Your authenticated session could not be validated. Please sign in again.";
     case "STEP_UP_AUTHENTICATION_REQUIRED":
       return "Recent security verification is required for this action.";
@@ -309,19 +320,43 @@ export function mapErrorToUserMessage(code, status, fallbackMessage) {
     case "NETWORK_UNAVAILABLE":
     case "FETCH_ERROR":
       return "The server could not be reached. Please check your network connection.";
+    case "REQUEST_TIMEOUT":
+    case "TIMEOUT":
+      return "The server took too long to respond. Please check your connection and try again.";
+    case "REQUEST_ABORTED":
+      return "The request was cancelled.";
     case "INVALID_API_RESPONSE":
     case "API_CONTRACT_ERROR":
       return "The service returned an unexpected response. Please try again later.";
+    case "DUPLICATE_KEY_CONFLICT":
+    case "ATTENDANCE_ALREADY_EXISTS":
+    case "USER_ALREADY_EXISTS":
+    case "VENDOR_ALREADY_EXISTS":
+    case "RECORD_CONFLICT":
+      return safeFallback || "This record conflicts with existing data. Please refresh and try again.";
     case "EXPORT_FAILED":
       return "The export could not be generated. Please retry.";
+    case "PAYLOAD_TOO_LARGE":
+      return "The uploaded file or payload exceeds the allowed size limit.";
     case "VALIDATION_ERROR":
-      return fallbackMessage || "Please check your input values and try again.";
+    case "INVALID_FORMAT":
+      return safeFallback || "Please check your input values and try again.";
+    case "RATE_LIMITED":
+    case "TOO_MANY_REQUESTS":
+      return "Too many requests. Please wait a moment before trying again.";
     default:
-      if (status === 401) return "Your authenticated session could not be validated.";
-      if (status === 403) return "You do not have permission to access this resource.";
+      if (status === 400) return safeFallback || "Please check your input values and try again.";
+      if (status === 401) return "Your authenticated session could not be validated. Please sign in again.";
+      if (status === 403) return "You do not have permission to perform this action.";
       if (status === 404) return "The requested record could not be found.";
+      if (status === 408) return "The request timed out. Please check your connection and try again.";
+      if (status === 409) return safeFallback || "This action conflicts with current records. Please refresh and try again.";
+      if (status === 413) return "The payload exceeds the allowed size limit.";
+      if (status === 422) return safeFallback || "The submitted data could not be processed. Please check the entered fields.";
+      if (status === 429) return "Too many requests. Please wait a moment before trying again.";
+      if (status === 502 || status === 503 || status === 504) return "The server is temporarily unreachable. Please try again in a few moments.";
       if (status >= 500) return "This service is temporarily unavailable. Please try again later.";
-      return fallbackMessage || "The request could not be completed.";
+      return safeFallback || "The request could not be completed.";
   }
 }
 
@@ -405,13 +440,38 @@ export async function performRequest(
     signal,
     body,
     headers = {},
+    timeoutMs = 30000,
   } = {}
 ) {
   const hasJsonBody = body !== undefined && !(body instanceof FormData) && !(body instanceof Blob);
   const normalizedPath = normalizeApiPath(path);
 
+  // Setup internal timeout controller
+  const timeoutCtrl = new AbortController();
+  let timeoutId = null;
+  let didTimeout = false;
+
+  if (timeoutMs > 0) {
+    timeoutId = setTimeout(() => {
+      didTimeout = true;
+      timeoutCtrl.abort();
+    }, timeoutMs);
+  }
+
+  // Combine user signal and timeout signal
+  const combinedHandler = () => {
+    timeoutCtrl.abort();
+  };
+  if (signal) {
+    if (signal.aborted) {
+      timeoutCtrl.abort();
+    } else {
+      signal.addEventListener("abort", combinedHandler, { once: true });
+    }
+  }
+
   try {
-    return await fetch(
+    const res = await fetch(
       `${API_BASE_URL}${normalizedPath}`,
       {
         method,
@@ -430,10 +490,19 @@ export async function performRequest(
         body: hasJsonBody
           ? JSON.stringify(body)
           : body,
-        signal,
+        signal: timeoutCtrl.signal,
       }
     );
+    return res;
   } catch (netErr) {
+    if (didTimeout) {
+      throw new ApiClientError({
+        status: 0,
+        code: "REQUEST_TIMEOUT",
+        message: `The request timed out on the client after ${timeoutMs}ms.`,
+        userMessage: "The server took too long to respond. Please check your connection and try again.",
+      });
+    }
     if (signal?.aborted) {
       throw new ApiClientError({
         status: 0,
@@ -448,6 +517,9 @@ export async function performRequest(
       message: netErr?.message || "Failed to fetch",
       userMessage: "The server could not be reached. Please check your connection.",
     });
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+    if (signal) signal.removeEventListener("abort", combinedHandler);
   }
 }
 
