@@ -1,6 +1,7 @@
 'use strict';
 
 const EventEmitter = require('node:events');
+const { changeStreamCheckpointService } = require('./changeStreamCheckpointService');
 
 /**
  * Enterprise Distributed Event Bus & Realtime Broker
@@ -9,7 +10,7 @@ const EventEmitter = require('node:events');
  * - Shared pub/sub across multi-instance cluster (Redis Pub/Sub adapter or internal EventEmitter)
  * - Cross-instance security events (Device revocation, Session termination, Forced logout)
  * - Single-subscription Mongo Change Stream fan-out (prevents per-socket change stream exhaustion)
- * - Resume token tracking and reconnect resilience
+ * - Durable resume token tracking and reconnect resilience (survives process restarts and worker replacements)
  */
 
 class DistributedEventBus extends EventEmitter {
@@ -19,7 +20,7 @@ class DistributedEventBus extends EventEmitter {
     this.redisSubscriber = options.redisSubscriber || null;
     this.isDistributed = Boolean(this.redisPublisher && this.redisSubscriber);
     this.subscribers = new Map(); // topic -> Set(callbacks)
-    this.resumeTokens = new Map(); // collectionName -> token
+    this.checkpointService = options.checkpointService || changeStreamCheckpointService;
     this.metrics = {
       publishedEvents: 0,
       deliveredEvents: 0,
@@ -74,6 +75,10 @@ class DistributedEventBus extends EventEmitter {
    * Subscribes to an event topic.
    */
   subscribe(topic, callback) {
+    if (!topic || typeof callback !== 'function') {
+      throw new Error('Topic and callback function are required for subscription');
+    }
+
     if (!this.subscribers.has(topic)) {
       this.subscribers.set(topic, new Set());
       if (this.isDistributed && this.redisSubscriber) {
@@ -115,14 +120,28 @@ class DistributedEventBus extends EventEmitter {
   }
 
   /**
-   * Saves latest resume token for MongoDB change streams.
+   * Saves latest resume token for MongoDB change streams into durable checkpoint storage.
    */
-  saveResumeToken(collectionName, token) {
-    this.resumeTokens.set(collectionName, token);
+  async saveResumeToken(collectionName, token, metadata = {}) {
+    const streamId = metadata.streamId || `stream-${collectionName}`;
+    return this.checkpointService.saveCheckpoint(streamId, collectionName, token, metadata);
   }
 
-  getResumeToken(collectionName) {
-    return this.resumeTokens.get(collectionName) || null;
+  /**
+   * Retrieves durable resume token for a collection/stream.
+   */
+  async getResumeToken(collectionName, streamId = null) {
+    const targetStreamId = streamId || `stream-${collectionName}`;
+    const checkpoint = await this.checkpointService.getCheckpoint(targetStreamId);
+    return checkpoint ? checkpoint.resumeToken : null;
+  }
+
+  /**
+   * Handles invalid / expired resume tokens with safe fallback and reconciliation.
+   */
+  async handleInvalidResumeToken(collectionName, err, streamId = null) {
+    const targetStreamId = streamId || `stream-${collectionName}`;
+    return this.checkpointService.handleInvalidResumeToken(targetStreamId, err);
   }
 
   getMetrics() {
@@ -135,7 +154,7 @@ class DistributedEventBus extends EventEmitter {
 
   reset() {
     this.subscribers.clear();
-    this.resumeTokens.clear();
+    this.checkpointService.reset().catch(() => {});
     this.metrics = {
       publishedEvents: 0,
       deliveredEvents: 0,
