@@ -6,6 +6,7 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 
 const scryptAsync = util.promisify(crypto.scrypt);
+const { defaultAuthConcurrencyService } = require('./authConcurrencyService');
 
 const { User } = require('../models/User');
 const { Session } = require('../models/Session');
@@ -220,11 +221,13 @@ async function hashPasswordScrypt(normalizedPassword, options = {}) {
   const maxmem = options.maxmem || SCRYPT_DEFAULTS.maxmem;
 
   const salt = crypto.randomBytes(16);
-  const derivedKey = await scryptAsync(
-    Buffer.from(normalizedPassword, 'utf8'),
-    salt,
-    keylen,
-    { N, r, p, maxmem }
+  const derivedKey = await defaultAuthConcurrencyService.execute(() =>
+    scryptAsync(
+      Buffer.from(normalizedPassword, 'utf8'),
+      salt,
+      keylen,
+      { N, r, p, maxmem }
+    )
   );
 
   return `${SCRYPT_PREFIX}N=${N},r=${r},p=${p}$${salt.toString('hex')}$${derivedKey.toString('hex')}`;
@@ -257,11 +260,13 @@ async function verifyPasswordScrypt(normalizedPassword, storedHash) {
   const salt = Buffer.from(saltHex, 'hex');
   const expectedKey = Buffer.from(keyHex, 'hex');
 
-  const actualKey = await scryptAsync(
-    Buffer.from(normalizedPassword, 'utf8'),
-    salt,
-    expectedKey.length,
-    { N, r, p, maxmem: SCRYPT_DEFAULTS.maxmem }
+  const actualKey = await defaultAuthConcurrencyService.execute(() =>
+    scryptAsync(
+      Buffer.from(normalizedPassword, 'utf8'),
+      salt,
+      expectedKey.length,
+      { N, r, p, maxmem: SCRYPT_DEFAULTS.maxmem }
+    )
   );
 
   if (actualKey.length !== expectedKey.length) {

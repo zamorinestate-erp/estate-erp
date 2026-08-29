@@ -129,15 +129,25 @@ class DeviceController {
   async listDevices(req, res, next) {
     try {
       const organisationId = req.auth?.organisationId || 'ZAMORIN';
-      const { cafeId, status } = req.query;
+      const { cafeId, status, search, page, limit } = req.query;
 
       const devices = await deviceTrustService.listDevices({
         organisationId,
         cafeId,
         status,
+        search,
+        page,
+        limit,
       });
 
-      res.status(200).json({ success: true, data: { devices } });
+      const pagination = devices.pagination || {
+        total: devices.length,
+        page: 1,
+        limit: devices.length,
+        totalPages: 1,
+      };
+
+      res.status(200).json({ success: true, data: { devices, pagination } });
     } catch (err) {
       next(err);
     }

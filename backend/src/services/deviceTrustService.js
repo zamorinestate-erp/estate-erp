@@ -3,6 +3,8 @@
 const crypto = require('node:crypto');
 const { DeviceRegistration } = require('../models/DeviceRegistration');
 const { DeviceSecurityEvent } = require('../models/DeviceSecurityEvent');
+const { defaultEventBus } = require('./distributedEventBus');
+const { defaultPresenceService } = require('./devicePresenceService');
 
 class DeviceTrustService {
   /**
@@ -236,6 +238,23 @@ class DeviceTrustService {
       correlationId,
     });
 
+    // Broadcast across cluster to terminate live sockets / SSE on any replica instance
+    defaultEventBus.publish('DEVICE_REVOKED', {
+      deviceId: reg.deviceId,
+      organisationId: reg.organisationId,
+      cafeId: reg.assignedCafeId,
+      reason,
+      revokedAt: reg.revokedAt,
+    }).catch(() => {});
+
+    defaultPresenceService.recordHeartbeat({
+      deviceId: reg.deviceId,
+      organisationId: reg.organisationId,
+      cafeId: reg.assignedCafeId,
+      status: 'REVOKED',
+      forceDurable: true,
+    }).catch(() => {});
+
     return reg;
   }
 
@@ -265,6 +284,21 @@ class DeviceTrustService {
         },
       }
     );
+
+    defaultEventBus.publish('DEVICE_LOST', {
+      deviceId: reg.deviceId,
+      organisationId: reg.organisationId,
+      cafeId: reg.assignedCafeId,
+      reason,
+    }).catch(() => {});
+
+    defaultPresenceService.recordHeartbeat({
+      deviceId: reg.deviceId,
+      organisationId: reg.organisationId,
+      cafeId: reg.assignedCafeId,
+      status: 'LOST',
+      forceDurable: true,
+    }).catch(() => {});
 
     return reg;
   }
@@ -296,6 +330,21 @@ class DeviceTrustService {
         },
       }
     );
+
+    defaultEventBus.publish('DEVICE_RETIRED', {
+      deviceId: reg.deviceId,
+      organisationId: reg.organisationId,
+      cafeId: reg.assignedCafeId,
+      reason,
+    }).catch(() => {});
+
+    defaultPresenceService.recordHeartbeat({
+      deviceId: reg.deviceId,
+      organisationId: reg.organisationId,
+      cafeId: reg.assignedCafeId,
+      status: 'RETIRED',
+      forceDurable: true,
+    }).catch(() => {});
 
     return reg;
   }
@@ -342,13 +391,37 @@ class DeviceTrustService {
       deviceVersion: 1,
     });
 
+    defaultEventBus.publish('DEVICE_REPLACED', {
+      oldDeviceId,
+      newDeviceId,
+      organisationId: oldReg.organisationId,
+      cafeId: oldReg.assignedCafeId,
+      reason,
+    }).catch(() => {});
+
+    defaultPresenceService.recordHeartbeat({
+      deviceId: oldDeviceId,
+      organisationId: oldReg.organisationId,
+      cafeId: oldReg.assignedCafeId,
+      status: 'REPLACED',
+      forceDurable: true,
+    }).catch(() => {});
+
+    defaultPresenceService.recordHeartbeat({
+      deviceId: newDeviceId,
+      organisationId: newReg.organisationId,
+      cafeId: newReg.assignedCafeId,
+      status: 'ACTIVE',
+      forceDurable: true,
+    }).catch(() => {});
+
     return { oldDevice: oldReg, newDevice: newReg };
   }
 
   /**
-   * Lists devices for an organisation / cafe.
+   * Lists devices for an organisation / cafe with bounded pagination and search.
    */
-  async listDevices({ organisationId, cafeId, status }) {
+  async listDevices({ organisationId, cafeId, status, search, page = 1, limit = 50 }) {
     const filter = { organisationId: organisationId.toUpperCase() };
     if (cafeId && cafeId !== '*') {
       filter.assignedCafeId = cafeId.toUpperCase();
@@ -356,7 +429,36 @@ class DeviceTrustService {
     if (status) {
       filter.status = status;
     }
-    return DeviceRegistration.find(filter).sort({ createdAt: -1 }).lean();
+    if (search && typeof search === 'string' && search.trim()) {
+      const s = search.trim();
+      filter.$or = [
+        { deviceId: { $regex: s, $options: 'i' } },
+        { deviceName: { $regex: s, $options: 'i' } },
+        { assignedCafeId: { $regex: s, $options: 'i' } },
+      ];
+    }
+
+    const parsedLimit = Math.min(200, Math.max(1, parseInt(limit, 10) || 50));
+    const parsedPage = Math.max(1, parseInt(page, 10) || 1);
+    const skip = (parsedPage - 1) * parsedLimit;
+
+    const [devices, total] = await Promise.all([
+      DeviceRegistration.find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(parsedLimit)
+        .lean(),
+      DeviceRegistration.countDocuments(filter),
+    ]);
+
+    devices.pagination = {
+      total,
+      page: parsedPage,
+      limit: parsedLimit,
+      totalPages: Math.ceil(total / parsedLimit) || 1,
+    };
+
+    return devices;
   }
 }
 

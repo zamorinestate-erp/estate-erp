@@ -193,6 +193,8 @@ const deviceRegistrationSchema = new mongoose.Schema(
 
 deviceRegistrationSchema.index({ organisationId: 1, assignedCafeId: 1, status: 1 });
 deviceRegistrationSchema.index({ organisationId: 1, deviceClass: 1, status: 1 });
+deviceRegistrationSchema.index({ organisationId: 1, status: 1, lastSeenAt: -1 });
+deviceRegistrationSchema.index({ organisationId: 1, status: 1, createdAt: -1 });
 
 const DeviceRegistration = mongoose.models.DeviceRegistration || mongoose.model('DeviceRegistration', deviceRegistrationSchema);
 

@@ -12,8 +12,15 @@
 // shared store (Redis, or a Mongo collection with a TTL index) — the
 // interface below is small enough to swap without touching callers.
 const sessionPolicy = require('../config/sessionPolicy');
+const { defaultLimiter, DistributedRateLimiter } = require('../../services/distributedRateLimiter');
 
-const store = new Map(); // key: `${deviceId}:${scope}` -> { failures, lockedUntil, firstFailureAt }
+const store = new Map(); // local synchronous fast path: key: `${deviceId}:${scope}` -> { failures, lockedUntil, firstFailureAt }
+
+let sharedLimiter = defaultLimiter;
+
+function setDistributedLimiter(limiter) {
+  sharedLimiter = limiter;
+}
 
 function key(deviceId, scope) { return `${deviceId}:${scope}`; }
 function getState(deviceId, scope) { return store.get(key(deviceId, scope)) || { failures: 0, lockedUntil: null, firstFailureAt: null }; }
@@ -34,18 +41,45 @@ function recordFailure(deviceId, scope = 'PIN', now = new Date()) {
     state.lockedUntil = new Date(now.getTime() + sessionPolicy.LOCKOUT_DURATION_MINUTES * 60 * 1000);
   }
   store.set(key(deviceId, scope), state);
+
+  // Propagate to shared limiter if distributed
+  if (sharedLimiter && sharedLimiter.isDistributed) {
+    sharedLimiter.recordFailure({ deviceId, scope }, {
+      maxAttempts: maxAttempts(scope),
+      windowMs,
+      lockoutMs: sessionPolicy.LOCKOUT_DURATION_MINUTES * 60 * 1000,
+      now,
+    }).catch(() => {});
+  }
+
   return state;
 }
 
-function recordSuccess(deviceId, scope = 'PIN') { store.delete(key(deviceId, scope)); }
-function _reset() { store.clear(); }
+function recordSuccess(deviceId, scope = 'PIN') {
+  store.delete(key(deviceId, scope));
+  if (sharedLimiter && sharedLimiter.isDistributed) {
+    sharedLimiter.recordSuccess({ deviceId, scope }).catch(() => {});
+  }
+}
 
-const MULTI_INSTANCE_PRODUCTION_LIMITATION = true;
+function _reset() {
+  store.clear();
+  if (sharedLimiter) sharedLimiter.reset().catch(() => {});
+}
+
+// When a shared distributed store (e.g. Redis) is connected, limitation is false
+function isMultiInstanceLimitationActive() {
+  return !(sharedLimiter && sharedLimiter.isDistributed && !sharedLimiter.degraded);
+}
 
 module.exports = {
   isLocked,
   recordFailure,
   recordSuccess,
   _reset,
-  MULTI_INSTANCE_PRODUCTION_LIMITATION,
+  setDistributedLimiter,
+  isMultiInstanceLimitationActive,
+  get MULTI_INSTANCE_PRODUCTION_LIMITATION() {
+    return isMultiInstanceLimitationActive();
+  },
 };

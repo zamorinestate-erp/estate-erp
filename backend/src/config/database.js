@@ -29,6 +29,11 @@ function getDatabaseState() {
     status:
       DATABASE_STATES[readyState] ||
       'unknown',
+    pool: {
+      maxPoolSize: mongoose.connection.client?.options?.maxPoolSize || 100,
+      minPoolSize: mongoose.connection.client?.options?.minPoolSize || 10,
+      waitQueueTimeoutMS: mongoose.connection.client?.options?.waitQueueTimeoutMS || 10000,
+    },
   };
 }
 

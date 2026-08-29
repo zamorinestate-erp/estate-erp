@@ -39,16 +39,6 @@ $STRONG_NAME_PATTERNS = @(
   "*MU-0001*"
 )
 
-$CONTENT_MARKERS = @(
-  "ZAMORIN CAFE ERP",
-  "zamorinestate-erp",
-  "Zamorin_Cafe_ERP_Build",
-  "github.com/zamorinestate-erp",
-  "MU-0001",
-  "ZC-0001",
-  "v1.2.0-ht20-release-candidate"
-)
-
 $EXCLUDED_DIRS = @(
   "C:\Windows",
   "C:\Program Files",
@@ -72,7 +62,7 @@ function Get-FileSha256($filePath) {
   }
 }
 
-function Classify-Item($path, $isDir, $size, $evidence) {
+function Get-ItemClassification($path, $isDir, $size, $evidence) {
   if ($path -like "*\.gemini\antigravity-ide\builtin\*" -or $path -like "*\.gemini\antigravity-ide\cache\*") {
     return "GLOBAL_APPLICATION_STATE"
   }
@@ -131,7 +121,7 @@ foreach ($root in $ScanRoots) {
         $size = if ($isDir) { 0 } else { $item.Length }
         $hash = if ($isDir) { "N/A_DIRECTORY" } else { Get-FileSha256 $p }
         $evidence = "CONFIRMED_NAME_MATCH ($pat)"
-        $classification = Classify-Item $p $isDir $size $evidence
+        $classification = Get-ItemClassification $p $isDir $size $evidence
 
         $record = [PSCustomObject]@{
           SourcePath          = $p
