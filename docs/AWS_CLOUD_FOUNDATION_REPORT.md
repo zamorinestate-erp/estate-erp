@@ -4,23 +4,24 @@
 **Programme**: Enterprise Cloud Foundation & AWS Account Structure  
 **Target Workload**: 50,000 Live Devices & 10,000 Concurrent Users Scalability Validation  
 **Workload Region**: `ap-south-1` (Mumbai)  
-**Status**: Foundation Architecture & Security Baseline Established  
+**Live Verification Status**: `NOT_VERIFIED_LIVE` (Local Architecture Specification Phase Complete; Live Account Bootstrap Pending)
 
 ---
 
-### 1. Executive Summary
+### 1. Control Plane Verification Status
 
-This document establishes the official enterprise cloud account foundation for Zamorin Café ERP. The cloud architecture enforces strict multi-account isolation, root-level hardening, centralized workforce identity governance, and budget controls:
-
-```
-Zamorin-Cloud-Management (AWS Management Account)
-│
-└── AWS Organization (Feature Set: ALL)
-      │
-      └── OU: Zamorin-NonProduction
-            │
-            └── Member Account: Zamorin-Scale-Staging (Workload Account)
-```
+| Component | Target Identity | Specification Status | Live AWS Verification |
+|---|---|---|---|
+| **AWS Management Account** | `Zamorin-Cloud-Management` | `SPECIFIED` | `NOT_VERIFIED_LIVE` |
+| **AWS Organization** | All-Features Mode | `SPECIFIED` | `NOT_VERIFIED_LIVE` |
+| **Organizational Unit (OU)** | `Zamorin-NonProduction` | `SPECIFIED` | `NOT_VERIFIED_LIVE` |
+| **Scale Member Account** | `Zamorin-Scale-Staging` | `SPECIFIED` | `NOT_VERIFIED_LIVE` |
+| **IAM Identity Center** | Centralized SSO Directory | `SPECIFIED` | `NOT_VERIFIED_LIVE` |
+| **AWS CLI v2** | `aws --version` | `REQUIRED` | `NOT_INSTALLED` |
+| **SSO Profile** | `zamorin-scale` | `SPECIFIED` | `NOT_CONFIGURED` |
+| **STS Authentication** | `aws sts get-caller-identity` | `REQUIRED` | `NOT_VERIFIED_LIVE` |
+| **Monthly Budget** | `Zamorin-Scale-Staging-Monthly` | `SPECIFIED` | `NOT_CREATED` |
+| **Terraform CLI** | `terraform version` | `REQUIRED` | `NOT_INSTALLED` |
 
 ---
 
@@ -42,23 +43,16 @@ Zamorin-Cloud-Management (AWS Management Account)
 
 ---
 
-### 3. Human Identity & Access Management (IAM Identity Center)
+### 3. Human Security Checkpoint Protocol
 
-- **Centralized Workforce Identity**: Human access is managed exclusively through AWS IAM Identity Center (formerly AWS SSO).
-- **Zero Static Human Credentials**: No long-lived IAM access keys (`AKIA...`) are created for human administrators.
-- **Temporary Role Assumption**: Access is granted via temporary, short-lived security tokens via `aws sso login`.
-- **Administrative Access**: Scoped to the `Zamorin-Scale-Staging` member account using a designated permission set.
-
----
-
-### 4. Cost Governance & Spending Safety
-
-- **Dedicated Account Budget**: `Zamorin-Scale-Staging-Monthly`
-- **Multi-Tier Notification Thresholds**: 25%, 50%, 75%, 90%, 100% of budgeted spend, plus forecast notifications at 80–100%.
-- **Policy Invariant**: AWS Budgets deliver notification alerts and do not act as an automatic destructive shutdown. Cloud resources must be monitored and torn down after benchmark execution.
-- **Resource Tagging**: All scale infrastructure carries mandatory governance tags:
-  - `Project`: `ZamorinCafeERP`
-  - `Purpose`: `EnterpriseScaleValidation`
-  - `Environment`: `ScalabilityStaging`
-  - `Owner`: `Zamorin`
-  - `AutoCleanup`: `True`
+During the live AWS registration and setup process, all sensitive operations must be completed privately by the human administrator. The automated assistant will pause and display the designated checkpoint notice at:
+1. Root email entry
+2. Email OTP / verification link
+3. Root password creation
+4. Contact & legal business details
+5. Payment & credit card details
+6. Phone SMS OTP / CAPTCHA
+7. Root MFA QR & TOTP enrollment
+8. Member account unique email entry
+9. SSO user invitation & password setup
+10. Monthly budget dollar authorization
