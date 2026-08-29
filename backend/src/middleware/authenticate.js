@@ -146,6 +146,42 @@ async function authenticate(
 
     return next();
   } catch (error) {
+    if (error?.name === 'TokenExpiredError') {
+      return sendAuthenticationError(
+        response,
+        'AUTH_TOKEN_EXPIRED',
+        'Your access token has expired.'
+      );
+    }
+
+    if (error?.name === 'JsonWebTokenError') {
+      return sendAuthenticationError(
+        response,
+        'AUTH_TOKEN_INVALID',
+        'The access token is invalid.'
+      );
+    }
+
+    if (error?.name === 'NotBeforeError') {
+      return sendAuthenticationError(
+        response,
+        'AUTH_TOKEN_NOT_ACTIVE',
+        'The access token is not yet active.'
+      );
+    }
+
+    if (
+      typeof error?.message === 'string' &&
+      (error.message.toLowerCase().includes('revoked') ||
+        error.message.toLowerCase().includes('expired'))
+    ) {
+      return sendAuthenticationError(
+        response,
+        'AUTH_SESSION_REVOKED',
+        'Your session has expired or was revoked.'
+      );
+    }
+
     return sendAuthenticationError(
       response,
       'INVALID_OR_EXPIRED_SESSION',

@@ -4,6 +4,8 @@
 // Automatic Mutation Invalidation, Stale Request Cancellation & Zero-Lag Transport.
 // =============================================================================
 
+import { state } from "./state.js";
+
 const DEFAULT_API_BASE_URL =
   typeof globalThis.location !== "undefined" &&
   (globalThis.location.hostname === "localhost" || globalThis.location.hostname === "127.0.0.1")
@@ -24,11 +26,118 @@ export const API_BASE_URL = normalizeApiBaseUrl(
 );
 
 const DEVICE_ID_STORAGE_KEY = "zamorin-device-id";
+const ACCESS_TOKEN_STORAGE_KEY = "zamorin-access-token";
+const REFRESH_TOKEN_STORAGE_KEY = "zamorin-refresh-token";
+const SESSION_ID_STORAGE_KEY = "zamorin-session-id";
+
+let inMemoryAccessToken = null;
+let inMemoryRefreshToken = null;
+let inMemorySessionId = null;
+
+export function getAccessToken() {
+  if (inMemoryAccessToken && typeof inMemoryAccessToken === "string" && inMemoryAccessToken.trim() && inMemoryAccessToken !== "undefined" && inMemoryAccessToken !== "null") {
+    return inMemoryAccessToken.trim();
+  }
+  try {
+    const stored = globalThis.localStorage?.getItem(ACCESS_TOKEN_STORAGE_KEY);
+    if (stored && typeof stored === "string" && stored.trim() && stored !== "undefined" && stored !== "null") {
+      inMemoryAccessToken = stored.trim();
+      return inMemoryAccessToken;
+    }
+  } catch {}
+  return null;
+}
+
+export function setAccessToken(token) {
+  if (typeof token === "string" && token.trim() && token !== "undefined" && token !== "null") {
+    inMemoryAccessToken = token.trim();
+    try {
+      globalThis.localStorage?.setItem(ACCESS_TOKEN_STORAGE_KEY, inMemoryAccessToken);
+    } catch {}
+  } else {
+    clearAccessToken();
+  }
+}
+
+export function clearAccessToken() {
+  inMemoryAccessToken = null;
+  try {
+    globalThis.localStorage?.removeItem(ACCESS_TOKEN_STORAGE_KEY);
+  } catch {}
+}
+
+export function getRefreshToken() {
+  if (inMemoryRefreshToken && typeof inMemoryRefreshToken === "string" && inMemoryRefreshToken.trim() && inMemoryRefreshToken !== "undefined" && inMemoryRefreshToken !== "null") {
+    return inMemoryRefreshToken.trim();
+  }
+  try {
+    const stored = globalThis.localStorage?.getItem(REFRESH_TOKEN_STORAGE_KEY);
+    if (stored && typeof stored === "string" && stored.trim() && stored !== "undefined" && stored !== "null") {
+      inMemoryRefreshToken = stored.trim();
+      return inMemoryRefreshToken;
+    }
+  } catch {}
+  return null;
+}
+
+export function setRefreshToken(token) {
+  if (typeof token === "string" && token.trim() && token !== "undefined" && token !== "null") {
+    inMemoryRefreshToken = token.trim();
+    try {
+      globalThis.localStorage?.setItem(REFRESH_TOKEN_STORAGE_KEY, inMemoryRefreshToken);
+    } catch {}
+  } else {
+    clearRefreshToken();
+  }
+}
+
+export function clearRefreshToken() {
+  inMemoryRefreshToken = null;
+  try {
+    globalThis.localStorage?.removeItem(REFRESH_TOKEN_STORAGE_KEY);
+  } catch {}
+}
+
+export function getSessionId() {
+  if (inMemorySessionId && typeof inMemorySessionId === "string" && inMemorySessionId.trim() && inMemorySessionId !== "undefined" && inMemorySessionId !== "null") {
+    return inMemorySessionId.trim();
+  }
+  try {
+    const stored = globalThis.localStorage?.getItem(SESSION_ID_STORAGE_KEY);
+    if (stored && typeof stored === "string" && stored.trim() && stored !== "undefined" && stored !== "null") {
+      inMemorySessionId = stored.trim();
+      return inMemorySessionId;
+    }
+  } catch {}
+  return null;
+}
+
+export function setSessionId(id) {
+  if (typeof id === "string" && id.trim() && id !== "undefined" && id !== "null") {
+    inMemorySessionId = id.trim();
+    try {
+      globalThis.localStorage?.setItem(SESSION_ID_STORAGE_KEY, inMemorySessionId);
+    } catch {}
+  } else {
+    clearSessionId();
+  }
+}
+
+export function clearSessionId() {
+  inMemorySessionId = null;
+  try {
+    globalThis.localStorage?.removeItem(SESSION_ID_STORAGE_KEY);
+  } catch {}
+}
+
+export function clearAllAuthTokens() {
+  clearAccessToken();
+  clearRefreshToken();
+  clearSessionId();
+}
 
 let stepUpAuthenticationHandler = null;
 let singleFlightRefreshPromise = null;
-
-import { state } from "./state.js";
 
 // =============================================================================
 // IN-FLIGHT GET DEDUPLICATION & CLIENT-SIDE READ CACHE
@@ -221,14 +330,42 @@ export const SessionState = Object.freeze({
 });
 
 let currentSessionState = SessionState.AUTHENTICATED;
+const sessionExpirationListeners = new Set();
+let hasDispatchedSessionExpiryAlert = false;
 
 export function getSessionState() {
   return currentSessionState;
 }
 
+export function addSessionExpirationListener(listener) {
+  if (typeof listener === "function") {
+    sessionExpirationListeners.add(listener);
+  }
+  return () => sessionExpirationListeners.delete(listener);
+}
+
+export function notifySessionExpired() {
+  if (hasDispatchedSessionExpiryAlert) return;
+  hasDispatchedSessionExpiryAlert = true;
+  for (const listener of sessionExpirationListeners) {
+    try {
+      listener();
+    } catch {}
+  }
+}
+
+export function resetSessionExpiryAlert() {
+  hasDispatchedSessionExpiryAlert = false;
+}
+
 export function setSessionState(newState) {
   if (Object.values(SessionState).includes(newState)) {
     currentSessionState = newState;
+    if (newState === SessionState.AUTHENTICATED) {
+      resetSessionExpiryAlert();
+    } else if (newState === SessionState.EXPIRED || newState === SessionState.SIGNED_OUT) {
+      notifySessionExpired();
+    }
   }
 }
 
@@ -305,12 +442,22 @@ export function mapErrorToUserMessage(code, status, fallbackMessage) {
   const safeFallback = sanitizeFallback(fallbackMessage);
 
   switch (code) {
+    case "AUTH_TOKEN_EXPIRED":
+    case "AUTH_TOKEN_INVALID":
+    case "AUTH_TOKEN_NOT_ACTIVE":
+    case "AUTH_SESSION_REVOKED":
     case "REFRESH_SESSION_REQUIRED":
     case "INVALID_OR_EXPIRED_SESSION":
     case "AUTHENTICATION_REQUIRED":
     case "AUTH_SESSION_INVALID":
     case "INVALID_CREDENTIALS":
       return "Your authenticated session could not be validated. Please sign in again.";
+    case "ROLE_CHANGED":
+      return "Your access role has changed. Please sign in again.";
+    case "SECURITY_VERSION_CHANGED":
+      return "Your security permissions have changed. Please sign in again.";
+    case "USER_UNAVAILABLE":
+      return "Your account is unavailable. Please contact an administrator.";
     case "STEP_UP_AUTHENTICATION_REQUIRED":
       return "Recent security verification is required for this action.";
     case "PERMISSION_DENIED":
@@ -470,6 +617,34 @@ export async function performRequest(
     }
   }
 
+  const token = getAccessToken();
+  const requestHeaders = {
+    Accept: "application/json, text/plain, */*",
+    "x-device-id": getOrCreateDeviceId(),
+  };
+
+  if (token && typeof token === "string" && token.trim() && token !== "undefined" && token !== "null") {
+    requestHeaders["Authorization"] = `Bearer ${token.trim()}`;
+  }
+
+  if (hasJsonBody) {
+    requestHeaders["Content-Type"] = "application/json";
+  }
+
+  if (headers) {
+    if (headers instanceof Headers) {
+      for (const [k, v] of headers.entries()) {
+        requestHeaders[k] = v;
+      }
+    } else if (typeof headers === "object") {
+      for (const [k, v] of Object.entries(headers)) {
+        if (v !== undefined && v !== null) {
+          requestHeaders[k] = String(v);
+        }
+      }
+    }
+  }
+
   try {
     const res = await fetch(
       `${API_BASE_URL}${normalizedPath}`,
@@ -477,16 +652,7 @@ export async function performRequest(
         method,
         credentials: "include",
         cache: "no-store",
-        headers: {
-          Accept: "application/json, text/plain, */*",
-          "x-device-id": getOrCreateDeviceId(),
-          ...(hasJsonBody
-            ? {
-                "Content-Type": "application/json",
-              }
-            : {}),
-          ...headers,
-        },
+        headers: requestHeaders,
         body: hasJsonBody
           ? JSON.stringify(body)
           : body,
@@ -531,26 +697,51 @@ export async function refreshAuthenticatedSession() {
   singleFlightRefreshPromise = (async () => {
     try {
       setSessionState(SessionState.REFRESHING);
+      const sessionId = getSessionId();
+      const refreshToken = getRefreshToken();
+      const deviceId = getOrCreateDeviceId();
+
+      const refreshHeaders = {
+        "x-device-id": deviceId,
+      };
+      if (sessionId) refreshHeaders["x-session-id"] = sessionId;
+      if (refreshToken) refreshHeaders["x-refresh-token"] = refreshToken;
+
+      const refreshBody = (sessionId || refreshToken)
+        ? { sessionId: sessionId || undefined, refreshToken: refreshToken || undefined, deviceId }
+        : undefined;
+
       const response = await performRequest(
         "/auth/refresh",
         {
           method: "POST",
-          headers: {
-            "x-device-id": getOrCreateDeviceId(),
-          },
+          headers: refreshHeaders,
+          body: refreshBody,
         }
       );
 
       const payload = await readResponsePayload(response);
 
       if (!response.ok) {
+        clearAllAuthTokens();
         setSessionState(SessionState.EXPIRED);
         throw createApiError(response, payload);
+      }
+
+      if (payload?.data?.accessToken) {
+        setAccessToken(payload.data.accessToken);
+      }
+      if (payload?.data?.refreshToken) {
+        setRefreshToken(payload.data.refreshToken);
+      }
+      if (payload?.data?.session?.sessionId) {
+        setSessionId(payload.data.session.sessionId);
       }
 
       setSessionState(SessionState.AUTHENTICATED);
       return payload;
     } catch (err) {
+      clearAllAuthTokens();
       setSessionState(SessionState.EXPIRED);
       throw err;
     } finally {

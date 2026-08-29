@@ -7,7 +7,7 @@ import { icon } from "./icons.js";
 import { state, setState } from "./state.js";
 import { navigate } from "./router.js";
 import { forRole, unreadCount, markRead, markAllRead } from "./notifications.js";
-import { apiGet, apiPost } from "./apiClient.js";
+import { apiGet, apiPost, clearAllAuthTokens, clearApiCacheAndInFlight } from "./apiClient.js";
 import { setSettingsActiveSection } from "./pages/settingsShared.js";
 
 const ROLE_LABELS = {
@@ -536,6 +536,8 @@ export function wireBell(root) {
           try {
             await apiPost("/auth/logout");
           } catch {}
+          clearAllAuthTokens();
+          clearApiCacheAndInFlight();
           window.location.reload();
         } else if (action === "my-profile") {
           setSettingsActiveSection("profile");

@@ -306,12 +306,55 @@ function getRefreshInput(request) {
     );
   }
 
-  return {
+    return {
     sessionId: sessionId.trim(),
     refreshToken,
     deviceId: deviceId.trim(),
   };
 }
+
+const refreshSession = asyncHandler(
+  async (request, response) => {
+    const refreshInput =
+      getRefreshInput(request);
+
+    let sessionData;
+
+    try {
+      sessionData =
+        await rotateRefreshToken(
+          refreshInput
+        );
+    } catch (error) {
+      clearAuthenticationCookies(response);
+      throw new ApiError(
+        401,
+        'INVALID_REFRESH_SESSION',
+        error.message ||
+          'Your session has expired or was revoked. Please sign in again.'
+      );
+    }
+
+    setAuthenticationCookies(
+      response,
+      sessionData
+    );
+
+    return response.status(200).json({
+      success: true,
+      message: 'Session refreshed successfully.',
+      data: {
+        accessToken: sessionData.accessToken,
+        refreshToken: sessionData.refreshToken,
+        accessTokenExpiresAt: sessionData.accessTokenExpiresAt,
+        refreshTokenExpiresAt: sessionData.refreshTokenExpiresAt,
+        session: sessionData.session,
+      },
+      correlationId:
+        request.correlationId || null,
+    });
+  }
+);
 
 const login = asyncHandler(
   async (request, response) => {
@@ -423,6 +466,10 @@ const login = asyncHandler(
       data: {
         user: user.toJSON(),
         session: sessionData.session,
+        accessToken: sessionData.accessToken,
+        refreshToken: sessionData.refreshToken,
+        accessTokenExpiresAt: sessionData.accessTokenExpiresAt,
+        refreshTokenExpiresAt: sessionData.refreshTokenExpiresAt,
         mustChangePassword,
       },
 
@@ -666,6 +713,10 @@ const mfaConfirm = asyncHandler(
       data: {
         user: user.toJSON(),
         session: sessionData.session,
+        accessToken: sessionData.accessToken,
+        refreshToken: sessionData.refreshToken,
+        accessTokenExpiresAt: sessionData.accessTokenExpiresAt,
+        refreshTokenExpiresAt: sessionData.refreshTokenExpiresAt,
         recoveryCodes: plainRecoveryCodes,
       },
       correlationId:
@@ -783,6 +834,10 @@ const mfaVerify = asyncHandler(
       data: {
         user: user.toJSON(),
         session: sessionData.session,
+        accessToken: sessionData.accessToken,
+        refreshToken: sessionData.refreshToken,
+        accessTokenExpiresAt: sessionData.accessTokenExpiresAt,
+        refreshTokenExpiresAt: sessionData.refreshTokenExpiresAt,
       },
       correlationId:
         request.correlationId || null,
@@ -1173,48 +1228,6 @@ const regenerateRecoveryCodes = asyncHandler(
   }
 );
 
-const refreshSession = asyncHandler(
-  async (request, response) => {
-    const refreshInput =
-      getRefreshInput(request);
-
-    let sessionData;
-
-    try {
-      sessionData =
-        await rotateRefreshToken(
-          refreshInput
-        );
-    } catch (error) {
-      clearAuthenticationCookies(
-        response
-      );
-
-      throw new ApiError(
-        401,
-        'INVALID_REFRESH_SESSION',
-        error.message ||
-          'The refresh session is invalid or expired.'
-      );
-    }
-
-    setAuthenticationCookies(
-      response,
-      sessionData
-    );
-
-    return response.status(200).json({
-      success: true,
-      message:
-        'Session refreshed successfully.',
-      data: {
-        session: sessionData.session,
-      },
-      correlationId:
-        request.correlationId || null,
-    });
-  }
-);
 const logout = asyncHandler(
   async (request, response) => {
     await revokeSession({

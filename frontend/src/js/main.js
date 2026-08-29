@@ -13,7 +13,7 @@
 import { state, setState } from "./state.js";
 import { NAVIGATION, ROLES, isRouteAllowed } from "./navigation.js";
 import { renderShell, navigate } from "./router.js";
-import { apiGet, apiPost, getOrCreateDeviceId, setStepUpAuthenticationHandler } from "./apiClient.js";
+import { apiGet, apiPost, getOrCreateDeviceId, setStepUpAuthenticationHandler, setAccessToken, setRefreshToken, setSessionId, clearAllAuthTokens } from "./apiClient.js";
 import { registerServiceWorker } from "./updateManager.js";
 import "./responsiveAuditor.js";
 
@@ -114,7 +114,21 @@ export function renderProductionFailClosedScreen() {
   `;
 }
 
-// Password Reset Frontend Handlers
+// Password Reset & Authentication Frontend Handlers
+export async function handleLoginSubmit({ organisationId, email, password }) {
+  const result = await apiPost("/auth/login", { body: { organisationId, email, password } });
+  if (result?.data?.accessToken) {
+    setAccessToken(result.data.accessToken);
+  }
+  if (result?.data?.refreshToken) {
+    setRefreshToken(result.data.refreshToken);
+  }
+  if (result?.data?.session?.sessionId) {
+    setSessionId(result.data.session.sessionId);
+  }
+  return result;
+}
+
 export async function handlePasswordResetRequest({ organisationId, email }) {
   const result = await apiPost("/auth/password/forgot", { body: { organisationId, email } });
   return result;
