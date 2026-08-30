@@ -599,7 +599,6 @@ export function renderMasterDashboard({ roleLabel = "Master Administrator" } = {
   const commercial = initialData.commercialMix;
 
   return `
-  return `
     <div class="page-enter command-centre-wrap" style="max-width:1400px; margin:0 auto; padding-bottom:60px;">
 
       <!-- Page Header & Context Strip matching reference HRIS standard -->
