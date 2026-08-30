@@ -939,7 +939,7 @@ h1, h2, h3, .font-display { font-family: var(--font-display); }
   box-shadow: var(--shadow-sm);
   transform: translateY(-1px);
 }
-.btn:active { transform: translateY(0); box-shadow: none; }
+.btn:active:not(:disabled) { transform: translateY(0) scale(0.985); box-shadow: none; }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none !important; box-shadow: none !important; }
 
 .btn-primary {
@@ -1379,9 +1379,10 @@ tr:last-child td { border-bottom: 0; }
   position:fixed; inset:0; z-index:var(--layer-modal, 700);
   display:grid; place-items:center; padding:20px;
   background:rgba(16,26,48,.55); backdrop-filter:blur(8px);
-  opacity:0; pointer-events:none; transition: opacity var(--motion-modal) var(--ease);
+  opacity:0; pointer-events:none; visibility:hidden;
+  transition: opacity var(--motion-standard) var(--ease-standard), visibility var(--motion-standard);
 }
-.modal.open, .modal-backdrop.open { opacity:1; pointer-events:auto; }
+.modal.open, .modal-backdrop.open { opacity:1; pointer-events:auto; visibility:visible; }
 .modal-card, .modal-window {
   width:min(620px,100%);
   max-height:90vh;
@@ -1390,10 +1391,11 @@ tr:last-child td { border-bottom: 0; }
   border:1px solid var(--line);
   border-radius:var(--radius-xl);
   box-shadow:var(--shadow-xl);
-  transform:translateY(14px) scale(.97);
-  transition: transform var(--motion-modal) var(--ease-spring);
+  transform:translateY(8px) scale(.985);
+  opacity:0;
+  transition: transform var(--motion-modal) var(--ease-enter), opacity var(--motion-modal) var(--ease-enter);
 }
-.modal.open .modal-card, .modal-backdrop.open .modal-window { transform:none; }
+.modal.open .modal-card, .modal-backdrop.open .modal-window { transform:translateY(0) scale(1); opacity:1; }
 .modal-head, .modal-header {
   display:flex; align-items:center; justify-content:space-between;
   gap:12px; padding:18px 22px; border-bottom:1px solid var(--line);
@@ -1510,7 +1512,7 @@ tr:last-child td { border-bottom: 0; }
     height: 100%;
     height: 100dvh;
     transform: translateX(-105%);
-    transition: transform .26s var(--ease);
+    transition: transform var(--motion-slow) var(--ease-standard);
     box-shadow: var(--shadow-xl);
     z-index: var(--layer-drawer, 600);
     padding: 16px 12px;

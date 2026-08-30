@@ -832,13 +832,16 @@
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md);
   box-shadow: var(--shadow-lg); max-height: 260px; overflow-y: auto;
   z-index: var(--layer-dropdown, 1050); display: none; padding: 4px;
+  opacity: 0; transform: translateY(-4px);
+  transition: opacity var(--motion-standard) var(--ease-enter), transform var(--motion-standard) var(--ease-enter);
 }
-.zamorin-select-wrap.open .zamorin-select-menu { display: block; }
-.zamorin-select-wrap.open-up .zamorin-select-menu { top: auto; bottom: calc(100% + 4px); }
+.zamorin-select-wrap.open .zamorin-select-menu { display: block; opacity: 1; transform: translateY(0); }
+.zamorin-select-wrap.open-up .zamorin-select-menu { top: auto; bottom: calc(100% + 4px); transform: translateY(4px); }
+.zamorin-select-wrap.open-up.open .zamorin-select-menu { transform: translateY(0); }
 .zamorin-select-option {
   padding: 8px 12px; font-size: 13px; color: var(--ink); border-radius: var(--radius-xs);
   cursor: pointer; display: flex; align-items: center; justify-content: space-between;
-  transition: background var(--motion-fast) var(--ease);
+  transition: background var(--motion-fast) var(--ease-standard);
 }
 .zamorin-select-option:hover, .zamorin-select-option.highlighted { background: var(--surface-sunken); }
 .zamorin-select-option.selected { background: var(--bronze-100); color: var(--bronze-700); font-weight: 600; }
@@ -854,9 +857,12 @@
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md);
   box-shadow: var(--shadow-lg); padding: 14px; z-index: var(--layer-popover, 1100);
   display: none; width: 280px; user-select: none;
+  opacity: 0; transform: translateY(-4px);
+  transition: opacity var(--motion-standard) var(--ease-enter), transform var(--motion-standard) var(--ease-enter);
 }
-.zamorin-datepicker-wrap.open .zamorin-calendar-popup { display: block; }
-.zamorin-datepicker-wrap.open-up .zamorin-calendar-popup { top: auto; bottom: calc(100% + 6px); }
+.zamorin-datepicker-wrap.open .zamorin-calendar-popup { display: block; opacity: 1; transform: translateY(0); }
+.zamorin-datepicker-wrap.open-up .zamorin-calendar-popup { top: auto; bottom: calc(100% + 6px); transform: translateY(4px); }
+.zamorin-datepicker-wrap.open-up.open .zamorin-calendar-popup { transform: translateY(0); }
 .zamorin-cal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .zamorin-cal-month-title { font-weight: 700; font-size: 13.5px; color: var(--ink); }
 .zamorin-cal-nav-btn {
