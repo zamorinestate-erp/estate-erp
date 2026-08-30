@@ -19,8 +19,54 @@ const mimeTypes = {
   ".ico": "image/x-icon"
 };
 
-const server = http.createServer((req, res) => {
+const server = http.createServer(async (req, res) => {
   const parsedUrl = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+
+  // Reverse proxy /api/* requests to Render or local backend
+  if (parsedUrl.pathname.startsWith("/api/")) {
+    const backendHost = "https://zamorin-cafe-erp-backend.onrender.com";
+    const targetUrl = `${backendHost}${parsedUrl.pathname}${parsedUrl.search}`;
+
+    try {
+      const headers = { ...req.headers };
+      delete headers.host;
+
+      let bodyData = undefined;
+      if (req.method !== "GET" && req.method !== "HEAD") {
+        const chunks = [];
+        for await (const chunk of req) {
+          chunks.push(chunk);
+        }
+        bodyData = Buffer.concat(chunks);
+      }
+
+      const proxyRes = await fetch(targetUrl, {
+        method: req.method,
+        headers,
+        body: bodyData,
+        redirect: "manual"
+      });
+
+      const resHeaders = {};
+      proxyRes.headers.forEach((val, key) => {
+        resHeaders[key] = val;
+      });
+      resHeaders["Access-Control-Allow-Origin"] = "*";
+      resHeaders["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, PATCH, OPTIONS";
+      resHeaders["Access-Control-Allow-Headers"] = "*";
+
+      res.writeHead(proxyRes.status, resHeaders);
+      const buffer = await proxyRes.arrayBuffer();
+      res.end(Buffer.from(buffer));
+      return;
+    } catch (proxyErr) {
+      console.error("API proxy error:", proxyErr);
+      res.writeHead(502, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+      res.end(JSON.stringify({ error: "Backend proxy unreachable", message: proxyErr.message }));
+      return;
+    }
+  }
+
   let filePath = path.join(frontendDir, decodeURIComponent(parsedUrl.pathname));
 
   if (fs.existsSync(filePath) && fs.statSync(filePath).isDirectory()) {

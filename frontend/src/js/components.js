@@ -222,10 +222,10 @@ export function renderTopbar({ scopeChip } = {}) {
   }
 
   const searchPlaceholder = isStaff
-    ? "Search my attendance, payslips, requests... (Ctrl+K)"
+    ? "Search attendance, payslips, requests..."
     : isCafeOps
-    ? "Search this café… (Ctrl+K)"
-    : "Search modules, records, employees... (Ctrl+K)";
+    ? "Search this café…"
+    : "Search modules, records, employees...";
 
   return `
     <div class="topbar-inner">

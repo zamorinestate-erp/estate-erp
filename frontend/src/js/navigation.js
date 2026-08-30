@@ -190,6 +190,11 @@ export function isRouteAllowed(role, rawRoute, isPrimaryMaster = false) {
   // Implicit routes allowed for all authenticated roles
   if (IMPLICIT_ROUTES_ALL.has(route)) return true;
 
+  // Primary Master has 100% universal unrestricted access to every route and module
+  if ((role === ROLES.MASTER || role === 'master') && isPrimaryMaster) {
+    return true;
+  }
+
   // Implicit CAFE_ADMIN auth-context routes
   if (role === ROLES.CAFE_ADMIN && IMPLICIT_ROUTES_CAFE_ADMIN.has(route)) return true;
 
