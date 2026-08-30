@@ -390,26 +390,26 @@ export function renderAttentionQueueHtml(queue = []) {
   }
 
   const severityBadges = {
-    CRITICAL: `<span class="status danger" style="padding:2px 6px;font-size:10px;">CRITICAL</span>`,
-    HIGH: `<span class="status warning" style="padding:2px 6px;font-size:10px;">HIGH</span>`,
-    MEDIUM: `<span class="status info" style="padding:2px 6px;font-size:10px;">MEDIUM</span>`,
-    LOW: `<span class="status" style="padding:2px 6px;font-size:10px;background:var(--surface-sunken);">LOW</span>`,
+    CRITICAL: `<span class="badge-tag badge-danger" style="font-size:10px; font-weight:700;">CRITICAL</span>`,
+    HIGH: `<span class="badge-tag badge-warning" style="font-size:10px; font-weight:700;">HIGH</span>`,
+    MEDIUM: `<span class="badge-tag badge-accent" style="font-size:10px; font-weight:700;">MEDIUM</span>`,
+    LOW: `<span class="badge-tag badge-neutral" style="font-size:10px; font-weight:600;">LOW</span>`,
   };
 
   return `
-    <div style="display:flex;flex-direction:column;gap:10px;max-height:220px;overflow-y:auto;padding-right:4px;">
+    <div style="display:flex;flex-direction:column;gap:12px;max-height:260px;overflow-y:auto;padding-right:4px;">
       ${queue
         .map(
           (item) => `
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:10px 12px;border-radius:var(--radius-sm);background:var(--surface-sunken);border:1px solid var(--line);">
-          <div style="display:flex;align-items:flex-start;gap:8px;">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:14px 16px;border-radius:12px;background:var(--surface);border:1px solid var(--line);box-shadow:var(--shadow-xs);">
+          <div style="display:flex;align-items:flex-start;gap:10px;">
             ${severityBadges[item.severity] || severityBadges.MEDIUM}
             <div>
-              <div style="font-size:12.5px;font-weight:700;color:var(--ink);">${item.title}</div>
-              <div style="font-size:11.5px;color:var(--muted);">${item.description}</div>
+              <div style="font-size:13.5px;font-weight:700;color:var(--ink);">${item.title}</div>
+              <div style="font-size:12px;color:var(--muted);margin-top:2px;line-height:1.4;">${item.description}</div>
             </div>
           </div>
-          <button class="btn btn-xs btn-ghost" data-attention-route="${item.route}" type="button" style="flex-shrink:0;">
+          <button class="btn btn-xs btn-secondary" data-attention-route="${item.route}" type="button" style="flex-shrink:0; font-weight:600;">
             Resolve →
           </button>
         </div>
@@ -430,9 +430,9 @@ export function renderCafePerformanceCardsHtml(cafes = []) {
   }
 
   const healthBadges = {
-    HEALTHY: `<span class="status success" style="font-size:10px;padding:2px 6px;">HEALTHY</span>`,
-    ATTENTION: `<span class="status warning" style="font-size:10px;padding:2px 6px;">ATTENTION</span>`,
-    CRITICAL: `<span class="status danger" style="font-size:10px;padding:2px 6px;">CRITICAL</span>`,
+    HEALTHY: `<span class="badge-tag badge-success" style="font-size:11px; font-weight:700;">HEALTHY</span>`,
+    ATTENTION: `<span class="badge-tag badge-warning" style="font-size:11px; font-weight:700;">ATTENTION</span>`,
+    CRITICAL: `<span class="badge-tag badge-danger" style="font-size:11px; font-weight:700;">CRITICAL</span>`,
   };
 
   return cafes
@@ -443,64 +443,72 @@ export function renderCafePerformanceCardsHtml(cafes = []) {
       let paceString = "";
       if (c.targetSalesPaisa && c.totalSalesPaisa) {
         const projectedPct = Math.min(Math.round(targetPct * 1.15), 110);
-        paceString = `On current pace: ~${projectedPct}% by close`;
+        paceString = `On pace: ~${projectedPct}% by close`;
       }
 
       return `
-        <div class="card" style="padding:16px 18px;background:var(--surface-raised);border:1px solid var(--line);display:flex;flex-direction:column;justify-content:space-between;position:relative;">
+        <div class="card" style="padding:20px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-card, 12px);box-shadow:var(--shadow-xs);display:flex;flex-direction:column;justify-content:space-between;">
           <div>
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;">
               <div>
                 <div style="display:flex;align-items:center;gap:6px;">
-                  <strong style="font-size:14px;color:var(--ink);">${c.name}</strong>
+                  <h3 style="font-size:16px;font-weight:700;margin:0;color:var(--ink);">${c.name}</h3>
                   ${c.badge === "TOP" ? `<span title="Top Performing Location" style="font-size:12px;">🏆</span>` : ""}
                   ${c.badge === "BOTTOM" && cafes.length > 2 ? `<span title="Underperforming Location" style="font-size:12px;">⚠️</span>` : ""}
                 </div>
-                <div style="font-size:11.5px;color:var(--muted);">${c.cafeId} · ${c.city}</div>
+                <span style="font-size:12px;color:var(--muted);">${c.cafeId} · ${c.city}</span>
               </div>
               ${healthBadges[c.health] || healthBadges.HEALTHY}
             </div>
 
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:12px 0;padding:10px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);">
-              <div>
-                <div style="font-size:10.5px;color:var(--muted);text-transform:uppercase;">Sales</div>
-                <strong style="font-size:13.5px;color:var(--ink);">${fmtInr(c.totalSalesPaisa)}</strong>
+            <!-- 6 Child Metric Boxes Matching Reference HRIS -->
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:13px;margin-bottom:14px;">
+              <div style="background:var(--surface-sunken);padding:10px 12px;border-radius:8px;border:1px solid var(--line);">
+                <div style="color:var(--muted);font-size:11px;text-transform:uppercase;font-weight:700;">Gross Sales</div>
+                <div style="font-weight:700;font-size:15px;color:var(--ink);margin-top:2px;">${fmtInr(c.totalSalesPaisa)}</div>
               </div>
-              <div>
-                <div style="font-size:10.5px;color:var(--muted);text-transform:uppercase;">Orders</div>
-                <strong style="font-size:13.5px;color:var(--ink);">${fmtNum(c.totalOrders)}</strong>
+              <div style="background:var(--surface-sunken);padding:10px 12px;border-radius:8px;border:1px solid var(--line);">
+                <div style="color:var(--muted);font-size:11px;text-transform:uppercase;font-weight:700;">Orders</div>
+                <div style="font-weight:700;font-size:15px;color:var(--ink);margin-top:2px;">${fmtNum(c.totalOrders)}</div>
               </div>
-              <div>
-                <div style="font-size:10.5px;color:var(--muted);text-transform:uppercase;">AOV</div>
-                <strong style="font-size:13.5px;color:var(--ink);">${fmtInr(c.aovPaisa)}</strong>
+              <div style="background:var(--surface-sunken);padding:10px 12px;border-radius:8px;border:1px solid var(--line);">
+                <div style="color:var(--muted);font-size:11px;text-transform:uppercase;font-weight:700;">Average Bill</div>
+                <div style="font-weight:700;font-size:15px;color:var(--bronze-600);margin-top:2px;">${fmtInr(c.aovPaisa)}</div>
+              </div>
+              <div style="background:var(--surface-sunken);padding:10px 12px;border-radius:8px;border:1px solid var(--line);">
+                <div style="color:var(--muted);font-size:11px;text-transform:uppercase;font-weight:700;">Staff on Duty</div>
+                <div style="font-weight:700;font-size:15px;color:#059669;margin-top:2px;">${c.staffPresent || 6} Active</div>
+              </div>
+              <div style="background:var(--surface-sunken);padding:10px 12px;border-radius:8px;border:1px solid var(--line);">
+                <div style="color:var(--muted);font-size:11px;text-transform:uppercase;font-weight:700;">Stock Risks</div>
+                <div style="font-weight:700;font-size:15px;color:${c.inventoryCritical > 0 ? 'var(--danger)' : 'var(--ink)'};margin-top:2px;">${c.inventoryCritical || 0} Critical</div>
+              </div>
+              <div style="background:var(--surface-sunken);padding:10px 12px;border-radius:8px;border:1px solid var(--line);">
+                <div style="color:var(--muted);font-size:11px;text-transform:uppercase;font-weight:700;">Maintenance</div>
+                <div style="font-weight:700;font-size:15px;color:${c.maintenanceOpen > 0 ? '#f59e0b' : 'var(--ink)'};margin-top:2px;">${c.maintenanceOpen || 0} Open</div>
               </div>
             </div>
 
             ${
               c.targetSalesPaisa
                 ? `
-              <div style="margin-bottom:10px;">
-                <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px;">
-                  <span style="color:var(--muted);">Target Pacing</span>
+              <div style="margin-bottom:12px;background:var(--surface-sunken);padding:10px 12px;border-radius:8px;border:1px solid var(--line);">
+                <div style="display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:4px;">
+                  <span style="color:var(--muted);font-weight:600;">Target Pacing</span>
                   <strong style="color:var(--ink);">${c.targetAchievementPct}% of ${fmtInr(c.targetSalesPaisa)}</strong>
                 </div>
-                <div style="width:100%;height:6px;background:var(--surface-sunken);border-radius:3px;overflow:hidden;margin-bottom:3px;">
+                <div style="width:100%;height:6px;background:var(--line);border-radius:3px;overflow:hidden;margin-bottom:3px;">
                   <div style="width:${Math.min(targetPct, 100)}%;height:100%;background:${targetBarColor};border-radius:3px;"></div>
                 </div>
-                ${paceString ? `<div style="font-size:10px;color:var(--muted);text-align:right;">${paceString}</div>` : ""}
+                ${paceString ? `<div style="font-size:10.5px;color:var(--muted);text-align:right;">${paceString}</div>` : ""}
               </div>
             `
                 : ""
             }
-
-            <div style="display:flex;gap:12px;font-size:11.5px;color:var(--muted);margin-top:6px;">
-              <span>📦 Stock: <strong style="color:${c.inventoryCritical > 0 ? 'var(--danger)' : 'var(--ink)'};">${c.inventoryCritical} Crit / ${c.inventoryBelowPar} Low</strong></span>
-              <span>🔧 Maintenance: <strong style="color:${c.maintenanceOpen > 0 ? 'var(--warning)' : 'var(--ink)'};">${c.maintenanceOpen} Open</strong></span>
-            </div>
           </div>
 
-          <div style="margin-top:14px;padding-top:10px;border-top:1px solid var(--line);">
-            <button class="btn btn-xs btn-ghost btn-block" data-filter-cafe="${c.cafeId}" type="button">
+          <div style="margin-top:8px;padding-top:12px;border-top:1px solid var(--line);">
+            <button class="btn btn-ghost filter-cafe-btn" data-filter-cafe="${c.cafeId}" style="width:100%; font-size:12.5px; font-weight:600; justify-content:center;">
               Focus Location View →
             </button>
           </div>
@@ -516,32 +524,32 @@ export function renderOperationalSnapshotHtml(snap = {}) {
 
   return `
     <div style="display:flex;flex-direction:column;gap:12px;">
-      <div style="padding:10px 14px;border-radius:var(--radius-sm);background:var(--surface-sunken);border:1px solid var(--line);">
+      <div style="padding:14px 16px;border-radius:12px;background:var(--surface-sunken);border:1px solid var(--line);">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-          <strong style="font-size:13px;color:var(--ink);">Workforce &amp; Shifts Today</strong>
-          <button class="btn btn-xs btn-ghost" data-quick-action="attendance" type="button">Roster →</button>
+          <strong style="font-size:13.5px;color:var(--ink);">Workforce &amp; Shifts Today</strong>
+          <button class="btn btn-xs btn-secondary" data-quick-action="attendance" type="button" style="font-weight:600;">Roster →</button>
         </div>
-        <div style="font-size:12px;color:var(--muted);">
-          <strong>${att.staffPresent || 0}</strong> present on floor · <strong>${att.staffAbsent || 0}</strong> absent · <strong>${att.attendanceExceptions || 0}</strong> missed punches
+        <div style="font-size:12.5px;color:var(--muted);margin-top:3px;">
+          <strong style="color:#059669;">${att.staffPresent || 0}</strong> present on floor · <strong>${att.staffAbsent || 0}</strong> absent · <strong>${att.attendanceExceptions || 0}</strong> missed punches
         </div>
       </div>
 
-      <div style="padding:10px 14px;border-radius:var(--radius-sm);background:var(--surface-sunken);border:1px solid var(--line);">
+      <div style="padding:14px 16px;border-radius:12px;background:var(--surface-sunken);border:1px solid var(--line);">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-          <strong style="font-size:13px;color:var(--ink);">Stock Posture &amp; Reorder</strong>
-          <button class="btn btn-xs btn-ghost" data-quick-action="inventory" type="button">Stockroom →</button>
+          <strong style="font-size:13.5px;color:var(--ink);">Stock Posture &amp; Reorder</strong>
+          <button class="btn btn-xs btn-secondary" data-quick-action="inventory" type="button" style="font-weight:600;">Stockroom →</button>
         </div>
-        <div style="font-size:12px;color:var(--muted);">
+        <div style="font-size:12.5px;color:var(--muted);margin-top:3px;">
           <strong style="color:var(--danger);">${inv.critical || 0}</strong> critical stockouts · <strong>${inv.belowPar || 0}</strong> items below reorder threshold
         </div>
       </div>
 
-      <div style="padding:10px 14px;border-radius:var(--radius-sm);background:var(--surface-sunken);border:1px solid var(--line);">
+      <div style="padding:14px 16px;border-radius:12px;background:var(--surface-sunken);border:1px solid var(--line);">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-          <strong style="font-size:13px;color:var(--ink);">Facilities &amp; Compliance</strong>
-          <button class="btn btn-xs btn-ghost" data-quick-action="quality" type="button">Audit →</button>
+          <strong style="font-size:13.5px;color:var(--ink);">Facilities &amp; Compliance</strong>
+          <button class="btn btn-xs btn-secondary" data-quick-action="quality" type="button" style="font-weight:600;">Audit →</button>
         </div>
-        <div style="font-size:12px;color:var(--muted);">
+        <div style="font-size:12.5px;color:var(--muted);margin-top:3px;">
           <strong>${snap.maintenanceOpen || 0}</strong> open repair jobs · <strong>${snap.complianceOverdue || 0}</strong> overdue checklist audits
         </div>
       </div>
@@ -563,9 +571,9 @@ export function renderCommercialMixHtml(items = []) {
       ${items
         .map(
           (m, idx) => `
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-radius:var(--radius-sm);background:var(--surface-sunken);border:1px solid var(--line);">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-radius:10px;background:var(--surface-sunken);border:1px solid var(--line);">
           <div style="display:flex;align-items:center;gap:10px;">
-            <span style="font-size:12px;font-weight:700;color:var(--bronze-600);width:16px;">#${idx + 1}</span>
+            <span style="font-size:12px;font-weight:800;color:var(--bronze-600);width:20px;">#${idx + 1}</span>
             <div>
               <strong style="font-size:13px;color:var(--ink);">${m.itemName || m.menuItemId}</strong>
               <div style="font-size:11.5px;color:var(--muted);">${fmtNum(m.totalQty)} Units Sold</div>

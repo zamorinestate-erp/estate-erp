@@ -303,60 +303,52 @@ export function renderAdminDashboard() {
 
       <!-- AREA 3: Action Required (§25-28) -->
       <div id="admin-dash-action-required-container" style="margin-bottom:20px;">
-        <div class="card" style="padding:20px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
-          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
-            <div style="display:flex; align-items:center; gap:8px;">
-              <span style="color:var(--color-accent-amber); font-size:16px;">⚡</span>
-              <span style="font-weight:700; font-size:15px; color:var(--ink);" class="font-display">Action Required</span>
-            </div>
-            <span id="admin-dash-action-count-badge" class="status error" style="font-size:11px; font-weight:700;">1 Action Needed</span>
-          </div>
-          <div id="admin-dash-action-required-list">
-            <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; margin-bottom:8px; border-radius:var(--radius-sm); background:var(--bg-surface-2, rgba(255,255,255,0.04)); border-left:3px solid var(--color-accent-amber, #d4a359); flex-wrap:wrap; gap:8px;">
-              <div style="display:flex; align-items:center; gap:10px;">
-                <span class="status neutral" style="font-size:10px; font-weight:700; padding:2px 6px;">MEDIUM</span>
+        <div class="card" style="padding:20px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">          <div id="admin-dash-action-required-list">
+            <div style="display:flex; align-items:center; justify-content:space-between; padding:14px 16px; margin-bottom:10px; border-radius:12px; background:var(--surface-sunken); border:1px solid var(--line); flex-wrap:wrap; gap:12px;">
+              <div style="display:flex; align-items:flex-start; gap:10px;">
+                <span class="badge-tag badge-warning" style="font-size:10px; font-weight:700;">MEDIUM</span>
                 <div>
-                  <div style="font-weight:600; color:var(--ink); font-size:13px; display:flex; align-items:center; gap:8px;">
+                  <div style="font-weight:700; color:var(--ink); font-size:13.5px; display:flex; align-items:center; gap:8px;">
                     <span>Mid-Shift Cash Drawer Reconciliation</span>
-                    <span style="font-size:10.5px; color:var(--muted); font-family:var(--font-mono);">just now</span>
+                    <span style="font-size:11px; color:var(--muted); font-family:var(--font-mono);">just now</span>
                   </div>
-                  <div style="font-size:11.5px; color:var(--muted);">Counter Till #1 reaches â‚¹25,000 threshold for vault drop.</div>
+                  <div style="font-size:12px; color:var(--muted); margin-top:2px;">Counter Till #1 reaches ₹25,000 threshold for vault drop.</div>
                 </div>
               </div>
-              <button class="btn btn-ghost" onclick="window.__navigate('sales-cash')" type="button" style="font-size:12px; padding:3px 10px; color:var(--color-accent-amber); white-space:nowrap;">
-                Review &rarr;
+              <button class="btn btn-sm btn-secondary" onclick="window.__navigate('sales-cash')" type="button" style="font-size:12px; font-weight:600; white-space:nowrap;">
+                Review →
               </button>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- AREA 4: Previous Day Carryover (Â§29) â€” conditional -->
-      <div id="admin-dash-carryover-container" style="display:none; margin-bottom:22px;">
-        <div class="glass" style="padding:14px 20px; border-left:3px solid var(--color-accent-blue, #60a5fa);">
-          <div style="font-weight:700; font-size:13px; color:var(--ink); margin-bottom:6px; display:flex; align-items:center; gap:6px;">
-            <span>ðŸ—“ï¸</span> <span>Carryover from Previous Business Day</span>
+      <!-- AREA 4: Previous Day Carryover (§29) — conditional -->
+      <div id="admin-dash-carryover-container" style="display:none; margin-bottom:20px;">
+        <div class="card" style="padding:16px 20px; border-left:4px solid var(--color-accent-blue, #60a5fa); background:var(--surface); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
+          <div style="font-weight:700; font-size:13.5px; color:var(--ink); margin-bottom:6px; display:flex; align-items:center; gap:6px;">
+            <span>📅</span> <span>Carryover from Previous Business Day</span>
           </div>
           <div id="admin-dash-carryover-content" style="font-size:12.5px; color:var(--muted);"></div>
         </div>
       </div>
 
-      <!-- Resume Work Continuity Banner (Â§55) â€” conditional -->
-      <div id="admin-dash-resume-work-container" style="display:none; margin-bottom:22px;">
-        <div class="glass" style="padding:14px 20px; border-left:3px solid var(--color-accent-mint-bright, #34d399); display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+      <!-- Resume Work Continuity Banner (§55) — conditional -->
+      <div id="admin-dash-resume-work-container" style="display:none; margin-bottom:20px;">
+        <div class="card" style="padding:16px 20px; border-left:4px solid #059669; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; background:var(--surface); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
           <div style="display:flex; align-items:center; gap:10px;">
-            <span>â–¶ï¸</span>
+            <span>▶️</span>
             <div>
-              <div style="font-weight:700; font-size:13px; color:var(--ink);" id="resume-work-title">Resume Work in Progress</div>
-              <div style="font-size:11.5px; color:var(--muted);" id="resume-work-desc">You have an unfinished operational task.</div>
+              <div style="font-weight:700; font-size:13.5px; color:var(--ink);" id="resume-work-title">Resume Work in Progress</div>
+              <div style="font-size:12px; color:var(--muted);" id="resume-work-desc">You have an unfinished operational task.</div>
             </div>
           </div>
-          <button class="btn btn-primary" id="resume-work-btn" type="button" style="padding:4px 12px; font-size:12px;">Continue &rarr;</button>
+          <button class="btn btn-primary btn-sm" id="resume-work-btn" type="button" style="font-size:12px; font-weight:600;">Continue →</button>
         </div>
       </div>
 
-      <!-- AREA 5: Today Snapshot KPIs (Â§30-31) -->
-      <div id="admin-kpi-grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:16px; margin-bottom:22px;">
+      <!-- AREA 5: Today Snapshot KPIs (§30-31) -->
+      <div id="admin-kpi-grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap:12px; margin-bottom:20px;">
         ${kpiCard({
           label: "Today's Sales",
           value: fmtInr(DEFAULT_CAFE_ADMIN_PAYLOAD.todaySales.totalPaisa),
@@ -383,16 +375,16 @@ export function renderAdminDashboard() {
         })}
       </div>
 
-      <!-- AREA 6: Sales by Hour Chart & Operational Alerts (Â§32-34) -->
-      <div style="display:grid; grid-template-columns: 1.6fr 1fr; gap:18px; margin-bottom:22px;" class="dash-grid-two-col">
+      <!-- AREA 6: Sales by Hour Chart & Operational Alerts (§32-34) -->
+      <div style="display:grid; grid-template-columns: 1.6fr 1fr; gap:16px; margin-bottom:20px;" class="dash-grid-two-col">
         <!-- Sales by Hour Chart -->
-        <div class="glass" style="padding:22px; display:flex; flex-direction:column;">
+        <div class="card" style="padding:20px; display:flex; flex-direction:column; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
           <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
             <div>
-              <div style="color:var(--ink); font-weight:700; font-size:15px;" class="font-display">Sales by Hour â€” Today</div>
-              <div style="font-size:11.5px; color:var(--muted);">Hourly gross sales distribution (06:00â€“23:00 IST)</div>
+              <div style="color:var(--ink); font-weight:700; font-size:15px;" class="font-display">Sales by Hour — Today</div>
+              <div style="font-size:11.5px; color:var(--muted);">Hourly gross sales distribution (06:00–23:00 IST)</div>
             </div>
-            <div id="sales-chart-freshness" style="font-size:10.5px; color:var(--muted);">Live</div>
+            <div id="sales-chart-freshness" style="font-size:11px; color:var(--muted); font-weight:600;">● Live IST</div>
           </div>
           <div id="admin-dash-sales-chart-container" style="width:100%; min-height:220px; position:relative; overflow-x:auto;">
             ${renderSalesByHourChart(DEFAULT_CAFE_ADMIN_PAYLOAD.salesByHour)}
@@ -400,111 +392,122 @@ export function renderAdminDashboard() {
         </div>
 
         <!-- Operational Alerts Panel -->
-        <div class="glass" style="padding:22px; display:flex; flex-direction:column;">
+        <div class="card" style="padding:20px; display:flex; flex-direction:column; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
           <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
             <div style="color:var(--ink); font-weight:700; font-size:15px;" class="font-display">Operational Alerts</div>
-            <button class="btn btn-ghost" id="admin-dash-alerts-ack-all" type="button" style="font-size:11px; padding:2px 8px; color:var(--color-accent-amber);">Acknowledge All</button>
+            <button class="btn btn-ghost btn-xs" id="admin-dash-alerts-ack-all" type="button" style="font-size:11px; font-weight:600; color:var(--bronze-600);">Acknowledge All</button>
           </div>
-          <div id="admin-attention-feed" style="flex:1; overflow-y:auto; max-height:260px;">
-            <div style="font-size:12.5px; margin-bottom:10px; padding-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.06);"><span style="color:var(--color-accent-amber); font-weight:700;">ðŸ“¦ 2 Low Stock Items</span><br/><span style="color:var(--muted); font-size:11.5px;">Wayanad Robusta &amp; Dairy Milk below par level.</span></div>
-            <div style="font-size:12.5px; margin-bottom:10px; padding-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.06);"><span style="color:var(--color-accent-amber); font-weight:700;">ðŸ§¾ 1 Draft Expense Claim</span><br/><span style="color:var(--muted); font-size:11.5px;">Local dairy replenishment ready for submission.</span></div>
+          <div id="admin-attention-feed" style="flex:1; overflow-y:auto; max-height:260px; display:flex; flex-direction:column; gap:10px;">
+            <div style="padding:12px 14px; border-radius:10px; background:var(--surface-sunken); border:1px solid var(--line);">
+              <span class="badge-tag badge-warning" style="font-size:10px; font-weight:700; margin-bottom:4px; display:inline-block;">LOW STOCK</span>
+              <div style="font-weight:700; font-size:13px; color:var(--ink);">2 Low Stock Items</div>
+              <div style="color:var(--muted); font-size:11.5px; margin-top:2px;">Wayanad Robusta &amp; Dairy Milk below par level.</div>
+            </div>
+            <div style="padding:12px 14px; border-radius:10px; background:var(--surface-sunken); border:1px solid var(--line);">
+              <span class="badge-tag badge-accent" style="font-size:10px; font-weight:700; margin-bottom:4px; display:inline-block;">EXPENSES</span>
+              <div style="font-weight:700; font-size:13px; color:var(--ink);">1 Draft Expense Claim</div>
+              <div style="color:var(--muted); font-size:11.5px; margin-top:2px;">Local dairy replenishment ready for submission.</div>
+            </div>
           </div>
         </div>
       </div>
 
-      <!-- AREA 7: Core Operations Grid (Â§36-47) -->
-      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:18px; margin-bottom:22px;">
+      <!-- AREA 7: Core Operations Grid (§36-47) -->
+      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:16px; margin-bottom:20px;">
         <!-- Sales & Cash -->
-        <div class="glass" style="padding:20px;">
+        <div class="card" style="padding:20px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
           <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
-            <div style="font-weight:700; font-size:14px; color:var(--ink);" class="font-display">ðŸ’° Sales &amp; Cash</div>
-            <span id="cash-session-badge" class="status success" style="font-size:10.5px; font-weight:700;">SESSION ACTIVE</span>
+            <div style="font-weight:700; font-size:15px; color:var(--ink);" class="font-display">💵 Sales &amp; Cash</div>
+            <span id="cash-session-badge" class="badge-tag badge-success" style="font-size:10.5px; font-weight:700;">SESSION ACTIVE</span>
           </div>
           <div id="admin-dash-cash-content" style="font-size:13px;">
-            <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
-              <span style="color:var(--muted);">Total Sales:</span>
-              <span style="font-weight:700; color:var(--ink);">${fmtInr(DEFAULT_CAFE_ADMIN_PAYLOAD.todaySales.totalPaisa)}</span>
+            <div style="background:var(--surface-sunken); padding:10px 12px; border-radius:8px; border:1px solid var(--line); margin-bottom:10px;">
+              <div style="color:var(--muted); font-size:11px; text-transform:uppercase; font-weight:700;">Total Sales Today</div>
+              <div style="font-weight:700; font-size:16px; color:var(--ink); margin-top:2px;">${fmtInr(DEFAULT_CAFE_ADMIN_PAYLOAD.todaySales.totalPaisa)}</div>
             </div>
-            <div style="display:flex; justify-content:space-between; margin-bottom:6px; font-size:11.5px; color:var(--muted); padding-left:6px; border-left:2px solid var(--border-subtle);">
-              <span>Cash: <strong>â‚¹22,027.50</strong></span>
-              <span>UPI: <strong>â‚¹19,580.00</strong></span>
-              <span>Card: <strong>â‚¹7,342.50</strong></span>
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:10px;">
+              <div style="background:var(--surface-sunken); padding:8px 10px; border-radius:6px; border:1px solid var(--line);">
+                <div style="color:var(--muted); font-size:10px;">Cash</div>
+                <div style="font-weight:700; font-size:12px; color:var(--ink);">₹22,027</div>
+              </div>
+              <div style="background:var(--surface-sunken); padding:8px 10px; border-radius:6px; border:1px solid var(--line);">
+                <div style="color:var(--muted); font-size:10px;">UPI</div>
+                <div style="font-weight:700; font-size:12px; color:var(--ink);">₹19,580</div>
+              </div>
+              <div style="background:var(--surface-sunken); padding:8px 10px; border-radius:6px; border:1px solid var(--line);">
+                <div style="color:var(--muted); font-size:10px;">Card</div>
+                <div style="font-weight:700; font-size:12px; color:var(--ink);">₹7,342</div>
+              </div>
             </div>
-            <div style="display:flex; justify-content:space-between; font-size:12px; margin-top:8px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.06);">
-              <span style="color:var(--muted);">Till Float: â‚¹5,000.00</span>
-              <span style="color:var(--color-accent-mint-bright, #34d399); font-weight:600;">âœ“ In Balance</span>
+            <div style="display:flex; justify-content:space-between; font-size:12px; margin-top:8px; padding-top:8px; border-top:1px solid var(--line);">
+              <span style="color:var(--muted);">Till Float: ₹5,000.00</span>
+              <span style="color:#059669; font-weight:700;">✓ In Balance</span>
             </div>
           </div>
         </div>
 
         <!-- Attendance Today -->
-        <div class="glass" style="padding:20px;">
+        <div class="card" style="padding:20px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
           <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
-            <div style="font-weight:700; font-size:14px; color:var(--ink);" class="font-display">ðŸ‘¥ Attendance Today</div>
-            <button class="btn btn-ghost" onclick="window.__navigate('attendance')" type="button" style="font-size:11.5px; padding:2px 6px; color:var(--color-accent-amber);">Open Attendance &rarr;</button>
+            <div style="font-weight:700; font-size:15px; color:var(--ink);" class="font-display">👥 Attendance Today</div>
+            <button class="btn btn-ghost btn-xs" onclick="window.__navigate('attendance')" type="button" style="font-size:11.5px; font-weight:600; color:var(--bronze-600);">Open Roster →</button>
           </div>
           <div id="admin-dash-attendance-content" style="font-size:13px;">
-            <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
-              <span style="color:var(--muted);">Present / Scheduled:</span>
-              <span style="font-weight:700; color:var(--ink);">${DEFAULT_CAFE_ADMIN_PAYLOAD.attendanceSummary.present} / ${DEFAULT_CAFE_ADMIN_PAYLOAD.attendanceSummary.scheduled}</span>
+            <div style="background:var(--surface-sunken); padding:10px 12px; border-radius:8px; border:1px solid var(--line); margin-bottom:10px;">
+              <div style="color:var(--muted); font-size:11px; text-transform:uppercase; font-weight:700;">Present / Scheduled</div>
+              <div style="font-weight:700; font-size:16px; color:#059669; margin-top:2px;">${DEFAULT_CAFE_ADMIN_PAYLOAD.attendanceSummary.present} / ${DEFAULT_CAFE_ADMIN_PAYLOAD.attendanceSummary.scheduled} Active</div>
             </div>
-            <div style="font-size:12px; color:var(--muted); margin-bottom:4px;">
-              <span>Active Shifts: <strong>6 on floor</strong></span>
-            </div>
-            <div style="font-size:12px; color:var(--color-accent-mint-bright, #34d399); font-weight:600;">
-              âœ“ Zero unexcused absences
+            <div style="display:flex; justify-content:space-between; font-size:12px; margin-top:8px; padding-top:8px; border-top:1px solid var(--line);">
+              <span style="color:var(--muted);">Floor Shifts: 6 active</span>
+              <span style="color:#059669; font-weight:700;">✓ Zero Absences</span>
             </div>
           </div>
         </div>
 
         <!-- Stock Health -->
-        <div class="glass" style="padding:20px;">
+        <div class="card" style="padding:20px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
           <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
-            <div style="font-weight:700; font-size:14px; color:var(--ink);" class="font-display">ðŸ“¦ Stock Health</div>
-            <button class="btn btn-ghost" onclick="window.__navigate('inventory')" type="button" style="font-size:11.5px; padding:2px 6px; color:var(--color-accent-amber);">View Inventory &rarr;</button>
+            <div style="font-weight:700; font-size:15px; color:var(--ink);" class="font-display">📦 Stock Health</div>
+            <button class="btn btn-ghost btn-xs" onclick="window.__navigate('inventory')" type="button" style="font-size:11.5px; font-weight:600; color:var(--bronze-600);">View Stockroom →</button>
           </div>
           <div id="admin-dash-stock-content" style="font-size:13px;">
-            <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
-              <span style="color:var(--muted);">Status:</span>
-              <span style="font-weight:700; color:var(--color-accent-mint-bright, #34d399);">HEALTHY</span>
+            <div style="background:var(--surface-sunken); padding:10px 12px; border-radius:8px; border:1px solid var(--line); margin-bottom:10px;">
+              <div style="color:var(--muted); font-size:11px; text-transform:uppercase; font-weight:700;">Stock Posture</div>
+              <div style="font-weight:700; font-size:16px; color:#059669; margin-top:2px;">HEALTHY · 100% Core SKUs</div>
             </div>
-            <div style="font-size:12px; color:var(--muted); margin-bottom:4px;">
-              <span>Critical Stockouts: <strong>${DEFAULT_CAFE_ADMIN_PAYLOAD.inventoryHealth.critical}</strong></span>
-            </div>
-            <div style="font-size:12px; color:var(--color-accent-amber);">
-              âš ï¸ ${DEFAULT_CAFE_ADMIN_PAYLOAD.inventoryHealth.low} items below reorder par
+            <div style="display:flex; justify-content:space-between; font-size:12px; margin-top:8px; padding-top:8px; border-top:1px solid var(--line);">
+              <span style="color:var(--muted);">Reorder Triggers: 2 below par</span>
+              <span style="color:var(--muted);">0 Stockouts</span>
             </div>
           </div>
         </div>
 
         <!-- Expenses -->
-        <div class="glass" style="padding:20px;">
+        <div class="card" style="padding:20px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
           <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
-            <div style="font-weight:700; font-size:14px; color:var(--ink);" class="font-display">ðŸ§¾ Expenses</div>
-            <button class="btn btn-ghost" onclick="window.__navigate('expenses')" type="button" style="font-size:11.5px; padding:2px 6px; color:var(--color-accent-amber);">Manage &rarr;</button>
+            <div style="font-weight:700; font-size:15px; color:var(--ink);" class="font-display">🧾 Expenses</div>
+            <button class="btn btn-ghost btn-xs" onclick="window.__navigate('expenses')" type="button" style="font-size:11.5px; font-weight:600; color:var(--bronze-600);">Manage →</button>
           </div>
           <div id="admin-dash-expense-content" style="font-size:13px;">
-            <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
-              <span style="color:var(--muted);">Today's Claims:</span>
-              <span style="font-weight:700; color:var(--ink);">${fmtInr(DEFAULT_CAFE_ADMIN_PAYLOAD.expensesSummary.totalPaisa)}</span>
+            <div style="background:var(--surface-sunken); padding:10px 12px; border-radius:8px; border:1px solid var(--line); margin-bottom:10px;">
+              <div style="color:var(--muted); font-size:11px; text-transform:uppercase; font-weight:700;">Today's Claims</div>
+              <div style="font-weight:700; font-size:16px; color:var(--ink); margin-top:2px;">${fmtInr(DEFAULT_CAFE_ADMIN_PAYLOAD.expensesSummary.totalPaisa)}</div>
             </div>
-            <div style="font-size:12px; color:var(--muted); margin-bottom:4px;">
-              <span>Submitted: <strong>${DEFAULT_CAFE_ADMIN_PAYLOAD.expensesSummary.submitted}</strong> Â· Draft: <strong>${DEFAULT_CAFE_ADMIN_PAYLOAD.expensesSummary.draft}</strong></span>
-            </div>
-            <div style="font-size:12px; color:var(--color-accent-mint-bright, #34d399);">
-              âœ“ Zero claims returned
+            <div style="display:flex; justify-content:space-between; font-size:12px; margin-top:8px; padding-top:8px; border-top:1px solid var(--line);">
+              <span style="color:var(--muted);">Submitted: ${DEFAULT_CAFE_ADMIN_PAYLOAD.expensesSummary.submitted} · Draft: ${DEFAULT_CAFE_ADMIN_PAYLOAD.expensesSummary.draft}</span>
+              <span style="color:#059669; font-weight:700;">✓ In Policy</span>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- AREA 8: Supply, Orders & Next Up (Â§48-52) -->
-      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:18px; margin-bottom:22px;">
+      <!-- AREA 8: Supply, Orders & Next Up (§48-52) -->
+      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:16px; margin-bottom:20px;">
         <!-- Procurement & Deliveries -->
-        <div class="glass" style="padding:20px;">
+        <div class="card" style="padding:20px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
           <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
-            <div style="font-weight:700; font-size:14px; color:var(--ink);" class="font-display">ðŸšš Procurement &amp; Deliveries</div>
-            <button class="btn btn-ghost" onclick="window.__navigate('procurement')" type="button" style="font-size:11.5px; padding:2px 6px; color:var(--color-accent-amber);">Open &rarr;</button>
+            <div style="font-weight:700; font-size:15px; color:var(--ink);" class="font-display">🚚 Procurement &amp; Deliveries</div>
+            <button class="btn btn-ghost btn-xs" onclick="window.__navigate('procurement')" type="button" style="font-size:11.5px; font-weight:600; color:var(--bronze-600);">Open →</button>
           </div>
           <div id="admin-dash-procurement-content" style="font-size:13px;">
             <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
