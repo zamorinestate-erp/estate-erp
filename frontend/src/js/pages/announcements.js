@@ -133,30 +133,20 @@ export function renderAnnouncements() {
 
 function renderHeader() {
   return `
-    <div class="flex items-center justify-between flex-wrap gap-md" style="margin-bottom:16px; padding:4px 0;">
+    <div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px; margin-bottom:20px;">
       <div>
-        <div style="font-size:22px; font-weight:800; color:var(--text-primary); letter-spacing:-0.02em; display:flex; align-items:center; gap:8px;">
-          <span>📢</span>
-          <span>Announcements &amp; Notices</span>
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <h1 style="font-size:24px; font-weight:700; margin:0; color:var(--ink);">Announcements &amp; Notices</h1>
+          <span class="badge" style="background:rgba(180,83,9,0.12); color:#b45309; font-weight:600; font-size:12px; padding:4px 10px; border-radius:12px; white-space:nowrap;">EMP-SCR-004</span>
         </div>
-        <div style="font-size:13px; color:var(--text-muted); margin-top:2px;">
-          Official Company Communications, Operating Instructions &amp; Policy Updates
-        </div>
+        <p style="font-size:13px; color:var(--muted); margin:4px 0 0;">Official Company Communications, Operating Instructions &amp; Policy Updates</p>
       </div>
 
-      <div class="flex items-center gap-sm flex-wrap">
-        <div id="announcements-counter-pills" class="flex items-center gap-xs">
-          <span class="badge ${unreadCount > 0 ? "badge-gold" : "badge-subtle"}" style="font-size:11.5px; padding:4px 10px;">
-            ${unreadCount} Unread
-          </span>
-          <span class="badge ${actionRequiredCount > 0 ? "badge-coral" : "badge-subtle"}" style="font-size:11.5px; padding:4px 10px;">
-            ${actionRequiredCount} Action Required
-          </span>
-        </div>
-        <button class="btn btn-sm btn-secondary" id="btn-mark-all-read" type="button" title="Mark ordinary informational notices as read">
+      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        <button class="btn btn-secondary" id="btn-mark-all-read" type="button" style="font-size:12px; padding:6px 12px;">
           ${icon("check", 14)} Mark All Read
         </button>
-        <button class="btn btn-sm btn-ghost" id="btn-refresh-announcements" type="button" title="Refresh announcements">
+        <button class="btn btn-secondary" id="btn-refresh-announcements" type="button" style="font-size:12px; padding:6px 12px;">
           ${icon("refresh", 14)} Refresh
         </button>
       </div>

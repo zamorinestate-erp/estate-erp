@@ -57,30 +57,28 @@ function renderHeader() {
   const istDate = now.toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", weekday: "short", day: "numeric", month: "short", year: "numeric" });
 
   return `
-    <div class="flex items-center justify-between flex-wrap gap-md" style="margin-bottom:16px;">
+    <div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px; margin-bottom:20px;">
       <div>
-        <h1 class="page-title" style="font-size:22px; font-weight:800; color:var(--text-primary); letter-spacing:-0.02em; display:flex; align-items:center; gap:8px; margin:0;">
-          <span>⏱️</span>
-          <span>My Attendance &amp; Shifts</span>
-        </h1>
-        <div style="font-size:13px; color:var(--text-muted); margin-top:2px;">
-          Dawn Roast — Koramangala · Employee Self-Service
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <h1 style="font-size:24px; font-weight:700; margin:0; color:var(--ink);">My Attendance &amp; Shifts</h1>
+          <span class="badge" style="background:rgba(180,83,9,0.12); color:#b45309; font-weight:600; font-size:12px; padding:4px 10px; border-radius:12px; white-space:nowrap;">EMP-SCR-002</span>
         </div>
+        <p style="font-size:13px; color:var(--muted); margin:4px 0 0;">Dawn Roast — Koramangala · Employee Attendance &amp; Shifts Self-Service</p>
       </div>
 
       <!-- Live Server Clock Badge -->
-      <div class="card flex items-center gap-md" style="padding:10px 16px; background:var(--bg-surface-1); border-radius:var(--radius-md); border:1px solid var(--border-subtle); box-shadow:var(--shadow-sm);">
+      <div class="card" style="padding:8px 14px; background:var(--surface); border-radius:10px; border:1px solid var(--line); box-shadow:var(--shadow-xs); display:flex; align-items:center; gap:12px; flex-shrink:0;">
         <div>
-          <div class="flex items-center gap-xs" style="font-size:10px; font-weight:700; color:var(--color-accent-mint); text-transform:uppercase; letter-spacing:0.04em;">
+          <div style="font-size:10px; font-weight:700; color:#059669; text-transform:uppercase; letter-spacing:0.04em; display:flex; align-items:center; gap:4px;">
             <span>●</span>
             <span>SERVER VERIFIED IST</span>
           </div>
-          <div id="live-server-clock" style="font-size:18px; font-weight:800; color:var(--text-primary); font-family:var(--font-mono, monospace); line-height:1.2;">
+          <div id="live-server-clock" style="font-size:16px; font-weight:800; color:var(--ink); font-family:var(--font-mono, monospace); line-height:1.2; margin-top:2px;">
             ${istTime}
           </div>
-          <div style="font-size:11px; color:var(--text-muted);">${istDate}</div>
+          <div style="font-size:11px; color:var(--muted);">${istDate}</div>
         </div>
-        <button class="btn btn-xs btn-ghost" id="btn-sync-time" title="Resync server clock" style="padding:4px 8px;">
+        <button class="btn btn-xs btn-ghost" id="btn-sync-time" title="Resync server clock" style="padding:4px 8px;" type="button">
           ${icon("refresh", 13)}
         </button>
       </div>
@@ -399,49 +397,52 @@ function renderCalendarDays() {
 function renderTimecardTab() {
   return `
     <div style="margin-bottom:24px;">
-      <!-- KPI Cards Summary & Trends (P2 Option) -->
-      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:14px; margin-bottom:20px;">
-        <div class="card" style="padding:16px; background:var(--bg-surface-1); border-radius:var(--radius-md); border:1px solid var(--border-subtle);">
-          <div style="font-size:11px; color:var(--text-muted); font-weight:700; text-transform:uppercase;">Total Worked Hours</div>
-          <div style="font-size:22px; font-weight:800; color:var(--text-primary); margin-top:4px;">148.5h</div>
-          <div style="font-size:11px; color:var(--color-accent-mint); margin-top:2px;">+4.2h vs Last Month</div>
+      <!-- KPI Cards Summary (Matching Reference HRIS Design) -->
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:14px; margin-bottom:20px;">
+        <div class="kpi-card" style="background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); padding:16px 18px; box-shadow:var(--shadow-xs);">
+          <div style="font-size:11.5px; color:var(--muted); text-transform:uppercase; font-weight:700; letter-spacing:0.4px;">Total Worked Hours</div>
+          <div style="font-size:26px; font-weight:800; color:var(--ink); font-family:var(--font-heading); margin-top:4px;">148.5h</div>
+          <div style="font-size:11.5px; color:#059669; font-weight:600; margin-top:2px;">● +4.2h vs Last Month</div>
         </div>
-        <div class="card" style="padding:16px; background:var(--bg-surface-1); border-radius:var(--radius-md); border:1px solid var(--border-subtle);">
-          <div style="font-size:11px; color:var(--text-muted); font-weight:700; text-transform:uppercase;">Approved Overtime</div>
-          <div style="font-size:22px; font-weight:800; color:var(--brand-gold); margin-top:4px;">2.5h</div>
-          <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Master Approved for Payroll</div>
+
+        <div class="kpi-card" style="background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); padding:16px 18px; box-shadow:var(--shadow-xs);">
+          <div style="font-size:11.5px; color:var(--muted); text-transform:uppercase; font-weight:700; letter-spacing:0.4px;">Approved Overtime</div>
+          <div style="font-size:26px; font-weight:800; color:#b45309; font-family:var(--font-heading); margin-top:4px;">2.5h</div>
+          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">Master Approved for Payroll</div>
         </div>
-        <div class="card" style="padding:16px; background:var(--bg-surface-1); border-radius:var(--radius-md); border:1px solid var(--border-subtle);">
-          <div style="font-size:11px; color:var(--text-muted); font-weight:700; text-transform:uppercase;">On-Time Arrival Rate</div>
-          <div style="font-size:22px; font-weight:800; color:var(--color-accent-mint); margin-top:4px;">94.2%</div>
-          <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">2 Lates this period (-33%)</div>
+
+        <div class="kpi-card" style="background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); padding:16px 18px; box-shadow:var(--shadow-xs);">
+          <div style="font-size:11.5px; color:var(--muted); text-transform:uppercase; font-weight:700; letter-spacing:0.4px;">On-Time Arrival Rate</div>
+          <div style="font-size:26px; font-weight:800; color:#059669; font-family:var(--font-heading); margin-top:4px;">94.2%</div>
+          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">2 Lates this period (-33%)</div>
         </div>
-        <div class="card" style="padding:16px; background:var(--bg-surface-1); border-radius:var(--radius-md); border:1px solid var(--border-subtle);">
-          <div style="font-size:11px; color:var(--text-muted); font-weight:700; text-transform:uppercase;">Period Payroll State</div>
-          <div style="font-size:22px; font-weight:800; color:var(--color-accent-mint); margin-top:4px;">OPEN</div>
-          <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Eligible for corrections</div>
+
+        <div class="kpi-card" style="background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); padding:16px 18px; box-shadow:var(--shadow-xs);">
+          <div style="font-size:11.5px; color:var(--muted); text-transform:uppercase; font-weight:700; letter-spacing:0.4px;">Period Payroll State</div>
+          <div style="font-size:26px; font-weight:800; color:var(--ink); font-family:var(--font-heading); margin-top:4px;">OPEN</div>
+          <div style="font-size:11.5px; color:#059669; font-weight:600; margin-top:2px;">● Eligible for corrections</div>
         </div>
       </div>
 
-      <!-- Overtime Multi-Stage Decision Timeline Box (P2 Option) -->
-      <div class="card" style="padding:16px 20px; background:var(--bg-surface-1); border-radius:var(--radius-md); border:1px solid var(--border-subtle); margin-bottom:20px;">
-        <div style="font-size:13px; font-weight:800; color:var(--text-primary); margin-bottom:10px;">
+      <!-- Overtime Multi-Stage Decision Timeline Box -->
+      <div class="card" style="padding:16px 20px; background:var(--surface); border-radius:var(--radius-card, 12px); border:1px solid var(--line); box-shadow:var(--shadow-xs); margin-bottom:20px;">
+        <div style="font-size:13px; font-weight:700; color:var(--ink); margin-bottom:10px;">
           Overtime Governance Workflow (16 Aug 2026 · 1.5h Overtime)
         </div>
-        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:gap-sm; font-size:12px; gap:8px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; font-size:12px; gap:8px;">
           <div class="flex items-center gap-xs">
-            <span style="width:20px; height:20px; border-radius:50%; background:var(--color-accent-mint); color:#000; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:11px;">1</span>
-            <span>Detected (1.5h)</span>
+            <span style="width:20px; height:20px; border-radius:50%; background:rgba(5,150,105,0.15); color:#059669; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:11px;">1</span>
+            <span style="font-weight:600; color:var(--ink);">Detected (1.5h)</span>
           </div>
-          <span style="color:var(--text-muted);">→</span>
+          <span style="color:var(--muted);">→</span>
           <div class="flex items-center gap-xs">
-            <span style="width:20px; height:20px; border-radius:50%; background:var(--color-accent-mint); color:#000; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:11px;">2</span>
-            <span>Admin Verified</span>
+            <span style="width:20px; height:20px; border-radius:50%; background:rgba(5,150,105,0.15); color:#059669; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:11px;">2</span>
+            <span style="font-weight:600; color:var(--ink);">Admin Verified</span>
           </div>
-          <span style="color:var(--text-muted);">→</span>
+          <span style="color:var(--muted);">→</span>
           <div class="flex items-center gap-xs">
-            <span style="width:20px; height:20px; border-radius:50%; background:var(--brand-gold); color:#000; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:11px;">3</span>
-            <span style="font-weight:700; color:var(--brand-gold);">Master Approved (1.5h Payable)</span>
+            <span style="width:20px; height:20px; border-radius:50%; background:rgba(180,83,9,0.15); color:#b45309; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:11px;">3</span>
+            <span style="font-weight:700; color:#b45309;">Master Approved (1.5h Payable)</span>
           </div>
         </div>
       </div>

@@ -47,27 +47,25 @@ export function renderStaffLeave() {
 
 function renderHeader() {
   return `
-    <div class="flex items-center justify-between flex-wrap gap-md" style="margin-bottom:16px;">
+    <div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px; margin-bottom:20px;">
       <div>
-        <div style="font-size:22px; font-weight:800; color:var(--text-primary); letter-spacing:-0.02em; display:flex; align-items:center; gap:8px;">
-          <span>🌴</span>
-          <span>My Leave Self-Service</span>
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <h1 style="font-size:24px; font-weight:700; margin:0; color:var(--ink);">My Leave Self-Service</h1>
+          <span class="badge" style="background:rgba(180,83,9,0.12); color:#b45309; font-weight:600; font-size:12px; padding:4px 10px; border-radius:12px; white-space:nowrap;">EMP-SCR-003</span>
         </div>
-        <div style="font-size:13px; color:var(--text-muted); margin-top:2px;">
-          Dawn Roast — Koramangala · Employee Leave Entitlement &amp; Requests
-        </div>
+        <p style="font-size:13px; color:var(--muted); margin:4px 0 0;">Dawn Roast — Koramangala · Employee Leave Entitlement &amp; Requests</p>
       </div>
 
       <!-- Total Available Balance Pill -->
-      <div class="card flex items-center gap-md" style="padding:10px 18px; background:var(--bg-surface-1); border-radius:var(--radius-md); border:1px solid var(--border-subtle); box-shadow:var(--shadow-sm);">
+      <div class="card" style="padding:8px 14px; background:var(--surface); border-radius:10px; border:1px solid var(--line); box-shadow:var(--shadow-xs); display:flex; align-items:center; gap:12px; flex-shrink:0;">
         <div>
-          <div style="font-size:10px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em;">
+          <div style="font-size:10px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.04em;">
             TOTAL AVAILABLE BALANCE
           </div>
-          <div id="total-available-leave-val" style="font-size:20px; font-weight:800; color:var(--color-accent-mint); line-height:1.2;">
+          <div id="total-available-leave-val" style="font-size:18px; font-weight:800; color:#059669; font-family:var(--font-heading); line-height:1.2; margin-top:2px;">
             24.5 Days
           </div>
-          <div style="font-size:11px; color:var(--text-muted);">Across 4 paid plans</div>
+          <div style="font-size:11px; color:var(--muted);">Across 4 paid plans</div>
         </div>
       </div>
     </div>
@@ -106,40 +104,40 @@ function renderOverviewTab() {
     <div style="margin-bottom:24px;">
       <!-- Leave Balance Cards Grid (By Type) -->
       <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:14px; margin-bottom:20px;">
-        <div class="card" style="padding:16px; background:var(--bg-surface-1); border-radius:var(--radius-md); border:1px solid var(--border-subtle);">
-          <div class="flex justify-between items-center">
-            <span style="font-size:12px; font-weight:700; color:var(--brand-gold);">Casual Leave</span>
-            <span class="badge badge-subtle" style="font-size:10px;">PAID</span>
+        <div class="kpi-card" style="background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); padding:16px 18px; box-shadow:var(--shadow-xs);">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="font-size:11.5px; color:var(--muted); text-transform:uppercase; font-weight:700; letter-spacing:0.4px;">Casual Leave</div>
+            <span class="badge-tag" style="background:var(--surface-sunken); color:var(--ink); font-size:10px; font-weight:700; padding:1px 6px; border-radius:4px;">PAID</span>
           </div>
-          <div style="font-size:24px; font-weight:800; color:var(--text-primary); margin-top:6px;">4.5 <span style="font-size:13px; font-weight:500; color:var(--text-muted);">days</span></div>
-          <div style="font-size:11.5px; color:var(--text-muted); margin-top:2px;">1.0 day pending · 8.0 accrued YTD</div>
+          <div style="font-size:26px; font-weight:800; color:var(--ink); font-family:var(--font-heading); margin-top:4px;">4.5 <span style="font-size:13px; font-weight:500; color:var(--muted);">days</span></div>
+          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">1.0 day pending · 8.0 accrued YTD</div>
         </div>
 
-        <div class="card" style="padding:16px; background:var(--bg-surface-1); border-radius:var(--radius-md); border:1px solid var(--border-subtle);">
-          <div class="flex justify-between items-center">
-            <span style="font-size:12px; font-weight:700; color:var(--color-accent-mint);">Sick Leave</span>
-            <span class="badge badge-subtle" style="font-size:10px;">PAID</span>
+        <div class="kpi-card" style="background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); padding:16px 18px; box-shadow:var(--shadow-xs);">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="font-size:11.5px; color:var(--muted); text-transform:uppercase; font-weight:700; letter-spacing:0.4px;">Sick Leave</div>
+            <span class="badge-tag" style="background:var(--surface-sunken); color:var(--ink); font-size:10px; font-weight:700; padding:1px 6px; border-radius:4px;">PAID</span>
           </div>
-          <div style="font-size:24px; font-weight:800; color:var(--text-primary); margin-top:6px;">6.0 <span style="font-size:13px; font-weight:500; color:var(--text-muted);">days</span></div>
-          <div style="font-size:11.5px; color:var(--text-muted); margin-top:2px;">0 pending · Medical slip &gt; 2 days</div>
+          <div style="font-size:26px; font-weight:800; color:#059669; font-family:var(--font-heading); margin-top:4px;">6.0 <span style="font-size:13px; font-weight:500; color:var(--muted);">days</span></div>
+          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">0 pending · Medical slip &gt; 2 days</div>
         </div>
 
-        <div class="card" style="padding:16px; background:var(--bg-surface-1); border-radius:var(--radius-md); border:1px solid var(--border-subtle);">
-          <div class="flex justify-between items-center">
-            <span style="font-size:12px; font-weight:700; color:var(--brand-gold);">Earned Leave</span>
-            <span class="badge badge-subtle" style="font-size:10px;">PAID</span>
+        <div class="kpi-card" style="background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); padding:16px 18px; box-shadow:var(--shadow-xs);">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="font-size:11.5px; color:var(--muted); text-transform:uppercase; font-weight:700; letter-spacing:0.4px;">Earned Leave</div>
+            <span class="badge-tag" style="background:var(--surface-sunken); color:var(--ink); font-size:10px; font-weight:700; padding:1px 6px; border-radius:4px;">PAID</span>
           </div>
-          <div style="font-size:24px; font-weight:800; color:var(--text-primary); margin-top:6px;">12.0 <span style="font-size:13px; font-weight:500; color:var(--text-muted);">days</span></div>
-          <div style="font-size:11.5px; color:var(--color-accent-coral); margin-top:2px;">2.0 days expire 31 Dec 2026</div>
+          <div style="font-size:26px; font-weight:800; color:var(--ink); font-family:var(--font-heading); margin-top:4px;">12.0 <span style="font-size:13px; font-weight:500; color:var(--muted);">days</span></div>
+          <div style="font-size:11.5px; color:#b45309; font-weight:600; margin-top:2px;">2.0 days expire 31 Dec 2026</div>
         </div>
 
-        <div class="card" style="padding:16px; background:var(--bg-surface-1); border-radius:var(--radius-md); border:1px solid var(--border-subtle);">
-          <div class="flex justify-between items-center">
-            <span style="font-size:12px; font-weight:700; color:var(--text-primary);">Comp-Off</span>
-            <span class="badge badge-subtle" style="font-size:10px;">PAID</span>
+        <div class="kpi-card" style="background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); padding:16px 18px; box-shadow:var(--shadow-xs);">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="font-size:11.5px; color:var(--muted); text-transform:uppercase; font-weight:700; letter-spacing:0.4px;">Comp-Off</div>
+            <span class="badge-tag" style="background:var(--surface-sunken); color:var(--ink); font-size:10px; font-weight:700; padding:1px 6px; border-radius:4px;">PAID</span>
           </div>
-          <div style="font-size:24px; font-weight:800; color:var(--text-primary); margin-top:6px;">1.0 <span style="font-size:13px; font-weight:500; color:var(--text-muted);">day</span></div>
-          <div style="font-size:11.5px; color:var(--text-muted); margin-top:2px;">Expires 31 Aug 2026</div>
+          <div style="font-size:26px; font-weight:800; color:var(--ink); font-family:var(--font-heading); margin-top:4px;">1.0 <span style="font-size:13px; font-weight:500; color:var(--muted);">day</span></div>
+          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">Expires 31 Aug 2026</div>
         </div>
       </div>
 
