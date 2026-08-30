@@ -405,12 +405,12 @@ function renderDashboardBody(data) {
 
   // ── 6. Lower Information Grid: SCHEDULE & ANNOUNCEMENTS ────────────────────
   const weekDayCardsHtml = weekSchedule.map((d) => `
-    <div class="schedule-day-pill ${d.isToday ? "active-today" : ""}" style="flex:0 0 78px; min-width:78px; padding:12px 6px; text-align:center; border-radius:12px; background:${d.isToday ? "rgba(180,83,9,0.12)" : "var(--surface)"}; border:1px solid ${d.isToday ? "rgba(180,83,9,0.4)" : "var(--line)"}; box-shadow:var(--shadow-xs);">
-      <div style="font-size:11px; font-weight:700; color:${d.isToday ? "#b45309" : "var(--muted)"}; text-transform:uppercase; letter-spacing:0.5px;">${d.day}</div>
-      <div style="font-size:14px; font-weight:800; color:${d.isToday ? "#b45309" : (d.isOff ? "var(--muted)" : "var(--ink)")}; font-family:var(--font-heading); margin-top:4px;">
+    <div class="schedule-day-box ${d.isToday ? "active-today" : ""}" style="padding:14px 18px; text-align:center; border-radius:12px; background:${d.isToday ? "rgba(180,83,9,0.08)" : "var(--surface)"}; border:1px solid ${d.isToday ? "rgba(180,83,9,0.35)" : "var(--line)"}; box-shadow:var(--shadow-xs); margin-bottom:0;">
+      <div style="font-size:11.5px; font-weight:700; color:${d.isToday ? "#b45309" : "var(--muted)"}; text-transform:uppercase; letter-spacing:0.5px;">${d.day}</div>
+      <div style="font-size:16px; font-weight:800; color:${d.isToday ? "#b45309" : (d.isOff ? "var(--muted)" : "var(--ink)")}; font-family:var(--font-heading); margin-top:4px;">
         ${d.isOff ? "Off" : (d.shiftHours.includes("9") ? "9–5" : "1–9")}
       </div>
-      <div style="font-size:10.5px; font-weight:600; color:${d.isToday ? "#b45309" : "var(--muted)"}; margin-top:2px;">
+      <div style="font-size:11px; font-weight:600; color:${d.isToday ? "#b45309" : "var(--muted)"}; margin-top:2px;">
         ${d.isOff ? "Rest" : "Duty"}
       </div>
     </div>
@@ -437,7 +437,7 @@ function renderDashboardBody(data) {
           </div>
           <button class="btn btn-xs btn-secondary" data-nav-target="staff-attendance" style="font-weight:600;">Full Roster →</button>
         </div>
-        <div style="display:flex; gap:10px; overflow-x:auto; -webkit-overflow-scrolling:touch; padding:4px 2px 10px 2px;">
+        <div style="display:flex; flex-direction:column; gap:12px; padding:4px 0 10px 0;">
           ${weekDayCardsHtml}
         </div>
         <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-top:14px; padding-top:12px; border-top:1px solid var(--line); font-size:12.5px; color:var(--muted);">
