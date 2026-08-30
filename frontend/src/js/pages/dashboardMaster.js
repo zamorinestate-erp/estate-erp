@@ -599,50 +599,66 @@ export function renderMasterDashboard({ roleLabel = "Master Administrator" } = {
   const commercial = initialData.commercialMix;
 
   return `
-    <div class="page-enter command-centre-wrap" style="padding-bottom:60px;">
+  return `
+    <div class="page-enter command-centre-wrap" style="max-width:1400px; margin:0 auto; padding-bottom:60px;">
 
-      <!-- Tier 1: Command Header & Controls -->
-      <div class="card" style="padding:18px 24px;margin-bottom:16px;border-left:4px solid var(--bronze-500);">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;">
-          <div>
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
-              <h1 class="page-title" style="font-size:24px;font-weight:700;margin:0;color:var(--ink);">
-                Zamorin Command Centre
-              </h1>
-              <span id="cc-live-clock" style="font-family:monospace;font-size:12px;padding:3px 8px;border-radius:var(--radius-sm);background:var(--surface-sunken);color:var(--bronze-600);border:1px solid var(--line);">
-                ${getIstClockString()}
-              </span>
-            </div>
-            <p style="font-size:13px;color:var(--muted);margin:0;">
-              Multi-Location Portfolio Oversight · Real-Time Operations, Revenue &amp; Exception Stream
-            </p>
+      <!-- Page Header & Context Strip matching reference HRIS standard -->
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px; margin-bottom:20px; border-bottom:1px solid var(--line); padding-bottom:16px;">
+        <div>
+          <div style="display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:4px;">
+            <h1 class="page-title" style="font-size:24px; font-weight:800; margin:0; color:var(--ink); letter-spacing:-0.3px;">
+              Zamorin Command Centre
+            </h1>
+            <span class="status info" style="font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;">SCR-001</span>
+            ${
+              isMaster && isPrimary
+                ? `<span class="status success" style="font-size:10px; font-weight:800;">PRIMARY MASTER</span>`
+                : isMaster && !isPrimary
+                ? `<span class="status info" style="font-size:10px; font-weight:800;">OPERATIONAL MASTER</span>`
+                : `<span class="status success" style="font-size:10px; font-weight:800;">OWNER PORTAL</span>`
+            }
           </div>
+          <p style="font-size:13px; color:var(--muted); margin:0 0 10px;">
+            Multi-Location Portfolio Oversight · Real-Time Operations, Revenue &amp; Exception Stream
+          </p>
 
-          <!-- Controls: Saved Views & Live Refresh -->
-          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-            <div class="select-wrap" style="min-width:180px;">
-              <select id="cc-saved-views-select" class="form-control form-control-sm" style="font-size:12.5px;">
-                <option value="">Default Portfolio View</option>
-              </select>
+          <!-- Context Strip -->
+          <div style="display:flex; align-items:center; flex-wrap:wrap; gap:8px; font-size:12px; color:var(--ink);">
+            <div style="display:inline-flex; align-items:center; gap:6px; background:var(--surface-sunken); padding:4px 10px; border-radius:6px; border:1px solid var(--line);">
+              <span style="font-weight:700; color:var(--bronze-600);">📍 All Outlets (Portfolio)</span>
             </div>
-            <button class="btn btn-sm btn-ghost" id="cc-save-view-btn" type="button" title="Save current filter preset">
-              ${icon("save") || "💾"} Save View
-            </button>
-            <button class="btn btn-sm btn-ghost" id="cc-manage-views-btn" type="button" title="Manage saved views">
-              ⚙️ Views
-            </button>
-            <button class="btn btn-sm btn-ghost" id="cc-refresh-btn" type="button" title="Fetch live metrics">
-              <span id="cc-refresh-icon">↻</span> Live Refresh
-            </button>
+            <div style="display:inline-flex; align-items:center; gap:5px; background:var(--surface-sunken); padding:4px 10px; border-radius:6px; border:1px solid var(--line); font-family:var(--font-mono); font-size:11.5px;">
+              <span style="display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--color-success, #2E7D32);"></span>
+              <span>Server Time: <strong id="cc-live-clock">${getIstClockString()}</strong> · Online · Synced</span>
+            </div>
           </div>
         </div>
 
-        <!-- Tier 1b: Date Range & Comparison Selector Toolbar -->
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;margin-top:16px;padding-top:14px;border-top:1px solid var(--line);">
+        <!-- Controls: Saved Views & Live Refresh -->
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <div class="select-wrap" style="min-width:170px;">
+            <select id="cc-saved-views-select" class="form-control form-control-sm" style="font-size:12px;">
+              <option value="">Default Portfolio View</option>
+            </select>
+          </div>
+          <button class="btn btn-sm btn-ghost" id="cc-save-view-btn" type="button" title="Save current filter preset" style="font-size:12px;">
+            ${icon("save") || "💾"} Save View
+          </button>
+          <button class="btn btn-sm btn-ghost" id="cc-manage-views-btn" type="button" title="Manage saved views" style="font-size:12px;">
+            ⚙️ Views
+          </button>
+          <button class="btn btn-sm btn-secondary" id="cc-refresh-btn" type="button" title="Fetch live metrics" style="font-size:12px; font-weight:600;">
+            <span id="cc-refresh-icon">🔄</span> Refresh
+          </button>
+        </div>
+      </div>
 
+      <!-- Filter Bar: Date Range & Comparison Selector Toolbar -->
+      <div class="card" style="padding:14px 18px; margin-bottom:18px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
           <!-- Period Pills -->
-          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-            <span style="font-size:11.5px;font-weight:700;text-transform:uppercase;color:var(--muted);letter-spacing:0.06em;margin-right:4px;">Period:</span>
+          <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+            <span style="font-size:11.5px; font-weight:700; text-transform:uppercase; color:var(--muted); letter-spacing:0.06em; margin-right:4px;">Period:</span>
             <button class="btn btn-xs ${dashboardState.period === "today" ? "btn-primary" : "btn-ghost"}" data-period="today" type="button">Today</button>
             <button class="btn btn-xs ${dashboardState.period === "yesterday" ? "btn-primary" : "btn-ghost"}" data-period="yesterday" type="button">Yesterday</button>
             <button class="btn btn-xs ${dashboardState.period === "7d" ? "btn-primary" : "btn-ghost"}" data-period="7d" type="button">Last 7D</button>
@@ -652,17 +668,17 @@ export function renderMasterDashboard({ roleLabel = "Master Administrator" } = {
           </div>
 
           <!-- Custom Date Inputs (shown when Custom is active) -->
-          <div id="cc-custom-date-wrap" style="display:${dashboardState.period === "custom" ? "flex" : "none"};align-items:center;gap:8px;">
-            <input type="date" id="cc-custom-from" class="form-control form-control-sm" style="font-size:12px;width:130px;" />
-            <span style="color:var(--muted);font-size:12px;">to</span>
-            <input type="date" id="cc-custom-to" class="form-control form-control-sm" style="font-size:12px;width:130px;" />
+          <div id="cc-custom-date-wrap" style="display:${dashboardState.period === "custom" ? "flex" : "none"}; align-items:center; gap:8px;">
+            <input type="date" id="cc-custom-from" class="form-control form-control-sm" style="font-size:12px; width:130px;" />
+            <span style="color:var(--muted); font-size:12px;">to</span>
+            <input type="date" id="cc-custom-to" class="form-control form-control-sm" style="font-size:12px; width:130px;" />
             <button class="btn btn-xs btn-primary" id="cc-apply-custom-btn" type="button">Apply</button>
           </div>
 
           <!-- Comparison Toggle -->
-          <div style="display:flex;align-items:center;gap:8px;">
-            <span style="font-size:11.5px;font-weight:700;text-transform:uppercase;color:var(--muted);letter-spacing:0.06em;">Compare:</span>
-            <select id="cc-comparison-select" class="form-control form-control-sm" style="font-size:12px;width:160px;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:11.5px; font-weight:700; text-transform:uppercase; color:var(--muted); letter-spacing:0.06em;">Compare:</span>
+            <select id="cc-comparison-select" class="form-control form-control-sm" style="font-size:12px; width:160px;">
               <option value="previous_period" ${dashboardState.comparison === "previous_period" ? "selected" : ""}>vs Prev Period</option>
               <option value="previous_month" ${dashboardState.comparison === "previous_month" ? "selected" : ""}>vs Prev Month</option>
               <option value="target" ${dashboardState.comparison === "target" ? "selected" : ""}>vs Budget / Target</option>

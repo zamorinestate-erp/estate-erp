@@ -230,59 +230,83 @@ export function renderAdminDashboard() {
         <button id="admin-dash-banner-retry" class="btn btn-ghost" style="padding:2px 10px; font-size:12px; color:#fff;" type="button">Retry Connection</button>
       </div>
 
-      <!-- Header & Operating Status Row (Â§21-23) -->
-      <div style="display:flex; align-items:flex-end; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:18px;">
+      <!-- Page Header & Context Strip matching reference HRIS standard -->
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px; margin-bottom:20px; border-bottom:1px solid var(--line); padding-bottom:16px;">
         <div>
-          <div style="color:var(--ink); font-size:24px; font-weight:700; letter-spacing:-0.02em;" class="font-display">
-            ${getGreeting()}, ${operatorName.split(" ")[0]}
+          <div style="display:flex; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:4px;">
+            <h1 class="page-title" style="font-size:24px; font-weight:800; margin:0; color:var(--ink); letter-spacing:-0.3px;">
+              ${getGreeting()}, ${operatorName.split(" ")[0]} 👋
+            </h1>
+            <span class="status info" style="font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;">SCR-002</span>
+            <span class="status warning" style="font-size:10px; font-weight:800; letter-spacing:0.5px;">CAFE OPERATIONS</span>
           </div>
-          <div style="color:var(--muted); font-size:13px; margin-top:2px;" id="admin-dash-subtitle">
-            ${cafeName} Â· Operational Command &amp; Live Monitoring
+          <p style="font-size:13px; color:var(--muted); margin:0 0 10px;" id="admin-dash-subtitle">
+            ${cafeName} · Operational Command, Live Counter Shift &amp; Shift Register
+          </p>
+
+          <!-- Context Strip -->
+          <div style="display:flex; align-items:center; flex-wrap:wrap; gap:8px; font-size:12px; color:var(--ink);">
+            <div style="display:inline-flex; align-items:center; gap:6px; background:var(--surface-sunken); padding:4px 10px; border-radius:6px; border:1px solid var(--line);">
+              <span style="font-weight:700; color:var(--bronze-600);">📍 ${cafeName}</span>
+              <span style="font-size:11px; color:var(--muted);">· Main Counter Mobile</span>
+            </div>
+            <div style="display:inline-flex; align-items:center; gap:5px; background:var(--surface-sunken); padding:4px 10px; border-radius:6px; border:1px solid var(--line);">
+              <span>👤 <strong>${operatorName}</strong></span>
+              <span style="font-size:11px; color:var(--muted); font-family:var(--font-mono);">(${operatorId})</span>
+            </div>
+            <div style="display:inline-flex; align-items:center; gap:5px; background:var(--surface-sunken); padding:4px 10px; border-radius:6px; border:1px solid var(--line); font-family:var(--font-mono); font-size:11.5px;">
+              <span style="display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--color-success, #2E7D32);"></span>
+              <span>Server Time: <strong id="server-time-indicator">11:35 IST</strong> · Online · Synced</span>
+            </div>
           </div>
         </div>
 
-        <div id="admin-dash-cafe-status" style="display:flex; align-items:center; gap:10px;">
-          <div id="cafe-operating-status-badge" class="status success" style="font-size:12px; font-weight:700; padding:5px 12px; letter-spacing:0.04em;">
-            ðŸŸ¢ OPEN Â· OPERATIONAL
+        <div id="admin-dash-cafe-status" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <div id="cafe-operating-status-badge" class="status success" style="font-size:12px; font-weight:700; padding:6px 14px; letter-spacing:0.04em;">
+            🟢 OPEN · OPERATIONAL
           </div>
-          <div id="cafe-readiness-indicator" style="display:none; font-size:11.5px; padding:4px 10px; border-radius:var(--radius-pill); background:var(--bg-surface-2); border:1px solid var(--border-subtle); color:var(--muted);">
-            Ready: 4/5 complete
-          </div>
+          <button class="btn btn-sm btn-secondary" onclick="window.location.reload()" type="button" style="font-size:12px; font-weight:600;">
+            🔄 Refresh
+          </button>
         </div>
       </div>
 
-      <!-- Quick Actions Bar (Â§63-64) -->
-      <div class="glass" style="padding:12px 16px; margin-bottom:20px; display:flex; align-items:center; gap:10px; overflow-x:auto; -webkit-overflow-scrolling:touch;">
-        <span style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; color:var(--muted); white-space:nowrap; margin-right:4px;">Quick Actions:</span>
-        <button class="btn btn-primary" onclick="window.__navigate('pos')" type="button" style="padding:6px 14px; font-size:12.5px; white-space:nowrap; display:inline-flex; align-items:center; gap:6px;">
-          ${icon("pos")} <span>New Bill (POS)</span>
-        </button>
-        <button class="btn btn-secondary" onclick="window.__navigate('attendance')" type="button" style="padding:6px 12px; font-size:12.5px; white-space:nowrap; display:inline-flex; align-items:center; gap:6px;">
-          ${icon("attendance")} <span>Attendance</span>
-        </button>
-        <button class="btn btn-secondary" onclick="window.__navigate('expenses')" type="button" style="padding:6px 12px; font-size:12.5px; white-space:nowrap; display:inline-flex; align-items:center; gap:6px;">
-          ${icon("finance")} <span>Record Expense</span>
-        </button>
-        <button class="btn btn-secondary" onclick="window.__navigate('inventory')" type="button" style="padding:6px 12px; font-size:12.5px; white-space:nowrap; display:inline-flex; align-items:center; gap:6px;">
-          ${icon("inventory")} <span>Stock Check</span>
-        </button>
-        <button class="btn btn-secondary" onclick="window.__navigate('procurement')" type="button" style="padding:6px 12px; font-size:12.5px; white-space:nowrap; display:inline-flex; align-items:center; gap:6px;">
-          ${icon("inventory")} <span>Receive Delivery</span>
-        </button>
-        <button class="btn btn-secondary" onclick="window.__navigate('sales-cash')" type="button" style="padding:6px 12px; font-size:12.5px; white-space:nowrap; display:inline-flex; align-items:center; gap:6px;">
-          ${icon("finance")} <span>Cash Session</span>
-        </button>
-        <button class="btn btn-secondary" onclick="window.__navigate('dept-orders')" type="button" style="padding:6px 12px; font-size:12.5px; white-space:nowrap; display:inline-flex; align-items:center; gap:6px;">
-          ${icon("tasks")} <span>Dept Orders</span>
-        </button>
+      <!-- Quick Actions Bar (§63-64) -->
+      <div class="card" style="padding:18px 20px; margin-bottom:20px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
+        <div style="font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; color:var(--muted); margin-bottom:12px;">
+          CAFE OPERATIONS FAST ACTIONS
+        </div>
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <button class="btn btn-primary" onclick="window.__navigate('pos')" type="button" style="padding:8px 16px; font-size:12.5px; font-weight:600; border-radius:8px; display:inline-flex; align-items:center; gap:6px;">
+            ${icon("pos")} <span>New Bill (POS)</span>
+          </button>
+          <button class="btn btn-secondary" onclick="window.__navigate('attendance')" type="button" style="padding:8px 14px; font-size:12.5px; font-weight:600; border-radius:8px; display:inline-flex; align-items:center; gap:6px;">
+            ${icon("attendance")} <span>Attendance</span>
+          </button>
+          <button class="btn btn-secondary" onclick="window.__navigate('expenses')" type="button" style="padding:8px 14px; font-size:12.5px; font-weight:600; border-radius:8px; display:inline-flex; align-items:center; gap:6px;">
+            ${icon("finance")} <span>Record Expense</span>
+          </button>
+          <button class="btn btn-secondary" onclick="window.__navigate('inventory')" type="button" style="padding:8px 14px; font-size:12.5px; font-weight:600; border-radius:8px; display:inline-flex; align-items:center; gap:6px;">
+            ${icon("inventory")} <span>Stock Check</span>
+          </button>
+          <button class="btn btn-secondary" onclick="window.__navigate('procurement')" type="button" style="padding:8px 14px; font-size:12.5px; font-weight:600; border-radius:8px; display:inline-flex; align-items:center; gap:6px;">
+            ${icon("inventory")} <span>Receive Delivery</span>
+          </button>
+          <button class="btn btn-secondary" onclick="window.__navigate('sales-cash')" type="button" style="padding:8px 14px; font-size:12.5px; font-weight:600; border-radius:8px; display:inline-flex; align-items:center; gap:6px;">
+            ${icon("finance")} <span>Cash Session</span>
+          </button>
+          <button class="btn btn-secondary" onclick="window.__navigate('dept-orders')" type="button" style="padding:8px 14px; font-size:12.5px; font-weight:600; border-radius:8px; display:inline-flex; align-items:center; gap:6px;">
+            ${icon("tasks")} <span>Dept Orders</span>
+          </button>
+        </div>
       </div>
 
-      <!-- AREA 3: Action Required (Â§25-28) -->
-      <div id="admin-dash-action-required-container" style="margin-bottom:22px;">
-        <div class="glass" style="padding:18px 22px;">
+      <!-- AREA 3: Action Required (§25-28) -->
+      <div id="admin-dash-action-required-container" style="margin-bottom:20px;">
+        <div class="card" style="padding:20px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
           <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;">
             <div style="display:flex; align-items:center; gap:8px;">
-              <span style="color:var(--color-accent-amber); font-size:16px;">âš¡</span>
+              <span style="color:var(--color-accent-amber); font-size:16px;">⚡</span>
               <span style="font-weight:700; font-size:15px; color:var(--ink);" class="font-display">Action Required</span>
             </div>
             <span id="admin-dash-action-count-badge" class="status error" style="font-size:11px; font-weight:700;">1 Action Needed</span>

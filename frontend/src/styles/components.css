@@ -1101,11 +1101,11 @@
 .module-hub-section { display: flex; flex-direction: column; gap: 11px; }
 .module-hub-section-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted); margin: 0; padding-left: 2px; }
 .module-tile-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(310px, 1fr)); gap: 14px; width: 100%; }
-@media (max-width: 640px) { .module-tile-grid { grid-template-columns: 1fr; gap: 10px; } }
+@media (max-width: 640px) { .module-tile-grid { grid-template-columns: 1fr; gap: 12px; } }
 
 .module-hub-tile {
-  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-md);
-  padding: 15px 17px; display: flex; align-items: flex-start; gap: 13px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-card, 12px);
+  padding: 16px 18px; display: flex; align-items: flex-start; gap: 14px;
   text-decoration: none; color: var(--ink); cursor: pointer; box-shadow: var(--shadow-xs);
   transition: transform var(--motion-fast) var(--ease-spring), box-shadow var(--motion-fast) var(--ease), border-color var(--motion-fast) var(--ease);
   min-height: 82px; position: relative; overflow: hidden; user-select: none;
