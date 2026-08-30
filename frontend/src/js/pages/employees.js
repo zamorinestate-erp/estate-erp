@@ -54,6 +54,10 @@ export function renderEmployees(subroute) {
           <p style="font-size:14px; color:var(--muted); margin:4px 0 0;">Authoritative workforce administration, position structure, onboarding, skills matrix, and lifecycle mobility.</p>
         </div>
         <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <a class="btn btn-primary" href="#staff-home" style="display:flex; align-items:center; gap:6px; text-decoration:none; font-weight:700;">
+            <span>👤</span>
+            <span>Open Staff Portal →</span>
+          </a>
           <button class="btn btn-secondary" id="refresh-workforce-btn" type="button" style="display:flex; align-items:center; gap:6px;">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
             Refresh Directory

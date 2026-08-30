@@ -43,6 +43,7 @@ const PRIMARY_MASTER_ITEMS = [
 
   // ── PEOPLE ───────────────────────────────────────────────────────────────────
   { id: 'employees',     label: 'Employees',              icon: 'employees',    route: 'employees',         group: 'PEOPLE' },
+  { id: 'staff-home',    label: 'Staff Self-Service',     icon: 'user',         route: 'staff-home',        group: 'PEOPLE' },
   { id: 'payroll',       label: 'Payroll & Payslips',     icon: 'payslip',      route: 'payroll',           group: 'PEOPLE', primaryMasterOnly: true },
 
   // ── FINANCE ──────────────────────────────────────────────────────────────────
