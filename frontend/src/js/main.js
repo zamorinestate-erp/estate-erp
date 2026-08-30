@@ -15,6 +15,7 @@ import { NAVIGATION, ROLES, isRouteAllowed } from "./navigation.js";
 import { renderShell, navigate } from "./router.js";
 import { apiGet, apiPost, getOrCreateDeviceId, setStepUpAuthenticationHandler, setAccessToken, clearAllAuthTokens } from "./apiClient.js";
 import { registerServiceWorker } from "./updateManager.js";
+import { initLanguage } from "./i18n.js";
 import "./responsiveAuditor.js";
 
 // Canonical preview fixtures used strictly for development (4 canonical roles)
@@ -194,6 +195,7 @@ function renderLoadingScreen() {
 setStepUpAuthenticationHandler(async () => Promise.resolve());
 
 async function boot() {
+  initLanguage();
   document.documentElement.setAttribute(
     "data-theme",
     state.settings.theme || "paper"

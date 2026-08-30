@@ -8,6 +8,8 @@
     "dev": "node ../scripts/serve_frontend.js",
     "serve": "node ../scripts/serve_frontend.js",
     "verify:imports": "node verifyRouterImports.mjs",
+    "verify:all": "node ../scripts/verify_all_master.mjs",
+    "audit": "node ../scripts/verify_all_master.mjs",
     "build": "echo \"Zero-build Vanilla ES Modules — Ready for direct static serving.\""
   },
   "keywords": [
