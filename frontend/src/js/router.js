@@ -147,14 +147,14 @@ export function renderShell() {
     app.innerHTML = `
       <div class="app-shell">
         <div id="sidebar-overlay" class="sidebar-overlay" aria-hidden="true"></div>
-        <aside id="sidebar" class="sidebar"></aside>
-        <main class="main-shell">
-          <header id="topbar" class="topbar"></header>
+        <aside id="sidebar" class="sidebar" role="navigation" aria-label="Main Navigation"></aside>
+        <main class="main-shell" role="main">
+          <header id="topbar" class="topbar" role="banner"></header>
           <div id="page-content" class="page"></div>
         </main>
       </div>
-      <div id="modal-root"></div>
-      <div id="toast-root" class="toast-stack"></div>
+      <div id="modal-root" role="region" aria-label="Modals"></div>
+      <div id="toast-root" class="toast-stack" aria-live="polite" aria-atomic="true" role="status"></div>
     `;
     const sb = document.getElementById("sidebar");
     const tb = document.getElementById("topbar");

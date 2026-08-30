@@ -67,7 +67,19 @@ const SUITES = [
     cwd: rootDir,
   },
   {
-    name: "10. Backend Functional Regression Test Suite (903 Tests)",
+    name: "10. UI/UX Edge-Cases, Contrast, Text-Spacing & Human-Quality (10 ACs)",
+    cmd: "node",
+    args: ["scripts/test_ui_edge_cases.mjs"],
+    cwd: rootDir,
+  },
+  {
+    name: "11. Production Pre-Flight & Environment Invariants Audit",
+    cmd: "node",
+    args: ["scripts/audit_production_preflight.mjs"],
+    cwd: rootDir,
+  },
+  {
+    name: "12. Backend Functional Regression Test Suite (903 Tests)",
     cmd: "npm",
     args: ["test"],
     cwd: path.join(rootDir, "backend"),

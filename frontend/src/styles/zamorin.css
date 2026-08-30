@@ -2041,3 +2041,65 @@ tr:last-child td { border-bottom: 0; }
   }
 }
 /* END CAFE OPERATIONS TERMINAL AUTH STYLES */
+
+/* ============================================================
+   FORCED COLORS / WINDOWS HIGH CONTRAST MODE (AC-UI-EDGE-001)
+   ============================================================ */
+@media (forced-colors: active) {
+  .btn, .btn-primary, .btn-secondary, .btn-ghost, .btn-danger, .btn-success,
+  .topbar-action-btn, .action-tile, .tab, .subnav-btn, .tab-btn {
+    border: 1.5px solid ButtonBorder !important;
+  }
+  .btn-primary, .tab.active, .subnav-btn.active, .tab-btn.active,
+  .nav-link.active, .nav-item.active {
+    background: Highlight !important;
+    color: HighlightText !important;
+    border-color: Highlight !important;
+  }
+  .nav-link.active .nav-icon svg,
+  .nav-link.active .nav-label {
+    color: HighlightText !important;
+  }
+  input, select, textarea, .form-input, .form-select, .form-textarea {
+    border: 1.5px solid ButtonBorder !important;
+  }
+  button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+    outline: 2.5px solid Highlight !important;
+    outline-offset: 2px !important;
+  }
+  .card, .glass-card, .kpi-card, .modal-card, .modal-window, .dialog-box {
+    border: 1.5px solid CanvasText !important;
+  }
+  .status, .pill, .badge {
+    border: 1px solid CanvasText !important;
+  }
+  .zamorin-calendar-popup, .zamorin-select-menu, .popover {
+    border: 2px solid CanvasText !important;
+  }
+  .zamorin-cal-day-cell.selected {
+    background: Highlight !important;
+    color: HighlightText !important;
+  }
+  .zamorin-cal-day-cell.today {
+    outline: 2px solid Highlight !important;
+  }
+}
+
+/* ============================================================
+   PREFERS-CONTRAST: MORE (AC-UI-EDGE-002)
+   ============================================================ */
+@media (prefers-contrast: more) {
+  :root {
+    --line: #b0a895;
+    --line-strong: #857d6b;
+    --muted: #4a4538;
+  }
+  .btn, input, select, textarea, .card, .glass-card, .kpi-card {
+    border-width: 1.5px !important;
+    border-color: var(--line-strong) !important;
+  }
+  button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+    outline-width: 3px !important;
+    outline-color: var(--ink-900) !important;
+  }
+}
