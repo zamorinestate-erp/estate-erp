@@ -376,27 +376,27 @@ function renderDashboardBody(data) {
 
   // ── 5. Quick Actions Bar ──────────────────────────────────────────────────
   const quickActionsHtml = `
-    <div class="card" style="padding:18px; margin-bottom:20px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
-      <div style="font-size:11.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:12px;">
+    <div class="card" style="padding:20px; margin-bottom:20px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
+      <div style="font-size:11.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:14px;">
         QUICK ACTIONS &amp; SELF-SERVICE TOOLS
       </div>
-      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-        <button class="btn btn-sm btn-secondary" data-nav-target="staff-leave" type="button">
+      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <button class="btn btn-secondary" data-nav-target="staff-leave" type="button" style="font-size:12.5px; font-weight:600; padding:8px 14px; border-radius:8px;">
           ${icon("calendar", 14)} Apply Leave
         </button>
-        <button class="btn btn-sm btn-secondary" data-nav-target="staff-attendance" type="button">
+        <button class="btn btn-secondary" data-nav-target="staff-attendance" type="button" style="font-size:12.5px; font-weight:600; padding:8px 14px; border-radius:8px;">
           ${icon("attendance", 14)} Regularize Punch
         </button>
-        <button class="btn btn-sm btn-secondary" id="btn-review-timecard" type="button">
+        <button class="btn btn-secondary" id="btn-review-timecard" type="button" style="font-size:12.5px; font-weight:600; padding:8px 14px; border-radius:8px;">
           📋 Review Timecard
         </button>
-        <button class="btn btn-sm btn-secondary" data-settings-section="employment" type="button">
+        <button class="btn btn-secondary" data-settings-section="employment" type="button" style="font-size:12.5px; font-weight:600; padding:8px 14px; border-radius:8px;">
           ${icon("payslip", 14)} My Payslips
         </button>
-        <button class="btn btn-sm btn-secondary" id="btn-request-advance" type="button">
+        <button class="btn btn-secondary" id="btn-request-advance" type="button" style="font-size:12.5px; font-weight:600; padding:8px 14px; border-radius:8px;">
           ${icon("finance", 14)} Request Advance
         </button>
-        <button class="btn btn-sm btn-secondary" id="btn-upload-document" type="button">
+        <button class="btn btn-secondary" id="btn-upload-document" type="button" style="font-size:12.5px; font-weight:600; padding:8px 14px; border-radius:8px;">
           📤 Upload Document
         </button>
       </div>
@@ -405,50 +405,50 @@ function renderDashboardBody(data) {
 
   // ── 6. Lower Information Grid: SCHEDULE & ANNOUNCEMENTS ────────────────────
   const weekDayCardsHtml = weekSchedule.map((d) => `
-    <div class="schedule-day-pill ${d.isToday ? "active-today" : ""}" style="flex:1; min-width:64px; padding:10px 4px; text-align:center; border-radius:var(--radius-md, 8px); background:${d.isToday ? "rgba(180,83,9,0.12)" : "var(--surface-sunken)"}; border:1px solid ${d.isToday ? "rgba(180,83,9,0.3)" : "var(--line)"};">
-      <div style="font-size:11px; font-weight:700; color:${d.isToday ? "#b45309" : "var(--muted)"}; text-transform:uppercase;">${d.day}</div>
-      <div style="font-size:13px; font-weight:800; color:${d.isToday ? "#b45309" : (d.isOff ? "var(--muted)" : "var(--ink)")}; margin-top:2px;">
+    <div class="schedule-day-pill ${d.isToday ? "active-today" : ""}" style="flex:0 0 78px; min-width:78px; padding:12px 6px; text-align:center; border-radius:12px; background:${d.isToday ? "rgba(180,83,9,0.12)" : "var(--surface)"}; border:1px solid ${d.isToday ? "rgba(180,83,9,0.4)" : "var(--line)"}; box-shadow:var(--shadow-xs);">
+      <div style="font-size:11px; font-weight:700; color:${d.isToday ? "#b45309" : "var(--muted)"}; text-transform:uppercase; letter-spacing:0.5px;">${d.day}</div>
+      <div style="font-size:14px; font-weight:800; color:${d.isToday ? "#b45309" : (d.isOff ? "var(--muted)" : "var(--ink)")}; font-family:var(--font-heading); margin-top:4px;">
         ${d.isOff ? "Off" : (d.shiftHours.includes("9") ? "9–5" : "1–9")}
       </div>
-      <div style="font-size:10px; color:var(--muted); margin-top:1px;">
+      <div style="font-size:10.5px; font-weight:600; color:${d.isToday ? "#b45309" : "var(--muted)"}; margin-top:2px;">
         ${d.isOff ? "Rest" : "Duty"}
       </div>
     </div>
   `).join("");
 
   const announcementsListHtml = announcements.slice(0, 2).map((a) => `
-    <div style="padding:10px 0; border-bottom:1px solid var(--line);">
+    <div style="padding:12px 0; border-bottom:1px solid var(--line);">
       <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
         <span class="badge ${a.priority === "HIGH" ? "badge-coral" : "badge-subtle"}" style="font-size:10px; font-weight:700;">${a.category || "NOTICE"}</span>
         <span style="font-size:11px; color:var(--muted);">${formatDateOnly(a.createdAt)}</span>
       </div>
-      <div style="font-size:13px; font-weight:700; color:var(--ink); margin-top:4px;">${a.title}</div>
-      <div style="font-size:12px; color:var(--muted); margin-top:2px;">${a.summary || ""}</div>
+      <div style="font-size:13.5px; font-weight:700; color:var(--ink); margin-top:6px;">${a.title}</div>
+      <div style="font-size:12px; color:var(--muted); margin-top:3px; line-height:1.4;">${a.summary || ""}</div>
     </div>
   `).join("");
 
   const lowerGridHtml = `
-    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:14px;" id="roster-section">
+    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:16px; margin-bottom:20px;" id="roster-section">
       <!-- 7-Day Schedule -->
-      <div class="card" style="padding:18px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <div class="card" style="padding:20px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
           <div style="font-size:11.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.04em;">
             THIS WEEK'S SCHEDULE
           </div>
-          <button class="btn btn-xs btn-ghost" data-nav-target="staff-attendance">Full Roster →</button>
+          <button class="btn btn-xs btn-secondary" data-nav-target="staff-attendance" style="font-weight:600;">Full Roster →</button>
         </div>
-        <div style="display:flex; gap:6px; overflow-x:auto; padding-bottom:4px;">
+        <div style="display:flex; gap:10px; overflow-x:auto; -webkit-overflow-scrolling:touch; padding:4px 2px 10px 2px;">
           ${weekDayCardsHtml}
         </div>
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; padding-top:10px; border-top:1px solid var(--line); font-size:12px; color:var(--muted);">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-top:14px; padding-top:12px; border-top:1px solid var(--line); font-size:12.5px; color:var(--muted);">
           <span>Upcoming: <strong style="color:var(--ink);">Sunday — Weekly Off</strong></span>
-          <button class="btn btn-xs btn-ghost" id="btn-inline-schedule-request">Change Shift Request →</button>
+          <button class="btn btn-xs btn-secondary" id="btn-inline-schedule-request" type="button" style="font-size:11.5px; padding:4px 10px;">Change Shift Request →</button>
         </div>
       </div>
 
       <!-- Announcements -->
-      <div class="card" style="padding:18px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <div class="card" style="padding:20px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
           <div style="font-size:11.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.04em;">
             ANNOUNCEMENTS
           </div>
