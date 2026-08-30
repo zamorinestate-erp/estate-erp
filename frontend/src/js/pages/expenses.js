@@ -916,7 +916,7 @@ function renderEvidenceSubpanel() {
     <div class="card" style="padding:20px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-md, 10px);">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
         <div>
-          <h3 style="font-size:16px;font-weight:700;margin:0;color:var(--ink);">Receipts &amp; Proof Evidence Vault</h3>
+          <h3 style="font-size:16px;font-weight:700;margin:0;color:var(--ink);">Receipts &amp; Evidence Vault</h3>
           <p style="font-size:12.5px;color:var(--muted);margin:2px 0 0;">Cryptographically hashed receipt files, tax invoices, and formal expense proofs.</p>
         </div>
         <button class="btn btn-primary btn-sm" id="upload-expense-receipt-btn" type="button" style="font-weight:700;display:flex;align-items:center;gap:6px;">
