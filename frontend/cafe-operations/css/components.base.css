@@ -19,13 +19,16 @@
   --bronze-700: #7c5322;
   --bronze-600: #9a6a2c;
   --bronze-500: #b17d38;
+  --bronze-400: #c99248;
   --bronze-100: #f4e7d2;
+  --bronze-50:  #faf1e2;
 
   --paper-start: #faf9f6;
   --paper-end: #efeae0;
   --surface: #ffffff;
   --ink: #17140f;
   --muted: #6f6a5c;
+  --muted-2: #b7b0a0;
   --line: #e7e2d5;
   --line-strong: #d7d0bd;
 
@@ -36,7 +39,10 @@
   --radius-input: 14px;
   --radius-card: 26px;
 
+  --surface-sunken: #f2f0e9;
+
   --shadow-card: 0 30px 70px rgba(16, 26, 48, .14), 0 2px 6px rgba(16, 26, 48, .06);
+  --shadow-warm-xs: 0 1px 2px rgba(23,20,15,.05);
   --shadow-btn: 0 10px 22px rgba(16, 26, 48, .22);
 
   --font-display: "Fraunces", ui-serif, Georgia, serif;
@@ -267,7 +273,7 @@
   padding: 0 18px;
   border: 1.5px solid var(--line-strong);
   border-radius: var(--radius-input);
-  background: var(--surface);
+  background: var(--paper-start);
   box-shadow: inset 0 1px 2px rgba(23, 20, 15, .035);
   font: inherit;
   font-size: 1rem;
@@ -284,7 +290,7 @@
 .auth-password input:focus {
   outline: none;
   border-color: var(--bronze-500);
-  box-shadow: inset 0 1px 2px rgba(23, 20, 15, .035), 0 0 0 4px rgba(177, 125, 56, .16);
+  box-shadow: inset 0 1px 2px rgba(23, 20, 15, .035), 0 0 0 3px rgba(177, 125, 56, .18);
   background: #fffdf9;
 }
 
