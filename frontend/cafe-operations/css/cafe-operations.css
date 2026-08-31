@@ -20,6 +20,24 @@
    ===================================================================== */
 
 /* ---------------------------------------------------------------------
+   Root container — constrain and centre every screen card to 580px,
+   matching the main login page's .auth-card-container exactly.
+   --------------------------------------------------------------------- */
+#cafeOpsRoot {
+  width: 100%;
+  max-width: 580px;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+/* Ensure the card itself never overflows the root */
+#cafeOpsRoot .auth-card {
+  width: 100%;
+  max-width: 580px;
+  box-sizing: border-box;
+}
+
+/* ---------------------------------------------------------------------
    Brand header — logo only, no separate "Zamorin" text heading, because
    the real logo/zamorin-logo-stacked.svg already bakes the full
    ZAMORIN / ESTATE / PVT. LTD. wordmark in as SVG text. Replaces the
