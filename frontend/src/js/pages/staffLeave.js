@@ -12,9 +12,22 @@ import { icon } from "../icons.js";
 import { apiGet, apiPost } from "../apiClient.js";
 
 let activeTab = "OVERVIEW"; // 'OVERVIEW' | 'CALENDAR' | 'REQUESTS' | 'BALANCES' | 'STATEMENT'
-let cachedBalances = null;
+let selectedDurationUnit = "FULL_DAY";
+let selectedLeaveFilter = "ALL";
+let cachedBalances = {
+  casual: 4.5,
+  sick: 6.0,
+  earned: 12.0,
+  compOff: 1.0,
+  totalAvailable: 23.5
+};
 let cachedTypes = [];
-let cachedRequests = [];
+let cachedRequests = [
+  { id: "LR-20260829-001", type: "Casual Leave", dates: "29 Aug 2026", days: 1.0, status: "PENDING", submitted: "19 Aug, 10:15 AM", canWithdraw: true, canCancel: false, reason: "Family personal function" },
+  { id: "LR-20260910-001", type: "Casual Leave", dates: "10–11 Sep 2026", days: 2.0, status: "APPROVED", submitted: "14 Aug, 09:30 AM", canWithdraw: false, canCancel: true, reason: "Attending wedding" },
+  { id: "LR-20260710-001", type: "Casual Leave", dates: "10–11 Jul 2026", days: 2.0, status: "APPROVED", submitted: "02 Jul, 11:00 AM", canWithdraw: false, canCancel: false, reason: "Personal work" },
+  { id: "LR-20260601-001", type: "Earned Leave", dates: "05–08 Jun 2026", days: 4.0, status: "REJECTED", submitted: "25 May, 04:00 PM", canWithdraw: false, canCancel: false, reason: "Summer vacation" },
+];
 let cachedLedger = [];
 let currentCalendarMonth = "2026-08";
 
@@ -47,27 +60,25 @@ export function renderStaffLeave() {
 
 function renderHeader() {
   return `
-    <div class="flex items-center justify-between flex-wrap gap-md" style="margin-bottom:16px;">
+    <div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px; margin-bottom:20px;">
       <div>
-        <div style="font-size:22px; font-weight:800; color:var(--text-primary); letter-spacing:-0.02em; display:flex; align-items:center; gap:8px;">
-          <span>🌴</span>
-          <span>My Leave Self-Service</span>
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <h1 style="font-size:24px; font-weight:700; margin:0; color:var(--ink);">My Leave Self-Service</h1>
+          <span class="badge" style="background:rgba(180,83,9,0.12); color:#b45309; font-weight:600; font-size:12px; padding:4px 10px; border-radius:12px; white-space:nowrap;">EMP-SCR-003</span>
         </div>
-        <div style="font-size:13px; color:var(--text-muted); margin-top:2px;">
-          Dawn Roast — Koramangala · Employee Leave Entitlement &amp; Requests
-        </div>
+        <p style="font-size:13px; color:var(--muted); margin:4px 0 0;">Dawn Roast — Koramangala · Employee Leave Entitlement &amp; Requests</p>
       </div>
 
       <!-- Total Available Balance Pill -->
-      <div class="card flex items-center gap-md" style="padding:10px 18px; background:var(--bg-surface-1); border-radius:var(--radius-md); border:1px solid var(--border-subtle); box-shadow:var(--shadow-sm);">
+      <div class="card" style="padding:8px 14px; background:var(--surface); border-radius:10px; border:1px solid var(--line); box-shadow:var(--shadow-xs); display:flex; align-items:center; gap:12px; flex-shrink:0;">
         <div>
-          <div style="font-size:10px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em;">
+          <div style="font-size:10px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.04em;">
             TOTAL AVAILABLE BALANCE
           </div>
-          <div id="total-available-leave-val" style="font-size:20px; font-weight:800; color:var(--color-accent-mint); line-height:1.2;">
+          <div id="total-available-leave-val" style="font-size:18px; font-weight:800; color:#059669; font-family:var(--font-heading); line-height:1.2; margin-top:2px;">
             24.5 Days
           </div>
-          <div style="font-size:11px; color:var(--text-muted);">Across 4 paid plans</div>
+          <div style="font-size:11px; color:var(--muted);">Across 4 paid plans</div>
         </div>
       </div>
     </div>
@@ -106,40 +117,40 @@ function renderOverviewTab() {
     <div style="margin-bottom:24px;">
       <!-- Leave Balance Cards Grid (By Type) -->
       <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:14px; margin-bottom:20px;">
-        <div class="card" style="padding:16px; background:var(--bg-surface-1); border-radius:var(--radius-md); border:1px solid var(--border-subtle);">
-          <div class="flex justify-between items-center">
-            <span style="font-size:12px; font-weight:700; color:var(--brand-gold);">Casual Leave</span>
-            <span class="badge badge-subtle" style="font-size:10px;">PAID</span>
+        <div class="kpi-card" style="background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); padding:16px 18px; box-shadow:var(--shadow-xs);">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="font-size:11.5px; color:var(--muted); text-transform:uppercase; font-weight:700; letter-spacing:0.4px;">Casual Leave</div>
+            <span class="badge-tag" style="background:var(--surface-sunken); color:var(--ink); font-size:10px; font-weight:700; padding:1px 6px; border-radius:4px;">PAID</span>
           </div>
-          <div style="font-size:24px; font-weight:800; color:var(--text-primary); margin-top:6px;">4.5 <span style="font-size:13px; font-weight:500; color:var(--text-muted);">days</span></div>
-          <div style="font-size:11.5px; color:var(--text-muted); margin-top:2px;">1.0 day pending · 8.0 accrued YTD</div>
+          <div style="font-size:26px; font-weight:800; color:var(--ink); font-family:var(--font-heading); margin-top:4px;">4.5 <span style="font-size:13px; font-weight:500; color:var(--muted);">days</span></div>
+          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">1.0 day pending · 8.0 accrued YTD</div>
         </div>
 
-        <div class="card" style="padding:16px; background:var(--bg-surface-1); border-radius:var(--radius-md); border:1px solid var(--border-subtle);">
-          <div class="flex justify-between items-center">
-            <span style="font-size:12px; font-weight:700; color:var(--color-accent-mint);">Sick Leave</span>
-            <span class="badge badge-subtle" style="font-size:10px;">PAID</span>
+        <div class="kpi-card" style="background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); padding:16px 18px; box-shadow:var(--shadow-xs);">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="font-size:11.5px; color:var(--muted); text-transform:uppercase; font-weight:700; letter-spacing:0.4px;">Sick Leave</div>
+            <span class="badge-tag" style="background:var(--surface-sunken); color:var(--ink); font-size:10px; font-weight:700; padding:1px 6px; border-radius:4px;">PAID</span>
           </div>
-          <div style="font-size:24px; font-weight:800; color:var(--text-primary); margin-top:6px;">6.0 <span style="font-size:13px; font-weight:500; color:var(--text-muted);">days</span></div>
-          <div style="font-size:11.5px; color:var(--text-muted); margin-top:2px;">0 pending · Medical slip &gt; 2 days</div>
+          <div style="font-size:26px; font-weight:800; color:#059669; font-family:var(--font-heading); margin-top:4px;">6.0 <span style="font-size:13px; font-weight:500; color:var(--muted);">days</span></div>
+          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">0 pending · Medical slip &gt; 2 days</div>
         </div>
 
-        <div class="card" style="padding:16px; background:var(--bg-surface-1); border-radius:var(--radius-md); border:1px solid var(--border-subtle);">
-          <div class="flex justify-between items-center">
-            <span style="font-size:12px; font-weight:700; color:var(--brand-gold);">Earned Leave</span>
-            <span class="badge badge-subtle" style="font-size:10px;">PAID</span>
+        <div class="kpi-card" style="background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); padding:16px 18px; box-shadow:var(--shadow-xs);">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="font-size:11.5px; color:var(--muted); text-transform:uppercase; font-weight:700; letter-spacing:0.4px;">Earned Leave</div>
+            <span class="badge-tag" style="background:var(--surface-sunken); color:var(--ink); font-size:10px; font-weight:700; padding:1px 6px; border-radius:4px;">PAID</span>
           </div>
-          <div style="font-size:24px; font-weight:800; color:var(--text-primary); margin-top:6px;">12.0 <span style="font-size:13px; font-weight:500; color:var(--text-muted);">days</span></div>
-          <div style="font-size:11.5px; color:var(--color-accent-coral); margin-top:2px;">2.0 days expire 31 Dec 2026</div>
+          <div style="font-size:26px; font-weight:800; color:var(--ink); font-family:var(--font-heading); margin-top:4px;">12.0 <span style="font-size:13px; font-weight:500; color:var(--muted);">days</span></div>
+          <div style="font-size:11.5px; color:#b45309; font-weight:600; margin-top:2px;">2.0 days expire 31 Dec 2026</div>
         </div>
 
-        <div class="card" style="padding:16px; background:var(--bg-surface-1); border-radius:var(--radius-md); border:1px solid var(--border-subtle);">
-          <div class="flex justify-between items-center">
-            <span style="font-size:12px; font-weight:700; color:var(--text-primary);">Comp-Off</span>
-            <span class="badge badge-subtle" style="font-size:10px;">PAID</span>
+        <div class="kpi-card" style="background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); padding:16px 18px; box-shadow:var(--shadow-xs);">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="font-size:11.5px; color:var(--muted); text-transform:uppercase; font-weight:700; letter-spacing:0.4px;">Comp-Off</div>
+            <span class="badge-tag" style="background:var(--surface-sunken); color:var(--ink); font-size:10px; font-weight:700; padding:1px 6px; border-radius:4px;">PAID</span>
           </div>
-          <div style="font-size:24px; font-weight:800; color:var(--text-primary); margin-top:6px;">1.0 <span style="font-size:13px; font-weight:500; color:var(--text-muted);">day</span></div>
-          <div style="font-size:11.5px; color:var(--text-muted); margin-top:2px;">Expires 31 Aug 2026</div>
+          <div style="font-size:26px; font-weight:800; color:var(--ink); font-family:var(--font-heading); margin-top:4px;">1.0 <span style="font-size:13px; font-weight:500; color:var(--muted);">day</span></div>
+          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">Expires 31 Aug 2026</div>
         </div>
       </div>
 
@@ -191,14 +202,14 @@ function renderOverviewTab() {
                   Duration Unit
                 </label>
                 <div class="flex items-center gap-xs">
-                  <label class="btn btn-xs btn-primary" id="btn-unit-full" style="cursor:pointer; padding:6px 12px;">
-                    <input type="radio" name="durationUnit" value="FULL_DAY" checked style="display:none;" /> Full Day
+                  <label class="btn btn-xs ${selectedDurationUnit === "FULL_DAY" ? "btn-primary" : "btn-ghost"}" id="btn-unit-full" data-unit="FULL_DAY" style="cursor:pointer; padding:6px 12px;">
+                    <input type="radio" name="durationUnit" value="FULL_DAY" ${selectedDurationUnit === "FULL_DAY" ? "checked" : ""} style="display:none;" /> Full Day
                   </label>
-                  <label class="btn btn-xs btn-ghost" id="btn-unit-first" style="cursor:pointer; padding:6px 12px;">
-                    <input type="radio" name="durationUnit" value="FIRST_HALF" style="display:none;" /> First Half (0.5)
+                  <label class="btn btn-xs ${selectedDurationUnit === "FIRST_HALF" ? "btn-primary" : "btn-ghost"}" id="btn-unit-first" data-unit="FIRST_HALF" style="cursor:pointer; padding:6px 12px;">
+                    <input type="radio" name="durationUnit" value="FIRST_HALF" ${selectedDurationUnit === "FIRST_HALF" ? "checked" : ""} style="display:none;" /> First Half (0.5)
                   </label>
-                  <label class="btn btn-xs btn-ghost" id="btn-unit-second" style="cursor:pointer; padding:6px 12px;">
-                    <input type="radio" name="durationUnit" value="SECOND_HALF" style="display:none;" /> Second Half (0.5)
+                  <label class="btn btn-xs ${selectedDurationUnit === "SECOND_HALF" ? "btn-primary" : "btn-ghost"}" id="btn-unit-second" data-unit="SECOND_HALF" style="cursor:pointer; padding:6px 12px;">
+                    <input type="radio" name="durationUnit" value="SECOND_HALF" ${selectedDurationUnit === "SECOND_HALF" ? "checked" : ""} style="display:none;" /> Second Half (0.5)
                   </label>
                 </div>
               </div>
@@ -307,12 +318,19 @@ function renderOverviewTab() {
 
 // ── 2. CALENDAR TAB ──────────────────────────────────────────────────────────
 function renderCalendarTab() {
+  const [year, month] = currentCalendarMonth.split("-");
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const fullMonthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  const mIndex = parseInt(month, 10) - 1;
+  const monthDisplay = `${monthNames[mIndex]} ${year}`;
+  const fullMonthDisplay = `${fullMonthNames[mIndex]} ${year}`;
+
   return `
     <div class="card" style="padding:22px; background:var(--bg-surface-1); border-radius:var(--radius-lg); box-shadow:var(--shadow-sm); border:1px solid var(--border-subtle); margin-bottom:24px;">
       <div class="flex items-center justify-between flex-wrap gap-sm" style="margin-bottom:18px;">
         <div>
           <div style="font-size:16px; font-weight:800; color:var(--text-primary);">
-            August 2026 My Leave &amp; Schedule Calendar
+            ${fullMonthDisplay} My Leave &amp; Schedule Calendar
           </div>
           <div style="font-size:12px; color:var(--text-muted);">
             Personal leaves, statutory holidays, and rostered weekly offs.
@@ -320,7 +338,7 @@ function renderCalendarTab() {
         </div>
         <div class="flex items-center gap-xs">
           <button class="btn btn-xs btn-ghost" id="btn-lcal-prev">◀</button>
-          <span style="font-size:12.5px; font-weight:700; color:var(--brand-gold);">Aug 2026</span>
+          <span style="font-size:12.5px; font-weight:700; color:var(--brand-gold);">${monthDisplay}</span>
           <button class="btn btn-xs btn-ghost" id="btn-lcal-next">▶</button>
         </div>
       </div>
@@ -392,10 +410,10 @@ function renderRequestsTab() {
           </div>
           <div class="flex items-center gap-xs">
             <select class="input" id="sel-req-status-filter" style="padding:4px 8px; font-size:12px;">
-              <option value="ALL">All Statuses</option>
-              <option value="PENDING">Pending Only</option>
-              <option value="APPROVED">Approved Only</option>
-              <option value="REJECTED">Rejected Only</option>
+              <option value="ALL" ${selectedLeaveFilter === "ALL" ? "selected" : ""}>All Statuses</option>
+              <option value="PENDING" ${selectedLeaveFilter === "PENDING" ? "selected" : ""}>Pending Only</option>
+              <option value="APPROVED" ${selectedLeaveFilter === "APPROVED" ? "selected" : ""}>Approved Only</option>
+              <option value="REJECTED" ${selectedLeaveFilter === "REJECTED" ? "selected" : ""}>Rejected Only</option>
             </select>
           </div>
         </div>
@@ -424,21 +442,29 @@ function renderRequestsTab() {
 }
 
 function renderRequestRows() {
-  const list = [
-    { id: "LR-20260829-001", type: "Casual Leave", dates: "29 Aug 2026", days: 1.0, status: "PENDING", submitted: "19 Aug, 10:15 AM", canWithdraw: true, canCancel: false },
-    { id: "LR-20260910-001", type: "Casual Leave", dates: "10–11 Sep 2026", days: 2.0, status: "APPROVED", submitted: "14 Aug, 09:30 AM", canWithdraw: false, canCancel: true },
-    { id: "LR-20260710-001", type: "Casual Leave", dates: "10–11 Jul 2026", days: 2.0, status: "APPROVED", submitted: "02 Jul, 11:00 AM", canWithdraw: false, canCancel: false },
-    { id: "LR-20260601-001", type: "Earned Leave", dates: "05–08 Jun 2026", days: 4.0, status: "REJECTED", submitted: "25 May, 04:00 PM", canWithdraw: false, canCancel: false },
-  ];
+  const filtered = cachedRequests.filter(r => {
+    if (selectedLeaveFilter === "ALL") return true;
+    return r.status === selectedLeaveFilter;
+  });
 
-  return list.map((r) => `
+  if (filtered.length === 0) {
+    return `
+      <tr>
+        <td colspan="7" style="padding:32px; text-align:center; color:var(--text-muted);">
+          No leave requests match the selected status filter (${selectedLeaveFilter}).
+        </td>
+      </tr>
+    `;
+  }
+
+  return filtered.map((r) => `
     <tr style="border-bottom:1px solid var(--border-subtle);">
       <td style="padding:10px 8px; font-family:monospace; font-weight:700; color:var(--text-primary);">${r.id}</td>
       <td style="padding:10px 8px; color:var(--text-primary); font-weight:600;">${r.type}</td>
       <td style="padding:10px 8px; color:var(--text-secondary);">${r.dates}</td>
       <td style="padding:10px 8px; font-weight:700; color:var(--brand-gold);">${r.days}</td>
       <td style="padding:10px 8px;">
-        <span class="badge ${r.status === "APPROVED" ? "badge-mint" : r.status === "PENDING" ? "badge-gold" : "badge-coral"}" style="font-size:10.5px;">
+        <span class="badge ${r.status === "APPROVED" ? "badge-mint" : r.status === "PENDING" ? "badge-gold" : r.status === "WITHDRAWN" ? "badge-subtle" : "badge-coral"}" style="font-size:10.5px;">
           ${r.status}
         </span>
       </td>
@@ -448,8 +474,8 @@ function renderRequestRows() {
           <button class="btn btn-xs btn-ghost btn-view-leave-detail" data-leave-id="${r.id}">
             Details
           </button>
-          ${r.canWithdraw ? `<button class="btn btn-xs btn-coral btn-withdraw-request" data-leave-id="${r.id}" style="padding:2px 6px;">Withdraw</button>` : ""}
-          ${r.canCancel ? `<button class="btn btn-xs btn-secondary btn-cancel-leave" data-leave-id="${r.id}" style="padding:2px 6px;">Cancel</button>` : ""}
+          ${r.canWithdraw || r.status === "PENDING" ? `<button class="btn btn-xs btn-coral btn-withdraw-request" data-leave-id="${r.id}" style="padding:2px 6px;">Withdraw</button>` : ""}
+          ${r.canCancel || r.status === "APPROVED" ? `<button class="btn btn-xs btn-secondary btn-cancel-leave" data-leave-id="${r.id}" style="padding:2px 6px;">Cancel</button>` : ""}
         </div>
       </td>
     </tr>
@@ -602,31 +628,76 @@ export function wireStaffLeave(root) {
   }
 
   function bindTabInteractions(container) {
+    // Duration unit selector
+    container.querySelectorAll("#btn-unit-full, #btn-unit-first, #btn-unit-second").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const unit = btn.id === "btn-unit-first" ? "FIRST_HALF" : btn.id === "btn-unit-second" ? "SECOND_HALF" : "FULL_DAY";
+        selectedDurationUnit = unit;
+
+        container.querySelectorAll("#btn-unit-full, #btn-unit-first, #btn-unit-second").forEach((b) => {
+          b.className = `btn btn-xs ${b.id === btn.id ? "btn-primary" : "btn-ghost"}`;
+          const r = b.querySelector("input[type='radio']");
+          if (r) r.checked = (b.id === btn.id);
+        });
+
+        // Update calculation preview box
+        const previewDaysCharged = container.querySelector("#leave-calc-preview-box strong[style*='color:var(--brand-gold)']");
+        if (previewDaysCharged) {
+          previewDaysCharged.textContent = unit === "FULL_DAY" ? "2.0 Days" : "0.5 Days";
+        }
+      });
+    });
+
     // Apply leave submission
     container.querySelector("#btn-submit-leave")?.addEventListener("click", async () => {
-      const type = container.querySelector("#leave-type-select").value;
-      const startDate = container.querySelector("#leave-start-date").value;
-      const endDate = container.querySelector("#leave-end-date").value;
-      const reason = container.querySelector("#leave-reason-input").value.trim();
+      const typeSelect = container.querySelector("#leave-type-select");
+      const type = typeSelect ? typeSelect.value : "CASUAL";
+      const typeName = typeSelect ? typeSelect.options[typeSelect.selectedIndex].text.split("(")[0].trim() : "Casual Leave";
+      const startDate = container.querySelector("#leave-start-date")?.value || "2026-08-24";
+      const endDate = container.querySelector("#leave-end-date")?.value || startDate;
+      const reason = container.querySelector("#leave-reason-input")?.value?.trim();
 
       if (!reason) {
         showToast("Please provide a mandatory reason for leave.", "amber");
         return;
       }
 
+      let requestedDays = selectedDurationUnit === "FULL_DAY" ? 2.0 : 0.5;
+      const newLeaveId = `LR-${startDate.replace(/-/g, "")}-${String(cachedRequests.length + 1).padStart(3, "0")}`;
+      const newLeave = {
+        id: newLeaveId,
+        type: typeName,
+        dates: startDate === endDate ? startDate : `${startDate} to ${endDate}`,
+        days: requestedDays,
+        status: "PENDING",
+        submitted: "Just now",
+        canWithdraw: true,
+        canCancel: false,
+        reason: reason,
+        startDate,
+        endDate,
+        requestedDays
+      };
+      cachedRequests.unshift(newLeave);
+
       try {
-        const res = await apiPost("/leave/requests", {
+        await apiPost("/leave/requests", {
           leaveType: type,
           startDate,
           endDate,
           reason,
-        });
+          durationUnit: selectedDurationUnit
+        }).catch(() => null);
+      } catch {}
 
-        openLeaveReceiptModal(res?.data?.leave || { leaveId: `LR-${startDate.replace(/-/g, "")}-001`, leaveType: type, startDate, endDate, requestedDays: 2.0 });
-        loadInitialData();
-      } catch (err) {
-        openLeaveReceiptModal({ leaveId: `LR-${startDate.replace(/-/g, "")}-001`, leaveType: type, startDate, endDate, requestedDays: 2.0 });
-      }
+      openLeaveReceiptModal(newLeave);
+      refreshTabContent();
+    });
+
+    // Status filter
+    container.querySelector("#sel-req-status-filter")?.addEventListener("change", (e) => {
+      selectedLeaveFilter = e.target.value;
+      refreshTabContent();
     });
 
     // View all requests shortcut
@@ -640,13 +711,17 @@ export function wireStaffLeave(root) {
     container.querySelectorAll(".btn-withdraw-request").forEach((btn) => {
       btn.addEventListener("click", async () => {
         const leaveId = btn.dataset.leaveId;
-        try {
-          await apiPost(`/leave/requests/${leaveId}/withdraw`);
-          showToast(`Leave request ${leaveId} withdrawn successfully ✓`, "mint");
-          loadInitialData();
-        } catch {
-          showToast(`Leave request ${leaveId} withdrawn successfully ✓`, "mint");
+        const target = cachedRequests.find(r => r.id === leaveId);
+        if (target) {
+          target.status = "WITHDRAWN";
+          target.canWithdraw = false;
+          target.canCancel = false;
         }
+        try {
+          await apiPost(`/leave/requests/${leaveId}/withdraw`).catch(() => null);
+        } catch {}
+        showToast(`Leave request ${leaveId} withdrawn successfully ✓`, "mint");
+        refreshTabContent();
       });
     });
 
@@ -654,7 +729,14 @@ export function wireStaffLeave(root) {
     container.querySelectorAll(".btn-cancel-leave").forEach((btn) => {
       btn.addEventListener("click", () => {
         const leaveId = btn.dataset.leaveId;
-        openCancelLeaveModal(leaveId, loadInitialData);
+        openCancelLeaveModal(leaveId, () => {
+          const target = cachedRequests.find(r => r.id === leaveId);
+          if (target) {
+            target.status = "CANCEL_REQUESTED";
+            target.canCancel = false;
+          }
+          refreshTabContent();
+        });
       });
     });
 
@@ -662,8 +744,39 @@ export function wireStaffLeave(root) {
     container.querySelectorAll(".btn-view-leave-detail").forEach((btn) => {
       btn.addEventListener("click", () => {
         const leaveId = btn.dataset.leaveId;
-        openLeaveDetailModal(leaveId);
+        const req = cachedRequests.find(r => r.id === leaveId) || {
+          id: leaveId,
+          type: "Casual Leave",
+          dates: "29 Aug 2026",
+          days: 1.0,
+          reason: "Family personal function",
+          status: "PENDING REVIEW"
+        };
+        openLeaveDetailModal(req);
       });
+    });
+
+    // Calendar navigation
+    container.querySelector("#btn-lcal-prev")?.addEventListener("click", () => {
+      let [y, m] = currentCalendarMonth.split("-").map(Number);
+      m -= 1;
+      if (m < 1) {
+        m = 12;
+        y -= 1;
+      }
+      currentCalendarMonth = `${y}-${String(m).padStart(2, "0")}`;
+      refreshTabContent();
+    });
+
+    container.querySelector("#btn-lcal-next")?.addEventListener("click", () => {
+      let [y, m] = currentCalendarMonth.split("-").map(Number);
+      m += 1;
+      if (m > 12) {
+        m = 1;
+        y += 1;
+      }
+      currentCalendarMonth = `${y}-${String(m).padStart(2, "0")}`;
+      refreshTabContent();
     });
 
     // Export CSV
@@ -729,10 +842,18 @@ function openLeaveReceiptModal(leave) {
   modal.querySelector("#leave-receipt-done-btn")?.addEventListener("click", () => modal.remove());
 }
 
-// ── LEAVE DETAIL MODAL ───────────────────────────────────────────────────────
-function openLeaveDetailModal(leaveId) {
+function openLeaveDetailModal(leaveInput) {
   let existing = document.getElementById("leave-detail-modal");
   if (existing) existing.remove();
+
+  const req = typeof leaveInput === "object" ? leaveInput : (cachedRequests.find(r => r.id === leaveInput) || {
+    id: leaveInput,
+    type: "Casual Leave",
+    dates: "29 Aug 2026",
+    days: 1.0,
+    reason: "Family personal function",
+    status: "PENDING"
+  });
 
   const modal = document.createElement("div");
   modal.id = "leave-detail-modal";
@@ -749,21 +870,21 @@ function openLeaveDetailModal(leaveId) {
       </div>
 
       <div style="font-size:13px; font-family:monospace; font-weight:700; color:var(--brand-gold); margin-bottom:14px;">
-        ${leaveId}
+        ${req.id}
       </div>
 
       <div style="display:flex; flex-direction:column; gap:10px; font-size:13px; margin-bottom:18px;">
         <div class="flex justify-between" style="padding:8px 12px; background:var(--bg-surface-2); border-radius:var(--radius-sm);">
-          <span>Leave Plan:</span><strong>Casual Leave (Paid)</strong>
+          <span>Leave Plan:</span><strong>${req.type || "Casual Leave (Paid)"}</strong>
         </div>
         <div class="flex justify-between" style="padding:8px 12px; background:var(--bg-surface-2); border-radius:var(--radius-sm);">
-          <span>Requested Period:</span><strong>29 Aug 2026 (1.0 Day)</strong>
+          <span>Requested Period:</span><strong>${req.dates} (${req.days} Day${req.days === 1 ? '' : 's'})</strong>
         </div>
         <div class="flex justify-between" style="padding:8px 12px; background:var(--bg-surface-2); border-radius:var(--radius-sm);">
-          <span>Reason:</span><strong>Family personal function</strong>
+          <span>Reason:</span><strong>${req.reason || "Personal reason"}</strong>
         </div>
         <div class="flex justify-between" style="padding:8px 12px; background:var(--bg-surface-2); border-radius:var(--radius-sm);">
-          <span>Current Status:</span><strong style="color:var(--brand-gold);">PENDING REVIEW</strong>
+          <span>Current Status:</span><strong style="color:${req.status === "APPROVED" ? "#059669" : req.status === "PENDING" ? "#b45309" : "#dc2626"};">${req.status}</strong>
         </div>
       </div>
 

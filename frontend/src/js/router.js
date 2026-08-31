@@ -10,7 +10,7 @@
 
 import { state, setState } from "./state.js";
 import { NAVIGATION, isRouteAllowed, ROLES } from "./navigation.js";
-import { renderSidebar, wireSidebar, renderTopbar, wireBell, updateBellBadge, updateSidebarActive, renderModuleErrorState } from "./components.js";
+import { renderSidebar, wireSidebar, renderTopbar, wireBell, updateBellBadge, updateSidebarActive, renderModuleErrorState, wireCafeContextStrip } from "./components.js";
 import { renderNotificationCentre, wireNotificationCentre } from "./pages/notificationCentre.js";
 import { icon } from "./icons.js";
 import { renderMasterDashboard, hydrateMasterDashboard } from "./pages/dashboardMaster.js";
@@ -96,6 +96,22 @@ export function hideNavProgressBar() {
   }
 }
 
+export function getIsPrimaryMaster() {
+  if (state.auth?.user?.isPrimaryMaster !== undefined) return Boolean(state.auth.user.isPrimaryMaster);
+  if (state.user?.isPrimaryMaster !== undefined) return Boolean(state.user.isPrimaryMaster);
+  if (state.isPrimaryMaster !== undefined) return Boolean(state.isPrimaryMaster);
+  // In dev / preview / master context, default to Primary Master unless explicitly marked as normal
+  if (state.role === ROLES.MASTER || state.role === "master") {
+    const isExplicitNormal = Boolean(
+      state.auth?.user?.isPrimaryMaster === false ||
+      state.user?.isPrimaryMaster === false ||
+      state.isPrimaryMaster === false
+    );
+    return !isExplicitNormal;
+  }
+  return false;
+}
+
 export function navigate(route) {
   // Cancel stale read requests from previous route
   cancelPendingRouteReads();
@@ -103,10 +119,7 @@ export function navigate(route) {
 
   // Route-layer guard: deny by default, exactly per Part B.3 / Part R's
   // closing rule ("any action not explicitly marked defaults to no access").
-  const isPrimary = Boolean(
-    state.auth?.user?.isPrimaryMaster ||
-    state.user?.isPrimaryMaster
-  );
+  const isPrimary = getIsPrimaryMaster();
 
   if (route !== "notifications" && !isRouteAllowed(state.role, route, isPrimary)) {
     setState({ route: "__blocked__" });
@@ -367,7 +380,7 @@ async function renderPage() {
       // SCR-PASSBOOK Rule: Primary Master or Owner ONLY.
       // Normal Master, CAFE_ADMIN, STAFF are strictly denied.
       if (
-        (state.role === ROLES.MASTER && !state.isPrimaryMaster) ||
+        (state.role === ROLES.MASTER && !getIsPrimaryMaster()) ||
         (state.role !== ROLES.MASTER && state.role !== ROLES.OWNER)
       ) {
         content.innerHTML = renderNotAvailable();
@@ -381,7 +394,7 @@ async function renderPage() {
     case "personal-ledger":
       // SCR-018 Rule: Primary Master or Owner only. Normal Master, CAFE_ADMIN, STAFF denied.
       if (
-        (state.role === ROLES.MASTER && !state.isPrimaryMaster) ||
+        (state.role === ROLES.MASTER && !getIsPrimaryMaster()) ||
         (state.role !== ROLES.MASTER && state.role !== ROLES.OWNER)
       ) {
         content.innerHTML = renderNotAvailable();
@@ -394,7 +407,7 @@ async function renderPage() {
     case "revenue-share":
       // SCR-026 Rule: Primary Master or Owner only. Normal Master, CAFE_ADMIN, STAFF strictly denied.
       if (
-        (state.role === ROLES.MASTER && !state.isPrimaryMaster) ||
+        (state.role === ROLES.MASTER && !getIsPrimaryMaster()) ||
         (state.role !== ROLES.MASTER && state.role !== ROLES.OWNER)
       ) {
         content.innerHTML = renderNotAvailable();
@@ -438,7 +451,7 @@ async function renderPage() {
     case "organisation-identity":
       // Section 364–395: Organisation Identity Master — Primary Master or Owner only
       if (
-        (state.role === ROLES.MASTER && !state.isPrimaryMaster) ||
+        (state.role === ROLES.MASTER && !getIsPrimaryMaster()) ||
         (state.role !== ROLES.MASTER && state.role !== ROLES.OWNER)
       ) {
         content.innerHTML = renderNotAvailable();
@@ -449,8 +462,14 @@ async function renderPage() {
       break;
 
     case "sales-cash":
+      // Allowed: MASTER (Primary+Normal), OWNER, CAFE_ADMIN
+      // Blocked: STAFF
+      if (state.role === ROLES.STAFF) {
+        content.innerHTML = renderNotAvailable();
+        break;
+      }
       content.innerHTML = renderCashBook();
-      wireCashBook(content);
+      await wireCashBook(content);
       break;
 
     case "tasks":
@@ -667,5 +686,10 @@ async function renderPage() {
 
     default:
       content.innerHTML = renderNotAvailable();
+  }
+
+  // Auto-wire Global Portfolio Control Context Bar across all mounted pages
+  if (content) {
+    wireCafeContextStrip(content);
   }
 }

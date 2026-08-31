@@ -939,7 +939,7 @@ h1, h2, h3, .font-display { font-family: var(--font-display); }
   box-shadow: var(--shadow-sm);
   transform: translateY(-1px);
 }
-.btn:active { transform: translateY(0); box-shadow: none; }
+.btn:active:not(:disabled) { transform: translateY(0) scale(0.985); box-shadow: none; }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none !important; box-shadow: none !important; }
 
 .btn-primary {
@@ -1379,9 +1379,10 @@ tr:last-child td { border-bottom: 0; }
   position:fixed; inset:0; z-index:var(--layer-modal, 700);
   display:grid; place-items:center; padding:20px;
   background:rgba(16,26,48,.55); backdrop-filter:blur(8px);
-  opacity:0; pointer-events:none; transition: opacity var(--motion-modal) var(--ease);
+  opacity:0; pointer-events:none; visibility:hidden;
+  transition: opacity var(--motion-standard) var(--ease-standard), visibility var(--motion-standard);
 }
-.modal.open, .modal-backdrop.open { opacity:1; pointer-events:auto; }
+.modal.open, .modal-backdrop.open { opacity:1; pointer-events:auto; visibility:visible; }
 .modal-card, .modal-window {
   width:min(620px,100%);
   max-height:90vh;
@@ -1390,10 +1391,11 @@ tr:last-child td { border-bottom: 0; }
   border:1px solid var(--line);
   border-radius:var(--radius-xl);
   box-shadow:var(--shadow-xl);
-  transform:translateY(14px) scale(.97);
-  transition: transform var(--motion-modal) var(--ease-spring);
+  transform:translateY(8px) scale(.985);
+  opacity:0;
+  transition: transform var(--motion-modal) var(--ease-enter), opacity var(--motion-modal) var(--ease-enter);
 }
-.modal.open .modal-card, .modal-backdrop.open .modal-window { transform:none; }
+.modal.open .modal-card, .modal-backdrop.open .modal-window { transform:translateY(0) scale(1); opacity:1; }
 .modal-head, .modal-header {
   display:flex; align-items:center; justify-content:space-between;
   gap:12px; padding:18px 22px; border-bottom:1px solid var(--line);
@@ -1510,7 +1512,7 @@ tr:last-child td { border-bottom: 0; }
     height: 100%;
     height: 100dvh;
     transform: translateX(-105%);
-    transition: transform .26s var(--ease);
+    transition: transform var(--motion-slow) var(--ease-standard);
     box-shadow: var(--shadow-xl);
     z-index: var(--layer-drawer, 600);
     padding: 16px 12px;
@@ -1605,23 +1607,23 @@ tr:last-child td { border-bottom: 0; }
   .header-controls > * { flex: 1 1 auto; min-width: 0; }
   .grid-6, .grid-4, .grid-3, .grid-2 {
     grid-template-columns: repeat(auto-fit, minmax(min(100%, 140px), 1fr));
-    gap: 8px;
+    gap: 12px;
   }
-  .kpi-card { min-height: 96px; padding: 11px; }
-  .kpi-icon { width: 30px; height: 30px; border-radius: 7px; }
-  .kpi-value { font-size: 1.15rem; }
-  .kpi-label { font-size: 0.68rem; }
+  .kpi-card { min-height: 96px; padding: 14px 16px; border-radius: var(--radius-card, 12px); box-shadow: var(--shadow-xs); }
+  .kpi-icon { width: 32px; height: 32px; border-radius: 8px; }
+  .kpi-value { font-size: 1.25rem; }
+  .kpi-label { font-size: 0.72rem; }
   .quick-actions {
-    grid-template-columns: repeat(auto-fit, minmax(76px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
     overflow-x: auto;
-    padding: 8px;
-    gap: 8px;
+    padding: 10px;
+    gap: 10px;
   }
   .action-tile { min-width: 76px; min-height: 76px; font-size: 0.68rem; }
-  .menu-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
+  .menu-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; }
   .menu-card { min-height: 150px; }
   .menu-thumb { height: 70px; }
-  .form-grid { grid-template-columns: 1fr !important; padding: 10px; gap: 10px; }
+  .form-grid { grid-template-columns: 1fr !important; padding: 12px; gap: 12px; }
   .field, .field.full, .field.half, .field.third { grid-column: auto !important; width: 100%; max-width: 100%; }
   .popover {
     top: calc(var(--topbar, 64px) + 2px);
@@ -1640,7 +1642,7 @@ tr:last-child td { border-bottom: 0; }
     max-width: 100%;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
-    margin-bottom: 12px;
+    margin-bottom: 14px;
   }
   th, td { padding: 8px 10px; font-size: 0.8rem; }
   .stat-strip .stat { padding: 10px 12px; }
@@ -1650,29 +1652,30 @@ tr:last-child td { border-bottom: 0; }
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
     flex-wrap: nowrap;
-    gap: 6px;
+    gap: 8px;
     max-width: 100%;
-    padding-bottom: 4px;
+    padding-bottom: 6px;
   }
   .modal-window {
     width: min(94vw, 560px);
     max-height: min(88vh, 88dvh);
     margin: auto;
-    padding: 16px;
+    padding: 18px;
   }
 }
 
 /* Small mobile (down to 320px) */
 @media (max-width: 480px) {
-  .page { padding-inline: 6px; }
+  .page { padding-inline: 10px; }
   .grid-6, .grid-4, .grid-3, .grid-2 {
     grid-template-columns: 1fr;
+    gap: 12px;
   }
-  .kpi-card { padding: 10px; min-height: 88px; }
-  .kpi-value { font-size: 1.1rem; }
+  .kpi-card { padding: 14px 16px; min-height: 88px; border-radius: var(--radius-card, 12px); }
+  .kpi-value { font-size: 1.25rem; }
   .chart { min-height: 180px; padding-inline: 4px; }
   .chart svg { height: 150px; }
-  .card-head { padding: 10px 12px 8px; flex-wrap: wrap; gap: 6px; }
+  .card-head { padding: 12px 14px 10px; flex-wrap: wrap; gap: 8px; }
   .card-head::after { left: 10px; right: 10px; }
   .bar-chart { gap: 4px; padding-inline: 6px; }
   .select-scope { max-width: 130px; }
@@ -1715,6 +1718,81 @@ tr:last-child td { border-bottom: 0; }
 }
 @media (max-width: 900px) {
   .dash-grid-two-col { grid-template-columns: 1fr !important; }
+}
+
+/* ============================================================
+   UNIVERSAL MOBILE MULTI-COLUMN & COMPONENT AUDIT ENHANCEMENTS
+   ============================================================ */
+@media (max-width: 860px) {
+  /* Force all 2-col or multi-col inline grids to single-column on mobile/tablet */
+  div[style*="grid-template-columns:1fr 1fr"],
+  div[style*="grid-template-columns: 1fr 1fr"],
+  div[style*="grid-template-columns:2fr 1fr"],
+  div[style*="grid-template-columns: 2fr 1fr"],
+  div[style*="grid-template-columns: minmax(0, 1.65fr) minmax(280px, .75fr)"],
+  div[style*="grid-template-columns:1fr 1.3fr"],
+  div[style*="grid-template-columns: 1fr 1.3fr"],
+  div[style*="grid-template-columns:1.2fr 1fr"],
+  div[style*="grid-template-columns: 1.2fr 1fr"],
+  div[style*="grid-template-columns: 1fr 1fr 1.3fr"],
+  .split,
+  .split-even,
+  .dash-grid-two-col,
+  .oto-grid-2col,
+  .occ-control-metrics,
+  .occ-risk-grid,
+  .occ-digest-grid,
+  .occ-kpi-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Prevent code/screen badges from wrapping or clipping */
+  .screen-badge,
+  .header-badge,
+  .badge,
+  [class*="-badge"],
+  span[style*="background:rgba(255"],
+  span[style*="background:var(--bg-surface-2)"],
+  span[style*="border-radius:4px"],
+  span[style*="border-radius:6px"] {
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+    max-width: 100% !important;
+  }
+
+  /* Table responsive wrappers: full width with smooth horizontal swipe */
+  .table-responsive,
+  div[style*="overflow-x:auto"],
+  div[style*="overflow-x: auto"] {
+    width: 100% !important;
+    max-width: 100vw !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    display: block !important;
+  }
+
+  /* Compact side-by-side buttons in modals on mobile */
+  .modal-footer {
+    display: flex !important;
+    flex-direction: row-reverse !important;
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+    justify-content: flex-end !important;
+    padding: 10px 14px !important;
+  }
+  .modal-footer .btn {
+    width: auto !important;
+    min-width: 90px !important;
+    min-height: 38px !important;
+    padding: 6px 14px !important;
+  }
+
+  /* Hide desktop keyboard shortcut badges on touch */
+  .search-kbd,
+  .desktop-only-kbd-hint,
+  kbd.search-kbd {
+    display: none !important;
+  }
 }
 
 /* ============================================================
@@ -2103,3 +2181,392 @@ tr:last-child td { border-bottom: 0; }
     outline-color: var(--ink-900) !important;
   }
 }
+
+/* ============================================================
+   BTN-OUTLINE — Missing utility (used across all pages)
+   ============================================================ */
+.btn-outline {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--line-strong);
+}
+.btn-outline:hover {
+  background: var(--surface-sunken);
+  border-color: var(--ink);
+  box-shadow: none;
+  transform: none;
+}
+.btn-outline:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Dark theme btn-outline */
+[data-theme="midnight"] .btn-outline,
+[data-theme="noir"] .btn-outline {
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
+[data-theme="midnight"] .btn-outline:hover,
+[data-theme="noir"] .btn-outline:hover {
+  background: var(--surface-raised);
+  border-color: var(--bronze-500);
+}
+
+/* ============================================================
+   TABLE ROW HOVER — used in Sales & Cash Book table
+   ============================================================ */
+.table-row-hover { transition: background var(--motion-fast) var(--ease); }
+.table-row-hover:hover td,
+.table-row-hover:hover { background: var(--surface-sunken) !important; }
+
+/* Dark themes */
+[data-theme="midnight"] .table-row-hover:hover td,
+[data-theme="midnight"] .table-row-hover:hover,
+[data-theme="noir"] .table-row-hover:hover td,
+[data-theme="noir"] .table-row-hover:hover { background: var(--surface-raised) !important; }
+
+/* ============================================================
+   DARK THEME — Input & select fixes (ensure readable text)
+   ============================================================ */
+[data-theme="midnight"] .input,
+[data-theme="midnight"] input.input,
+[data-theme="midnight"] select.input,
+[data-theme="midnight"] textarea.input {
+  background: var(--surface-sunken) !important;
+  color: var(--ink) !important;
+  border-color: var(--line-strong) !important;
+}
+[data-theme="noir"] .input,
+[data-theme="noir"] input.input,
+[data-theme="noir"] select.input,
+[data-theme="noir"] textarea.input {
+  background: var(--surface-sunken) !important;
+  color: var(--ink) !important;
+  border-color: var(--line-strong) !important;
+}
+[data-theme="midnight"] .input::placeholder,
+[data-theme="noir"] .input::placeholder {
+  color: var(--muted) !important;
+  opacity: 1;
+}
+[data-theme="midnight"] select.input option,
+[data-theme="noir"] select.input option {
+  background: var(--surface) !important;
+  color: var(--ink) !important;
+}
+
+/* ============================================================
+   DARK THEME — Card & surface fixes
+   ============================================================ */
+[data-theme="midnight"] .card,
+[data-theme="noir"] .card {
+  background: var(--surface);
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+/* ============================================================
+   DARK THEME — Modal window fixes
+   ============================================================ */
+[data-theme="midnight"] .modal-window,
+[data-theme="noir"] .modal-window {
+  background: var(--surface) !important;
+  border: 1px solid var(--line-strong) !important;
+  color: var(--ink) !important;
+}
+[data-theme="midnight"] .modal-title,
+[data-theme="noir"] .modal-title {
+  color: var(--ink) !important;
+}
+[data-theme="midnight"] .modal-footer,
+[data-theme="noir"] .modal-footer {
+  border-top-color: var(--line) !important;
+  background: var(--surface-sunken) !important;
+}
+[data-theme="midnight"] .modal-content p,
+[data-theme="noir"] .modal-content p {
+  color: var(--muted) !important;
+}
+
+/* ============================================================
+   DARK THEME — Toast card fixes
+   ============================================================ */
+[data-theme="midnight"] .toast-card,
+[data-theme="noir"] .toast-card {
+  background: var(--surface-raised) !important;
+  border-color: var(--line-strong) !important;
+  color: var(--ink) !important;
+}
+[data-theme="midnight"] .toast-title-text,
+[data-theme="noir"] .toast-title-text {
+  color: var(--ink) !important;
+}
+[data-theme="midnight"] .toast-body-text,
+[data-theme="noir"] .toast-body-text {
+  color: var(--muted) !important;
+}
+
+/* ============================================================
+   DARK THEME — Sidebar & topbar text visibility
+   ============================================================ */
+[data-theme="midnight"] .sidebar,
+[data-theme="noir"] .sidebar {
+  background: var(--surface) !important;
+  border-right-color: var(--line) !important;
+}
+[data-theme="midnight"] .topbar,
+[data-theme="noir"] .topbar {
+  background: var(--surface) !important;
+  border-bottom-color: var(--line) !important;
+}
+[data-theme="midnight"] .brand-title,
+[data-theme="midnight"] .brand-subtitle,
+[data-theme="noir"] .brand-title,
+[data-theme="noir"] .brand-subtitle {
+  color: var(--ink) !important;
+}
+[data-theme="midnight"] .scope-pill,
+[data-theme="noir"] .scope-pill {
+  color: var(--bronze-400) !important;
+  background: rgba(255,255,255,0.06) !important;
+}
+[data-theme="midnight"] .nav-group-heading,
+[data-theme="noir"] .nav-group-heading {
+  color: var(--muted) !important;
+}
+[data-theme="midnight"] .nav-label,
+[data-theme="noir"] .nav-label {
+  color: var(--ink) !important;
+}
+
+/* ============================================================
+   DARK THEME — Toggle / switch button
+   ============================================================ */
+[data-theme="midnight"] .settings-switch-btn,
+[data-theme="noir"] .settings-switch-btn {
+  background: var(--surface-sunken);
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+[data-theme="midnight"] .settings-switch-btn .switch-track,
+[data-theme="noir"] .settings-switch-btn .switch-track {
+  background: var(--line-strong);
+}
+[data-theme="midnight"] .settings-switch-btn.active,
+[data-theme="noir"] .settings-switch-btn.active {
+  background: rgba(76,183,131,0.12);
+  border-color: rgba(76,183,131,0.35);
+}
+[data-theme="midnight"] .settings-switch-btn.active .switch-track,
+[data-theme="noir"] .settings-switch-btn.active .switch-track {
+  background: var(--success);
+}
+
+/* ============================================================
+   DARK THEME — Pagination and toolbar buttons
+   ============================================================ */
+[data-theme="midnight"] .btn-primary,
+[data-theme="noir"] .btn-primary {
+  background: var(--bronze-500);
+  color: #191207;
+  border-color: var(--bronze-600);
+}
+[data-theme="midnight"] .btn-primary:hover,
+[data-theme="noir"] .btn-primary:hover {
+  background: var(--bronze-400);
+  border-color: var(--bronze-500);
+}
+
+/* ============================================================
+   SALES & CASH BOOK — Inline modal overlay (dark-theme safe)
+   ============================================================ */
+#scb-modal-overlay {
+  background: rgba(0, 0, 0, 0.6) !important;
+}
+[data-theme="midnight"] #scb-modal-overlay > div,
+[data-theme="noir"] #scb-modal-overlay > div {
+  background: var(--surface) !important;
+  border-color: var(--line-strong) !important;
+}
+[data-theme="midnight"] #scb-modal-overlay select,
+[data-theme="midnight"] #scb-modal-overlay input,
+[data-theme="midnight"] #scb-modal-overlay textarea,
+[data-theme="noir"] #scb-modal-overlay select,
+[data-theme="noir"] #scb-modal-overlay input,
+[data-theme="noir"] #scb-modal-overlay textarea {
+  background: var(--surface-sunken) !important;
+  color: var(--ink) !important;
+  border-color: var(--line-strong) !important;
+}
+
+/* ============================================================
+   DEV PREVIEW BANNER — always readable regardless of theme
+   ============================================================ */
+.zamorin-dev-preview-banner {
+  background: #101a30 !important;
+  color: #e2bb87 !important;
+  border-bottom: 1px solid #1e2f50 !important;
+}
+.zamorin-dev-preview-banner a {
+  color: #e2bb87 !important;
+}
+
+/* =========================================================================
+   UNIVERSAL SOFT-EDGE DESIGN SYSTEM
+   Ensures all buttons, options, containers, boxes, cards, inputs, and widgets
+   have smooth, modern curved soft edges across light and dark themes.
+   ========================================================================= */
+
+/* ---- 1. All Buttons & Interactive Controls ---- */
+.btn,
+button.btn,
+a.btn,
+.topbar-action-btn,
+.btn-back-nav,
+.btn-back,
+.action-btn,
+.subnav-btn,
+.tab-btn,
+.occ-switch-btn,
+.login-card .btn {
+  border-radius: var(--radius-sm, 12px) !important;
+}
+
+.btn-sm,
+.btn-xs,
+.search-kbd,
+.kbd {
+  border-radius: var(--radius-xs, 8px) !important;
+}
+
+.btn-lg,
+.btn-xl {
+  border-radius: var(--radius-md, 16px) !important;
+}
+
+/* ---- 2. All Form Inputs, Selects & Textareas ---- */
+.input,
+.select,
+.textarea,
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+select,
+textarea,
+.select-scope,
+.global-search-wrap input,
+.search-input,
+.form-control {
+  border-radius: var(--radius-control, 12px) !important;
+}
+
+/* ---- 3. All Cards, Panels, Boxes & Containers ---- */
+.card,
+.glass-card,
+.kpi-card,
+.glass,
+.glass-dark,
+.settings-section-card,
+.module-hub-tile,
+.stat-card,
+.metric-box,
+.summary-card,
+.info-card,
+.dashboard-tile,
+.order-card,
+.table-container,
+.table-card {
+  border-radius: var(--radius-card, 18px) !important;
+}
+
+/* ---- 4. Inner Boxes, Filter Clusters & Group Containers ---- */
+.settings-toggle-row,
+.filter-cluster,
+.search-cluster,
+.filter-card,
+.stat-tile,
+.action-tile,
+.info-banner,
+.alert-box,
+.alert,
+.notification-card,
+.notification-item,
+.data-box,
+.empty-state,
+.skeleton,
+.drawer-content-box,
+.scb-stat-tile,
+.passbook-account-card {
+  border-radius: var(--radius-sm, 12px) !important;
+}
+
+/* ---- 5. Modals, Dialogs, Popovers & Toasts ---- */
+.modal-window,
+.occ-modal-card,
+.toast-card,
+.popover-menu,
+.dropdown-menu,
+.dialog-window,
+.context-menu,
+#scb-modal-overlay > div {
+  border-radius: var(--radius-lg, 22px) !important;
+}
+
+.modal-header,
+.occ-modal-header {
+  border-top-left-radius: var(--radius-lg, 22px) !important;
+  border-top-right-radius: var(--radius-lg, 22px) !important;
+}
+
+.modal-footer,
+.occ-modal-footer {
+  border-bottom-left-radius: var(--radius-lg, 22px) !important;
+  border-bottom-right-radius: var(--radius-lg, 22px) !important;
+}
+
+/* ---- 6. Tabs, Pills, Chips, Badges & Switch Controls ---- */
+.pill,
+.badge,
+.chip,
+.tag,
+.settings-status-chip,
+.status-pill,
+.status-badge,
+.role-badge,
+.category-badge,
+.scope-pill,
+.settings-switch-btn,
+.nav-pill {
+  border-radius: var(--radius-pill, 999px) !important;
+}
+
+.nav-link,
+.settings-nav-link,
+.popover-menu-item,
+.tab,
+.bills-nav-tab,
+.rs-tab-btn,
+.view-mode-btn {
+  border-radius: var(--radius-sm, 12px) !important;
+}
+
+/* ---- 7. Tables & Data Grids (Soft Corners on Inner Data Tables) ---- */
+.table-wrap,
+.glass-table-wrap,
+.table-responsive {
+  border-radius: var(--radius-sm, 12px) !important;
+  overflow: hidden;
+}
+
+table.glass-table thead tr:first-child th:first-child {
+  border-top-left-radius: var(--radius-sm, 12px);
+}
+table.glass-table thead tr:first-child th:last-child {
+  border-top-right-radius: var(--radius-sm, 12px);
+}
+table.glass-table tbody tr:last-child td:first-child {
+  border-bottom-left-radius: var(--radius-sm, 12px);
+}
+table.glass-table tbody tr:last-child td:last-child {
+  border-bottom-right-radius: var(--radius-sm, 12px);
+}
+

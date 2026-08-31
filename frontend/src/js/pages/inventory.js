@@ -54,16 +54,16 @@ export function renderInventory(subroute) {
   return `
     <div class="page-enter inventory-page" style="padding-bottom: 60px;">
       <!-- Top Title Header for Overview -->
-      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 20px; flex-wrap:wrap; gap:16px;">
+      <div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 24px; flex-wrap:wrap; gap:16px;">
         <div>
-          <div style="display:flex; align-items:center; gap:10px;">
-            <h1 class="page-title" style="font-size:24px; font-weight:800; color:var(--ink); margin:0;">Inventory &amp; Raw Material Stock</h1>
-            <span class="badge badge-accent" style="font-size:11px; padding:2px 8px; font-weight:700;">SCR-011 MULTI-CAFÉ LEDGER</span>
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <h1 class="page-title" style="font-size:26px; font-weight:700; color:var(--ink); margin:0;">Inventory &amp; Raw Material Stock</h1>
+            <span class="badge" style="background:rgba(180,83,9,0.12); color:#b45309; font-weight:600; font-size:12px; padding:4px 10px; border-radius:12px;">SCR-011 INV</span>
           </div>
-          <p class="page-subtitle" style="font-size:13.5px; color:var(--muted); margin:4px 0 0;">Global item catalogue, per-café stock levels, replenishment PAR, batch lot FEFO, transfers, and food recall containment.</p>
+          <p class="page-subtitle" style="font-size:14px; color:var(--muted); margin:4px 0 0;">Global item catalogue, per-café stock levels, replenishment PAR, batch lot FEFO, transfers, and food recall containment.</p>
         </div>
-        <div style="display:flex; gap:10px; align-items:center;">
-          <button id="btn-refresh-inventory" class="btn btn-secondary" style="display:flex; align-items:center; gap:6px;">
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <button id="btn-refresh-inventory" class="btn btn-secondary" style="display:flex; align-items:center; gap:6px; font-weight:600;">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
             Sync Stock
           </button>
@@ -1490,6 +1490,11 @@ async function loadTransfersData(wrap) {
       } catch (err) {
         showToast(`Transfer ${id} dispatched (Local).`, "success");
       }
+      const item = DEFAULT_TRANSFERS.find((t) => t.transferId === id);
+      if (item) {
+        item.status = "IN_TRANSIT";
+        item.dispatchedQty = item.requestedQty;
+      }
       loadTransfersData(wrap);
     });
   });
@@ -1502,6 +1507,10 @@ async function loadTransfersData(wrap) {
         showToast(`Transfer ${id} received at destination café.`, "success");
       } catch (err) {
         showToast(`Transfer ${id} received (Local).`, "success");
+      }
+      const item = DEFAULT_TRANSFERS.find((t) => t.transferId === id);
+      if (item) {
+        item.status = "COMPLETED";
       }
       loadTransfersData(wrap);
     });
@@ -1632,6 +1641,10 @@ async function loadReservationsData(wrap) {
       } catch (err) {
         showToast(`Reservation ${id} released (Local). Available stock restored.`, "success");
       }
+      const item = DEFAULT_RESERVATIONS.find((r) => r.reservationId === id);
+      if (item) {
+        item.status = "RELEASED";
+      }
       loadReservationsData(wrap);
     });
   });
@@ -1650,14 +1663,14 @@ async function renderCountsTab(wrap) {
       ${renderChildHeader({
         parentTitle: "Inventory & Stock",
         parentRoute: "inventory",
-        childTitle: "Cycle Counts",
-        childSubtitle: "Daily spot checks, weekly counts, variance analysis and Master write-offs.",
-        icon: "⚖️",
+        childTitle: "Physical Inventory & Cycle Counts",
+        childSubtitle: "Periodic count batches, blind stocktakes, variance adjustments, and ledger postings.",
+        icon: "📋",
         backBtnId: "inv-back-to-hub-btn",
         actionsHtml: `
-          <button id="btn-submit-count" class="btn btn-primary btn-sm" style="display:flex; align-items:center; gap:6px;">
+          <button id="btn-new-count" class="btn btn-primary btn-sm" style="display:flex; align-items:center; gap:6px;">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
-            + Record Physical Count
+            + Start Cycle Count
           </button>
         `,
       })}
@@ -1665,28 +1678,30 @@ async function renderCountsTab(wrap) {
       <!-- STAT STRIP -->
       <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px;">
         <div class="card" style="padding:14px 16px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
-          <div style="font-size:11.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px;">Physical Audit Accuracy</div>
-          <div style="font-size:22px; font-weight:800; color:#059669; font-family:var(--font-heading); margin-top:4px;">99.4% <span style="font-size:13px; font-weight:600; color:var(--muted);">Ledger Match</span></div>
-          <div style="font-size:11.5px; color:#059669; font-weight:600; margin-top:2px;">● 72 SKUs Reconciled This Week</div>
+          <div style="font-size:11.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px;">Counts Pending Approval</div>
+          <div style="font-size:22px; font-weight:800; color:var(--bronze-600); font-family:var(--font-heading); margin-top:4px;">1 <span style="font-size:13px; font-weight:600; color:var(--muted);">Batch</span></div>
+          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">CNT-2026-0817 (ZC-0002 High-Value)</div>
         </div>
 
         <div class="card" style="padding:14px 16px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
-          <div style="font-size:11.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px;">Pending Approval</div>
-          <div style="font-size:22px; font-weight:800; color:var(--bronze-600); font-family:var(--font-heading); margin-top:4px;">1 <span style="font-size:13px; font-weight:600; color:var(--muted);">Count</span></div>
-          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">Spot High Value audit at Indiranagar</div>
+          <div style="font-size:11.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px;">Items Audited (August)</div>
+          <div style="font-size:22px; font-weight:800; color:var(--ink); font-family:var(--font-heading); margin-top:4px;">72 <span style="font-size:13px; font-weight:600; color:var(--muted);">SKUs</span></div>
+          <div style="font-size:11.5px; color:#059669; font-weight:600; margin-top:2px;">100% SKU coverage target met</div>
         </div>
 
         <div class="card" style="padding:14px 16px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
-          <div style="font-size:11.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px;">Blind Count Safeguard</div>
-          <div style="font-size:22px; font-weight:800; color:#059669; font-family:var(--font-heading); margin-top:4px;">ACTIVE</div>
-          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">Theoretical balances hidden from counter</div>
+          <div style="font-size:11.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px;">Average Variance Rate</div>
+          <div style="font-size:22px; font-weight:800; color:#059669; font-family:var(--font-heading); margin-top:4px;">0.4% <span style="font-size:13px; font-weight:600; color:var(--muted);">Shrinkage</span></div>
+          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">Well within 1.5% statutory tolerance</div>
         </div>
       </div>
 
       <div class="glass-card" style="padding:18px;">
-        <div style="margin-bottom:14px;">
-          <h3 style="font-size:16px; font-weight:700; margin:0; color:var(--ink); font-family:var(--font-heading);">Cycle Counts &amp; Physical Stocktake</h3>
-          <p style="font-size:12.5px; color:var(--muted); margin:4px 0 0;">Blind counting, variance triggers, recount workflows, and approved adjustment postings.</p>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:12px;">
+          <div>
+            <h3 style="font-size:16px; font-weight:700; margin:0; color:var(--ink); font-family:var(--font-heading);">Cycle Counts &amp; Stocktakes</h3>
+            <p style="font-size:12.5px; color:var(--muted); margin:4px 0 0;">Review blind counted batches and post audited variance adjustments to general ledger.</p>
+          </div>
         </div>
 
         <div id="counts-table-container">
@@ -1697,7 +1712,7 @@ async function renderCountsTab(wrap) {
   `;
 
   wrap.querySelector("#inventory-back-to-hub-btn")?.addEventListener("click", () => navigate("inventory"));
-  wrap.querySelector("#btn-submit-count")?.addEventListener("click", () => openSubmitCountModal(wrap));
+  wrap.querySelector("#btn-new-count")?.addEventListener("click", () => openCreateCountModal(wrap));
 
   await loadCountsData(wrap);
 }
@@ -1759,6 +1774,10 @@ async function loadCountsData(wrap) {
         showToast(`Cycle count ${id} approved and stock ledger adjusted.`, "success");
       } catch (err) {
         showToast(`Cycle count ${id} approved and posted (Local).`, "success");
+      }
+      const item = DEFAULT_COUNTS.find((c) => c.countId === id);
+      if (item) {
+        item.status = "POSTED";
       }
       loadCountsData(wrap);
     });

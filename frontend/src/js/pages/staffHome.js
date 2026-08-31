@@ -35,75 +35,318 @@ export function formatPaise(paise, privacy = false) {
   return `₹ ${inr}`;
 }
 
-export const DEFAULT_STAFF_DATA = {
-  employee: {
-    id: "EMP-0042",
-    name: "Priya Sharma",
-    preferredName: "Priya",
-    avatarInitials: "PS",
-    designation: "Senior Barista",
-    cafeName: "Dawn Roast — Koramangala",
-  },
-  todayShift: {
-    startTime: "09:00 AM",
-    endTime: "05:00 PM",
-    dutyDesignation: "Counter & Till duty",
-    cafeName: "Dawn Roast, Koramangala",
-    attendanceState: "READY",
-  },
-  nextShift: {
-    day: "Tomorrow",
-    startTime: "09:00 AM",
-    endTime: "05:00 PM",
-    dutyDesignation: "Counter & Till duty",
-    date: "Scheduled",
-  },
-  attendanceSummary: {
-    presentDays: 21,
-    lateDays: 1,
-    overtimeHours: 4.5,
-  },
-  leaveSummary: {
-    casualLeaveBalance: 4.5,
-    totalAvailableDays: 22.5,
-  },
-  payslipSummary: {
-    periodName: "June 2026",
-    status: "Ready",
-    netPayPaise: 3850000,
-  },
-  loanSummary: {
-    hasActiveLoan: true,
-    outstandingPaise: 4250000,
-  },
-  actionRequired: [],
-  announcements: [
-    {
-      id: "ANN-01",
-      title: "New Seasonal Espresso Blend Rollout",
-      summary: "Wayanad single-origin roast arriving this Thursday. Mandatory tasting session at 8:30 AM.",
-      category: "ROASTERY",
-      priority: "NORMAL",
-      createdAt: "2026-08-20T10:00:00.000Z",
+export const STAFF_DIRECTORY = [
+  {
+    employee: {
+      id: "EMP-0042",
+      badgeId: "EMP-SCR-001",
+      name: "Priya Sharma",
+      preferredName: "Priya",
+      avatarInitials: "PS",
+      designation: "Senior Barista",
+      cafeName: "Dawn Roast — Koramangala",
     },
-  ],
-  weekSchedule: [
-    { day: "Mon", isToday: true, isOff: false, shiftHours: "9–5" },
-    { day: "Tue", isToday: false, isOff: false, shiftHours: "9–5" },
-    { day: "Wed", isToday: false, isOff: false, shiftHours: "9–5" },
-    { day: "Thu", isToday: false, isOff: false, shiftHours: "9–5" },
-    { day: "Fri", isToday: false, isOff: false, shiftHours: "1–9" },
-    { day: "Sat", isToday: false, isOff: false, shiftHours: "1–9" },
-    { day: "Sun", isToday: false, isOff: true, shiftHours: "Off" },
-  ],
-};
+    todayShift: {
+      startTime: "09:00 AM",
+      endTime: "05:00 PM",
+      dutyDesignation: "Counter & Till duty",
+      cafeName: "Dawn Roast, Koramangala",
+      attendanceState: "READY",
+    },
+    nextShift: {
+      day: "Tomorrow",
+      startTime: "09:00 AM",
+      endTime: "05:00 PM",
+      dutyDesignation: "Counter & Till duty",
+      date: "Scheduled",
+    },
+    attendanceSummary: {
+      presentDays: 21,
+      lateDays: 1,
+      overtimeHours: 4.5,
+    },
+    leaveSummary: {
+      casualLeaveBalance: 4.5,
+      totalAvailableDays: 22.5,
+    },
+    payslipSummary: {
+      periodName: "June 2026",
+      status: "Ready",
+      netPayPaise: 3850000,
+    },
+    loanSummary: {
+      hasActiveLoan: true,
+      outstandingPaise: 4250000,
+    },
+    actionRequired: [],
+    announcements: [
+      {
+        id: "ANN-01",
+        title: "New Seasonal Espresso Blend Rollout",
+        summary: "Wayanad single-origin roast arriving this Thursday. Mandatory tasting session at 8:30 AM.",
+        category: "ROASTERY",
+        priority: "NORMAL",
+        createdAt: "2026-08-20T10:00:00.000Z",
+      },
+    ],
+    weekSchedule: [
+      { day: "Mon", isToday: true, isOff: false, shiftHours: "9–5" },
+      { day: "Tue", isToday: false, isOff: false, shiftHours: "9–5" },
+      { day: "Wed", isToday: false, isOff: false, shiftHours: "9–5" },
+      { day: "Thu", isToday: false, isOff: false, shiftHours: "9–5" },
+      { day: "Fri", isToday: false, isOff: false, shiftHours: "1–9" },
+      { day: "Sat", isToday: false, isOff: false, shiftHours: "1–9" },
+      { day: "Sun", isToday: false, isOff: true, shiftHours: "Off" },
+    ],
+  },
+  {
+    employee: {
+      id: "ST-0042",
+      badgeId: "EMP-SCR-002",
+      name: "Rahul Sharma",
+      preferredName: "Rahul",
+      avatarInitials: "RS",
+      designation: "Shift Lead & Head Barista",
+      cafeName: "Dawn Roast — Koramangala",
+    },
+    todayShift: {
+      startTime: "07:30 AM",
+      endTime: "03:30 PM",
+      dutyDesignation: "Opening Lead & Espresso Bar",
+      cafeName: "Dawn Roast, Koramangala",
+      attendanceState: "CHECKED_IN",
+      checkInTime: "2026-08-31T02:00:00.000Z",
+      elapsedMinutes: 215,
+    },
+    nextShift: {
+      day: "Tomorrow",
+      startTime: "07:30 AM",
+      endTime: "03:30 PM",
+      dutyDesignation: "Opening Lead",
+      date: "Scheduled",
+    },
+    attendanceSummary: {
+      presentDays: 24,
+      lateDays: 0,
+      overtimeHours: 6.0,
+    },
+    leaveSummary: {
+      casualLeaveBalance: 6.0,
+      totalAvailableDays: 26.0,
+    },
+    payslipSummary: {
+      periodName: "June 2026",
+      status: "Ready",
+      netPayPaise: 4420000,
+    },
+    loanSummary: {
+      hasActiveLoan: false,
+      outstandingPaise: 0,
+    },
+    actionRequired: [],
+    announcements: [
+      {
+        id: "ANN-01",
+        title: "New Seasonal Espresso Blend Rollout",
+        summary: "Wayanad single-origin roast arriving this Thursday. Mandatory tasting session at 8:30 AM.",
+        category: "ROASTERY",
+        priority: "NORMAL",
+        createdAt: "2026-08-20T10:00:00.000Z",
+      },
+    ],
+    weekSchedule: [
+      { day: "Mon", isToday: true, isOff: false, shiftHours: "7:30–3:30" },
+      { day: "Tue", isToday: false, isOff: false, shiftHours: "7:30–3:30" },
+      { day: "Wed", isToday: false, isOff: false, shiftHours: "7:30–3:30" },
+      { day: "Thu", isToday: false, isOff: false, shiftHours: "7:30–3:30" },
+      { day: "Fri", isToday: false, isOff: false, shiftHours: "7:30–3:30" },
+      { day: "Sat", isToday: false, isOff: true, shiftHours: "Off" },
+      { day: "Sun", isToday: false, isOff: false, shiftHours: "7:30–3:30" },
+    ],
+  },
+  {
+    employee: {
+      id: "EMP-0043",
+      badgeId: "EMP-SCR-003",
+      name: "Ananya Nair",
+      preferredName: "Ananya",
+      avatarInitials: "AN",
+      designation: "Lead Roaster & Quality Specialist",
+      cafeName: "Wayanad Heritage Roastery",
+    },
+    todayShift: {
+      startTime: "08:00 AM",
+      endTime: "04:00 PM",
+      dutyDesignation: "Roastery QA & Green Bean Inspection",
+      cafeName: "Wayanad Heritage Roastery",
+      attendanceState: "READY",
+    },
+    nextShift: {
+      day: "Tomorrow",
+      startTime: "08:00 AM",
+      endTime: "04:00 PM",
+      dutyDesignation: "Roastery Production",
+      date: "Scheduled",
+    },
+    attendanceSummary: {
+      presentDays: 22,
+      lateDays: 0,
+      overtimeHours: 2.0,
+    },
+    leaveSummary: {
+      casualLeaveBalance: 5.0,
+      totalAvailableDays: 21.0,
+    },
+    payslipSummary: {
+      periodName: "June 2026",
+      status: "Ready",
+      netPayPaise: 4100000,
+    },
+    loanSummary: {
+      hasActiveLoan: true,
+      outstandingPaise: 2000000,
+    },
+    actionRequired: [],
+    announcements: [
+      {
+        id: "ANN-02",
+        title: "Roastery Preventive Maintenance",
+        summary: "Diedrich IR-12 roaster scheduled for seasonal deep cleaning this Saturday.",
+        category: "MAINTENANCE",
+        priority: "HIGH",
+        createdAt: "2026-08-25T09:00:00.000Z",
+      },
+    ],
+    weekSchedule: [
+      { day: "Mon", isToday: true, isOff: false, shiftHours: "8–4" },
+      { day: "Tue", isToday: false, isOff: false, shiftHours: "8–4" },
+      { day: "Wed", isToday: false, isOff: false, shiftHours: "8–4" },
+      { day: "Thu", isToday: false, isOff: false, shiftHours: "8–4" },
+      { day: "Fri", isToday: false, isOff: false, shiftHours: "8–4" },
+      { day: "Sat", isToday: false, isOff: false, shiftHours: "8–12" },
+      { day: "Sun", isToday: false, isOff: true, shiftHours: "Off" },
+    ],
+  },
+  {
+    employee: {
+      id: "EMP-0044",
+      badgeId: "EMP-SCR-004",
+      name: "Vikram Patel",
+      preferredName: "Vikram",
+      avatarInitials: "VP",
+      designation: "Commis Chef & Kitchen Associate",
+      cafeName: "Calicut Cyberpark Outpost",
+    },
+    todayShift: {
+      startTime: "11:00 AM",
+      endTime: "07:00 PM",
+      dutyDesignation: "Hot Kitchen Prep & Artisan Sandwiches",
+      cafeName: "Calicut Cyberpark Outpost",
+      attendanceState: "READY",
+    },
+    nextShift: {
+      day: "Tomorrow",
+      startTime: "11:00 AM",
+      endTime: "07:00 PM",
+      dutyDesignation: "Hot Kitchen Prep",
+      date: "Scheduled",
+    },
+    attendanceSummary: {
+      presentDays: 20,
+      lateDays: 2,
+      overtimeHours: 3.5,
+    },
+    leaveSummary: {
+      casualLeaveBalance: 3.5,
+      totalAvailableDays: 18.0,
+    },
+    payslipSummary: {
+      periodName: "June 2026",
+      status: "Ready",
+      netPayPaise: 3400000,
+    },
+    loanSummary: {
+      hasActiveLoan: false,
+      outstandingPaise: 0,
+    },
+    actionRequired: [],
+    announcements: [],
+    weekSchedule: [
+      { day: "Mon", isToday: true, isOff: false, shiftHours: "11–7" },
+      { day: "Tue", isToday: false, isOff: false, shiftHours: "11–7" },
+      { day: "Wed", isToday: false, isOff: false, shiftHours: "11–7" },
+      { day: "Thu", isToday: false, isOff: false, shiftHours: "11–7" },
+      { day: "Fri", isToday: false, isOff: false, shiftHours: "11–7" },
+      { day: "Sat", isToday: false, isOff: false, shiftHours: "11–7" },
+      { day: "Sun", isToday: false, isOff: true, shiftHours: "Off" },
+    ],
+  },
+  {
+    employee: {
+      id: "EMP-0045",
+      badgeId: "EMP-SCR-005",
+      name: "Sneha Iyer",
+      preferredName: "Sneha",
+      avatarInitials: "SI",
+      designation: "Floor Supervisor & Barista",
+      cafeName: "Kozhikode Beach Main",
+    },
+    todayShift: {
+      startTime: "01:00 PM",
+      endTime: "09:00 PM",
+      dutyDesignation: "Closing Supervisor & Floor Operations",
+      cafeName: "Kozhikode Beach Main",
+      attendanceState: "READY",
+    },
+    nextShift: {
+      day: "Tomorrow",
+      startTime: "01:00 PM",
+      endTime: "09:00 PM",
+      dutyDesignation: "Floor Supervisor",
+      date: "Scheduled",
+    },
+    attendanceSummary: {
+      presentDays: 23,
+      lateDays: 0,
+      overtimeHours: 5.0,
+    },
+    leaveSummary: {
+      casualLeaveBalance: 6.0,
+      totalAvailableDays: 24.0,
+    },
+    payslipSummary: {
+      periodName: "June 2026",
+      status: "Ready",
+      netPayPaise: 3950000,
+    },
+    loanSummary: {
+      hasActiveLoan: true,
+      outstandingPaise: 1500000,
+    },
+    actionRequired: [],
+    announcements: [],
+    weekSchedule: [
+      { day: "Mon", isToday: true, isOff: false, shiftHours: "1–9" },
+      { day: "Tue", isToday: false, isOff: false, shiftHours: "1–9" },
+      { day: "Wed", isToday: false, isOff: false, shiftHours: "1–9" },
+      { day: "Thu", isToday: false, isOff: false, shiftHours: "1–9" },
+      { day: "Fri", isToday: false, isOff: false, shiftHours: "1–9" },
+      { day: "Sat", isToday: false, isOff: false, shiftHours: "1–9" },
+      { day: "Sun", isToday: false, isOff: true, shiftHours: "Off" },
+    ],
+  },
+];
+
+export let activeStaffEmployeeId = "EMP-0042";
+export const DEFAULT_STAFF_DATA = STAFF_DIRECTORY[0];
 
 export function renderStaffHome() {
+  const currentData = STAFF_DIRECTORY.find((s) => s.employee.id === activeStaffEmployeeId) || DEFAULT_STAFF_DATA;
   return `
     <div class="page-enter staff-dashboard-root" id="staff-dashboard-container" style="max-width:1240px; margin:0 auto; padding:12px 16px 40px 16px;">
       <!-- Dynamic Dashboard Mount -->
       <div id="staff-dashboard-content">
-        ${renderDashboardBody(DEFAULT_STAFF_DATA)}
+        ${renderDashboardBody(currentData)}
       </div>
     </div>
   `;
@@ -142,33 +385,45 @@ function renderDashboardBody(data) {
 
   const privacyActive = isPrivacyModeActive();
 
-  // ── 1. Top Greeting & Context ─────────────────────────────────────────────
+  // ── 1. Top Greeting & Context with Employee Switcher ───────────────────────
   const greetingHtml = `
-    <div class="flex items-center justify-between flex-wrap gap-md" style="margin-bottom:20px; padding:4px 0;">
-      <div class="flex items-center gap-md">
-        <div class="avatar lg" style="background:linear-gradient(135deg,var(--color-accent-coral),var(--color-accent-mint)); font-weight:700; font-size:18px; color:var(--ink); box-shadow:0 4px 12px rgba(0,0,0,0.15);">
-          ${emp.avatarInitials || "ST"}
+    <div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px; margin-bottom:20px;">
+      <div>
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <h1 style="font-size:24px; font-weight:700; margin:0; color:var(--ink);">Hi, ${emp.preferredName || emp.name || "Priya"} 👋</h1>
+          <span class="badge" style="background:rgba(180,83,9,0.12); color:#b45309; font-weight:600; font-size:12px; padding:4px 10px; border-radius:12px;">${emp.badgeId || "EMP-SCR-001"}</span>
         </div>
-        <div>
-          <div style="color:var(--text-primary); font-weight:700; font-size:20px; letter-spacing:-0.02em;">
-            Hi, ${emp.preferredName || emp.name || "Priya"} 👋
-          </div>
-          <div class="flex items-center gap-sm flex-wrap" style="font-size:13px; color:var(--text-muted); margin-top:2px;">
-            <span>📍 ${emp.cafeName || "Dawn Roast — Koramangala"}</span>
-            <span>•</span>
-            <span class="badge badge-subtle" style="font-size:11px; text-transform:uppercase;">${emp.designation || "Staff"}</span>
-            <span>•</span>
-            <span style="font-size:12px; color:var(--text-secondary);">${new Date().toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}</span>
-          </div>
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:13px; color:var(--muted); margin-top:4px;">
+          <span>📍 ${emp.cafeName || "Dawn Roast — Koramangala"}</span>
+          <span>•</span>
+          <span style="font-weight:600; color:var(--ink);">${emp.designation || "Senior Barista"}</span>
+          <span>•</span>
+          <span>${new Date().toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}</span>
         </div>
       </div>
 
-      <div class="flex items-center gap-sm flex-wrap">
-        <button class="btn btn-sm btn-ghost" id="btn-open-schedule-request" type="button" style="display:inline-flex; align-items:center; gap:6px; font-size:12px;">
-          <span>🗓️ Schedule Request</span>
+      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <!-- Employee Switcher for Primary Master / Admin / Privileged Roles -->
+        <div class="flex items-center gap-xs" style="background:var(--surface); border:1px solid var(--border-subtle); padding:4px 10px; border-radius:var(--radius-md, 8px); box-shadow:var(--shadow-xs);">
+          <label for="staff-employee-switcher" style="font-size:11.5px; font-weight:700; color:var(--brand-gold, #c89d5c); display:flex; align-items:center; gap:4px; margin:0; white-space:nowrap;">
+            <span>👤</span> Viewing Staff:
+          </label>
+          <select id="staff-employee-switcher" class="select" style="font-size:12px; font-weight:700; padding:2px 8px; height:30px; border:none; background:transparent; color:var(--ink); cursor:pointer;">
+            ${STAFF_DIRECTORY.map(
+              (s) => `
+              <option value="${s.employee.id}" ${s.employee.id === emp.id ? "selected" : ""}>
+                ${s.employee.name} (${s.employee.id}) — ${s.employee.designation}
+              </option>
+            `
+            ).join("")}
+          </select>
+        </div>
+
+        <button class="btn btn-secondary" id="btn-open-schedule-request" type="button" style="font-size:12px; padding:6px 12px;">
+          🗓️ Schedule Request
         </button>
-        <button class="btn btn-sm btn-ghost" id="toggle-privacy-btn" type="button" title="Toggle sensitive financial figures visibility" style="display:inline-flex; align-items:center; gap:6px; font-size:12px;">
-          <span>${privacyActive ? "👁️ Reveal Figures" : "🔒 Mask Figures"}</span>
+        <button class="btn btn-secondary" id="toggle-privacy-btn" type="button" style="font-size:12px; padding:6px 12px;">
+          ${privacyActive ? "👁️ Reveal Figures" : "🔒 Mask Figures"}
         </button>
       </div>
     </div>
@@ -180,39 +435,39 @@ function renderDashboardBody(data) {
   let statusBadgeHtml = "";
 
   if (attState === "CHECKED_IN") {
-    statusBadgeHtml = `<span class="badge badge-mint" style="font-size:12px; padding:4px 10px;">🟢 Checked In</span>`;
+    statusBadgeHtml = `<span class="badge badge-mint" style="font-size:12px; padding:4px 10px; font-weight:700;">🟢 Checked In</span>`;
     ctaHtml = `
-      <div class="flex items-center gap-md flex-wrap">
-        <div style="font-size:13px; color:var(--text-secondary);">
-          Checked in at <strong>${formatTimeOnly(todayShift.checkInTime) || "09:00 AM"}</strong> · <strong>${todayShift.elapsedMinutes || 45} mins</strong> worked today
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+        <div style="font-size:13px; color:var(--muted);">
+          Checked in at <strong style="color:var(--ink);">${formatTimeOnly(todayShift.checkInTime) || "09:00 AM"}</strong> · <strong style="color:var(--ink);">${todayShift.elapsedMinutes || 45} mins</strong> worked today
         </div>
-        <button class="btn btn-secondary" id="btn-staff-checkout" type="button" style="margin-left:auto; min-width:140px;">
+        <button class="btn btn-secondary" id="btn-staff-checkout" type="button" style="min-width:130px; font-weight:700;">
           ${icon("attendance", 16)} Check Out
         </button>
       </div>
     `;
   } else if (attState === "CHECKED_OUT" || attState === "COMPLETED") {
-    statusBadgeHtml = `<span class="badge badge-dark" style="font-size:12px; padding:4px 10px; background:var(--bg-surface-3); color:var(--text-primary);">✓ Shift Completed</span>`;
+    statusBadgeHtml = `<span class="badge badge-dark" style="font-size:12px; padding:4px 10px; background:var(--surface-sunken); color:var(--ink); font-weight:700;">✓ Shift Completed</span>`;
     ctaHtml = `
-      <div class="flex items-center justify-between flex-wrap gap-sm" style="font-size:13px; color:var(--text-secondary);">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; font-size:13px; color:var(--muted);">
         <span>Attendance recorded for today. Great work!</span>
         <button class="btn btn-sm btn-ghost" data-nav-target="staff-attendance">View Timesheet →</button>
       </div>
     `;
   } else if (attState === "ON_LEAVE") {
-    statusBadgeHtml = `<span class="badge badge-coral" style="font-size:12px; padding:4px 10px;">On Approved Leave</span>`;
-    ctaHtml = `<div style="font-size:13px; color:var(--text-muted);">You are on approved leave today. Enjoy your day off!</div>`;
+    statusBadgeHtml = `<span class="badge badge-coral" style="font-size:12px; padding:4px 10px; font-weight:700;">On Approved Leave</span>`;
+    ctaHtml = `<div style="font-size:13px; color:var(--muted);">You are on approved leave today. Enjoy your day off!</div>`;
   } else if (attState === "WEEKLY_OFF") {
-    statusBadgeHtml = `<span class="badge badge-subtle" style="font-size:12px; padding:4px 10px;">Weekly Off</span>`;
-    ctaHtml = `<div style="font-size:13px; color:var(--text-muted);">Scheduled weekly rest day. Next shift tomorrow.</div>`;
+    statusBadgeHtml = `<span class="badge badge-subtle" style="font-size:12px; padding:4px 10px; font-weight:700;">Weekly Off</span>`;
+    ctaHtml = `<div style="font-size:13px; color:var(--muted);">Scheduled weekly rest day. Next shift tomorrow.</div>`;
   } else {
-    statusBadgeHtml = `<span class="badge badge-gold" style="font-size:12px; padding:4px 10px;">🟡 Shift Ready</span>`;
+    statusBadgeHtml = `<span class="badge-tag" style="background:rgba(217,119,6,0.12); color:#d97706; font-size:11.5px; font-weight:700; padding:3px 8px; border-radius:6px;">Shift Ready</span>`;
     ctaHtml = `
-      <div class="flex items-center justify-between flex-wrap gap-md">
-        <div style="font-size:13px; color:var(--text-secondary);">
-          Scheduled: <strong>${todayShift.startTime || "09:00 AM"} – ${todayShift.endTime || "05:00 PM"}</strong>
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+        <div style="font-size:13px; color:var(--muted);">
+          Scheduled: <strong style="color:var(--ink);">${todayShift.startTime || "09:00 AM"} – ${todayShift.endTime || "05:00 PM"}</strong>
         </div>
-        <button class="btn btn-primary" id="btn-staff-checkin" type="button" style="min-width:160px; font-weight:700;">
+        <button class="btn btn-primary" id="btn-staff-checkin" type="button" style="min-width:150px; font-weight:700;">
           ${icon("attendance", 16)} Check In Now
         </button>
       </div>
@@ -220,22 +475,22 @@ function renderDashboardBody(data) {
   }
 
   const todayCardHtml = `
-    <div class="card" style="padding:24px; margin-bottom:20px; border-left:4px solid var(--brand-gold); background:var(--bg-surface-1); box-shadow:var(--shadow-md);">
-      <div class="flex items-center justify-between" style="margin-bottom:12px;">
-        <div style="font-size:11.5px; font-weight:700; color:var(--brand-gold); letter-spacing:0.06em; text-transform:uppercase;">
+    <div class="card" style="padding:20px; margin-bottom:20px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <div style="font-size:11.5px; font-weight:700; color:var(--muted); letter-spacing:0.04em; text-transform:uppercase;">
           TODAY'S SHIFT &amp; ATTENDANCE
         </div>
         ${statusBadgeHtml}
       </div>
 
-      <div style="font-size:22px; font-weight:800; color:var(--text-primary); margin-bottom:6px; letter-spacing:-0.02em;">
+      <div style="font-size:22px; font-weight:800; color:var(--ink); font-family:var(--font-heading); margin-bottom:4px;">
         ${todayShift.startTime || "09:00 AM"} – ${todayShift.endTime || "05:00 PM"}
       </div>
-      <div style="font-size:13.5px; color:var(--text-secondary); margin-bottom:18px;">
+      <div style="font-size:13px; color:var(--muted); margin-bottom:16px;">
         ${todayShift.dutyDesignation || "Counter & Till duty"} · ${todayShift.cafeName || emp.cafeName || "Dawn Roast, Koramangala"}
       </div>
 
-      <div style="padding-top:16px; border-top:1px solid var(--border-subtle);">
+      <div style="padding-top:14px; border-top:1px solid var(--line);">
         ${ctaHtml}
       </div>
     </div>
@@ -245,10 +500,10 @@ function renderDashboardBody(data) {
   let actionContentHtml = "";
   if (actionItems.length > 0) {
     actionContentHtml = actionItems.map((item) => `
-      <div class="flex items-start justify-between gap-md" style="padding:10px 0; border-bottom:1px solid var(--border-subtle);">
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 0; border-bottom:1px solid var(--line);">
         <div>
-          <div style="font-size:13px; font-weight:600; color:var(--text-primary);">${item.title}</div>
-          <div style="font-size:11.5px; color:var(--text-muted); margin-top:2px;">${item.description}</div>
+          <div style="font-size:13px; font-weight:700; color:var(--ink);">${item.title}</div>
+          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">${item.description}</div>
         </div>
         <button class="btn btn-xs btn-secondary" data-nav-target="${item.actionRoute || "staff-attendance"}" style="white-space:nowrap;">
           ${item.actionLabel || "Resolve"}
@@ -257,21 +512,21 @@ function renderDashboardBody(data) {
     `).join("");
   } else {
     actionContentHtml = `
-      <div class="flex items-center gap-md" style="padding:12px 0; color:var(--text-muted); font-size:13px;">
-        <span style="font-size:18px;">✨</span>
+      <div style="display:flex; align-items:center; gap:8px; padding:10px 0; color:var(--muted); font-size:13px;">
+        <span style="font-size:16px;">✨</span>
         <span>You're all caught up. No pending action required.</span>
       </div>
     `;
   }
 
   const priorityRowHtml = `
-    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:16px; margin-bottom:20px;">
+    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:14px; margin-bottom:20px;">
       <!-- Action Required Card -->
-      <div class="card" style="padding:20px; background:var(--bg-surface-1);">
-        <div class="flex items-center justify-between" style="margin-bottom:12px;">
-          <div style="font-size:12px; font-weight:700; color:var(--text-primary); text-transform:uppercase; letter-spacing:0.04em; display:flex; align-items:center; gap:6px;">
+      <div class="card" style="padding:18px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <div style="font-size:11.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.04em; display:flex; align-items:center; gap:6px;">
             <span>⚡</span>
-            <span>Action Required</span>
+            <span>ACTION REQUIRED</span>
           </div>
           ${actionItems.length > 0 ? `<span class="badge badge-coral">${actionItems.length} Pending</span>` : ""}
         </div>
@@ -279,18 +534,18 @@ function renderDashboardBody(data) {
       </div>
 
       <!-- Next Shift Card -->
-      <div class="card" style="padding:20px; background:var(--bg-surface-1);">
-        <div class="flex items-center justify-between" style="margin-bottom:12px;">
-          <div style="font-size:12px; font-weight:700; color:var(--text-primary); text-transform:uppercase; letter-spacing:0.04em; display:flex; align-items:center; gap:6px;">
+      <div class="card" style="padding:18px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <div style="font-size:11.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.04em; display:flex; align-items:center; gap:6px;">
             <span>🗓️</span>
-            <span>My Next Shift</span>
+            <span>MY NEXT SHIFT</span>
           </div>
-          <span class="badge badge-subtle">${nextShift.day || "Tomorrow"}</span>
+          <span class="badge-tag" style="background:var(--surface-sunken); color:var(--ink); font-size:11px; font-weight:600; padding:2px 8px; border-radius:6px;">${nextShift.day || "Tomorrow"}</span>
         </div>
-        <div style="font-size:18px; font-weight:700; color:var(--text-primary); margin-bottom:4px;">
+        <div style="font-size:20px; font-weight:800; color:var(--ink); font-family:var(--font-heading); margin-bottom:2px;">
           ${nextShift.startTime || "09:00 AM"} – ${nextShift.endTime || "05:00 PM"}
         </div>
-        <div style="font-size:12.5px; color:var(--text-muted); margin-bottom:14px;">
+        <div style="font-size:12.5px; color:var(--muted); margin-bottom:12px;">
           ${nextShift.dutyDesignation || "Counter & Till duty"} · ${nextShift.date || "Scheduled"}
         </div>
         <button class="btn btn-sm btn-ghost btn-block" data-scroll-target="roster-section" style="justify-content:center;">
@@ -300,125 +555,108 @@ function renderDashboardBody(data) {
     </div>
   `;
 
-  // ── 4. Secondary Summary Area (6 Responsive Cards) ────────────────────────
+  // ── 4. Self-Service Workspaces (Matching Reference Module Tile Grid) ───────
+  const selfServiceWorkspaces = [
+    {
+      id: "att",
+      icon: "⏱️",
+      title: "My Attendance",
+      subtitle: `${attSummary.presentDays || 21} days present · ${attSummary.lateDays || 1} late`,
+      badge: "This Month",
+      badgeType: "",
+      target: "staff-attendance"
+    },
+    {
+      id: "leave",
+      icon: "🌴",
+      title: "My Leave",
+      subtitle: `${leaveSummary.totalAvailableDays || 22.5} days balance · Apply →`,
+      badge: `${leaveSummary.casualLeaveBalance || 4.5}d Casual`,
+      badgeType: "accent",
+      target: "staff-leave"
+    },
+    {
+      id: "payslip",
+      icon: "📄",
+      title: "Latest Payslip",
+      subtitle: `${payslip.periodName || "June 2026"} · ${formatPaise(payslip.netPayPaise, true)}`,
+      badge: payslip.status || "Ready",
+      badgeType: "success",
+      settingsSection: "employment"
+    },
+    {
+      id: "loans",
+      icon: "💳",
+      title: "Loans & Advances",
+      subtitle: loan.hasActiveLoan ? `Bal: ${formatPaise(loan.outstandingPaise, true)}` : "Emergency advance ready →",
+      badge: loan.hasActiveLoan ? "Active" : "Eligible",
+      badgeType: "",
+      settingsSection: "employment"
+    },
+    {
+      id: "ot",
+      icon: "⚡",
+      title: "My Overtime",
+      subtitle: `${attSummary.overtimeHours || 4.5} hrs logged this month →`,
+      badge: "Tracked",
+      badgeType: "",
+      target: "staff-attendance"
+    },
+    {
+      id: "kyc",
+      icon: "🛡️",
+      title: "Documents & KYC",
+      subtitle: "Aadhaar & FSSAI Active · Upload →",
+      badge: "Verified",
+      badgeType: "success",
+      settingsSection: "profile"
+    }
+  ];
+
   const summaryGridHtml = `
-    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:16px; margin-bottom:20px;">
-      <!-- My Attendance -->
-      <div class="card staff-card-interactive" data-nav-target="staff-attendance" tabindex="0" role="button" aria-label="Open My Attendance" style="padding:18px; cursor:pointer; background:var(--bg-surface-1);">
-        <div class="flex items-center justify-between" style="margin-bottom:10px;">
-          <div class="icon-circle" style="background:rgba(82,183,136,0.12); color:var(--color-accent-mint); padding:8px; border-radius:var(--radius-md);">
-            ${icon("attendance", 18)}
-          </div>
-          <span style="font-size:11px; color:var(--text-muted);">This Month</span>
-        </div>
-        <div style="font-size:14px; font-weight:700; color:var(--text-primary);">My Attendance</div>
-        <div style="font-size:12px; color:var(--text-muted); margin-top:4px;">
-          <strong style="color:var(--color-accent-mint);">${attSummary.presentDays || 0}</strong> days present · <strong>${attSummary.lateDays || 0}</strong> late
-        </div>
-      </div>
-
-      <!-- My Leave -->
-      <div class="card staff-card-interactive" data-nav-target="staff-leave" tabindex="0" role="button" aria-label="Open My Leave" style="padding:18px; cursor:pointer; background:var(--bg-surface-1);">
-        <div class="flex items-center justify-between" style="margin-bottom:10px;">
-          <div class="icon-circle" style="background:rgba(239,122,133,0.12); color:var(--color-accent-coral); padding:8px; border-radius:var(--radius-md);">
-            ${icon("calendar", 18)}
-          </div>
-          <span class="badge badge-subtle" style="font-size:11px;">${leaveSummary.casualLeaveBalance || 4.5}d Casual</span>
-        </div>
-        <div style="font-size:14px; font-weight:700; color:var(--text-primary);">My Leave</div>
-        <div style="font-size:12px; color:var(--text-muted); margin-top:4px;">
-          <strong style="color:var(--text-primary);">${leaveSummary.totalAvailableDays || 22.5}</strong> days balance · Apply →
-        </div>
-      </div>
-
-      <!-- Latest Payslip -->
-      <div class="card staff-card-interactive" data-settings-section="employment" tabindex="0" role="button" aria-label="Open My Payslips" style="padding:18px; cursor:pointer; background:var(--bg-surface-1);">
-        <div class="flex items-center justify-between" style="margin-bottom:10px;">
-          <div class="icon-circle" style="background:rgba(212,163,115,0.12); color:var(--brand-gold); padding:8px; border-radius:var(--radius-md);">
-            ${icon("payslip", 18)}
-          </div>
-          <span class="badge badge-mint" style="font-size:11px;">${payslip.status || "Ready"}</span>
-        </div>
-        <div style="font-size:14px; font-weight:700; color:var(--text-primary);">Latest Payslip</div>
-        <div style="font-size:12px; color:var(--text-muted); margin-top:4px;">
-          ${payslip.periodName || "June 2026"} · <strong>${formatPaise(payslip.netPayPaise, true)}</strong>
-        </div>
-      </div>
-
-      <!-- My Loan / Advance -->
-      <div class="card staff-card-interactive" data-settings-section="employment" tabindex="0" role="button" aria-label="Open My Loans & Advances" style="padding:18px; cursor:pointer; background:var(--bg-surface-1);">
-        <div class="flex items-center justify-between" style="margin-bottom:10px;">
-          <div class="icon-circle" style="background:rgba(120,140,255,0.12); color:#88a0ff; padding:8px; border-radius:var(--radius-md);">
-            ${icon("finance", 18)}
-          </div>
-          <span class="badge badge-subtle" style="font-size:11px;">${loan.hasActiveLoan ? "Active" : "Eligible"}</span>
-        </div>
-        <div style="font-size:14px; font-weight:700; color:var(--text-primary);">Loans &amp; Advances</div>
-        <div style="font-size:12px; color:var(--text-muted); margin-top:4px;">
-          ${loan.hasActiveLoan ? `Bal: <strong>${formatPaise(loan.outstandingPaise, true)}</strong>` : "Emergency advance ready →"}
-        </div>
-      </div>
-
-      <!-- My Overtime -->
-      <div class="card staff-card-interactive" data-nav-target="staff-attendance" tabindex="0" role="button" aria-label="Open My Overtime" style="padding:18px; cursor:pointer; background:var(--bg-surface-1);">
-        <div class="flex items-center justify-between" style="margin-bottom:10px;">
-          <div class="icon-circle" style="background:rgba(255,183,77,0.12); color:#ffb74d; padding:8px; border-radius:var(--radius-md);">
-            ⏱️
-          </div>
-          <span class="badge badge-subtle" style="font-size:11px;">Tracked</span>
-        </div>
-        <div style="font-size:14px; font-weight:700; color:var(--text-primary);">My Overtime</div>
-        <div style="font-size:12px; color:var(--text-muted); margin-top:4px;">
-          <strong style="color:var(--text-primary);">${attSummary.overtimeHours || 0}</strong> hrs logged this month →
-        </div>
-      </div>
-
-      <!-- My Documents & Compliance -->
-      <div class="card staff-card-interactive" data-settings-section="profile" tabindex="0" role="button" aria-label="Open My Documents" style="padding:18px; cursor:pointer; background:var(--bg-surface-1);">
-        <div class="flex items-center justify-between" style="margin-bottom:10px;">
-          <div class="icon-circle" style="background:rgba(149,117,205,0.12); color:#9575cd; padding:8px; border-radius:var(--radius-md);">
-            📄
-          </div>
-          <span class="badge badge-mint" style="font-size:11px;">Verified</span>
-        </div>
-        <div style="font-size:14px; font-weight:700; color:var(--text-primary);">Documents &amp; KYC</div>
-        <div style="font-size:12px; color:var(--text-muted); margin-top:4px;">
-          Aadhaar &amp; FSSAI Active · Upload →
-        </div>
+    <div class="module-hub-section" style="margin-bottom:20px;">
+      <h3 class="module-hub-section-title">SELF-SERVICE WORKSPACES</h3>
+      <div class="module-tile-grid">
+        ${selfServiceWorkspaces.map((w) => `
+          <button class="module-hub-tile" ${w.target ? `data-nav-target="${w.target}"` : `data-settings-section="${w.settingsSection}"`} type="button">
+            <div class="module-tile-icon-box">${w.icon}</div>
+            <div class="module-tile-content">
+              <div class="module-tile-title-row">
+                <span class="module-tile-title">${w.title}</span>
+                ${w.badge ? `<span class="module-tile-badge ${w.badgeType}">${w.badge}</span>` : ""}
+              </div>
+              <div class="module-tile-sub">${w.subtitle}</div>
+            </div>
+          </button>
+        `).join("")}
       </div>
     </div>
   `;
 
   // ── 5. Quick Actions Bar ──────────────────────────────────────────────────
   const quickActionsHtml = `
-    <div class="card" style="padding:18px; margin-bottom:20px; background:var(--bg-surface-1);">
-      <div style="font-size:12px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:12px;">
-        Quick Actions &amp; Self-Service Tools
+    <div class="card" style="padding:20px; margin-bottom:20px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
+      <div style="font-size:11.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.04em; margin-bottom:14px;">
+        QUICK ACTIONS &amp; SELF-SERVICE TOOLS
       </div>
-      <div class="flex items-center gap-sm flex-wrap">
-        <button class="btn btn-sm btn-secondary" data-nav-target="staff-leave">
+      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <button class="btn btn-secondary" data-nav-target="staff-leave" type="button" style="font-size:12.5px; font-weight:600; padding:8px 14px; border-radius:8px;">
           ${icon("calendar", 14)} Apply Leave
         </button>
-        <button class="btn btn-sm btn-secondary" data-nav-target="staff-attendance">
+        <button class="btn btn-secondary" data-nav-target="staff-attendance" type="button" style="font-size:12.5px; font-weight:600; padding:8px 14px; border-radius:8px;">
           ${icon("attendance", 14)} Regularize Punch
         </button>
-        <button class="btn btn-sm btn-secondary" id="btn-review-timecard">
+        <button class="btn btn-secondary" id="btn-review-timecard" type="button" style="font-size:12.5px; font-weight:600; padding:8px 14px; border-radius:8px;">
           📋 Review Timecard
         </button>
-        <button class="btn btn-sm btn-secondary" data-settings-section="employment">
+        <button class="btn btn-secondary" data-settings-section="employment" type="button" style="font-size:12.5px; font-weight:600; padding:8px 14px; border-radius:8px;">
           ${icon("payslip", 14)} My Payslips
         </button>
-        <button class="btn btn-sm btn-secondary" id="btn-request-advance">
+        <button class="btn btn-secondary" id="btn-request-advance" type="button" style="font-size:12.5px; font-weight:600; padding:8px 14px; border-radius:8px;">
           ${icon("finance", 14)} Request Advance
         </button>
-        <button class="btn btn-sm btn-secondary" id="btn-upload-document">
+        <button class="btn btn-secondary" id="btn-upload-document" type="button" style="font-size:12.5px; font-weight:600; padding:8px 14px; border-radius:8px;">
           📤 Upload Document
-        </button>
-        <button class="btn btn-sm btn-secondary" data-settings-section="profile">
-          ${icon("user", 14)} My Profile
-        </button>
-        <button class="btn btn-sm btn-ghost" id="btn-report-problem" style="margin-left:auto;">
-          ❓ Report a Problem
         </button>
       </div>
     </div>
@@ -426,57 +664,57 @@ function renderDashboardBody(data) {
 
   // ── 6. Lower Information Grid: SCHEDULE & ANNOUNCEMENTS ────────────────────
   const weekDayCardsHtml = weekSchedule.map((d) => `
-    <div class="schedule-day-pill ${d.isToday ? "active-today" : ""}" style="flex:1; min-width:70px; padding:12px 6px; text-align:center; border-radius:var(--radius-md); background:${d.isToday ? "var(--brand-gold)" : "var(--bg-surface-2)"}; border:1px solid ${d.isToday ? "var(--brand-gold)" : "var(--border-subtle)"};">
-      <div style="font-size:11px; font-weight:700; color:${d.isToday ? "#000" : "var(--text-muted)"}; text-transform:uppercase;">${d.day}</div>
-      <div style="font-size:13px; font-weight:700; color:${d.isToday ? "#000" : (d.isOff ? "var(--text-muted)" : "var(--text-primary)")}; margin-top:4px;">
+    <div class="schedule-day-box ${d.isToday ? "active-today" : ""}" style="padding:14px 18px; text-align:center; border-radius:12px; background:${d.isToday ? "rgba(180,83,9,0.08)" : "var(--surface)"}; border:1px solid ${d.isToday ? "rgba(180,83,9,0.35)" : "var(--line)"}; box-shadow:var(--shadow-xs); margin-bottom:0;">
+      <div style="font-size:11.5px; font-weight:700; color:${d.isToday ? "#b45309" : "var(--muted)"}; text-transform:uppercase; letter-spacing:0.5px;">${d.day}</div>
+      <div style="font-size:16px; font-weight:800; color:${d.isToday ? "#b45309" : (d.isOff ? "var(--muted)" : "var(--ink)")}; font-family:var(--font-heading); margin-top:4px;">
         ${d.isOff ? "Off" : (d.shiftHours.includes("9") ? "9–5" : "1–9")}
       </div>
-      <div style="font-size:10px; color:${d.isToday ? "#222" : "var(--text-muted)"}; margin-top:2px;">
+      <div style="font-size:11px; font-weight:600; color:${d.isToday ? "#b45309" : "var(--muted)"}; margin-top:2px;">
         ${d.isOff ? "Rest" : "Duty"}
       </div>
     </div>
   `).join("");
 
   const announcementsListHtml = announcements.slice(0, 2).map((a) => `
-    <div style="padding:10px 0; border-bottom:1px solid var(--border-subtle);">
-      <div class="flex items-center justify-between gap-sm">
-        <span class="badge ${a.priority === "HIGH" ? "badge-coral" : "badge-subtle"}" style="font-size:10px;">${a.category || "NOTICE"}</span>
-        <span style="font-size:11px; color:var(--text-muted);">${formatDateOnly(a.createdAt)}</span>
+    <div style="padding:12px 0; border-bottom:1px solid var(--line);">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+        <span class="badge ${a.priority === "HIGH" ? "badge-coral" : "badge-subtle"}" style="font-size:10px; font-weight:700;">${a.category || "NOTICE"}</span>
+        <span style="font-size:11px; color:var(--muted);">${formatDateOnly(a.createdAt)}</span>
       </div>
-      <div style="font-size:13px; font-weight:600; color:var(--text-primary); margin-top:4px;">${a.title}</div>
-      <div style="font-size:12px; color:var(--text-muted); margin-top:2px;">${a.summary || ""}</div>
+      <div style="font-size:13.5px; font-weight:700; color:var(--ink); margin-top:6px;">${a.title}</div>
+      <div style="font-size:12px; color:var(--muted); margin-top:3px; line-height:1.4;">${a.summary || ""}</div>
     </div>
   `).join("");
 
   const lowerGridHtml = `
-    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap:16px;" id="roster-section">
+    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:16px; margin-bottom:20px;" id="roster-section">
       <!-- 7-Day Schedule -->
-      <div class="card" style="padding:20px; background:var(--bg-surface-1);">
-        <div class="flex items-center justify-between" style="margin-bottom:14px;">
-          <div style="font-size:13px; font-weight:700; color:var(--text-primary); text-transform:uppercase; letter-spacing:0.04em;">
-            This Week's Schedule
+      <div class="card" style="padding:20px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+          <div style="font-size:11.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.04em;">
+            THIS WEEK'S SCHEDULE
           </div>
-          <button class="btn btn-xs btn-ghost" data-nav-target="staff-attendance">Full Roster →</button>
+          <button class="btn btn-xs btn-secondary" data-nav-target="staff-attendance" style="font-weight:600;">Full Roster →</button>
         </div>
-        <div class="flex gap-xs" style="overflow-x:auto; padding-bottom:4px;">
+        <div style="display:flex; flex-direction:column; gap:12px; padding:4px 0 10px 0;">
           ${weekDayCardsHtml}
         </div>
-        <div class="flex items-center justify-between" style="margin-top:14px; padding-top:10px; border-top:1px solid var(--border-subtle); font-size:12px; color:var(--text-muted);">
-          <span>Upcoming: <strong>Sunday — Weekly Off</strong></span>
-          <button class="btn btn-xs btn-ghost" id="btn-inline-schedule-request">Change Shift Request →</button>
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-top:14px; padding-top:12px; border-top:1px solid var(--line); font-size:12.5px; color:var(--muted);">
+          <span>Upcoming: <strong style="color:var(--ink);">Sunday — Weekly Off</strong></span>
+          <button class="btn btn-xs btn-secondary" id="btn-inline-schedule-request" type="button" style="font-size:11.5px; padding:4px 10px;">Change Shift Request →</button>
         </div>
       </div>
 
       <!-- Announcements -->
-      <div class="card" style="padding:20px; background:var(--bg-surface-1);">
-        <div class="flex items-center justify-between" style="margin-bottom:12px;">
-          <div style="font-size:13px; font-weight:700; color:var(--text-primary); text-transform:uppercase; letter-spacing:0.04em;">
-            Announcements
+      <div class="card" style="padding:20px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <div style="font-size:11.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.04em;">
+            ANNOUNCEMENTS
           </div>
           <button class="btn btn-xs btn-ghost" data-nav-target="announcements">View All (${announcements.length}) →</button>
         </div>
         <div>
-          ${announcementsListHtml || `<div style="font-size:12.5px; color:var(--text-muted); padding:10px 0;">No announcements posted today.</div>`}
+          ${announcementsListHtml || `<div style="font-size:12.5px; color:var(--muted); padding:10px 0;">No announcements posted today.</div>`}
         </div>
       </div>
     </div>
@@ -630,23 +868,29 @@ export function wireStaffHome(root) {
       });
     }
 
-    // 11. Document Upload Modal
-    const uploadDocBtn = container.querySelector("#btn-upload-document");
-    if (uploadDocBtn) {
-      uploadDocBtn.addEventListener("click", () => {
-        openDocumentUploadModal(emp);
+    // 12. Employee Switcher (Primary Master / Multi-Staff Switcher)
+    const empSwitcher = container.querySelector("#staff-employee-switcher");
+    if (empSwitcher) {
+      empSwitcher.addEventListener("change", (e) => {
+        const newEmpId = e.target.value;
+        activeStaffEmployeeId = newEmpId;
+        const targetData = STAFF_DIRECTORY.find((s) => s.employee.id === newEmpId) || DEFAULT_STAFF_DATA;
+        contentEl.innerHTML = renderDashboardBody(targetData);
+        bindDashboardInteractions(contentEl, targetData);
+        showToast(`Switched Self-Service view to ${targetData.employee.name} (${targetData.employee.id})`);
       });
     }
   }
 
   // Bind interactions immediately with default/pre-rendered state
-  bindDashboardInteractions(contentEl, DEFAULT_STAFF_DATA);
+  const initialData = STAFF_DIRECTORY.find((s) => s.employee.id === activeStaffEmployeeId) || DEFAULT_STAFF_DATA;
+  bindDashboardInteractions(contentEl, initialData);
 
   // Load live data from aggregated endpoint in background with graceful fallback
   async function loadDashboard() {
     try {
       const res = await apiGet("/employees/me/dashboard");
-      if (res && res.data) {
+      if (res && res.data && activeStaffEmployeeId === "EMP-0042") {
         contentEl.innerHTML = renderDashboardBody(res.data);
         bindDashboardInteractions(contentEl, res.data);
       }

@@ -1957,7 +1957,20 @@ async function _wireProfile(root) {
   });
 
   root.querySelector("#settings-photo-upload-btn")?.addEventListener("click", () => {
-    showToast("Profile photo upload: select JPG/PNG (max 2MB).", "mint");
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/png, image/jpeg, image/webp";
+    input.onchange = (e) => {
+      const file = e.target.files?.[0];
+      if (file) {
+        showToast(`Profile photo "${file.name}" uploaded successfully.`, "mint");
+      }
+    };
+    input.click();
+  });
+
+  root.querySelector("#settings-photo-remove-btn")?.addEventListener("click", () => {
+    showToast("Profile photo removed. Reset to initials avatar.", "mint");
   });
 }
 

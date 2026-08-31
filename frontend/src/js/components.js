@@ -222,10 +222,10 @@ export function renderTopbar({ scopeChip } = {}) {
   }
 
   const searchPlaceholder = isStaff
-    ? "Search my attendance, payslips, requests... (Ctrl+K)"
+    ? "Search attendance, payslips, requests..."
     : isCafeOps
-    ? "Search this café… (Ctrl+K)"
-    : "Search modules, records, employees... (Ctrl+K)";
+    ? "Search this café…"
+    : "Search modules, records, employees...";
 
   return `
     <div class="topbar-inner">
@@ -432,6 +432,27 @@ export function wireBell(root) {
     };
     window.addEventListener('online', updateConnectivityBadge);
     window.addEventListener('offline', updateConnectivityBadge);
+  }
+
+  // Global Café Scope Dropdown Selector
+  const globalCafeSel = root.querySelector("#global-cafe-selector");
+  if (globalCafeSel) {
+    if (state.selectedCafeId) {
+      globalCafeSel.value = state.selectedCafeId;
+    }
+    globalCafeSel.addEventListener("change", (e) => {
+      const newCafeId = e.target.value;
+      state.selectedCafeId = newCafeId;
+      if (state.user) {
+        state.user.primaryCafeId = newCafeId;
+        state.user.primaryCafeName = newCafeId === "ZC-0002" ? "Indiranagar Central" : newCafeId === "ZC-0003" ? "Calicut Beach" : "Koramangala Main";
+      }
+      showToast(`Global café scope switched to ${newCafeId === "ALL" ? "All Cafés (Portfolio)" : newCafeId}`, "info");
+      // Trigger navigation refresh to update the active page data under new cafe context
+      if (state.route) {
+        navigate(state.route);
+      }
+    });
   }
 
   // Theme switcher
@@ -1294,6 +1315,8 @@ export function renderCafeContextStrip({
   }
 
   // Master / Owner Multi-Café Switcher Header
+  const effectiveCafe = selectedCafe || state.selectedCafeId || state.activeCafe || "ALL";
+
   return `
     <div class="glass-card" style="padding:12px 16px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
       <div style="display:flex; align-items:center; gap:12px;">
@@ -1304,17 +1327,83 @@ export function renderCafeContextStrip({
         </div>
       </div>
       <div style="display:flex; align-items:center; gap:12px;">
-        <select id="ctx-cafe-selector" class="input" style="height:36px; font-size:12.5px; padding:4px 10px; min-width:200px;">
-          <option value="ALL" ${selectedCafe === "ALL" ? "selected" : ""}>🌐 All Cafés (Global Portfolio)</option>
-          <option value="ZC-0001" ${selectedCafe === "ZC-0001" ? "selected" : ""}>📍 Koramangala Flagship (ZC-0001)</option>
-          <option value="ZC-0002" ${selectedCafe === "ZC-0002" ? "selected" : ""}>📍 Indiranagar Roastery (ZC-0002)</option>
-          <option value="ZC-0003" ${selectedCafe === "ZC-0003" ? "selected" : ""}>📍 Whitefield Tech Park (ZC-0003)</option>
-          <option value="ZC-0004" ${selectedCafe === "ZC-0004" ? "selected" : ""}>📍 MG Road Express (ZC-0004)</option>
+        <select id="ctx-cafe-selector" class="input" style="height:36px; font-size:12.5px; padding:4px 10px; min-width:220px; font-weight:600;">
+          <option value="ALL" ${effectiveCafe === "ALL" ? "selected" : ""}>🌐 All Cafés (Global Portfolio)</option>
+          <option value="ZC-0001" ${effectiveCafe === "ZC-0001" ? "selected" : ""}>📍 Koramangala Flagship (ZC-0001)</option>
+          <option value="ZC-0002" ${effectiveCafe === "ZC-0002" ? "selected" : ""}>📍 Indiranagar Roastery (ZC-0002)</option>
+          <option value="ZC-0003" ${effectiveCafe === "ZC-0003" ? "selected" : ""}>📍 Whitefield Tech Park (ZC-0003)</option>
+          <option value="ZC-0004" ${effectiveCafe === "ZC-0004" ? "selected" : ""}>📍 MG Road Express (ZC-0004)</option>
         </select>
         ${actionsHtml}
       </div>
     </div>
   `;
+}
+
+export function wireCafeContextStrip(root = document, onCafeChange = null) {
+  const ctxCafeSel = root.querySelector ? root.querySelector("#ctx-cafe-selector") : null;
+  if (!ctxCafeSel) return;
+
+  const currentVal = state.selectedCafeId || state.activeCafe || "ALL";
+  if (currentVal && ctxCafeSel.value !== currentVal) {
+    ctxCafeSel.value = currentVal;
+  }
+
+  if (ctxCafeSel.dataset.wired === "true") return;
+  ctxCafeSel.dataset.wired = "true";
+
+  ctxCafeSel.addEventListener("change", (e) => {
+    const newCafeId = e.target.value;
+    state.selectedCafeId = newCafeId;
+    state.activeCafe = newCafeId;
+
+    if (state.user) {
+      state.user.primaryCafeId = newCafeId === "ALL" ? "ZC-0001" : newCafeId;
+      state.user.primaryCafeName =
+        newCafeId === "ZC-0002"
+          ? "Indiranagar Roastery"
+          : newCafeId === "ZC-0003"
+          ? "Whitefield Tech Park"
+          : newCafeId === "ZC-0004"
+          ? "MG Road Express"
+          : newCafeId === "ALL"
+          ? "All Cafés (Global Portfolio)"
+          : "Koramangala Flagship";
+    }
+
+    // Sync with Topbar selector if present
+    const topbarSel = document.getElementById("global-cafe-selector");
+    if (topbarSel && topbarSel.value !== newCafeId) {
+      topbarSel.value = newCafeId;
+    }
+
+    const cafeLabel =
+      newCafeId === "ALL"
+        ? "All Cafés (Global Portfolio)"
+        : newCafeId === "ZC-0001"
+        ? "Koramangala Flagship (ZC-0001)"
+        : newCafeId === "ZC-0002"
+        ? "Indiranagar Roastery (ZC-0002)"
+        : newCafeId === "ZC-0003"
+        ? "Whitefield Tech Park (ZC-0003)"
+        : newCafeId === "ZC-0004"
+        ? "MG Road Express (ZC-0004)"
+        : newCafeId;
+
+    showToast(`Global Portfolio context switched to ${cafeLabel}.`, "info");
+
+    if (typeof onCafeChange === "function") {
+      onCafeChange(newCafeId);
+    } else {
+      // Re-trigger current page navigation to reload views under selected cafe
+      const currentRoute = state.route || window.location.hash.replace("#", "") || "dashboard";
+      window.dispatchEvent(new CustomEvent("zamorin:cafeChanged", { detail: { cafeId: newCafeId } }));
+      // Rerender active page if router is loaded
+      import("./router.js").then((m) => {
+        if (m.navigate) m.navigate(currentRoute);
+      }).catch(() => {});
+    }
+  });
 }
 
 /* -------------------------------------------------------------------------

@@ -980,15 +980,89 @@ export function renderDashboardBodyHtml(data) {
       </div>
     </div>
 
-    <!-- Layer 6: Multi-Café Business Health Breakdown -->
+    <!-- Layer 6: Multi-Café Business Health Breakdown Cards & Table -->
     <div class="occ-section-card mt-6">
-      <div class="occ-card-header">
+      <div class="occ-card-header" style="margin-bottom:16px;">
         <div class="occ-card-title">
           ${icon("reports", 18)}
-          <span>Multi-Location Performance & Health Matrix</span>
+          <span>Multi-Location Performance &amp; Health Breakdown</span>
         </div>
         <span class="occ-tag">${cafes.length} Authorized Locations</span>
       </div>
+
+      <!-- Location Cards Grid matching Reference HRIS standard -->
+      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap:16px; margin-bottom:20px;">
+        ${cafes.map(cafe => {
+          const targetPct = cafe.targetAchievementPct !== null && cafe.targetAchievementPct !== undefined ? cafe.targetAchievementPct : 0;
+          const targetBarColor = targetPct >= 90 ? "var(--bronze-500)" : targetPct >= 70 ? "var(--bronze-400)" : "var(--danger)";
+          return `
+            <div style="background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:18px; box-shadow:var(--shadow-xs); display:flex; flex-direction:column; justify-content:space-between;">
+              <div>
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px;">
+                  <div>
+                    <h3 style="font-size:15.5px; font-weight:700; margin:0; color:var(--ink);">${cafe.name}</h3>
+                    <span style="font-size:11.5px; color:var(--muted);">${cafe.cafeId} · ${cafe.city || 'Kerala'}</span>
+                  </div>
+                  <span class="occ-health-pill ${cafe.health?.toLowerCase()}" style="font-size:10.5px; font-weight:700;">
+                    ${cafe.health}
+                  </span>
+                </div>
+
+                <!-- 6 Metric Blocks matching reference HRIS -->
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; font-size:13px; margin-bottom:12px;">
+                  <div style="background:var(--surface-sunken); padding:10px 12px; border-radius:8px; border:1px solid var(--line);">
+                    <div style="color:var(--muted); font-size:11px; text-transform:uppercase; font-weight:700;">Gross Sales</div>
+                    <div style="font-weight:700; font-size:15px; color:var(--ink); margin-top:2px;">${fmtInr(cafe.totalSalesPaisa)}</div>
+                  </div>
+                  <div style="background:var(--surface-sunken); padding:10px 12px; border-radius:8px; border:1px solid var(--line);">
+                    <div style="color:var(--muted); font-size:11px; text-transform:uppercase; font-weight:700;">Completed Orders</div>
+                    <div style="font-weight:700; font-size:15px; color:var(--ink); margin-top:2px;">${fmtNum(cafe.totalOrders)}</div>
+                  </div>
+                  <div style="background:var(--surface-sunken); padding:10px 12px; border-radius:8px; border:1px solid var(--line);">
+                    <div style="color:var(--muted); font-size:11px; text-transform:uppercase; font-weight:700;">Average Bill</div>
+                    <div style="font-weight:700; font-size:15px; color:var(--bronze-600); margin-top:2px;">${fmtInr(cafe.aovPaisa)}</div>
+                  </div>
+                  <div style="background:var(--surface-sunken); padding:10px 12px; border-radius:8px; border:1px solid var(--line);">
+                    <div style="color:var(--muted); font-size:11px; text-transform:uppercase; font-weight:700;">Stock Risks</div>
+                    <div style="font-weight:700; font-size:15px; color:${cafe.inventoryCritical > 0 ? 'var(--danger)' : 'var(--ink)'}; margin-top:2px;">
+                      ${cafe.inventoryCritical > 0 ? `${cafe.inventoryCritical} Critical` : 'Stable'}
+                    </div>
+                  </div>
+                  <div style="background:var(--surface-sunken); padding:10px 12px; border-radius:8px; border:1px solid var(--line);">
+                    <div style="color:var(--muted); font-size:11px; text-transform:uppercase; font-weight:700;">Target Pace</div>
+                    <div style="font-weight:700; font-size:15px; color:var(--ink); margin-top:2px;">${targetPct}%</div>
+                  </div>
+                  <div style="background:var(--surface-sunken); padding:10px 12px; border-radius:8px; border:1px solid var(--line);">
+                    <div style="color:var(--muted); font-size:11px; text-transform:uppercase; font-weight:700;">Maintenance</div>
+                    <div style="font-weight:700; font-size:15px; color:${cafe.maintenanceOpen > 0 ? '#f59e0b' : 'var(--ink)'}; margin-top:2px;">
+                      ${cafe.maintenanceOpen || 0} Open
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Target Progress Bar -->
+                <div style="background:var(--surface-sunken); padding:10px 12px; border-radius:8px; border:1px solid var(--line); margin-bottom:12px;">
+                  <div style="display:flex; justify-content:space-between; font-size:11.5px; margin-bottom:4px;">
+                    <span style="color:var(--muted); font-weight:600;">Performance Target</span>
+                    <strong style="color:var(--ink);">${targetPct}% Complete</strong>
+                  </div>
+                  <div style="width:100%; height:6px; background:var(--line); border-radius:3px; overflow:hidden;">
+                    <div style="width:${Math.min(targetPct, 100)}%; height:100%; background:${targetBarColor}; border-radius:3px;"></div>
+                  </div>
+                </div>
+              </div>
+
+              <div style="margin-top:6px; padding-top:10px; border-top:1px solid var(--line);">
+                <button class="btn btn-ghost occ-filter-cafe-btn" data-cafe-id="${cafe.cafeId}" style="width:100%; font-size:12.5px; font-weight:600; justify-content:center;" type="button">
+                  Focus Location Portfolio →
+                </button>
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+
+      <!-- Detail Table Accordion -->
       <div class="occ-table-responsive">
         <table class="occ-table">
           <thead>
@@ -1262,6 +1336,19 @@ function wireDashboardBodyActions(container, data) {
       if (c) c.innerHTML = renderTrendTable(trend);
     });
   }
+
+  container.querySelectorAll(".occ-filter-cafe-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const cafeId = btn.dataset.cafeId;
+      if (cafeId) {
+        ownerDashboardState.selectedCafeId = cafeId;
+        const sel = document.getElementById("occ-cafe-select");
+        if (sel) sel.value = cafeId;
+        loadDashboardData();
+        showToast(`Filtered Command Centre to ${cafeId}`, "info");
+      }
+    });
+  });
 }
 
 function renderDashboardBody(container, data) {

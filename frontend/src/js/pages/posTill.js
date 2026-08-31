@@ -239,7 +239,7 @@ function renderTerminalView() {
           <!-- Search & Category Filter Bar (§24–§27) -->
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
             <div style="position:relative;flex:1;min-width:220px;">
-              <input type="text" id="pos-menu-search" class="input" placeholder="Search menu or code (PO-01)... [Ctrl+K]" value="${escapeHtml(searchQuery)}" style="font-size:12.5px;padding:6px 28px 6px 30px;" />
+              <input type="text" id="pos-menu-search" class="input" placeholder="Search menu or code (PO-01)..." value="${escapeHtml(searchQuery)}" style="font-size:12.5px;padding:6px 28px 6px 30px;" />
               <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--muted);">🔍</span>
               ${searchQuery ? `
                 <button id="pos-clear-search" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;" type="button">✕</button>

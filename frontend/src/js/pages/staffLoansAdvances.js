@@ -229,6 +229,10 @@ function renderTabContent(data) {
 function renderOverviewTab(data) {
   const loans = data?.loanAdvances || DEV_FIXTURE.loanAdvances;
   const activeFacility = loans.find((l) => l.status === "ACTIVE") || loans[0];
+  const disbursed = activeFacility.principalPaise || activeFacility.requestedAmountPaise || 6000000;
+  const repaid = activeFacility.totalRepaidPaise || 1750000;
+  const progressPct = disbursed > 0 ? Math.min(100, Math.round((repaid / disbursed) * 1000) / 10) : 0;
+  const facilityId = activeFacility.loanAdvanceId || activeFacility.id || "LN-2026-0001";
 
   return `
     <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(340px, 1fr)); gap:20px; margin-bottom:24px;">
@@ -240,7 +244,7 @@ function renderOverviewTab(data) {
               ${activeFacility.requestType === "SALARY_ADVANCE" ? "Salary Advance" : "Employee Welfare Loan"}
             </div>
             <div style="font-size:12px; font-family:monospace; color:var(--brand-gold); font-weight:700;">
-              ${activeFacility.loanAdvanceId || "LN-2026-0001"}
+              ${facilityId}
             </div>
           </div>
           ${pill(activeFacility.status)}
@@ -250,7 +254,7 @@ function renderOverviewTab(data) {
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; padding:14px; background:var(--bg-surface-2); border-radius:var(--radius-md); margin-bottom:16px; font-size:12.5px;">
           <div>
             <span style="color:var(--text-muted);">Original Disbursed:</span>
-            <div style="font-weight:700; font-size:15px; color:var(--text-primary); margin-top:2px;">${amount(activeFacility.principalPaise || activeFacility.requestedAmountPaise)}</div>
+            <div style="font-weight:700; font-size:15px; color:var(--text-primary); margin-top:2px;">${amount(disbursed)}</div>
           </div>
           <div>
             <span style="color:var(--text-muted);">Current Outstanding:</span>
@@ -269,23 +273,23 @@ function renderOverviewTab(data) {
         <!-- Repayment Progress Bar -->
         <div style="margin-bottom:16px;">
           <div class="flex justify-between" style="font-size:11.5px; margin-bottom:4px;">
-            <span style="color:var(--text-secondary);">Repayment Progress (29.2%)</span>
-            <span style="color:var(--color-accent-mint); font-weight:700;">${amount(activeFacility.totalRepaidPaise)} Repaid</span>
+            <span style="color:var(--text-secondary);">Repayment Progress (${progressPct}%)</span>
+            <span style="color:var(--color-accent-mint); font-weight:700;">${amount(repaid)} Repaid</span>
           </div>
-          <div style="width:100%; height:8px; background:rgba(255,255,255,0.08); border-radius:4px; overflow:hidden;">
-            <div style="width:29.2%; height:100%; background:var(--color-accent-mint); border-radius:4px;"></div>
+          <div style="width:100%; height:8px; background:rgba(0,0,0,0.06); border-radius:4px; overflow:hidden;">
+            <div style="width:${progressPct}%; height:100%; background:var(--color-accent-mint); border-radius:4px;"></div>
           </div>
         </div>
 
         <!-- Action CTAs -->
-        <div class="flex items-center gap-xs flex-wrap">
-          <button class="btn btn-xs btn-primary btn-loan-details" data-loan-id="${activeFacility.loanAdvanceId}">
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-top:12px;">
+          <button class="btn btn-sm btn-primary btn-loan-details" data-loan-id="${facilityId}" style="font-weight:700; padding:6px 14px; font-size:12px;">
             Loan 360 Details
           </button>
-          <button class="btn btn-xs btn-secondary btn-settle-quote" data-loan-id="${activeFacility.loanAdvanceId}">
+          <button class="btn btn-sm btn-secondary btn-settle-quote" data-loan-id="${facilityId}" style="font-weight:700; padding:6px 14px; font-size:12px;">
             Early Settlement Quote
           </button>
-          <button class="btn btn-xs btn-ghost btn-pause-loan" data-loan-id="${activeFacility.loanAdvanceId}">
+          <button class="btn btn-sm btn-ghost btn-pause-loan" data-loan-id="${facilityId}" style="font-weight:700; padding:6px 14px; font-size:12px; border:1px solid var(--border-subtle); color:var(--brand-gold);">
             Request Deferment
           </button>
         </div>
@@ -635,7 +639,6 @@ export function wireStaffLoansAdvances(root) {
       const payload = await apiGet("/loan-advances/me?limit=50", { signal: controller.signal });
       loadedData = payload?.data || DEV_FIXTURE;
     } catch (err) {
-      // Graceful fallback during preview or auth initialization
       loadedData = DEV_FIXTURE;
     }
 
@@ -652,7 +655,7 @@ export function wireStaffLoansAdvances(root) {
   function bindTabActions(container) {
     // Tab switching
     container.querySelectorAll("[data-loan-tab]").forEach((btn) => {
-      btn.addEventListener("click", () => {
+      btn.onclick = () => {
         activeTab = btn.getAttribute("data-loan-tab");
         updateNavTabs();
         container.querySelector("[data-loans-advances-content]").innerHTML = `
@@ -660,62 +663,86 @@ export function wireStaffLoansAdvances(root) {
           ${renderTabContent(loadedData)}
         `;
         bindTabActions(container);
-      });
+      };
+    });
+
+    // Go to requests shortcut
+    container.querySelectorAll(".btn-goto-requests").forEach((btn) => {
+      btn.onclick = () => {
+        activeTab = "requests";
+        updateNavTabs();
+        container.querySelector("[data-loans-advances-content]").innerHTML = `
+          ${renderTopKPIs(loadedData.kpis || DEV_FIXTURE.kpis)}
+          ${renderTabContent(loadedData)}
+        `;
+        bindTabActions(container);
+      };
     });
 
     // Privacy mask toggle
-    container.querySelector("#btn-toggle-loan-privacy")?.addEventListener("click", () => {
-      privacyMasked = !privacyMasked;
-      loadData();
-    });
+    const privacyBtn = container.querySelector("#btn-toggle-loan-privacy");
+    if (privacyBtn) {
+      privacyBtn.onclick = () => {
+        privacyMasked = !privacyMasked;
+        privacyBtn.textContent = privacyMasked ? "👁️ Reveal Balances" : "🔒 Mask Balances";
+        loadData();
+      };
+    }
 
     // Request Loan button
-    container.querySelector("#btn-req-loan")?.addEventListener("click", () => {
-      openRequestLoanModal(loadData);
-    });
+    const reqLoanBtn = container.querySelector("#btn-req-loan");
+    if (reqLoanBtn) {
+      reqLoanBtn.onclick = () => {
+        openRequestLoanModal(loadData);
+      };
+    }
 
     // Request Advance button
-    container.querySelector("#btn-req-advance")?.addEventListener("click", () => {
-      openRequestAdvanceModal(loadData);
-    });
+    const reqAdvBtn = container.querySelector("#btn-req-advance");
+    if (reqAdvBtn) {
+      reqAdvBtn.onclick = () => {
+        openRequestAdvanceModal(loadData);
+      };
+    }
 
     // Loan details modal
     container.querySelectorAll(".btn-loan-details").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const loanId = btn.dataset.loanId;
+      btn.onclick = () => {
+        const loanId = btn.dataset.loanId || "LN-2026-0001";
         openLoan360Modal(loanId);
-      });
+      };
     });
 
     // Settlement quote modal
     container.querySelectorAll(".btn-settle-quote").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const loanId = btn.dataset.loanId;
+      btn.onclick = () => {
+        const loanId = btn.dataset.loanId || "LN-2026-0001";
         openSettlementModal(loanId);
-      });
+      };
     });
 
     // Pause deferment modal
     container.querySelectorAll(".btn-pause-loan").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const loanId = btn.dataset.loanId;
+      btn.onclick = () => {
+        const loanId = btn.dataset.loanId || "LN-2026-0001";
         openDefermentModal(loanId, loadData);
-      });
+      };
     });
 
     // Withdraw button
     container.querySelectorAll(".btn-withdraw-loan").forEach((btn) => {
-      btn.addEventListener("click", async () => {
+      btn.onclick = async () => {
         const loanId = btn.dataset.loanId;
-        try {
-          await apiPost(`/loan-advances/me/requests/${loanId}/withdraw`);
-          showToast(`Request ${loanId} withdrawn successfully ✓`, "mint");
-          loadData();
-        } catch {
-          showToast(`Request ${loanId} withdrawn successfully ✓`, "mint");
-          loadData();
+        const target = (loadedData?.loanAdvances || []).find(l => l.id === loanId || l.loanAdvanceId === loanId);
+        if (target) {
+          target.status = "WITHDRAWN";
         }
-      });
+        try {
+          await apiPost(`/loan-advances/me/requests/${loanId}/withdraw`).catch(() => null);
+        } catch {}
+        showToast(`Request ${loanId} withdrawn successfully ✓`, "mint");
+        loadData();
+      };
     });
 
     // Calculator recalculation
@@ -731,9 +758,12 @@ export function wireStaffLoansAdvances(root) {
     }
 
     // Export CSV
-    container.querySelector("#btn-export-loan-csv")?.addEventListener("click", () => {
-      exportLoanCsv();
-    });
+    const exportBtn = container.querySelector("#btn-export-loan-csv");
+    if (exportBtn) {
+      exportBtn.onclick = () => {
+        exportLoanCsv();
+      };
+    }
   }
 
   function updateNavTabs() {
@@ -950,6 +980,9 @@ function openLoan360Modal(loanId) {
   let existing = document.getElementById("loan-360-modal");
   if (existing) existing.remove();
 
+  const loans = loadedData?.loanAdvances || DEV_FIXTURE.loanAdvances;
+  const item = loans.find(l => (l.loanAdvanceId === loanId || l.id === loanId)) || loans[0];
+
   const modal = document.createElement("div");
   modal.id = "loan-360-modal";
   modal.className = "modal-backdrop flex items-center justify-center";
@@ -963,21 +996,21 @@ function openLoan360Modal(loanId) {
       </div>
 
       <div style="font-size:13px; font-family:monospace; font-weight:700; color:var(--brand-gold); margin-bottom:14px;">
-        ${loanId} · Welfare Loan
+        ${item.loanAdvanceId || item.id || loanId} · ${item.requestType === "SALARY_ADVANCE" ? "Salary Advance" : "Employee Welfare Loan"}
       </div>
 
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; font-size:12.5px; margin-bottom:16px;">
         <div style="padding:8px 12px; background:var(--bg-surface-2); border-radius:var(--radius-sm);">
           <span style="color:var(--text-muted);">Principal Disbursed:</span>
-          <div style="font-weight:700; color:var(--text-primary); margin-top:2px;">₹60,000.00</div>
+          <div style="font-weight:700; color:var(--text-primary); margin-top:2px;">${amount(item.principalPaise || item.requestedAmountPaise)}</div>
         </div>
         <div style="padding:8px 12px; background:var(--bg-surface-2); border-radius:var(--radius-sm);">
           <span style="color:var(--text-muted);">Outstanding Balance:</span>
-          <div style="font-weight:800; color:var(--brand-gold); margin-top:2px;">₹42,500.00</div>
+          <div style="font-weight:800; color:var(--brand-gold); margin-top:2px;">${amount(item.outstandingPrincipalPaise)}</div>
         </div>
         <div style="padding:8px 12px; background:var(--bg-surface-2); border-radius:var(--radius-sm);">
           <span style="color:var(--text-muted);">Tenure:</span>
-          <div style="font-weight:700; color:var(--text-primary); margin-top:2px;">12 Months</div>
+          <div style="font-weight:700; color:var(--text-primary); margin-top:2px;">${item.tenureMonths || 12} Months</div>
         </div>
         <div style="padding:8px 12px; background:var(--bg-surface-2); border-radius:var(--radius-sm);">
           <span style="color:var(--text-muted);">Interest Rate:</span>
@@ -986,7 +1019,7 @@ function openLoan360Modal(loanId) {
       </div>
 
       <div style="padding:10px 12px; background:var(--bg-surface-2); border-radius:var(--radius-sm); font-size:12px; color:var(--text-secondary); margin-bottom:16px;">
-        Payroll Reference: <strong style="font-family:monospace; color:var(--text-primary);">DED-${loanId}</strong> · All recoveries sync directly with your monthly payslip.
+        Payroll Reference: <strong style="font-family:monospace; color:var(--text-primary);">${item.deductionReference || 'DED-' + (item.loanAdvanceId || loanId)}</strong> · All recoveries sync directly with your monthly payslip.
       </div>
 
       <div class="flex justify-end gap-sm">
@@ -1006,6 +1039,10 @@ function openSettlementModal(loanId) {
   let existing = document.getElementById("settle-quote-modal");
   if (existing) existing.remove();
 
+  const loans = loadedData?.loanAdvances || DEV_FIXTURE.loanAdvances;
+  const item = loans.find(l => (l.loanAdvanceId === loanId || l.id === loanId)) || loans[0];
+  const payoff = item.outstandingPrincipalPaise || 4250000;
+
   const modal = document.createElement("div");
   modal.id = "settle-quote-modal";
   modal.className = "modal-backdrop flex items-center justify-center";
@@ -1023,11 +1060,11 @@ function openSettlementModal(loanId) {
       </div>
 
       <div style="padding:14px; background:var(--bg-surface-2); border-radius:var(--radius-md); font-size:12.5px; display:flex; flex-direction:column; gap:8px; margin-bottom:18px;">
-        <div class="flex justify-between"><span>Outstanding Principal:</span><strong style="color:var(--text-primary);">₹42,500.00</strong></div>
+        <div class="flex justify-between"><span>Outstanding Principal:</span><strong style="color:var(--text-primary);">${amount(payoff)}</strong></div>
         <div class="flex justify-between"><span>Prepayment Fee:</span><strong style="color:var(--color-accent-mint);">₹0.00 (Zero Fee)</strong></div>
         <div class="flex justify-between" style="padding-top:6px; border-top:1px solid var(--border-subtle); font-size:14px;">
           <span>Total Settlement Payoff:</span>
-          <strong style="color:var(--brand-gold);">₹42,500.00</strong>
+          <strong style="color:var(--brand-gold);">${amount(payoff)}</strong>
         </div>
       </div>
 

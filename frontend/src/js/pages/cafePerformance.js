@@ -80,44 +80,28 @@ export function renderPerformance() {
   const canExport = [ROLES.MASTER, ROLES.OWNER].includes(state.role);
 
   return `
-    <div class="page-enter" style="display:flex;flex-direction:column;gap:18px;">
-      <!-- Header Banner with Context, Freshness and Quick Actions -->
-      <div class="card" style="padding:18px 22px;background:var(--surface);border:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px;">
+    <div class="page-enter" style="padding-bottom: 60px;">
+      <!-- Page Header -->
+      <div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px; margin-bottom: 24px;">
         <div>
-          <div style="display:flex;align-items:center;gap:12px;">
-            <span style="font-size:24px;">📊</span>
-            <div>
-              <div style="display:flex;align-items:center;gap:8px;">
-                <h1 style="color:var(--ink);font-size:20px;font-weight:800;margin:0;letter-spacing:-0.3px;" class="font-display">Café Performance Control Centre</h1>
-                <span class="pill pill-mint" style="font-size:10px;font-weight:700;letter-spacing:0.3px;">OWN-SCR-006</span>
-                <span class="pill pill-sky" style="font-size:10px;font-weight:700;letter-spacing:0.3px;">EXECUTIVE INSIGHTS</span>
-              </div>
-              <p style="color:var(--muted);font-size:12px;margin:3px 0 0 0;">
-                Multi-location sales benchmarking, labor efficiency, inventory economics, product velocity, and operational target attainment.
-              </p>
-            </div>
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <h1 class="page-title" style="font-size:26px; font-weight:700; color:var(--ink); margin:0;">Café Performance Control Centre</h1>
+            <span class="badge" style="background:rgba(180,83,9,0.12); color:#b45309; font-weight:600; font-size:12px; padding:4px 10px; border-radius:12px;">SCR-006 PERF</span>
           </div>
+          <p class="page-subtitle" style="font-size:14px; color:var(--muted); margin:4px 0 0 0;">
+            Multi-location sales benchmarking, labor efficiency, inventory economics, product velocity, and operational target attainment.
+          </p>
         </div>
 
-        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-          <div style="text-align:right;margin-right:8px;" class="hide-mobile">
-            <div style="font-size:11px;font-weight:700;color:var(--ink);" id="perf-ist-clock">${getIstClockString()}</div>
-            <div style="font-size:10px;color:var(--muted);" id="perf-freshness-label">Data Through: Live IST</div>
-          </div>
-
-          <button class="btn btn-sm btn-ghost" id="perf-refresh-btn" type="button" title="Refresh Performance Analytics">
-            ↻ Refresh
-          </button>
-
-          <button class="btn btn-sm btn-ghost" id="perf-save-view-btn" type="button" title="Save Custom Filter View">
-            💾 Save View
-          </button>
-
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
           ${canExport ? `
-            <button class="btn btn-sm btn-primary" id="perf-open-export-btn" style="font-size:12px;font-weight:700;padding:6px 14px;" type="button">
+            <button class="btn btn-primary" id="perf-open-export-btn" style="font-weight:700;" type="button">
               📑 Export Performance (ZURF)
             </button>
           ` : ''}
+          <button class="btn btn-secondary" id="perf-refresh-btn" type="button" style="font-weight:600;">
+            ↻ Refresh
+          </button>
         </div>
       </div>
 

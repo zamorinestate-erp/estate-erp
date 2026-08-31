@@ -246,6 +246,14 @@ function renderActiveTabContent(root) {
     navigate("devices");
   });
   container.querySelector("#btn-child-enroll-device")?.addEventListener("click", () => openEnrollDeviceModal(root));
+  container.querySelector("#btn-child-refresh-sessions")?.addEventListener("click", () => {
+    showToast("Operator sessions refreshed.", "info");
+    loadFleetData(root);
+  });
+  container.querySelector("#btn-child-setup-pin")?.addEventListener("click", () => {
+    activeTab = "pins";
+    renderActiveTabContent(root);
+  });
 
   if (activeTab === "devices") {
     wireDevicesTable(root);

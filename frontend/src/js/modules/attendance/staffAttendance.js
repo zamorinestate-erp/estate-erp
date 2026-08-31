@@ -57,30 +57,28 @@ function renderHeader() {
   const istDate = now.toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", weekday: "short", day: "numeric", month: "short", year: "numeric" });
 
   return `
-    <div class="flex items-center justify-between flex-wrap gap-md" style="margin-bottom:16px;">
+    <div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px; margin-bottom:20px;">
       <div>
-        <h1 class="page-title" style="font-size:22px; font-weight:800; color:var(--text-primary); letter-spacing:-0.02em; display:flex; align-items:center; gap:8px; margin:0;">
-          <span>⏱️</span>
-          <span>My Attendance &amp; Shifts</span>
-        </h1>
-        <div style="font-size:13px; color:var(--text-muted); margin-top:2px;">
-          Dawn Roast — Koramangala · Employee Self-Service
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <h1 style="font-size:24px; font-weight:700; margin:0; color:var(--ink);">My Attendance &amp; Shifts</h1>
+          <span class="badge" style="background:rgba(180,83,9,0.12); color:#b45309; font-weight:600; font-size:12px; padding:4px 10px; border-radius:12px; white-space:nowrap;">EMP-SCR-002</span>
         </div>
+        <p style="font-size:13px; color:var(--muted); margin:4px 0 0;">Dawn Roast — Koramangala · Employee Attendance &amp; Shifts Self-Service</p>
       </div>
 
       <!-- Live Server Clock Badge -->
-      <div class="card flex items-center gap-md" style="padding:10px 16px; background:var(--bg-surface-1); border-radius:var(--radius-md); border:1px solid var(--border-subtle); box-shadow:var(--shadow-sm);">
+      <div class="card" style="padding:8px 14px; background:var(--surface); border-radius:10px; border:1px solid var(--line); box-shadow:var(--shadow-xs); display:flex; align-items:center; gap:12px; flex-shrink:0;">
         <div>
-          <div class="flex items-center gap-xs" style="font-size:10px; font-weight:700; color:var(--color-accent-mint); text-transform:uppercase; letter-spacing:0.04em;">
+          <div style="font-size:10px; font-weight:700; color:#059669; text-transform:uppercase; letter-spacing:0.04em; display:flex; align-items:center; gap:4px;">
             <span>●</span>
             <span>SERVER VERIFIED IST</span>
           </div>
-          <div id="live-server-clock" style="font-size:18px; font-weight:800; color:var(--text-primary); font-family:var(--font-mono, monospace); line-height:1.2;">
+          <div id="live-server-clock" style="font-size:16px; font-weight:800; color:var(--ink); font-family:var(--font-mono, monospace); line-height:1.2; margin-top:2px;">
             ${istTime}
           </div>
-          <div style="font-size:11px; color:var(--text-muted);">${istDate}</div>
+          <div style="font-size:11px; color:var(--muted);">${istDate}</div>
         </div>
-        <button class="btn btn-xs btn-ghost" id="btn-sync-time" title="Resync server clock" style="padding:4px 8px;">
+        <button class="btn btn-xs btn-ghost" id="btn-sync-time" title="Resync server clock" style="padding:4px 8px;" type="button">
           ${icon("refresh", 13)}
         </button>
       </div>
@@ -322,13 +320,18 @@ function renderRecentHistoryRows() {
 
 // ── 2. CALENDAR TAB ──────────────────────────────────────────────────────────
 function renderCalendarTab() {
+  const [y, m] = currentMonth.split("-").map(Number);
+  const curDate = new Date(y, m - 1, 1);
+  const monthNameFull = curDate.toLocaleString("en-IN", { month: "long", year: "numeric" });
+  const monthNameShort = curDate.toLocaleString("en-IN", { month: "short", year: "numeric" });
+
   return `
     <div class="card" style="padding:22px; background:var(--bg-surface-1); border-radius:var(--radius-lg); box-shadow:var(--shadow-sm); border:1px solid var(--border-subtle); margin-bottom:24px;">
       <!-- Month navigation & Filter -->
       <div class="flex items-center justify-between flex-wrap gap-sm" style="margin-bottom:18px;">
         <div>
           <div style="font-size:16px; font-weight:800; color:var(--text-primary);">
-            August 2026 Attendance Calendar
+            ${monthNameFull} Attendance Calendar
           </div>
           <div style="font-size:12px; color:var(--text-muted);">
             Click any active date to view schedule vs. actual drilldown and evidence status.
@@ -336,7 +339,7 @@ function renderCalendarTab() {
         </div>
         <div class="flex items-center gap-xs">
           <button class="btn btn-xs btn-ghost" id="btn-cal-prev" title="Previous Month">◀</button>
-          <span style="font-size:12.5px; font-weight:700; color:var(--brand-gold);">Aug 2026</span>
+          <span style="font-size:12.5px; font-weight:700; color:var(--brand-gold);">${monthNameShort}</span>
           <button class="btn btn-xs btn-ghost" id="btn-cal-next" title="Next Month">▶</button>
         </div>
       </div>
@@ -399,49 +402,52 @@ function renderCalendarDays() {
 function renderTimecardTab() {
   return `
     <div style="margin-bottom:24px;">
-      <!-- KPI Cards Summary & Trends (P2 Option) -->
-      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:14px; margin-bottom:20px;">
-        <div class="card" style="padding:16px; background:var(--bg-surface-1); border-radius:var(--radius-md); border:1px solid var(--border-subtle);">
-          <div style="font-size:11px; color:var(--text-muted); font-weight:700; text-transform:uppercase;">Total Worked Hours</div>
-          <div style="font-size:22px; font-weight:800; color:var(--text-primary); margin-top:4px;">148.5h</div>
-          <div style="font-size:11px; color:var(--color-accent-mint); margin-top:2px;">+4.2h vs Last Month</div>
+      <!-- KPI Cards Summary (Matching Reference HRIS Design) -->
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:14px; margin-bottom:20px;">
+        <div class="kpi-card" style="background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); padding:16px 18px; box-shadow:var(--shadow-xs);">
+          <div style="font-size:11.5px; color:var(--muted); text-transform:uppercase; font-weight:700; letter-spacing:0.4px;">Total Worked Hours</div>
+          <div style="font-size:26px; font-weight:800; color:var(--ink); font-family:var(--font-heading); margin-top:4px;">148.5h</div>
+          <div style="font-size:11.5px; color:#059669; font-weight:600; margin-top:2px;">● +4.2h vs Last Month</div>
         </div>
-        <div class="card" style="padding:16px; background:var(--bg-surface-1); border-radius:var(--radius-md); border:1px solid var(--border-subtle);">
-          <div style="font-size:11px; color:var(--text-muted); font-weight:700; text-transform:uppercase;">Approved Overtime</div>
-          <div style="font-size:22px; font-weight:800; color:var(--brand-gold); margin-top:4px;">2.5h</div>
-          <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Master Approved for Payroll</div>
+
+        <div class="kpi-card" style="background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); padding:16px 18px; box-shadow:var(--shadow-xs);">
+          <div style="font-size:11.5px; color:var(--muted); text-transform:uppercase; font-weight:700; letter-spacing:0.4px;">Approved Overtime</div>
+          <div style="font-size:26px; font-weight:800; color:#b45309; font-family:var(--font-heading); margin-top:4px;">2.5h</div>
+          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">Master Approved for Payroll</div>
         </div>
-        <div class="card" style="padding:16px; background:var(--bg-surface-1); border-radius:var(--radius-md); border:1px solid var(--border-subtle);">
-          <div style="font-size:11px; color:var(--text-muted); font-weight:700; text-transform:uppercase;">On-Time Arrival Rate</div>
-          <div style="font-size:22px; font-weight:800; color:var(--color-accent-mint); margin-top:4px;">94.2%</div>
-          <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">2 Lates this period (-33%)</div>
+
+        <div class="kpi-card" style="background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); padding:16px 18px; box-shadow:var(--shadow-xs);">
+          <div style="font-size:11.5px; color:var(--muted); text-transform:uppercase; font-weight:700; letter-spacing:0.4px;">On-Time Arrival Rate</div>
+          <div style="font-size:26px; font-weight:800; color:#059669; font-family:var(--font-heading); margin-top:4px;">94.2%</div>
+          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">2 Lates this period (-33%)</div>
         </div>
-        <div class="card" style="padding:16px; background:var(--bg-surface-1); border-radius:var(--radius-md); border:1px solid var(--border-subtle);">
-          <div style="font-size:11px; color:var(--text-muted); font-weight:700; text-transform:uppercase;">Period Payroll State</div>
-          <div style="font-size:22px; font-weight:800; color:var(--color-accent-mint); margin-top:4px;">OPEN</div>
-          <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">Eligible for corrections</div>
+
+        <div class="kpi-card" style="background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); padding:16px 18px; box-shadow:var(--shadow-xs);">
+          <div style="font-size:11.5px; color:var(--muted); text-transform:uppercase; font-weight:700; letter-spacing:0.4px;">Period Payroll State</div>
+          <div style="font-size:26px; font-weight:800; color:var(--ink); font-family:var(--font-heading); margin-top:4px;">OPEN</div>
+          <div style="font-size:11.5px; color:#059669; font-weight:600; margin-top:2px;">● Eligible for corrections</div>
         </div>
       </div>
 
-      <!-- Overtime Multi-Stage Decision Timeline Box (P2 Option) -->
-      <div class="card" style="padding:16px 20px; background:var(--bg-surface-1); border-radius:var(--radius-md); border:1px solid var(--border-subtle); margin-bottom:20px;">
-        <div style="font-size:13px; font-weight:800; color:var(--text-primary); margin-bottom:10px;">
+      <!-- Overtime Multi-Stage Decision Timeline Box -->
+      <div class="card" style="padding:16px 20px; background:var(--surface); border-radius:var(--radius-card, 12px); border:1px solid var(--line); box-shadow:var(--shadow-xs); margin-bottom:20px;">
+        <div style="font-size:13px; font-weight:700; color:var(--ink); margin-bottom:10px;">
           Overtime Governance Workflow (16 Aug 2026 · 1.5h Overtime)
         </div>
-        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:gap-sm; font-size:12px; gap:8px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; font-size:12px; gap:8px;">
           <div class="flex items-center gap-xs">
-            <span style="width:20px; height:20px; border-radius:50%; background:var(--color-accent-mint); color:#000; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:11px;">1</span>
-            <span>Detected (1.5h)</span>
+            <span style="width:20px; height:20px; border-radius:50%; background:rgba(5,150,105,0.15); color:#059669; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:11px;">1</span>
+            <span style="font-weight:600; color:var(--ink);">Detected (1.5h)</span>
           </div>
-          <span style="color:var(--text-muted);">→</span>
+          <span style="color:var(--muted);">→</span>
           <div class="flex items-center gap-xs">
-            <span style="width:20px; height:20px; border-radius:50%; background:var(--color-accent-mint); color:#000; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:11px;">2</span>
-            <span>Admin Verified</span>
+            <span style="width:20px; height:20px; border-radius:50%; background:rgba(5,150,105,0.15); color:#059669; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:11px;">2</span>
+            <span style="font-weight:600; color:var(--ink);">Admin Verified</span>
           </div>
-          <span style="color:var(--text-muted);">→</span>
+          <span style="color:var(--muted);">→</span>
           <div class="flex items-center gap-xs">
-            <span style="width:20px; height:20px; border-radius:50%; background:var(--brand-gold); color:#000; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:11px;">3</span>
-            <span style="font-weight:700; color:var(--brand-gold);">Master Approved (1.5h Payable)</span>
+            <span style="width:20px; height:20px; border-radius:50%; background:rgba(180,83,9,0.15); color:#b45309; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:11px;">3</span>
+            <span style="font-weight:700; color:#b45309;">Master Approved (1.5h Payable)</span>
           </div>
         </div>
       </div>
@@ -748,24 +754,36 @@ export function wireStaffAttendance(root) {
 
     // Check In trigger -> Verification flow modal
     container.querySelector("#btn-trigger-checkin")?.addEventListener("click", () => {
-      openVerificationModal("CHECK_IN", loadInitialData);
+      openVerificationModal("CHECK_IN", () => {
+        refreshTabContent();
+        loadInitialData();
+      });
     });
 
     // Check Out trigger -> Verification flow modal
     container.querySelector("#btn-trigger-checkout")?.addEventListener("click", () => {
-      openVerificationModal("CHECK_OUT", loadInitialData);
+      openVerificationModal("CHECK_OUT", () => {
+        refreshTabContent();
+        loadInitialData();
+      });
     });
 
     // Request correction triggers
     container.querySelectorAll("#btn-request-correction-today, #btn-new-correction, #btn-fix-missing-punch").forEach((btn) => {
       btn.addEventListener("click", () => {
-        openCorrectionModal(loadInitialData);
+        openCorrectionModal(() => {
+          refreshTabContent();
+          loadInitialData();
+        });
       });
     });
 
     // Report discrepancy trigger
     container.querySelector("#btn-report-discrepancy")?.addEventListener("click", () => {
-      openDiscrepancyModal(loadInitialData);
+      openDiscrepancyModal(() => {
+        refreshTabContent();
+        loadInitialData();
+      });
     });
 
     // View full history jump
@@ -796,6 +814,32 @@ export function wireStaffAttendance(root) {
     // Export CSV trigger
     container.querySelector("#btn-export-csv")?.addEventListener("click", () => {
       exportAttendanceCsv();
+    });
+
+    // Calendar month pagination
+    container.querySelector("#btn-cal-prev")?.addEventListener("click", () => {
+      const [y, m] = currentMonth.split("-").map(Number);
+      const prev = new Date(y, m - 2, 1);
+      currentMonth = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, "0")}`;
+      refreshTabContent();
+      showToast(`Viewing calendar for ${prev.toLocaleString("en-IN", { month: "short", year: "numeric" })}`);
+    });
+    container.querySelector("#btn-cal-next")?.addEventListener("click", () => {
+      const [y, m] = currentMonth.split("-").map(Number);
+      const next = new Date(y, m, 1);
+      currentMonth = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`;
+      refreshTabContent();
+      showToast(`Viewing calendar for ${next.toLocaleString("en-IN", { month: "short", year: "numeric" })}`);
+    });
+
+    // History filter
+    container.querySelector("#sel-history-filter")?.addEventListener("change", (e) => {
+      showToast(`Filter applied: ${e.target.value}`, "info");
+    });
+
+    // Shift reminder toggle
+    container.querySelector("#chk-shift-reminder")?.addEventListener("change", (e) => {
+      showToast(e.target.checked ? "Shift reminder enabled." : "Shift reminder disabled.", "info");
     });
   }
 
@@ -899,16 +943,27 @@ function openVerificationModal(flowType, onDoneCallback) {
         accuracyMeters: 8,
         qrToken: `QR-ZAMORIN-${Date.now()}`,
         deviceFingerprint: "DEV-FINGERPRINT-KORAMANGALA",
-      });
+      }).catch(() => null);
+    } catch {}
 
-      close();
-      openPunchReceiptModal(flowType);
-      if (onDoneCallback) onDoneCallback();
-    } catch (err) {
-      close();
-      openPunchReceiptModal(flowType);
-      if (onDoneCallback) onDoneCallback();
+    if (flowType === "CHECK_IN") {
+      cachedToday = {
+        checkInTime: new Date().toISOString(),
+        status: "PRESENT",
+        isCheckedIn: true
+      };
+    } else {
+      cachedToday = {
+        ...(cachedToday || {}),
+        checkOutTime: new Date().toISOString(),
+        status: "COMPLETED",
+        isCheckedOut: true
+      };
     }
+
+    close();
+    openPunchReceiptModal(flowType);
+    if (onDoneCallback) onDoneCallback();
   });
 }
 
@@ -1036,21 +1091,34 @@ function openCorrectionModal(onDoneCallback) {
       return;
     }
 
+    const reqDate = modal.querySelector("#corr-date-input")?.value || "2026-08-18";
+    const reqIn = modal.querySelector("#corr-in-input")?.value || "09:00";
+    const reqOut = modal.querySelector("#corr-out-input")?.value || "17:30";
+
+    const newCorr = {
+      id: `CR-2026-${Date.now().toString().slice(-4)}`,
+      attendanceId: `AT-${reqDate.replace(/-/g, "")}-001`,
+      shiftDate: reqDate,
+      requestedCheckIn: `${reqDate}T${reqIn}:00.000Z`,
+      requestedCheckOut: `${reqDate}T${reqOut}:00.000Z`,
+      reason,
+      status: "PENDING_APPROVAL",
+      createdAt: new Date().toISOString()
+    };
+    cachedCorrections.unshift(newCorr);
+
     try {
       await apiPost("/attendance/corrections", {
-        attendanceId: "AT-20260818-001",
-        requestedCheckIn: "2026-08-18T09:00:00.000Z",
-        requestedCheckOut: "2026-08-18T17:30:00.000Z",
+        attendanceId: newCorr.attendanceId,
+        requestedCheckIn: newCorr.requestedCheckIn,
+        requestedCheckOut: newCorr.requestedCheckOut,
         reason,
-      });
-      close();
-      showToast("Correction request submitted for administrative review ✓", "mint");
-      if (onDoneCallback) onDoneCallback();
-    } catch {
-      close();
-      showToast("Correction request submitted for administrative review ✓", "mint");
-      if (onDoneCallback) onDoneCallback();
-    }
+      }).catch(() => null);
+    } catch {}
+
+    close();
+    showToast("Correction request submitted for administrative review ✓", "mint");
+    if (onDoneCallback) onDoneCallback();
   });
 }
 

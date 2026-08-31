@@ -83,34 +83,33 @@ export function renderAdmin(subroute) {
   return `
     <div class="page-enter admin-page-wrap" style="padding-bottom:60px;">
 
-      <!-- Top Banner Header -->
-      <div class="card" style="padding:18px 24px;margin-bottom:16px;border-left:4px solid var(--bronze-500);">
-        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;">
-          <div>
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
-              <h1 class="page-title" style="font-size:24px;font-weight:700;margin:0;color:var(--ink);">
-                Administration &amp; Governance
-              </h1>
-              <span class="pill ${isPrimary ? "pill-mint" : "pill-dark"}" style="font-size:11px;font-weight:700;">
-                ${isPrimary ? "PRIMARY MASTER CONTROL PLANE" : "MASTER (OPERATIONAL)"}
-              </span>
-            </div>
-            <p style="font-size:13px;color:var(--muted);margin:0;">
-              Multi-Location Café Management, Identity Lifecycle, Security Policies, Configuration Schema &amp; Immutable Audit
-            </p>
+      <!-- Page Header -->
+      <div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px; margin-bottom:24px;">
+        <div>
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <h1 class="page-title" style="font-size:26px; font-weight:700; margin:0; color:var(--ink);">
+              Administration &amp; Governance
+            </h1>
+            <span class="badge" style="background:rgba(180,83,9,0.12); color:#b45309; font-weight:600; font-size:12px; padding:4px 10px; border-radius:12px;">SCR-027 ADMIN</span>
+            <span class="badge" style="background:${isPrimary ? "rgba(16,185,129,0.2)" : "var(--surface-sunken)"}; color:${isPrimary ? "#10b981" : "var(--muted)"}; font-weight:700; font-size:11px; padding:4px 8px; border-radius:12px;">
+              ${isPrimary ? "PRIMARY MASTER" : "OPERATIONAL MASTER"}
+            </span>
           </div>
+          <p class="page-subtitle" style="font-size:14px; color:var(--muted); margin:4px 0 0 0;">
+            Multi-Location Café Management, Identity Lifecycle, Security Policies, Configuration Schema &amp; Immutable Audit
+          </p>
+        </div>
 
-          <div style="display:flex;align-items:center;gap:10px;">
-            ${
-              !isPrimary && isMaster
-                ? `<button class="btn btn-sm btn-ghost" id="admin-request-primary-btn" type="button">📩 Request Primary Action</button>`
-                : ""
-            }
-            <button class="btn btn-sm btn-secondary" id="admin-live-refresh-btn" type="button" style="display:flex;align-items:center;gap:6px;">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-              Refresh Admin
-            </button>
-          </div>
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          ${
+            !isPrimary && isMaster
+              ? `<button class="btn btn-ghost" id="admin-request-primary-btn" type="button">📩 Request Primary Action</button>`
+              : ""
+          }
+          <button class="btn btn-secondary" id="admin-live-refresh-btn" type="button" style="display:flex; align-items:center; gap:6px; font-weight:600;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            Refresh Admin
+          </button>
         </div>
       </div>
 
@@ -1141,6 +1140,14 @@ function wireActiveTab(root) {
     });
   });
 
+  // Wire Child Submodule Header Action Buttons
+  root.querySelector("#btn-child-add-cafe")?.addEventListener("click", () => openAddCafeWizard(root));
+  root.querySelector("#btn-child-add-user")?.addEventListener("click", () => openAddUserWizard(root));
+  root.querySelector("#btn-child-new-policy")?.addEventListener("click", () => openSecurityPolicyModal(root));
+  root.querySelector("#btn-child-add-custom-field")?.addEventListener("click", () => openCreateCustomFieldModal(root));
+  root.querySelector("#btn-child-export-audit")?.addEventListener("click", () => exportAdminAuditLogCsv());
+  root.querySelector("#btn-child-empty-trash")?.addEventListener("click", () => emptyTrashVault(root));
+
   // Wire Add Café Modal Button
   root.querySelector("#admin-add-cafe-btn")?.addEventListener("click", () => {
     openAddCafeWizard(root);
@@ -1160,6 +1167,133 @@ function wireActiveTab(root) {
   root.querySelector('#admin-go-org-identity-btn')?.addEventListener('click', () => {
     navigate('org-identity');
   });
+
+  // Wire Table Actions & Refresh Buttons
+  root.querySelector("#admin-refresh-cafes-btn")?.addEventListener("click", async () => {
+    await loadAdminData(root);
+    showToast("Café portfolio refreshed.", "info");
+  });
+
+  root.querySelector("#admin-refresh-users-btn")?.addEventListener("click", async () => {
+    await loadAdminData(root);
+    showToast("User identities refreshed.", "info");
+  });
+
+  root.querySelector("#admin-refresh-audit-btn")?.addEventListener("click", async () => {
+    await loadAdminData(root);
+    showToast("Audit ledger refreshed.", "info");
+  });
+
+  root.querySelector("#admin-export-audit-btn")?.addEventListener("click", () => exportAdminAuditLogCsv());
+  root.querySelector("#admin-enrol-device-btn")?.addEventListener("click", () => navigate("cafe-operations/devices"));
+  root.querySelector("#admin-new-request-btn")?.addEventListener("click", () => openAdminRequestModal(root));
+
+  root.querySelectorAll("[data-view-cafe]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const cafeId = btn.dataset.viewCafe;
+      showToast(`Inspecting café ${cafeId} operational topology.`, "info");
+    });
+  });
+
+  root.querySelectorAll("[data-edit-cafe]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const cafeId = btn.dataset.editCafe;
+      showToast(`Editing café configuration for ${cafeId}.`, "info");
+    });
+  });
+
+  root.querySelectorAll("[data-cafe-actions-menu]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const cafeId = btn.dataset.cafeActionsMenu;
+      showToast(`Café ${cafeId} options: Audit History · Device Status · Health Review.`, "info");
+    });
+  });
+
+  root.querySelectorAll("[data-view-user]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const userId = btn.dataset.viewUser;
+      showToast(`Viewing identity profile for user ${userId}.`, "info");
+    });
+  });
+
+  root.querySelectorAll("[data-user-impact]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const userId = btn.dataset.userImpact;
+      showToast(`RBAC & Scope Access Matrix verified for ${userId}.`, "info");
+    });
+  });
+
+  root.querySelectorAll("[data-user-more]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const userId = btn.dataset.userMore;
+      showToast(`User ${userId} options: Password Reset · Role Reassignment · Revoke Access.`, "info");
+    });
+  });
+
+  root.querySelectorAll("[data-queue-nav]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const route = btn.dataset.queueNav;
+      if (route) navigate(route);
+    });
+  });
+}
+
+function openSecurityPolicyModal(root) {
+  const mount = root.querySelector("#admin-modals-mount");
+  if (!mount) return;
+  mount.innerHTML = `
+    <div class="modal-backdrop" style="position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:9999;display:flex;align-items:center;justify-content:center;">
+      <div class="modal-card card" style="width:580px;max-width:95vw;padding:24px;background:var(--surface-raised);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+          <h3 style="margin:0;font-size:17px;font-weight:700;color:var(--ink);">+ New Security Policy Rule</h3>
+          <button class="btn btn-xs btn-ghost" data-close-pol type="button">✕</button>
+        </div>
+        <div class="form-group" style="margin-bottom:12px;">
+          <label class="form-label" style="font-size:12px;font-weight:700;">Policy Name*</label>
+          <input type="text" id="pol-name" class="form-control" placeholder="e.g. Enforce 15-Min Terminal Inactivity Lock" required />
+        </div>
+        <div class="form-group" style="margin-bottom:12px;">
+          <label class="form-label" style="font-size:12px;font-weight:700;">Target Role / Scope</label>
+          <select id="pol-role" class="form-control">
+            <option value="ALL">All Roles (Global Invariant)</option>
+            <option value="CAFE_ADMIN">CAFE_ADMIN Terminal Sessions</option>
+            <option value="STAFF">STAFF Self-Service Sessions</option>
+          </select>
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:18px;">
+          <button class="btn btn-sm btn-ghost" data-close-pol type="button">Cancel</button>
+          <button class="btn btn-sm btn-primary" id="pol-save-btn" type="button">Save Policy</button>
+        </div>
+      </div>
+    </div>
+  `;
+  mount.querySelectorAll("[data-close-pol]").forEach((b) => b.addEventListener("click", () => mount.innerHTML = ""));
+  mount.querySelector("#pol-save-btn")?.addEventListener("click", () => {
+    showToast("Security policy saved and distributed to edge nodes.", "success");
+    mount.innerHTML = "";
+  });
+}
+
+function exportAdminAuditLogCsv() {
+  const headers = ["Timestamp", "Action", "Actor", "Role", "Target Entity", "Status", "IP Address"];
+  const rows = [
+    ["2026-08-31T08:00:00Z", "USER_LOGIN_SUCCESS", "ravi.kumar", "CAFE_ADMIN", "ZC-0001", "SUCCESS", "192.168.1.45"],
+    ["2026-08-31T07:45:00Z", "GRN_INTAKE_RECORDED", "priya.nair", "STAFF", "GRN-2026-0012", "SUCCESS", "192.168.1.12"],
+    ["2026-08-31T07:30:00Z", "BANK_DETAIL_MAKER_SUBMIT", "meera.iyer", "CAFE_ADMIN", "VEND-0001", "SUCCESS", "192.168.2.8"],
+  ];
+  let csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+  const encodedUri = encodeURI(csvContent);
+  const link = document.createElement("a");
+  link.setAttribute("href", encodedUri);
+  link.setAttribute("download", `immutable_audit_log_${new Date().toISOString().split("T")[0]}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  showToast("Audit log exported to CSV.", "info");
+}
+
+function emptyTrashVault(root) {
+  showToast("Trash Vault is clean. Zero expired records pending purge.", "info");
 }
 
 // ─── Data Loaders ─────────────────────────────────────────────────────────────

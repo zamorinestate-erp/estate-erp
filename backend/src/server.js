@@ -37,7 +37,7 @@ const SERVICE_NAME =
 
 function createCorsOptions(environment) {
   const allowedOrigins =
-    new Set(environment.allowedOrigins);
+    new Set(environment.allowedOrigins || []);
 
   return {
     credentials: true,
@@ -45,7 +45,15 @@ function createCorsOptions(environment) {
     origin(origin, callback) {
       if (
         !origin ||
-        allowedOrigins.has(origin)
+        allowedOrigins.has('*') ||
+        allowedOrigins.has(origin) ||
+        (!environment.production && (
+          origin === 'http://localhost:3000' ||
+          origin === 'http://127.0.0.1:3000' ||
+          origin === 'http://localhost:4000' ||
+          origin.startsWith('http://localhost:') ||
+          origin.startsWith('http://127.0.0.1:')
+        ))
       ) {
         callback(null, true);
         return;
@@ -134,7 +142,19 @@ function createCsrfOriginProtection(environment) {
       );
     }
 
-    if (!allowedOrigins.has(normalizedOrigin)) {
+    if (
+      !allowedOrigins.has('*') &&
+      !allowedOrigins.has(normalizedOrigin) &&
+      !(
+        !environment.production && (
+          normalizedOrigin === 'http://localhost:3000' ||
+          normalizedOrigin === 'http://127.0.0.1:3000' ||
+          normalizedOrigin === 'http://localhost:4000' ||
+          normalizedOrigin.startsWith('http://localhost:') ||
+          normalizedOrigin.startsWith('http://127.0.0.1:')
+        )
+      )
+    ) {
       return sendCsrfOriginError(
         response,
         request,
