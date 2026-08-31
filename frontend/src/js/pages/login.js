@@ -15,8 +15,7 @@ export function renderPasswordResetRequest({ organisationId = "ZAMORIN", email =
     <div class="auth-card-container">
       <div class="auth-card">
         <div class="auth-brand-header">
-          <div class="auth-brand-logo">${icons.shield || ""}</div>
-          <h1 class="auth-brand-title">ZAMORIN CAFÉ</h1>
+          <img src="/src/assets/zamorin-logo-stacked.svg" alt="Zamorin Café" style="width: 140px; height: auto; margin: 0 auto 10px; display: block;" />
           <p class="auth-brand-subtitle">Enterprise Resource Planning</p>
         </div>
 
@@ -114,8 +113,7 @@ export function renderPasswordResetVerify({ email = "", challengeId = "" } = {})
     <div class="auth-card-container">
       <div class="auth-card">
         <div class="auth-brand-header">
-          <div class="auth-brand-logo">${icons.lock || ""}</div>
-          <h1 class="auth-brand-title">ZAMORIN CAFÉ</h1>
+          <img src="/src/assets/zamorin-logo-stacked.svg" alt="Zamorin Café" style="width: 140px; height: auto; margin: 0 auto 10px; display: block;" />
           <p class="auth-brand-subtitle">Security Verification</p>
         </div>
 
@@ -202,8 +200,7 @@ export function renderPasswordResetFinal({ organisationId = "", email = "", rese
     <div class="auth-card-container">
       <div class="auth-card">
         <div class="auth-brand-header">
-          <div class="auth-brand-logo">${icons.check || ""}</div>
-          <h1 class="auth-brand-title">ZAMORIN CAFÉ</h1>
+          <img src="/src/assets/zamorin-logo-stacked.svg" alt="Zamorin Café" style="width: 140px; height: auto; margin: 0 auto 10px; display: block;" />
           <p class="auth-brand-subtitle">Set New Password</p>
         </div>
 
@@ -345,8 +342,7 @@ export function renderLogin({ notice = "", error = "" } = {}) {
     <div class="auth-card-container">
       <div class="auth-card">
         <div class="auth-brand-header">
-          <div class="auth-brand-logo">${icons.coffee || ""}</div>
-          <h1 class="auth-brand-title">ZAMORIN CAFÉ</h1>
+          <img src="/src/assets/zamorin-logo-stacked.svg" alt="Zamorin Café" style="width: 140px; height: auto; margin: 0 auto 10px; display: block;" />
           <p class="auth-brand-subtitle">Enterprise Resource Planning</p>
         </div>
 
