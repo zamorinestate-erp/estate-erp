@@ -27,15 +27,15 @@
    screen — see ARCHITECTURE_DECISIONS.md for why.
    --------------------------------------------------------------------- */
 .cafeops-logo {
-  width: 132px;
+  width: 190px;
   height: auto;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
   filter: drop-shadow(0 10px 20px rgba(16, 26, 48, .16));
   transition: transform .3s var(--ease);
 }
 .auth-card:hover .cafeops-logo { transform: scale(1.02); }
 @media (max-width: 480px) {
-  .cafeops-logo { width: 108px; }
+  .cafeops-logo { width: 130px; }
 }
 
 /* ---------------------------------------------------------------------
@@ -45,18 +45,18 @@
    --------------------------------------------------------------------- */
 .cafeops-device-strip {
   display: grid;
-  gap: 2px;
-  margin-bottom: 22px;
+  gap: 3px;
+  margin-bottom: 24px;
   text-align: center;
 }
 .cafeops-device-strip .cafeops-cafe-name {
   font-family: var(--font-display);
   font-weight: 650;
-  font-size: 1.05rem;
+  font-size: 1.15rem;
   color: var(--ink-900);
 }
 .cafeops-device-strip .cafeops-device-name {
-  font-size: .78rem;
+  font-size: .84rem;
   color: var(--muted);
   font-family: var(--font-mono);
   letter-spacing: .01em;
@@ -69,12 +69,12 @@
 .cafeops-pin-dots {
   display: flex;
   justify-content: center;
-  gap: 14px;
-  margin: 4px 0 26px;
+  gap: 16px;
+  margin: 6px 0 28px;
 }
 .cafeops-pin-dot {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   border: 1.5px solid var(--line-strong);
   background: var(--surface);
@@ -83,7 +83,7 @@
 .cafeops-pin-dot--filled {
   background: var(--ink-900);
   border-color: var(--ink-900);
-  transform: scale(1.1);
+  transform: scale(1.15);
 }
 .cafeops-pin-dots--invalid .cafeops-pin-dot {
   border-color: var(--danger);
@@ -94,16 +94,16 @@
 .cafeops-keypad {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-  margin-bottom: 22px;
+  gap: 14px;
+  margin-bottom: 24px;
 }
 .cafeops-key {
-  height: 64px;
+  height: 68px;
   border: 1.5px solid var(--line-strong);
   border-radius: var(--radius-input);
   background: var(--surface);
   font-family: var(--font-display);
-  font-size: 1.35rem;
+  font-size: 1.5rem;
   font-weight: 600;
   color: var(--ink-900);
   cursor: pointer;
@@ -260,7 +260,7 @@
    --------------------------------------------------------------------- */
 .cafeops-kiosk-clock {
   font-family: var(--font-mono);
-  font-size: 2.4rem;
+  font-size: 2.8rem;
   font-weight: 600;
   color: var(--ink-900);
   text-align: center;
@@ -269,17 +269,17 @@
 }
 .cafeops-kiosk-date {
   text-align: center;
-  font-size: .84rem;
+  font-size: .92rem;
   color: var(--muted);
-  margin-top: 2px;
-  margin-bottom: 26px;
+  margin-top: 4px;
+  margin-bottom: 28px;
 }
 
 .cafeops-qr-wrap {
   position: relative;
-  width: 208px;
-  height: 208px;
-  margin: 0 auto 20px;
+  width: 220px;
+  height: 220px;
+  margin: 0 auto 24px;
   display: flex;
   align-items: center;
   justify-content: center;
