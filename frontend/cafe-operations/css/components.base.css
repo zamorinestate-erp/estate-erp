@@ -185,13 +185,13 @@
   position: relative;
   z-index: 1;
   width: 100%;
-  max-width: 520px;
+  max-width: 580px;
   background: var(--surface);
   border: 1px solid var(--line-strong);
   border-top: 3px solid var(--bronze-500);
   border-radius: var(--radius-card, 28px);
-  padding: 48px 44px 40px;
-  box-shadow: var(--shadow-card), 0 4px 12px rgba(16, 26, 48, .04);
+  padding: 54px 48px 46px;
+  box-shadow: var(--shadow-card), 0 6px 18px rgba(16, 26, 48, .05);
   animation: auth-rise .5s var(--ease) both;
   transition: box-shadow .25s var(--ease), transform .25s var(--ease);
 }
