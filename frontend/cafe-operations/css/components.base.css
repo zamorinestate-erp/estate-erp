@@ -217,40 +217,45 @@
   text-align: center;
   margin-bottom: 30px;
 }
-.auth-mark {
-  width: 56px;
-  height: 56px;
-  border-radius: 16px;
-  object-fit: cover;
-  box-shadow: 0 10px 24px rgba(16, 26, 48, .22);
-  margin-bottom: 14px;
-  transition: transform .3s var(--ease);
-}
-.auth-card:hover .auth-mark { transform: scale(1.04) rotate(-1deg); }
 
+/* Stacked logo — matches main login page's 190px width */
+.auth-brand img,
+.auth-brand .cafeops-logo {
+  display: block;
+  width: 190px !important;
+  height: auto !important;
+  margin: 0 auto 14px !important;
+}
+
+.auth-card:hover .auth-brand img { transform: scale(1.02); }
+
+/* Screen title (e.g. "Register Cafe Device") — styled like .auth-form-header h2 */
 .auth-title {
-  margin: 0;
+  margin: 0 0 6px;
   font-family: var(--font-display);
-  font-weight: 650;
-  font-size: 1.7rem;
-  letter-spacing: -.01em;
+  font-weight: 600;
+  font-size: 1.25rem;
+  letter-spacing: 0em;
   color: var(--ink-900);
 }
+
+/* Screen subtitle — styled like .auth-form-header p */
 .auth-subtitle {
-  margin: 6px 0 0;
-  font-size: .86rem;
+  margin: 0;
+  font-size: .88rem;
+  line-height: 1.5;
   color: var(--muted);
 }
 
 /* ---------------------------------------------------------------------
    Form fields
    --------------------------------------------------------------------- */
-.auth-form { display: grid; gap: 16px; }
+.auth-form { display: grid; gap: 20px; }
 
-.auth-field { display: grid; gap: 6px; }
+.auth-field { display: grid; gap: 8px; }
 .auth-field label {
-  font-size: .74rem;
-  font-weight: 650;
+  font-size: .875rem;
+  font-weight: 600;
   color: var(--ink-700);
   letter-spacing: .01em;
 }

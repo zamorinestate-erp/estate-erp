@@ -34,7 +34,7 @@
             <span class="cafeops-cafe-name">${escapeHtml(opts.device.cafeName)}</span>
             <span class="cafeops-device-name">${escapeHtml(opts.device.deviceName)}</span>
           </div>` : ''}
-        ${opts.title ? `<h1 class="auth-title" style="font-size:1.3rem">${escapeHtml(opts.title)}</h1>` : ''}
+        ${opts.title ? `<h2 class="auth-title">${escapeHtml(opts.title)}</h2>` : ''}
         ${opts.subtitle ? `<p class="auth-subtitle">${escapeHtml(opts.subtitle)}</p>` : ''}
       </div>`;
   }
