@@ -559,6 +559,7 @@ export function wireBell(root) {
           } catch {}
           clearAllAuthTokens();
           clearApiCacheAndInFlight();
+          window.location.hash = "#login";
           window.location.reload();
         } else if (action === "my-profile") {
           setSettingsActiveSection("profile");

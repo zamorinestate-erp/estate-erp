@@ -16,6 +16,16 @@ import { renderShell, navigate } from "./router.js";
 import { apiGet, apiPost, getOrCreateDeviceId, setStepUpAuthenticationHandler, setAccessToken, clearAllAuthTokens } from "./apiClient.js";
 import { registerServiceWorker } from "./updateManager.js";
 import { initLanguage } from "./i18n.js";
+import {
+  renderLogin,
+  wireLogin,
+  renderPasswordResetRequest,
+  wirePasswordResetRequest,
+  renderPasswordResetVerify,
+  wirePasswordResetVerify,
+  renderPasswordResetFinal,
+  wirePasswordResetFinal,
+} from "./pages/login.js";
 import "./responsiveAuditor.js";
 
 // Canonical preview fixtures used strictly for development (4 canonical roles)
@@ -144,6 +154,92 @@ export async function handlePasswordResetFinal({ organisationId, challengeId, re
   return result;
 }
 
+export function mountAuthScreen(screen = "login", params = {}) {
+  if (typeof document === "undefined") return;
+  const appEl = document.getElementById("app");
+  if (!appEl) return;
+
+  // Remove dev banner on auth screen for pristine, focused presentation
+  document.getElementById("zamorin-dev-preview-banner")?.remove();
+
+  appEl.className = "auth-screen";
+  delete appEl.dataset.shellRole;
+
+  if (screen === "login") {
+    appEl.innerHTML = renderLogin(params);
+    wireLogin(appEl, {
+      onSubmit: async ({ organisationId, email, password }) => {
+        try {
+          const res = await apiPost("/auth/login", {
+            body: { organisationId, email, password, identifier: email }
+          });
+          const accessToken = res?.data?.accessToken || res?.data?.token;
+          if (accessToken) {
+            setAccessToken(accessToken);
+          }
+          const user = res?.data?.user;
+          if (user) {
+            setState({
+              auth: { authenticated: true, user, loading: false },
+              user,
+              role: String(user.role).toLowerCase(),
+              isPrimaryMaster: Boolean(user.isPrimaryMaster),
+            });
+            window.location.hash = "#dashboard";
+            boot();
+            return;
+          }
+          // Fallback if user object was in different shape
+          window.location.hash = "#dashboard";
+          boot();
+        } catch (err) {
+          mountAuthScreen("login", { error: err.message || "Invalid credentials. Please check your Organisation ID, email, and password." });
+        }
+      },
+      onForgotPassword: ({ organisationId, email }) => {
+        mountAuthScreen("forgot", { organisationId, email });
+      }
+    });
+  } else if (screen === "forgot") {
+    appEl.innerHTML = renderPasswordResetRequest(params);
+    wirePasswordResetRequest(appEl, {
+      onSubmit: async ({ organisationId, email }) => {
+        const res = await handlePasswordResetRequest({ organisationId, email });
+        mountAuthScreen("verify", { email, challengeId: res?.data?.challengeId });
+      },
+      onBack: () => mountAuthScreen("login")
+    });
+  } else if (screen === "verify") {
+    appEl.innerHTML = renderPasswordResetVerify(params);
+    wirePasswordResetVerify(appEl, {
+      onSubmit: async ({ code }) => {
+        const res = await handlePasswordResetVerify({
+          challengeId: params.challengeId,
+          code
+        });
+        mountAuthScreen("reset", {
+          resetToken: res.resetToken,
+          challengeId: res.challengeId
+        });
+      },
+      onBack: () => mountAuthScreen("forgot")
+    });
+  } else if (screen === "reset") {
+    appEl.innerHTML = renderPasswordResetFinal(params);
+    wirePasswordResetFinal(appEl, {
+      onSubmit: async ({ newPassword }) => {
+        await handlePasswordResetFinal({
+          challengeId: params.challengeId,
+          resetToken: params.resetToken,
+          newPassword
+        });
+        mountAuthScreen("login", { notice: "Password updated successfully. Please sign in with your new password." });
+      },
+      onCancel: () => mountAuthScreen("login")
+    });
+  }
+}
+
 function renderDevPreviewBanner(activeRole = "master") {
   if (typeof document === "undefined") return;
   let banner = document.getElementById("zamorin-dev-preview-banner");
@@ -163,7 +259,7 @@ function renderDevPreviewBanner(activeRole = "master") {
   }[activeRole] || activeRole.toUpperCase();
 
   banner.innerHTML = `
-    <span><strong>ZAMORIN CAFÉ ERP</strong> — DEVELOPMENT PREVIEW (AUTHENTICATION UI TEMPORARILY DISABLED) — ACTIVE: <strong>${roleDisplay}</strong></span>
+    <span><strong>ZAMORIN CAFÉ ERP</strong> — DEV PREVIEW — ACTIVE: <strong>${roleDisplay}</strong></span>
     <span style="margin-left: 16px; display: inline-flex; align-items: center; gap: 8px; font-weight: 500;">
       <span style="opacity: 0.8;">Switch Persona:</span>
       <a href="/?role=master" style="color: ${activeRole === 'master' ? '#fff' : '#d4a359'}; text-decoration: ${activeRole === 'master' ? 'underline' : 'none'}; font-weight: 700;">Primary Master</a>
@@ -175,6 +271,8 @@ function renderDevPreviewBanner(activeRole = "master") {
       <a href="/?role=admin" style="color: ${activeRole === 'cafe_admin' ? '#fff' : '#d4a359'}; text-decoration: ${activeRole === 'cafe_admin' ? 'underline' : 'none'}; font-weight: 700;">Cafe Ops</a>
       <span style="opacity: 0.4;">|</span>
       <a href="/?role=staff" style="color: ${activeRole === 'staff' ? '#fff' : '#d4a359'}; text-decoration: ${activeRole === 'staff' ? 'underline' : 'none'}; font-weight: 700;">Staff</a>
+      <span style="opacity: 0.4;">|</span>
+      <a href="#login" style="color: #60a5fa; font-weight: 700; text-decoration: underline;">🔒 Normal Login Screen</a>
     </span>
   `;
 }
@@ -205,13 +303,21 @@ async function boot() {
     state.settings.fontSize || "normal"
   );
 
+  const urlHash = (typeof window !== "undefined" && window.location.hash) ? window.location.hash.replace(/^#/, "") : "";
+  const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+  const isExplicitLoginRequested = urlHash === "login" || params?.get("auth") === "login";
+
+  if (isExplicitLoginRequested) {
+    mountAuthScreen("login");
+    return;
+  }
+
   const devKey = getRequestedDevRole();
   const devUser = DEV_PREVIEW_USERS[devKey] || DEV_PREVIEW_USERS.master;
   const canonicalRole = devKey === "master_normal" ? "master" : devKey;
   const roleNavigation = NAVIGATION[canonicalRole] || NAVIGATION.master;
   const defaultRoute = roleNavigation?.items?.[0]?.route || (canonicalRole === "staff" ? "staff-home" : "dashboard");
   const isPrimary = Boolean(devUser?.isPrimaryMaster);
-  const urlHash = (typeof window !== "undefined" && window.location.hash) ? window.location.hash.replace(/^#/, "") : "";
   const initialRoute = urlHash
     ? (isRouteAllowed(canonicalRole, urlHash, isPrimary) ? urlHash : defaultRoute)
     : defaultRoute;
@@ -276,7 +382,9 @@ async function boot() {
 if (typeof window !== "undefined") {
   window.addEventListener("hashchange", () => {
     const rawHash = window.location.hash.replace(/^#/, "");
-    if (rawHash && state.route !== rawHash) {
+    if (rawHash === "login") {
+      mountAuthScreen("login");
+    } else if (rawHash && state.route !== rawHash) {
       navigate(rawHash);
     }
   });
