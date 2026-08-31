@@ -10,7 +10,7 @@
 
 import { state, setState } from "./state.js";
 import { NAVIGATION, isRouteAllowed, ROLES } from "./navigation.js";
-import { renderSidebar, wireSidebar, renderTopbar, wireBell, updateBellBadge, updateSidebarActive, renderModuleErrorState } from "./components.js";
+import { renderSidebar, wireSidebar, renderTopbar, wireBell, updateBellBadge, updateSidebarActive, renderModuleErrorState, wireCafeContextStrip } from "./components.js";
 import { renderNotificationCentre, wireNotificationCentre } from "./pages/notificationCentre.js";
 import { icon } from "./icons.js";
 import { renderMasterDashboard, hydrateMasterDashboard } from "./pages/dashboardMaster.js";
@@ -462,8 +462,14 @@ async function renderPage() {
       break;
 
     case "sales-cash":
+      // Allowed: MASTER (Primary+Normal), OWNER, CAFE_ADMIN
+      // Blocked: STAFF
+      if (state.role === ROLES.STAFF) {
+        content.innerHTML = renderNotAvailable();
+        break;
+      }
       content.innerHTML = renderCashBook();
-      wireCashBook(content);
+      await wireCashBook(content);
       break;
 
     case "tasks":
@@ -680,5 +686,10 @@ async function renderPage() {
 
     default:
       content.innerHTML = renderNotAvailable();
+  }
+
+  // Auto-wire Global Portfolio Control Context Bar across all mounted pages
+  if (content) {
+    wireCafeContextStrip(content);
   }
 }

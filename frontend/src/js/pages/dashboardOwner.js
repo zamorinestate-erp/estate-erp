@@ -1336,6 +1336,19 @@ function wireDashboardBodyActions(container, data) {
       if (c) c.innerHTML = renderTrendTable(trend);
     });
   }
+
+  container.querySelectorAll(".occ-filter-cafe-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const cafeId = btn.dataset.cafeId;
+      if (cafeId) {
+        ownerDashboardState.selectedCafeId = cafeId;
+        const sel = document.getElementById("occ-cafe-select");
+        if (sel) sel.value = cafeId;
+        loadDashboardData();
+        showToast(`Filtered Command Centre to ${cafeId}`, "info");
+      }
+    });
+  });
 }
 
 function renderDashboardBody(container, data) {

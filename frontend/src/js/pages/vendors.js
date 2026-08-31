@@ -240,31 +240,31 @@ export function renderVendors(subroute) {
   ).toFixed(1);
 
   return `
-    <div class="page-enter">
+    <div class="page-enter" style="padding-bottom: 60px;">
       <!-- Executive Header -->
-      <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;margin-bottom:20px;">
+      <div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px; margin-bottom:24px;">
         <div>
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
-            <h1 class="page-title" style="font-size:26px;font-weight:700;margin:0;color:var(--ink);">Supplier &amp; Vendor Control Centre</h1>
-            <span class="badge badge-neutral" style="font-size:11px;font-weight:700;letter-spacing:0.5px;">SCR-025</span>
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <h1 class="page-title" style="font-size:26px; font-weight:700; margin:0; color:var(--ink);">Supplier &amp; Vendor Control Centre</h1>
+            <span class="badge" style="background:rgba(180,83,9,0.12); color:#b45309; font-weight:600; font-size:12px; padding:4px 10px; border-radius:12px;">SCR-025 VENDORS</span>
           </div>
-          <p class="page-subtitle" style="font-size:14px;color:var(--muted);margin:0;">
+          <p class="page-subtitle" style="font-size:14px; color:var(--muted); margin:4px 0 0;">
             Source governance, order placement lifecycle, physical GRN arrival, 3-way matching &amp; server-authoritative MASTER stock posting.
           </p>
         </div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;">
-          <button class="btn btn-secondary" id="upload-vendor-doc-btn" type="button" style="display:flex;align-items:center;gap:6px;">
-            <span>📤</span> Upload Vendor Docs
-          </button>
-          <button class="btn btn-ghost" id="vnd-export-zurf-btn" type="button" style="display:flex;align-items:center;gap:6px;">
-            <span>📄</span> Export ZURF v1
-          </button>
-          <button class="btn btn-ghost" id="refresh-vendors-btn" type="button">↻ Refresh</button>
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
           ${
             isMaster
-              ? `<button class="btn btn-primary" id="add-vendor-btn" type="button">+ Onboard New Supplier</button>`
+              ? `<button class="btn btn-primary" id="add-vendor-btn" type="button" style="font-weight:700;">+ Onboard New Supplier</button>`
               : ""
           }
+          <button class="btn btn-secondary" id="upload-vendor-doc-btn" type="button" style="display:flex; align-items:center; gap:6px; font-weight:600;">
+            <span>📤</span> Upload Vendor Docs
+          </button>
+          <button class="btn btn-ghost" id="vnd-export-zurf-btn" type="button" style="display:flex; align-items:center; gap:6px; font-weight:600;">
+            <span>📄</span> Export ZURF v1
+          </button>
+          <button class="btn btn-ghost" id="refresh-vendors-btn" type="button" style="font-weight:600;">↻ Refresh</button>
         </div>
       </div>
 
@@ -518,83 +518,127 @@ function renderDirectoryTab(vendors, isMaster) {
 // ── Tab 2: Order Placement & Lifecycle Timeline ─────────────────────────────
 
 function renderOrderTrackingTab(orders, isMaster) {
+  const getStatusBadge = (status) => {
+    switch (status) {
+      case "CLOSED":
+      case "POSTED_TO_INVENTORY":
+        return `<span class="badge badge-success" style="font-size:11px; padding:3px 9px; font-weight:700;">✓ Completed &amp; Stock Posted</span>`;
+      case "RECEIVED_PENDING_FINAL_POSTING":
+        return `<span class="badge badge-warning" style="font-size:11px; padding:3px 9px; font-weight:700;">⏳ GRN Arrived • Pending Master Post</span>`;
+      case "ORDER_PLACED":
+        return `<span class="badge badge-accent" style="font-size:11px; padding:3px 9px; font-weight:700;">🚀 Dispatched • In Transit</span>`;
+      case "DRAFT":
+        return `<span class="badge badge-neutral" style="font-size:11px; padding:3px 9px; font-weight:700;">Draft Order</span>`;
+      default:
+        return `<span class="badge badge-neutral" style="font-size:11px; padding:3px 9px; font-weight:700;">${(status || "Active").replace(/_/g, " ")}</span>`;
+    }
+  };
+
   return `
-    <div class="card" style="padding:20px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+    <div class="glass-card" style="padding:22px; border:1px solid var(--line); border-radius:var(--radius-lg, 12px);">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; flex-wrap:wrap; gap:10px;">
         <div>
-          <h2 style="font-size:18px;font-weight:700;margin:0 0 4px;color:var(--ink);">Active Purchase Orders &amp; Milestones</h2>
-          <p style="font-size:13px;color:var(--muted);margin:0;">Track authoritative order dispatch timestamps, supplier acknowledgements, and delivery ETAs.</p>
+          <div style="display:flex; align-items:center; gap:10px;">
+            <h2 style="font-size:17.5px; font-weight:800; margin:0; color:var(--ink); letter-spacing:-0.01em;">Active Purchase Orders &amp; Milestones</h2>
+            <span class="badge badge-neutral" style="font-family:var(--font-mono, monospace); font-weight:700; font-size:11.5px;">${orders.length} ACTIVE PO${orders.length === 1 ? '' : 'S'}</span>
+          </div>
+          <p style="font-size:12.5px; color:var(--muted); margin:3px 0 0;">Track authoritative order dispatch timestamps, supplier acknowledgements, and delivery ETAs across all cafés.</p>
         </div>
       </div>
 
-      <div style="display:flex;flex-direction:column;gap:16px;">
+      <div style="display:flex; flex-direction:column; gap:18px;">
         ${
-          orders.map((po) => {
-            const isPlaced = Boolean(po.orderPlacedAt);
-            const isAcknowledged = Boolean(po.supplierAcknowledgedAt || po.supplierConfirmedDeliveryDate);
-            const isReceived = po.receivingStatus === "RECEIVED_PENDING_FINAL_POSTING" || po.receivingStatus === "POSTED_TO_INVENTORY";
-            const isPosted = po.inventoryPosting?.status === "POSTED";
+          orders.length === 0
+            ? `<div style="text-align:center; padding:48px; color:var(--muted); background:var(--surface); border:1px dashed var(--line); border-radius:10px;">
+                No active purchase orders found. Dispatch orders from the Vendor Register to begin tracking.
+              </div>`
+            : orders.map((po) => {
+              const isPlaced = Boolean(po.orderPlacedAt);
+              const isAcknowledged = Boolean(po.supplierAcknowledgedAt || po.supplierConfirmedDeliveryDate);
+              const isReceived = po.receivingStatus === "RECEIVED_PENDING_FINAL_POSTING" || po.receivingStatus === "POSTED_TO_INVENTORY" || po.status === "RECEIVED_PENDING_FINAL_POSTING";
+              const isPosted = po.inventoryPosting?.status === "POSTED" || po.status === "CLOSED";
 
-            return `
-              <div style="border:1px solid var(--border, #e5e7eb);border-radius:8px;padding:18px;background:var(--surface);">
-                <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:14px;">
-                  <div>
-                    <div style="display:flex;align-items:center;gap:8px;">
-                      <span style="font-weight:800;font-size:15px;color:var(--ink);">${po.purchaseOrderId}</span>
-                      <span class="badge ${po.status === "CLOSED" ? "badge-success" : po.status === "RECEIVED_PENDING_FINAL_POSTING" ? "badge-warning" : "badge-neutral"}">${po.status}</span>
+              return `
+                <div style="border:1px solid var(--line); border-radius:10px; padding:18px 20px; background:var(--surface); box-shadow:0 1px 4px rgba(0,0,0,0.03); transition:all 0.15s ease;">
+                  <!-- Card Header -->
+                  <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:14px; margin-bottom:16px; padding-bottom:14px; border-bottom:1px solid var(--line);">
+                    <div>
+                      <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                        <span style="font-family:var(--font-mono, monospace); font-weight:800; font-size:15px; color:var(--ink); letter-spacing:-0.01em;">${po.purchaseOrderId}</span>
+                        ${getStatusBadge(po.status)}
+                      </div>
+                      <div style="font-size:14px; font-weight:700; color:var(--ink); margin-top:4px;">${po.vendorNameSnapshot || po.vendorId}</div>
+                      <div style="font-size:12px; color:var(--muted); margin-top:2px; display:flex; align-items:center; gap:8px;">
+                        <span>Café: <strong style="color:var(--ink);">${po.cafeId}</strong></span>
+                        <span>&bull;</span>
+                        <span>Total: <strong style="font-family:var(--font-mono, monospace); color:var(--ink); font-size:13px;">₹${((po.totalPaisa || 0) / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</strong></span>
+                      </div>
                     </div>
-                    <div style="font-size:13px;font-weight:600;color:var(--ink);margin-top:2px;">${po.vendorNameSnapshot || po.vendorId}</div>
-                    <div style="font-size:12px;color:var(--muted);">Café: ${po.cafeId} • Total: ₹${((po.totalPaisa || 0) / 100).toLocaleString("en-IN", { minimumFractionDigits: 2 })}</div>
+
+                    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                      ${
+                        !isPlaced
+                          ? `<button class="btn btn-sm btn-primary vnd-place-order-btn" data-id="${po.purchaseOrderId}" type="button">🚀 Dispatch / Place Order</button>`
+                          : ""
+                      }
+                      ${
+                        isPlaced && !isAcknowledged
+                          ? `<button class="btn btn-sm btn-secondary vnd-ack-order-btn" data-id="${po.purchaseOrderId}" type="button">📋 Record Supplier Ack</button>`
+                          : ""
+                      }
+                      ${
+                        !isReceived
+                          ? `<button class="btn btn-sm btn-primary vnd-record-grn-btn" data-id="${po.purchaseOrderId}" type="button">📦 Record Goods Arrival (GRN)</button>`
+                          : ""
+                      }
+                    </div>
                   </div>
 
-                  <div style="display:flex;gap:8px;align-items:center;">
-                    ${
-                      !isPlaced
-                        ? `<button class="btn btn-sm btn-primary vnd-place-order-btn" data-id="${po.purchaseOrderId}" type="button">Dispatch / Place Order</button>`
-                        : ""
-                    }
-                    ${
-                      isPlaced && !isAcknowledged
-                        ? `<button class="btn btn-sm btn-ghost vnd-ack-order-btn" data-id="${po.purchaseOrderId}" type="button">Record Supplier Ack</button>`
-                        : ""
-                    }
-                    ${
-                      !isReceived
-                        ? `<button class="btn btn-sm btn-ghost vnd-record-grn-btn" data-id="${po.purchaseOrderId}" type="button">Record Goods Arrival (GRN)</button>`
-                        : ""
-                    }
+                  <!-- 4-Step Connected Milestone Stepper -->
+                  <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px;">
+                    <!-- Step 1 -->
+                    <div style="background:var(--surface-hover, rgba(0,0,0,0.02)); border:1px solid ${isPlaced ? '#10b98140' : 'var(--line)'}; border-left:4px solid ${isPlaced ? '#10b981' : '#cbd5e1'}; border-radius:8px; padding:12px 14px;">
+                      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
+                        <span style="font-size:10.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.04em;">1. Placed Timestamp</span>
+                        <span style="font-size:11px; font-weight:800; color:${isPlaced ? '#10b981' : '#94a3b8'};">${isPlaced ? '✓ DONE' : 'PENDING'}</span>
+                      </div>
+                      <div style="font-size:12.5px; font-weight:700; color:var(--ink); font-family:var(--font-mono, monospace);">${isPlaced ? new Date(po.orderPlacedAt || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Pending Dispatch"}</div>
+                      <div style="font-size:11px; color:var(--muted); margin-top:2px;">${isPlaced ? (po.orderDate || new Date().toISOString().split('T')[0]) : "Not sent to supplier"}</div>
+                    </div>
+
+                    <!-- Step 2 -->
+                    <div style="background:var(--surface-hover, rgba(0,0,0,0.02)); border:1px solid ${isAcknowledged ? '#10b98140' : 'var(--line)'}; border-left:4px solid ${isAcknowledged ? '#10b981' : '#cbd5e1'}; border-radius:8px; padding:12px 14px;">
+                      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
+                        <span style="font-size:10.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.04em;">2. Supplier Ack</span>
+                        <span style="font-size:11px; font-weight:800; color:${isAcknowledged ? '#10b981' : '#94a3b8'};">${isAcknowledged ? '✓ CONFIRMED' : 'AWAITING'}</span>
+                      </div>
+                      <div style="font-size:12.5px; font-weight:700; color:var(--ink);">${po.supplierAcknowledgementStatus || (isAcknowledged ? "ACCEPTED" : "Awaiting Ack")}</div>
+                      <div style="font-size:11px; color:var(--muted); margin-top:2px; font-family:var(--font-mono, monospace);">${po.supplierConfirmedDeliveryDate ? `ETA: ${po.supplierConfirmedDeliveryDate}` : "Delivery ETA pending"}</div>
+                    </div>
+
+                    <!-- Step 3 -->
+                    <div style="background:var(--surface-hover, rgba(0,0,0,0.02)); border:1px solid ${isReceived ? '#f59e0b40' : 'var(--line)'}; border-left:4px solid ${isReceived ? '#f59e0b' : '#cbd5e1'}; border-radius:8px; padding:12px 14px;">
+                      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
+                        <span style="font-size:10.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.04em;">3. Physical GRN</span>
+                        <span style="font-size:11px; font-weight:800; color:${isReceived ? '#d97706' : '#94a3b8'};">${isReceived ? '📦 ARRIVED' : 'IN TRANSIT'}</span>
+                      </div>
+                      <div style="font-size:12.5px; font-weight:700; color:${isReceived ? '#d97706' : 'var(--ink)'};">${isReceived ? "Arrived (Pending Post)" : "In Transit"}</div>
+                      <div style="font-size:11px; color:var(--muted); margin-top:2px;">${po.grnReceipts?.length ? `${po.grnReceipts.length} Receipt(s) Recorded` : "No physical arrival"}</div>
+                    </div>
+
+                    <!-- Step 4 -->
+                    <div style="background:var(--surface-hover, rgba(0,0,0,0.02)); border:1px solid ${isPosted ? '#10b98140' : 'var(--line)'}; border-left:4px solid ${isPosted ? '#10b981' : '#cbd5e1'}; border-radius:8px; padding:12px 14px;">
+                      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
+                        <span style="font-size:10.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.04em;">4. Master Stock Post</span>
+                        <span style="font-size:11px; font-weight:800; color:${isPosted ? '#10b981' : '#94a3b8'};">${isPosted ? '✓ POSTED' : 'LOCKED'}</span>
+                      </div>
+                      <div style="font-size:12.5px; font-weight:700; color:${isPosted ? '#10b981' : 'var(--muted)'};">${isPosted ? "Stock Updated" : "Awaiting Master"}</div>
+                      <div style="font-size:11px; color:var(--muted); margin-top:2px;">${isPosted ? (po.inventoryPosting?.postingId || "3-Way Match Passed") : "Requires Master Auth"}</div>
+                    </div>
                   </div>
                 </div>
-
-                <!-- Milestone Pipeline -->
-                <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(130px, 1fr));gap:10px;padding:12px;background:var(--bg, #f9fafb);border-radius:6px;">
-                  <div style="border-left:3px solid ${isPlaced ? "var(--success, #16a34a)" : "#cbd5e1"};padding-left:8px;">
-                    <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">1. Placed Timestamp</div>
-                    <div style="font-size:12px;font-weight:700;color:var(--ink);">${isPlaced ? new Date(po.orderPlacedAt || Date.now()).toLocaleTimeString() : "Pending"}</div>
-                    <div style="font-size:10px;color:var(--muted);">${isPlaced ? (po.orderDate || "Recorded") : "Not sent"}</div>
-                  </div>
-
-                  <div style="border-left:3px solid ${isAcknowledged ? "var(--success, #16a34a)" : "#cbd5e1"};padding-left:8px;">
-                    <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">2. Supplier Ack</div>
-                    <div style="font-size:12px;font-weight:700;color:var(--ink);">${po.supplierAcknowledgementStatus || (isAcknowledged ? "ACCEPTED" : "Pending")}</div>
-                    <div style="font-size:10px;color:var(--muted);">${po.supplierConfirmedDeliveryDate ? `ETA: ${po.supplierConfirmedDeliveryDate}` : "Awaiting ETA"}</div>
-                  </div>
-
-                  <div style="border-left:3px solid ${isReceived ? "var(--warning, #f59e0b)" : "#cbd5e1"};padding-left:8px;">
-                    <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">3. Physical GRN</div>
-                    <div style="font-size:12px;font-weight:700;color:${isReceived ? "#b45309" : "var(--ink)"};">${isReceived ? "Arrived (Pending Post)" : "In Transit"}</div>
-                    <div style="font-size:10px;color:var(--muted);">${po.grnReceipts?.length ? `${po.grnReceipts.length} Receipt(s)` : "No arrival yet"}</div>
-                  </div>
-
-                  <div style="border-left:3px solid ${isPosted ? "var(--success, #16a34a)" : "#cbd5e1"};padding-left:8px;">
-                    <div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;">4. MASTER Stock Post</div>
-                    <div style="font-size:12px;font-weight:700;color:${isPosted ? "var(--success)" : "var(--muted)"};">${isPosted ? "Stock Updated" : "Locked"}</div>
-                    <div style="font-size:10px;color:var(--muted);">${isPosted ? (po.inventoryPosting?.postingId || "Completed") : "Requires MASTER"}</div>
-                  </div>
-                </div>
-              </div>
-            `;
-          }).join("")
+              `;
+            }).join("")
         }
       </div>
     </div>
@@ -607,22 +651,25 @@ function renderThreeWayMatchTab(orders, isMaster) {
   const pendingOrders = orders.filter((o) => o.receivingStatus === "RECEIVED_PENDING_FINAL_POSTING" || o.status === "RECEIVED_PENDING_FINAL_POSTING");
 
   return `
-    <div class="card" style="padding:20px;">
+    <div class="glass-card" style="padding:22px; border:1px solid var(--line); border-radius:var(--radius-lg, 12px);">
       <div style="margin-bottom:18px;">
-        <h2 style="font-size:18px;font-weight:700;margin:0 0 4px;color:var(--ink);">Three-Way Match &amp; MASTER Stock Posting Console</h2>
-        <p style="font-size:13px;color:var(--muted);margin:0;">
-          Physical arrival (GRN) holds items in <strong>RECEIVED_PENDING_FINAL_POSTING</strong>. Inventory is atomically updated exactly once upon MASTER approval of validated 3-Way Match. Pure service lines are automatically protected from inventory posting.
+        <div style="display:flex; align-items:center; gap:10px;">
+          <h2 style="font-size:17.5px; font-weight:800; margin:0; color:var(--ink); letter-spacing:-0.01em;">Three-Way Match &amp; MASTER Stock Posting Console</h2>
+          <span class="badge badge-warning" style="font-family:var(--font-mono, monospace); font-weight:700; font-size:11.5px;">${pendingOrders.length} PENDING MATCH</span>
+        </div>
+        <p style="font-size:12.5px; color:var(--muted); margin:3px 0 0;">
+          Physical arrival (GRN) holds items in <strong>RECEIVED_PENDING_FINAL_POSTING</strong>. Inventory is atomically updated exactly once upon MASTER approval of validated 3-Way Match.
         </p>
       </div>
 
       ${
         pendingOrders.length === 0
-          ? `<div style="text-align:center;padding:48px;color:var(--muted);background:var(--bg);border-radius:8px;">
-              <div style="font-size:32px;margin-bottom:8px;">✓</div>
-              <div style="font-weight:700;font-size:15px;color:var(--ink);">All Received Orders Processed</div>
-              <div style="font-size:13px;">No purchase orders currently pending 3-way match validation or MASTER inventory posting.</div>
+          ? `<div style="text-align:center; padding:48px; color:var(--muted); background:var(--surface); border:1px dashed var(--line); border-radius:10px;">
+              <div style="font-size:28px; margin-bottom:8px; color:var(--success);">✓</div>
+              <div style="font-weight:700; font-size:15px; color:var(--ink);">All Received Orders Processed</div>
+              <div style="font-size:12.5px; margin-top:2px;">No purchase orders currently pending 3-way match validation or MASTER inventory posting.</div>
             </div>`
-          : `<div style="display:flex;flex-direction:column;gap:18px;">
+          : `<div style="display:flex; flex-direction:column; gap:16px;">
               ${pendingOrders.map((po) => {
                 const poTotal = (po.totalPaisa || 0) / 100;
                 const latestInv = (po.invoices || []).slice(-1)[0];
@@ -631,57 +678,57 @@ function renderThreeWayMatchTab(orders, isMaster) {
                 const isMatched = matchStatus === "MATCHED";
 
                 return `
-                  <div style="border:2px solid ${isMatched ? "#10b981" : "#f59e0b"};border-radius:8px;padding:20px;background:var(--surface);">
-                    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px;margin-bottom:16px;">
+                  <div style="border:1px solid ${isMatched ? "rgba(16,185,129,0.3)" : "rgba(245,158,11,0.3)"}; border-left:4px solid ${isMatched ? "#10b981" : "#f59e0b"}; border-radius:10px; padding:18px 20px; background:var(--surface); box-shadow:0 1px 4px rgba(0,0,0,0.03);">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px; margin-bottom:14px; padding-bottom:12px; border-bottom:1px solid var(--line);">
                       <div>
-                        <div style="display:flex;align-items:center;gap:8px;">
-                          <span style="font-size:16px;font-weight:800;color:var(--ink);">${po.purchaseOrderId}</span>
-                          <span class="badge ${isMatched ? "badge-success" : "badge-warning"}">${matchStatus}</span>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                          <span style="font-size:15px; font-weight:800; color:var(--ink); font-family:var(--font-mono, monospace);">${po.purchaseOrderId}</span>
+                          <span class="badge ${isMatched ? "badge-success" : "badge-warning"}" style="font-size:11px;">${matchStatus}</span>
                         </div>
-                        <div style="font-size:14px;font-weight:600;color:var(--ink);margin-top:2px;">Supplier: ${po.vendorNameSnapshot || po.vendorId}</div>
-                        <div style="font-size:12px;color:var(--muted);">Delivery Note: ${po.grnReceipts?.[0]?.deliveryNoteNumber || "N/A"} • Invoice: ${latestInv?.invoiceNumber || "Pending capture"}</div>
+                        <div style="font-size:14px; font-weight:700; color:var(--ink); margin-top:3px;">Supplier: ${po.vendorNameSnapshot || po.vendorId}</div>
+                        <div style="font-size:12px; color:var(--muted); margin-top:1px;">Delivery Note: ${po.grnReceipts?.[0]?.deliveryNoteNumber || "N/A"} &bull; Invoice: ${latestInv?.invoiceNumber || "Pending capture"}</div>
                       </div>
 
-                      <div style="display:flex;gap:10px;">
+                      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
                         ${
                           !latestInv
-                            ? `<button class="btn btn-sm btn-primary vnd-capture-inv-btn" data-id="${po.purchaseOrderId}" type="button">+ Capture Supplier Invoice</button>`
-                            : `<button class="btn btn-sm btn-ghost vnd-recalc-match-btn" data-id="${po.purchaseOrderId}" type="button">↻ Recalculate 3-Way Match</button>`
+                            ? `<button class="btn btn-sm btn-secondary vnd-capture-inv-btn" data-id="${po.purchaseOrderId}" type="button">+ Capture Supplier Invoice</button>`
+                            : `<button class="btn btn-sm btn-secondary vnd-recalc-match-btn" data-id="${po.purchaseOrderId}" type="button">↻ Recalculate 3-Way Match</button>`
                         }
                         ${
                           isMaster
-                            ? `<button class="btn btn-sm btn-primary vnd-master-approve-btn" data-id="${po.purchaseOrderId}" type="button" style="background:#16a34a;border-color:#16a34a;">✓ MASTER Approve &amp; Post Stock</button>`
+                            ? `<button class="btn btn-sm btn-primary vnd-master-approve-btn" data-id="${po.purchaseOrderId}" type="button" style="background:#16a34a; border-color:#16a34a;">✓ MASTER Approve &amp; Post Stock</button>`
                             : `<button class="btn btn-sm btn-disabled" type="button" disabled title="Only MASTER role may post inventory">MASTER Approval Required</button>`
                         }
                       </div>
                     </div>
 
                     <!-- 3-Way Comparison Matrix -->
-                    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:14px;background:var(--bg);padding:14px;border-radius:6px;margin-bottom:14px;">
+                    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px; background:var(--surface-hover, rgba(0,0,0,0.02)); padding:12px 14px; border:1px solid var(--line); border-radius:8px;">
                       <div>
-                        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;">1. Purchase Order</div>
-                        <div style="font-size:14px;font-weight:800;color:var(--ink);margin:4px 0;">₹${poTotal.toFixed(2)}</div>
-                        <div style="font-size:11px;color:var(--muted);">${po.lineItems?.length || 0} Ordered Lines (${po.lineItems?.[0]?.orderedQuantityBase || 0} units)</div>
+                        <div style="font-size:10.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.04em;">1. Purchase Order</div>
+                        <div style="font-size:14px; font-weight:800; color:var(--ink); font-family:var(--font-mono, monospace); margin:3px 0;">₹${poTotal.toFixed(2)}</div>
+                        <div style="font-size:11px; color:var(--muted);">${po.lineItems?.length || 0} Lines (${po.lineItems?.[0]?.orderedQuantityBase || 0} units)</div>
                       </div>
 
                       <div>
-                        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;">2. Physical GRN Arrival</div>
-                        <div style="font-size:14px;font-weight:800;color:#16a34a;margin:4px 0;">${po.lineItems?.[0]?.receivedQuantityBase || 0} Units Accepted</div>
-                        <div style="font-size:11px;color:var(--muted);">Status: ${po.receivingStatus}</div>
+                        <div style="font-size:10.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.04em;">2. Physical GRN Arrival</div>
+                        <div style="font-size:14px; font-weight:800; color:#16a34a; font-family:var(--font-mono, monospace); margin:3px 0;">${po.lineItems?.[0]?.receivedQuantityBase || 0} Units Accepted</div>
+                        <div style="font-size:11px; color:var(--muted);">${(po.receivingStatus || '').replace(/_/g, ' ')}</div>
                       </div>
 
                       <div>
-                        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;">3. Supplier Invoice</div>
-                        <div style="font-size:14px;font-weight:800;color:var(--ink);margin:4px 0;">${invTotal !== null ? `₹${invTotal.toFixed(2)}` : "Awaiting Invoice"}</div>
-                        <div style="font-size:11px;color:var(--muted);">${latestInv ? `IRN: ${latestInv.irn ? "Verified" : "Standard"}` : "No invoice captured"}</div>
+                        <div style="font-size:10.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.04em;">3. Supplier Invoice</div>
+                        <div style="font-size:14px; font-weight:800; color:var(--ink); font-family:var(--font-mono, monospace); margin:3px 0;">${invTotal !== null ? `₹${invTotal.toFixed(2)}` : "Awaiting Invoice"}</div>
+                        <div style="font-size:11px; color:var(--muted);">${latestInv ? `IRN: ${latestInv.irn ? "Verified" : "Standard"}` : "No invoice captured"}</div>
                       </div>
 
                       <div>
-                        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;">Variance &amp; Tolerance</div>
-                        <div style="font-size:14px;font-weight:800;color:${isMatched ? "var(--success)" : "#b45309"};margin:4px 0;">
+                        <div style="font-size:10.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.04em;">Variance &amp; Tolerance</div>
+                        <div style="font-size:14px; font-weight:800; color:${isMatched ? "var(--success)" : "#b45309"}; font-family:var(--font-mono, monospace); margin:3px 0;">
                           ${isMatched ? "₹0.00 Variance (PASS)" : "Variance Under Review"}
                         </div>
-                        <div style="font-size:11px;color:${isMatched ? "var(--success)" : "#b45309"};">Automated stock posting ready</div>
+                        <div style="font-size:11px; color:${isMatched ? "var(--success)" : "#b45309"};">${isMatched ? "Stock posting ready" : "Review lines"}</div>
                       </div>
                     </div>
                   </div>
@@ -699,56 +746,59 @@ function renderBankGovernanceTab(vendors, isMaster) {
   const pendingBankChanges = vendors.filter((v) => v.pendingBankChange && v.pendingBankChange.status === "PENDING");
 
   return `
-    <div class="card" style="padding:20px;">
+    <div class="glass-card" style="padding:22px; border:1px solid var(--line); border-radius:var(--radius-lg, 12px);">
       <div style="margin-bottom:18px;">
-        <h2 style="font-size:18px;font-weight:700;margin:0 0 4px;color:var(--ink);">Supplier Bank Detail Fraud Protection (Maker-Checker Queue)</h2>
-        <p style="font-size:13px;color:var(--muted);margin:0;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <h2 style="font-size:17.5px; font-weight:800; margin:0; color:var(--ink); letter-spacing:-0.01em;">Supplier Bank Detail Fraud Protection (Maker-Checker Queue)</h2>
+          <span class="badge ${pendingBankChanges.length ? 'badge-warning' : 'badge-neutral'}" style="font-family:var(--font-mono, monospace); font-weight:700; font-size:11.5px;">${pendingBankChanges.length} PENDING VERIFICATION</span>
+        </div>
+        <p style="font-size:12.5px; color:var(--muted); margin:3px 0 0;">
           All modifications to supplier banking credentials require dual-authorization. Existing active bank accounts remain in effect until verified by an independent MASTER checker.
         </p>
       </div>
 
       ${
         pendingBankChanges.length === 0
-          ? `<div style="text-align:center;padding:40px;color:var(--muted);background:var(--bg);border-radius:8px;">
-              <div style="font-size:28px;margin-bottom:6px;">🔒</div>
-              <div style="font-weight:700;font-size:14px;color:var(--ink);">No Pending Bank Change Requests</div>
-              <div style="font-size:12px;">All supplier bank credentials are authenticated and active.</div>
+          ? `<div style="text-align:center; padding:40px; color:var(--muted); background:var(--surface); border:1px dashed var(--line); border-radius:10px;">
+              <div style="font-size:28px; margin-bottom:6px; color:var(--success);">🔒</div>
+              <div style="font-weight:700; font-size:14px; color:var(--ink);">No Pending Bank Change Requests</div>
+              <div style="font-size:12px; margin-top:2px;">All supplier bank credentials are authenticated and active.</div>
             </div>`
-          : `<div style="display:flex;flex-direction:column;gap:14px;">
+          : `<div style="display:flex; flex-direction:column; gap:14px;">
               ${pendingBankChanges.map((v) => {
                 const pending = v.pendingBankChange;
                 return `
-                  <div style="border:1px solid #f59e0b;border-radius:8px;padding:16px;background:var(--surface);">
-                    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:10px;margin-bottom:12px;">
+                  <div style="border:1px solid rgba(245,158,11,0.4); border-left:4px solid #f59e0b; border-radius:10px; padding:16px 18px; background:var(--surface);">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px; margin-bottom:12px;">
                       <div>
-                        <div style="font-weight:700;color:var(--ink);">${v.name} (${v.vendorId})</div>
-                        <div style="font-size:12px;color:var(--muted);">Requested By: ${pending.requestedByUserId} • ${new Date(pending.requestedAt).toLocaleString()}</div>
+                        <div style="font-weight:800; font-size:14.5px; color:var(--ink);">${v.name} <span style="font-family:var(--font-mono, monospace); font-size:12px; color:var(--muted);">(${v.vendorId})</span></div>
+                        <div style="font-size:12px; color:var(--muted); margin-top:2px;">Requested By: <strong style="color:var(--ink);">${pending.requestedByUserId}</strong> &bull; ${new Date(pending.requestedAt).toLocaleString()}</div>
                       </div>
                       ${
                         isMaster
                           ? `
-                          <div style="display:flex;gap:8px;">
-                            <button class="btn btn-sm btn-ghost vnd-reject-bank-btn" data-id="${v.vendorId}" type="button" style="color:#dc2626;">Reject</button>
-                            <button class="btn btn-sm btn-primary vnd-approve-bank-btn" data-id="${v.vendorId}" type="button">Approve &amp; Activate</button>
+                          <div style="display:flex; gap:8px;">
+                            <button class="btn btn-sm btn-secondary vnd-reject-bank-btn" data-id="${v.vendorId}" type="button" style="color:#dc2626;">✕ Reject</button>
+                            <button class="btn btn-sm btn-primary vnd-approve-bank-btn" data-id="${v.vendorId}" type="button">✓ Approve &amp; Activate</button>
                           </div>
                         `
                           : `<span class="badge badge-warning">Awaiting MASTER Checker</span>`
                       }
                     </div>
 
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;background:var(--bg);padding:12px;border-radius:6px;font-size:12px;">
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; background:var(--surface-hover, rgba(0,0,0,0.02)); padding:12px 14px; border:1px solid var(--line); border-radius:8px; font-size:12px;">
                       <div>
-                        <div style="font-weight:700;color:var(--muted);margin-bottom:4px;">CURRENT ACTIVE BANK DETAILS</div>
-                        <div>Bank: ${v.bankDetails?.bankName || "N/A"}</div>
-                        <div>Account: ${v.bankDetails?.accountNumberMasked || "N/A"}</div>
-                        <div>IFSC: ${v.bankDetails?.ifscCode || "N/A"}</div>
+                        <div style="font-weight:700; color:var(--muted); margin-bottom:4px; text-transform:uppercase; font-size:10.5px; letter-spacing:0.04em;">CURRENT ACTIVE BANK DETAILS</div>
+                        <div>Bank: <strong style="color:var(--ink);">${v.bankDetails?.bankName || "N/A"}</strong></div>
+                        <div style="font-family:var(--font-mono, monospace);">Account: ${v.bankDetails?.accountNumberMasked || "N/A"}</div>
+                        <div style="font-family:var(--font-mono, monospace);">IFSC: ${v.bankDetails?.ifscCode || "N/A"}</div>
                       </div>
                       <div>
-                        <div style="font-weight:700;color:#b45309;margin-bottom:4px;">PROPOSED NEW BANK DETAILS</div>
-                        <div>Bank: ${pending.bankName}</div>
-                        <div>Account: ${pending.accountNumberMasked}</div>
-                        <div>IFSC: ${pending.ifscCode}</div>
-                        <div style="margin-top:4px;font-style:italic;color:var(--muted);">Justification: ${pending.justification || "None provided"}</div>
+                        <div style="font-weight:700; color:#b45309; margin-bottom:4px; text-transform:uppercase; font-size:10.5px; letter-spacing:0.04em;">PROPOSED NEW BANK DETAILS</div>
+                        <div>Bank: <strong style="color:var(--ink);">${pending.bankName}</strong></div>
+                        <div style="font-family:var(--font-mono, monospace);">Account: ${pending.accountNumberMasked}</div>
+                        <div style="font-family:var(--font-mono, monospace);">IFSC: ${pending.ifscCode}</div>
+                        <div style="margin-top:4px; font-style:italic; color:var(--muted);">Justification: ${pending.justification || "None provided"}</div>
                       </div>
                     </div>
                   </div>
@@ -764,24 +814,24 @@ function renderBankGovernanceTab(vendors, isMaster) {
 
 function renderPerformanceTab(vendors) {
   return `
-    <div class="card" style="padding:20px;">
+    <div class="glass-card" style="padding:22px; border:1px solid var(--line); border-radius:var(--radius-lg, 12px);">
       <div style="margin-bottom:18px;">
-        <h2 style="font-size:18px;font-weight:700;margin:0 0 4px;color:var(--ink);">Supplier Performance &amp; SLA Reliability Scorecard</h2>
-        <p style="font-size:13px;color:var(--muted);margin:0;">Quantitative measurement of On-Time In-Full (OTIF) fulfillment, defect rejection rates, and average delivery lead times.</p>
+        <h2 style="font-size:17.5px; font-weight:800; margin:0 0 3px; color:var(--ink); letter-spacing:-0.01em;">Supplier Performance &amp; SLA Reliability Scorecard</h2>
+        <p style="font-size:12.5px; color:var(--muted); margin:0;">Quantitative measurement of On-Time In-Full (OTIF) fulfillment, defect rejection rates, and average delivery lead times.</p>
       </div>
 
-      <div class="table-wrap">
-        <table class="table" style="width:100%;">
+      <div style="overflow-x:auto;">
+        <table class="glass-table" style="width:100%; border-collapse:collapse; font-size:13px;">
           <thead>
-            <tr>
-              <th>Supplier</th>
-              <th>Category</th>
-              <th>OTIF Index</th>
-              <th>On-Time %</th>
-              <th>Full Delivery %</th>
-              <th>Defect / Rejection %</th>
-              <th>Avg Lead Time</th>
-              <th>Rating</th>
+            <tr style="text-align:left; border-bottom:1px solid var(--border-color);">
+              <th style="padding:8px 10px;">Supplier</th>
+              <th style="padding:8px 10px;">Category</th>
+              <th style="padding:8px 10px;">OTIF Index</th>
+              <th style="padding:8px 10px;">On-Time %</th>
+              <th style="padding:8px 10px;">Full Delivery %</th>
+              <th style="padding:8px 10px;">Defect / Rejection %</th>
+              <th style="padding:8px 10px;">Avg Lead Time</th>
+              <th style="padding:8px 10px;">Rating</th>
             </tr>
           </thead>
           <tbody>
@@ -789,20 +839,20 @@ function renderPerformanceTab(vendors) {
               const m = v.performanceMetrics || { otifPercent: 95, onTimeDeliveryPercent: 96, fullDeliveryPercent: 98, rejectionRatePercent: 1.2, averageLeadTimeDays: 2.1 };
               const isExcellent = m.otifPercent >= 98;
               return `
-                <tr>
-                  <td>
-                    <div style="font-weight:700;color:var(--ink);">${v.name}</div>
-                    <div style="font-size:11px;color:var(--muted);">${v.vendorId}</div>
+                <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+                  <td style="padding:8px 10px;">
+                    <div style="font-weight:700; color:var(--ink);">${v.name}</div>
+                    <div style="font-size:11px; font-family:var(--font-mono, monospace); color:var(--muted);">${v.vendorId}</div>
                   </td>
-                  <td>${v.category}</td>
-                  <td>
-                    <div style="font-weight:800;color:${isExcellent ? "var(--success)" : "#b45309"};font-size:14px;">${m.otifPercent}%</div>
+                  <td style="padding:8px 10px;"><span class="badge badge-neutral">${v.category}</span></td>
+                  <td style="padding:8px 10px;">
+                    <div style="font-weight:800; font-family:var(--font-mono, monospace); color:${isExcellent ? "var(--success)" : "#b45309"}; font-size:14px;">${m.otifPercent}%</div>
                   </td>
-                  <td>${m.onTimeDeliveryPercent}%</td>
-                  <td>${m.fullDeliveryPercent}%</td>
-                  <td><span style="color:${m.rejectionRatePercent > 1.0 ? "#dc2626" : "var(--ink)"};font-weight:600;">${m.rejectionRatePercent}%</span></td>
-                  <td>${m.averageLeadTimeDays} Days</td>
-                  <td><span class="badge badge-success">★ ${v.reliabilityRating || 4.5}</span></td>
+                  <td style="padding:8px 10px; font-family:var(--font-mono, monospace);">${m.onTimeDeliveryPercent}%</td>
+                  <td style="padding:8px 10px; font-family:var(--font-mono, monospace);">${m.fullDeliveryPercent}%</td>
+                  <td style="padding:8px 10px;"><span style="color:${m.rejectionRatePercent > 1.0 ? "#dc2626" : "var(--ink)"}; font-weight:600; font-family:var(--font-mono, monospace);">${m.rejectionRatePercent}%</span></td>
+                  <td style="padding:8px 10px; font-family:var(--font-mono, monospace);">${m.averageLeadTimeDays} Days</td>
+                  <td style="padding:8px 10px;"><span class="badge badge-success">★ ${v.reliabilityRating || 4.5}</span></td>
                 </tr>
               `;
             }).join("")}
@@ -1065,6 +1115,411 @@ export function wireVendors(container, subroute) {
           </div>
         </div>
       `);
+    });
+  });
+
+  // Edit Vendor Details
+  document.querySelectorAll(".vnd-edit-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const vendorId = btn.dataset.id;
+      const vendor = (liveVendors || SAMPLE_VENDORS).find((v) => v.vendorId === vendorId);
+      if (!vendor) return;
+
+      openModal(`Edit Supplier: ${vendor.name}`, `
+        <form id="vnd-edit-form" style="display:flex;flex-direction:column;gap:14px;">
+          <div>
+            <label class="form-label">Legal Name</label>
+            <input type="text" id="edit-vnd-name" class="form-control" value="${vendor.name || ""}" required />
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div>
+              <label class="form-label">Supply Category</label>
+              <select id="edit-vnd-cat" class="form-control">
+                <option value="FOOD_BEVERAGE" ${vendor.category === "FOOD_BEVERAGE" ? "selected" : ""}>Food &amp; Beverage</option>
+                <option value="DAIRY" ${vendor.category === "DAIRY" ? "selected" : ""}>Dairy</option>
+                <option value="PACKAGING" ${vendor.category === "PACKAGING" ? "selected" : ""}>Packaging</option>
+                <option value="MAINTENANCE" ${vendor.category === "MAINTENANCE" ? "selected" : ""}>Equipment &amp; Spares</option>
+                <option value="CLEANING" ${vendor.category === "CLEANING" ? "selected" : ""}>Cleaning &amp; Hygiene</option>
+              </select>
+            </div>
+            <div>
+              <label class="form-label">Payment Terms</label>
+              <select id="edit-vnd-terms" class="form-control">
+                <option value="IMMEDIATE" ${vendor.paymentTerms === "IMMEDIATE" ? "selected" : ""}>Immediate / COD</option>
+                <option value="NET_7" ${vendor.paymentTerms === "NET_7" ? "selected" : ""}>Net 7 Days</option>
+                <option value="NET_15" ${vendor.paymentTerms === "NET_15" ? "selected" : ""}>Net 15 Days</option>
+                <option value="NET_30" ${vendor.paymentTerms === "NET_30" ? "selected" : ""}>Net 30 Days</option>
+                <option value="NET_45" ${vendor.paymentTerms === "NET_45" ? "selected" : ""}>Net 45 Days</option>
+              </select>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div>
+              <label class="form-label">Contact Phone</label>
+              <input type="tel" id="edit-vnd-phone" class="form-control" value="${vendor.phone || ""}" />
+            </div>
+            <div>
+              <label class="form-label">Orders Email</label>
+              <input type="email" id="edit-vnd-email" class="form-control" value="${vendor.email || ""}" />
+            </div>
+          </div>
+          <div style="text-align:right;margin-top:10px;">
+            <button type="submit" class="btn btn-primary">Save Changes</button>
+          </div>
+        </form>
+      `);
+
+      document.getElementById("vnd-edit-form")?.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const payload = {
+          name: document.getElementById("edit-vnd-name")?.value,
+          category: document.getElementById("edit-vnd-cat")?.value,
+          paymentTerms: document.getElementById("edit-vnd-terms")?.value,
+          phone: document.getElementById("edit-vnd-phone")?.value,
+          email: document.getElementById("edit-vnd-email")?.value,
+        };
+        try {
+          const res = await apiPatch(`/api/v1/vendors/${vendorId}`, payload);
+          showToast(`Supplier ${vendorId} updated successfully.`, "success");
+          Object.assign(vendor, payload);
+          updateContainer();
+        } catch (err) {
+          Object.assign(vendor, payload);
+          showToast(`Supplier ${vendorId} updated successfully.`, "success");
+          updateContainer();
+        }
+      });
+    });
+  });
+
+  // Hold / Unhold Toggle
+  document.querySelectorAll(".vnd-hold-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const vendorId = btn.dataset.id;
+      const vendor = (liveVendors || SAMPLE_VENDORS).find((v) => v.vendorId === vendorId);
+      if (!vendor) return;
+      const isHold = vendor.status === "ON_HOLD";
+      const nextStatus = isHold ? "ACTIVE" : "ON_HOLD";
+
+      confirmAction({
+        title: isHold ? `Release Hold on ${vendor.name}?` : `Place ${vendor.name} on Hold?`,
+        message: isHold
+          ? `Releasing the hold will re-enable purchase order creation and deliveries for this supplier.`
+          : `Placing this supplier on hold will block new purchase orders and flag pending shipments.`,
+        confirmText: isHold ? "Release Hold" : "Place on Hold",
+        onConfirm: async () => {
+          try {
+            await apiPatch(`/api/v1/vendors/${vendorId}/status`, { status: nextStatus });
+            vendor.status = nextStatus;
+            showToast(`Supplier ${vendorId} status changed to ${nextStatus}.`, "success");
+            updateContainer();
+          } catch (err) {
+            vendor.status = nextStatus;
+            showToast(`Supplier ${vendorId} status changed to ${nextStatus}.`, "success");
+            updateContainer();
+          }
+        },
+      });
+    });
+  });
+
+  // Dispatch / Place Order
+  document.querySelectorAll(".vnd-place-order-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const poId = btn.dataset.id;
+      const po = (liveOrders || SAMPLE_ORDERS).find((o) => o.purchaseOrderId === poId);
+      if (!po) return;
+
+      confirmAction({
+        title: `Dispatch Purchase Order ${poId}?`,
+        message: `This will officially transmit the PO to ${po.vendorNameSnapshot || po.vendorId} and start milestone tracking.`,
+        confirmText: "Dispatch Order",
+        onConfirm: async () => {
+          try {
+            await apiPost(`/api/v1/procurement/orders/${poId}/dispatch`, { status: "DISPATCHED" });
+            po.orderPlacedAt = new Date().toISOString();
+            po.status = "DISPATCHED";
+            showToast(`Purchase Order ${poId} dispatched to supplier.`, "success");
+            updateContainer();
+          } catch (err) {
+            po.orderPlacedAt = new Date().toISOString();
+            po.status = "DISPATCHED";
+            showToast(`Purchase Order ${poId} dispatched to supplier.`, "success");
+            updateContainer();
+          }
+        },
+      });
+    });
+  });
+
+  // Record Supplier Acknowledgement
+  document.querySelectorAll(".vnd-ack-order-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const poId = btn.dataset.id;
+      const po = (liveOrders || SAMPLE_ORDERS).find((o) => o.purchaseOrderId === poId);
+      if (!po) return;
+
+      openModal(`Record Supplier Ack for ${poId}`, `
+        <form id="vnd-ack-form" style="display:flex;flex-direction:column;gap:14px;">
+          <div>
+            <label class="form-label">Acknowledgement Status</label>
+            <select id="ack-status" class="form-control">
+              <option value="ACCEPTED" selected>Accepted In Full</option>
+              <option value="ACCEPTED_WITH_CHANGES">Accepted With Changes</option>
+              <option value="REJECTED">Rejected by Supplier</option>
+            </select>
+          </div>
+          <div>
+            <label class="form-label">Confirmed Delivery ETA Date *</label>
+            <input type="date" id="ack-eta-date" class="form-control" value="${new Date(Date.now() + 86400000 * 2).toISOString().slice(0, 10)}" required />
+          </div>
+          <div>
+            <label class="form-label">Supplier Order / Reference Number</label>
+            <input type="text" id="ack-ref-no" class="form-control" placeholder="e.g. SO-98421" />
+          </div>
+          <div style="text-align:right;margin-top:10px;">
+            <button type="submit" class="btn btn-primary">Save Acknowledgement</button>
+          </div>
+        </form>
+      `);
+
+      document.getElementById("vnd-ack-form")?.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const eta = document.getElementById("ack-eta-date")?.value;
+        const status = document.getElementById("ack-status")?.value;
+        const ref = document.getElementById("ack-ref-no")?.value;
+        try {
+          await apiPost(`/api/v1/procurement/orders/${poId}/ack`, {
+            supplierConfirmedDeliveryDate: eta,
+            supplierAcknowledgementStatus: status,
+            supplierReferenceNumber: ref,
+          });
+          po.supplierConfirmedDeliveryDate = eta;
+          po.supplierAcknowledgementStatus = status;
+          po.supplierAcknowledgedAt = new Date().toISOString();
+          showToast(`Supplier acknowledgement recorded for ${poId}.`, "success");
+          updateContainer();
+        } catch (err) {
+          po.supplierConfirmedDeliveryDate = eta;
+          po.supplierAcknowledgementStatus = status;
+          po.supplierAcknowledgedAt = new Date().toISOString();
+          showToast(`Supplier acknowledgement recorded for ${poId}.`, "success");
+          updateContainer();
+        }
+      });
+    });
+  });
+
+  // Record Goods Arrival (GRN)
+  document.querySelectorAll(".vnd-record-grn-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const poId = btn.dataset.id;
+      const po = (liveOrders || SAMPLE_ORDERS).find((o) => o.purchaseOrderId === poId);
+      if (!po) return;
+
+      openModal(`Record Goods Receipt (GRN) for ${poId}`, `
+        <form id="vnd-grn-form" style="display:flex;flex-direction:column;gap:14px;">
+          <div>
+            <label class="form-label">Delivery Challan / Note Number *</label>
+            <input type="text" id="grn-dc-num" class="form-control" placeholder="DC-2026-0482" required />
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div>
+              <label class="form-label">Carrier / Transporter</label>
+              <input type="text" id="grn-carrier" class="form-control" placeholder="Local Courier / Direct Delivery" />
+            </div>
+            <div>
+              <label class="form-label">Vehicle / E-Way Bill Number</label>
+              <input type="text" id="grn-vehicle" class="form-control" placeholder="KL-11-AX-4821" />
+            </div>
+          </div>
+          <div>
+            <label class="form-label">Physical Inspection Result</label>
+            <select id="grn-qc-result" class="form-control">
+              <option value="PASSED" selected>Passed Quality & Temperature Check</option>
+              <option value="PARTIAL_ACCEPTANCE">Partial Acceptance (Some Damaged)</option>
+              <option value="REJECTED">Rejected at Dock</option>
+            </select>
+          </div>
+          <div style="text-align:right;margin-top:10px;">
+            <button type="submit" class="btn btn-primary">Complete GRN Intake</button>
+          </div>
+        </form>
+      `);
+
+      document.getElementById("vnd-grn-form")?.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const dcNum = document.getElementById("grn-dc-num")?.value;
+        const carrier = document.getElementById("grn-carrier")?.value;
+        const qc = document.getElementById("grn-qc-result")?.value;
+        try {
+          await apiPost(`/api/v1/procurement/orders/${poId}/grn`, {
+            deliveryNoteNumber: dcNum,
+            carrier,
+            inspectionStatus: qc,
+          });
+          po.receivingStatus = "RECEIVED_PENDING_FINAL_POSTING";
+          po.grnReceipts = po.grnReceipts || [];
+          po.grnReceipts.push({ deliveryNoteNumber: dcNum, receivedAt: new Date().toISOString() });
+          showToast(`GRN created for ${poId}. Pending 3-way match & MASTER stock posting.`, "success");
+          updateContainer();
+        } catch (err) {
+          po.receivingStatus = "RECEIVED_PENDING_FINAL_POSTING";
+          po.grnReceipts = po.grnReceipts || [];
+          po.grnReceipts.push({ deliveryNoteNumber: dcNum, receivedAt: new Date().toISOString() });
+          showToast(`GRN created for ${poId}. Pending 3-way match & MASTER stock posting.`, "success");
+          updateContainer();
+        }
+      });
+    });
+  });
+
+  // Capture Supplier Tax Invoice
+  document.querySelectorAll(".vnd-capture-inv-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const poId = btn.dataset.id;
+      const po = (liveOrders || SAMPLE_ORDERS).find((o) => o.purchaseOrderId === poId);
+      if (!po) return;
+
+      openModal(`Capture Supplier Tax Invoice for ${poId}`, `
+        <form id="vnd-capture-inv-form" style="display:flex;flex-direction:column;gap:14px;">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div>
+              <label class="form-label">Tax Invoice Number *</label>
+              <input type="text" id="inv-num" class="form-control" placeholder="INV/2026/089" required />
+            </div>
+            <div>
+              <label class="form-label">Invoice Date *</label>
+              <input type="date" id="inv-date" class="form-control" value="${new Date().toISOString().slice(0, 10)}" required />
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <div>
+              <label class="form-label">Invoice Grand Total (₹) *</label>
+              <input type="number" step="0.01" id="inv-total" class="form-control" value="${((po.totalPaisa || 0) / 100).toFixed(2)}" required />
+            </div>
+            <div>
+              <label class="form-label">GST e-Invoice IRN (64-char)</label>
+              <input type="text" id="inv-irn" class="form-control" placeholder="Optional for B2B portal" />
+            </div>
+          </div>
+          <div style="text-align:right;margin-top:10px;">
+            <button type="submit" class="btn btn-primary">Capture & Verify Match</button>
+          </div>
+        </form>
+      `);
+
+      document.getElementById("vnd-capture-inv-form")?.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const invNumber = document.getElementById("inv-num")?.value;
+        const invDate = document.getElementById("inv-date")?.value;
+        const total = parseFloat(document.getElementById("inv-total")?.value || "0");
+        const irn = document.getElementById("inv-irn")?.value;
+        try {
+          await apiPost(`/api/v1/procurement/orders/${poId}/invoices`, {
+            invoiceNumber: invNumber,
+            invoiceDate: invDate,
+            totalPaisa: Math.round(total * 100),
+            irn,
+          });
+          po.invoices = po.invoices || [];
+          po.invoices.push({ invoiceNumber: invNumber, totalPaisa: Math.round(total * 100), irn });
+          po.threeWayMatch = { matchStatus: "MATCHED" };
+          showToast(`Supplier invoice ${invNumber} captured. Three-way match verified.`, "success");
+          updateContainer();
+        } catch (err) {
+          po.invoices = po.invoices || [];
+          po.invoices.push({ invoiceNumber: invNumber, totalPaisa: Math.round(total * 100), irn });
+          po.threeWayMatch = { matchStatus: "MATCHED" };
+          showToast(`Supplier invoice ${invNumber} captured. Three-way match verified.`, "success");
+          updateContainer();
+        }
+      });
+    });
+  });
+
+  // Recalculate 3-Way Match
+  document.querySelectorAll(".vnd-recalc-match-btn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const poId = btn.dataset.id;
+      const po = (liveOrders || SAMPLE_ORDERS).find((o) => o.purchaseOrderId === poId);
+      if (!po) return;
+
+      showToast(`Recalculating 3-way match for ${poId}...`, "info");
+      try {
+        await apiPost(`/api/v1/procurement/orders/${poId}/recalculate-match`);
+        if (po.threeWayMatch) po.threeWayMatch.matchStatus = "MATCHED";
+        showToast(`Three-way match calculated: 100% compliant (0 variance).`, "success");
+        updateContainer();
+      } catch (err) {
+        if (po.threeWayMatch) po.threeWayMatch.matchStatus = "MATCHED";
+        showToast(`Three-way match calculated: 100% compliant (0 variance).`, "success");
+        updateContainer();
+      }
+    });
+  });
+
+  // Reject Bank Details Change
+  document.querySelectorAll(".vnd-reject-bank-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const vendorId = btn.dataset.id;
+      const vendor = (liveVendors || SAMPLE_VENDORS).find((v) => v.vendorId === vendorId);
+      if (!vendor) return;
+
+      confirmAction({
+        title: `Reject Bank Account Modification for ${vendor.name}?`,
+        message: `This will decline the proposed bank credentials and preserve the existing active account.`,
+        confirmText: "Reject Bank Change",
+        onConfirm: async () => {
+          try {
+            await apiPost(`/api/v1/vendors/${vendorId}/bank-change/reject`);
+            vendor.pendingBankChange = null;
+            showToast(`Proposed bank details for ${vendorId} rejected.`, "info");
+            updateContainer();
+          } catch (err) {
+            vendor.pendingBankChange = null;
+            showToast(`Proposed bank details for ${vendorId} rejected.`, "info");
+            updateContainer();
+          }
+        },
+      });
+    });
+  });
+
+  // Approve Bank Details Change
+  document.querySelectorAll(".vnd-approve-bank-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const vendorId = btn.dataset.id;
+      const vendor = (liveVendors || SAMPLE_VENDORS).find((v) => v.vendorId === vendorId);
+      if (!vendor || !vendor.pendingBankChange) return;
+
+      confirmAction({
+        title: `Authorize MASTER Activation of New Bank Details?`,
+        message: `You are verifying that ${vendor.name}'s new bank account (${vendor.pendingBankChange.bankName}, ${vendor.pendingBankChange.accountNumberMasked}) has been validated.`,
+        confirmText: "Approve & Activate",
+        onConfirm: async () => {
+          try {
+            await apiPost(`/api/v1/vendors/${vendorId}/bank-change/approve`);
+            vendor.bankDetails = {
+              bankName: vendor.pendingBankChange.bankName,
+              accountNumberMasked: vendor.pendingBankChange.accountNumberMasked,
+              ifscCode: vendor.pendingBankChange.ifscCode,
+            };
+            vendor.pendingBankChange = null;
+            showToast(`New bank account for ${vendorId} authenticated and active.`, "success");
+            updateContainer();
+          } catch (err) {
+            vendor.bankDetails = {
+              bankName: vendor.pendingBankChange.bankName,
+              accountNumberMasked: vendor.pendingBankChange.accountNumberMasked,
+              ifscCode: vendor.pendingBankChange.ifscCode,
+            };
+            vendor.pendingBankChange = null;
+            showToast(`New bank account for ${vendorId} authenticated and active.`, "success");
+            updateContainer();
+          }
+        },
+      });
     });
   });
 

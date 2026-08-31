@@ -35,75 +35,318 @@ export function formatPaise(paise, privacy = false) {
   return `₹ ${inr}`;
 }
 
-export const DEFAULT_STAFF_DATA = {
-  employee: {
-    id: "EMP-0042",
-    name: "Priya Sharma",
-    preferredName: "Priya",
-    avatarInitials: "PS",
-    designation: "Senior Barista",
-    cafeName: "Dawn Roast — Koramangala",
-  },
-  todayShift: {
-    startTime: "09:00 AM",
-    endTime: "05:00 PM",
-    dutyDesignation: "Counter & Till duty",
-    cafeName: "Dawn Roast, Koramangala",
-    attendanceState: "READY",
-  },
-  nextShift: {
-    day: "Tomorrow",
-    startTime: "09:00 AM",
-    endTime: "05:00 PM",
-    dutyDesignation: "Counter & Till duty",
-    date: "Scheduled",
-  },
-  attendanceSummary: {
-    presentDays: 21,
-    lateDays: 1,
-    overtimeHours: 4.5,
-  },
-  leaveSummary: {
-    casualLeaveBalance: 4.5,
-    totalAvailableDays: 22.5,
-  },
-  payslipSummary: {
-    periodName: "June 2026",
-    status: "Ready",
-    netPayPaise: 3850000,
-  },
-  loanSummary: {
-    hasActiveLoan: true,
-    outstandingPaise: 4250000,
-  },
-  actionRequired: [],
-  announcements: [
-    {
-      id: "ANN-01",
-      title: "New Seasonal Espresso Blend Rollout",
-      summary: "Wayanad single-origin roast arriving this Thursday. Mandatory tasting session at 8:30 AM.",
-      category: "ROASTERY",
-      priority: "NORMAL",
-      createdAt: "2026-08-20T10:00:00.000Z",
+export const STAFF_DIRECTORY = [
+  {
+    employee: {
+      id: "EMP-0042",
+      badgeId: "EMP-SCR-001",
+      name: "Priya Sharma",
+      preferredName: "Priya",
+      avatarInitials: "PS",
+      designation: "Senior Barista",
+      cafeName: "Dawn Roast — Koramangala",
     },
-  ],
-  weekSchedule: [
-    { day: "Mon", isToday: true, isOff: false, shiftHours: "9–5" },
-    { day: "Tue", isToday: false, isOff: false, shiftHours: "9–5" },
-    { day: "Wed", isToday: false, isOff: false, shiftHours: "9–5" },
-    { day: "Thu", isToday: false, isOff: false, shiftHours: "9–5" },
-    { day: "Fri", isToday: false, isOff: false, shiftHours: "1–9" },
-    { day: "Sat", isToday: false, isOff: false, shiftHours: "1–9" },
-    { day: "Sun", isToday: false, isOff: true, shiftHours: "Off" },
-  ],
-};
+    todayShift: {
+      startTime: "09:00 AM",
+      endTime: "05:00 PM",
+      dutyDesignation: "Counter & Till duty",
+      cafeName: "Dawn Roast, Koramangala",
+      attendanceState: "READY",
+    },
+    nextShift: {
+      day: "Tomorrow",
+      startTime: "09:00 AM",
+      endTime: "05:00 PM",
+      dutyDesignation: "Counter & Till duty",
+      date: "Scheduled",
+    },
+    attendanceSummary: {
+      presentDays: 21,
+      lateDays: 1,
+      overtimeHours: 4.5,
+    },
+    leaveSummary: {
+      casualLeaveBalance: 4.5,
+      totalAvailableDays: 22.5,
+    },
+    payslipSummary: {
+      periodName: "June 2026",
+      status: "Ready",
+      netPayPaise: 3850000,
+    },
+    loanSummary: {
+      hasActiveLoan: true,
+      outstandingPaise: 4250000,
+    },
+    actionRequired: [],
+    announcements: [
+      {
+        id: "ANN-01",
+        title: "New Seasonal Espresso Blend Rollout",
+        summary: "Wayanad single-origin roast arriving this Thursday. Mandatory tasting session at 8:30 AM.",
+        category: "ROASTERY",
+        priority: "NORMAL",
+        createdAt: "2026-08-20T10:00:00.000Z",
+      },
+    ],
+    weekSchedule: [
+      { day: "Mon", isToday: true, isOff: false, shiftHours: "9–5" },
+      { day: "Tue", isToday: false, isOff: false, shiftHours: "9–5" },
+      { day: "Wed", isToday: false, isOff: false, shiftHours: "9–5" },
+      { day: "Thu", isToday: false, isOff: false, shiftHours: "9–5" },
+      { day: "Fri", isToday: false, isOff: false, shiftHours: "1–9" },
+      { day: "Sat", isToday: false, isOff: false, shiftHours: "1–9" },
+      { day: "Sun", isToday: false, isOff: true, shiftHours: "Off" },
+    ],
+  },
+  {
+    employee: {
+      id: "ST-0042",
+      badgeId: "EMP-SCR-002",
+      name: "Rahul Sharma",
+      preferredName: "Rahul",
+      avatarInitials: "RS",
+      designation: "Shift Lead & Head Barista",
+      cafeName: "Dawn Roast — Koramangala",
+    },
+    todayShift: {
+      startTime: "07:30 AM",
+      endTime: "03:30 PM",
+      dutyDesignation: "Opening Lead & Espresso Bar",
+      cafeName: "Dawn Roast, Koramangala",
+      attendanceState: "CHECKED_IN",
+      checkInTime: "2026-08-31T02:00:00.000Z",
+      elapsedMinutes: 215,
+    },
+    nextShift: {
+      day: "Tomorrow",
+      startTime: "07:30 AM",
+      endTime: "03:30 PM",
+      dutyDesignation: "Opening Lead",
+      date: "Scheduled",
+    },
+    attendanceSummary: {
+      presentDays: 24,
+      lateDays: 0,
+      overtimeHours: 6.0,
+    },
+    leaveSummary: {
+      casualLeaveBalance: 6.0,
+      totalAvailableDays: 26.0,
+    },
+    payslipSummary: {
+      periodName: "June 2026",
+      status: "Ready",
+      netPayPaise: 4420000,
+    },
+    loanSummary: {
+      hasActiveLoan: false,
+      outstandingPaise: 0,
+    },
+    actionRequired: [],
+    announcements: [
+      {
+        id: "ANN-01",
+        title: "New Seasonal Espresso Blend Rollout",
+        summary: "Wayanad single-origin roast arriving this Thursday. Mandatory tasting session at 8:30 AM.",
+        category: "ROASTERY",
+        priority: "NORMAL",
+        createdAt: "2026-08-20T10:00:00.000Z",
+      },
+    ],
+    weekSchedule: [
+      { day: "Mon", isToday: true, isOff: false, shiftHours: "7:30–3:30" },
+      { day: "Tue", isToday: false, isOff: false, shiftHours: "7:30–3:30" },
+      { day: "Wed", isToday: false, isOff: false, shiftHours: "7:30–3:30" },
+      { day: "Thu", isToday: false, isOff: false, shiftHours: "7:30–3:30" },
+      { day: "Fri", isToday: false, isOff: false, shiftHours: "7:30–3:30" },
+      { day: "Sat", isToday: false, isOff: true, shiftHours: "Off" },
+      { day: "Sun", isToday: false, isOff: false, shiftHours: "7:30–3:30" },
+    ],
+  },
+  {
+    employee: {
+      id: "EMP-0043",
+      badgeId: "EMP-SCR-003",
+      name: "Ananya Nair",
+      preferredName: "Ananya",
+      avatarInitials: "AN",
+      designation: "Lead Roaster & Quality Specialist",
+      cafeName: "Wayanad Heritage Roastery",
+    },
+    todayShift: {
+      startTime: "08:00 AM",
+      endTime: "04:00 PM",
+      dutyDesignation: "Roastery QA & Green Bean Inspection",
+      cafeName: "Wayanad Heritage Roastery",
+      attendanceState: "READY",
+    },
+    nextShift: {
+      day: "Tomorrow",
+      startTime: "08:00 AM",
+      endTime: "04:00 PM",
+      dutyDesignation: "Roastery Production",
+      date: "Scheduled",
+    },
+    attendanceSummary: {
+      presentDays: 22,
+      lateDays: 0,
+      overtimeHours: 2.0,
+    },
+    leaveSummary: {
+      casualLeaveBalance: 5.0,
+      totalAvailableDays: 21.0,
+    },
+    payslipSummary: {
+      periodName: "June 2026",
+      status: "Ready",
+      netPayPaise: 4100000,
+    },
+    loanSummary: {
+      hasActiveLoan: true,
+      outstandingPaise: 2000000,
+    },
+    actionRequired: [],
+    announcements: [
+      {
+        id: "ANN-02",
+        title: "Roastery Preventive Maintenance",
+        summary: "Diedrich IR-12 roaster scheduled for seasonal deep cleaning this Saturday.",
+        category: "MAINTENANCE",
+        priority: "HIGH",
+        createdAt: "2026-08-25T09:00:00.000Z",
+      },
+    ],
+    weekSchedule: [
+      { day: "Mon", isToday: true, isOff: false, shiftHours: "8–4" },
+      { day: "Tue", isToday: false, isOff: false, shiftHours: "8–4" },
+      { day: "Wed", isToday: false, isOff: false, shiftHours: "8–4" },
+      { day: "Thu", isToday: false, isOff: false, shiftHours: "8–4" },
+      { day: "Fri", isToday: false, isOff: false, shiftHours: "8–4" },
+      { day: "Sat", isToday: false, isOff: false, shiftHours: "8–12" },
+      { day: "Sun", isToday: false, isOff: true, shiftHours: "Off" },
+    ],
+  },
+  {
+    employee: {
+      id: "EMP-0044",
+      badgeId: "EMP-SCR-004",
+      name: "Vikram Patel",
+      preferredName: "Vikram",
+      avatarInitials: "VP",
+      designation: "Commis Chef & Kitchen Associate",
+      cafeName: "Calicut Cyberpark Outpost",
+    },
+    todayShift: {
+      startTime: "11:00 AM",
+      endTime: "07:00 PM",
+      dutyDesignation: "Hot Kitchen Prep & Artisan Sandwiches",
+      cafeName: "Calicut Cyberpark Outpost",
+      attendanceState: "READY",
+    },
+    nextShift: {
+      day: "Tomorrow",
+      startTime: "11:00 AM",
+      endTime: "07:00 PM",
+      dutyDesignation: "Hot Kitchen Prep",
+      date: "Scheduled",
+    },
+    attendanceSummary: {
+      presentDays: 20,
+      lateDays: 2,
+      overtimeHours: 3.5,
+    },
+    leaveSummary: {
+      casualLeaveBalance: 3.5,
+      totalAvailableDays: 18.0,
+    },
+    payslipSummary: {
+      periodName: "June 2026",
+      status: "Ready",
+      netPayPaise: 3400000,
+    },
+    loanSummary: {
+      hasActiveLoan: false,
+      outstandingPaise: 0,
+    },
+    actionRequired: [],
+    announcements: [],
+    weekSchedule: [
+      { day: "Mon", isToday: true, isOff: false, shiftHours: "11–7" },
+      { day: "Tue", isToday: false, isOff: false, shiftHours: "11–7" },
+      { day: "Wed", isToday: false, isOff: false, shiftHours: "11–7" },
+      { day: "Thu", isToday: false, isOff: false, shiftHours: "11–7" },
+      { day: "Fri", isToday: false, isOff: false, shiftHours: "11–7" },
+      { day: "Sat", isToday: false, isOff: false, shiftHours: "11–7" },
+      { day: "Sun", isToday: false, isOff: true, shiftHours: "Off" },
+    ],
+  },
+  {
+    employee: {
+      id: "EMP-0045",
+      badgeId: "EMP-SCR-005",
+      name: "Sneha Iyer",
+      preferredName: "Sneha",
+      avatarInitials: "SI",
+      designation: "Floor Supervisor & Barista",
+      cafeName: "Kozhikode Beach Main",
+    },
+    todayShift: {
+      startTime: "01:00 PM",
+      endTime: "09:00 PM",
+      dutyDesignation: "Closing Supervisor & Floor Operations",
+      cafeName: "Kozhikode Beach Main",
+      attendanceState: "READY",
+    },
+    nextShift: {
+      day: "Tomorrow",
+      startTime: "01:00 PM",
+      endTime: "09:00 PM",
+      dutyDesignation: "Floor Supervisor",
+      date: "Scheduled",
+    },
+    attendanceSummary: {
+      presentDays: 23,
+      lateDays: 0,
+      overtimeHours: 5.0,
+    },
+    leaveSummary: {
+      casualLeaveBalance: 6.0,
+      totalAvailableDays: 24.0,
+    },
+    payslipSummary: {
+      periodName: "June 2026",
+      status: "Ready",
+      netPayPaise: 3950000,
+    },
+    loanSummary: {
+      hasActiveLoan: true,
+      outstandingPaise: 1500000,
+    },
+    actionRequired: [],
+    announcements: [],
+    weekSchedule: [
+      { day: "Mon", isToday: true, isOff: false, shiftHours: "1–9" },
+      { day: "Tue", isToday: false, isOff: false, shiftHours: "1–9" },
+      { day: "Wed", isToday: false, isOff: false, shiftHours: "1–9" },
+      { day: "Thu", isToday: false, isOff: false, shiftHours: "1–9" },
+      { day: "Fri", isToday: false, isOff: false, shiftHours: "1–9" },
+      { day: "Sat", isToday: false, isOff: false, shiftHours: "1–9" },
+      { day: "Sun", isToday: false, isOff: true, shiftHours: "Off" },
+    ],
+  },
+];
+
+export let activeStaffEmployeeId = "EMP-0042";
+export const DEFAULT_STAFF_DATA = STAFF_DIRECTORY[0];
 
 export function renderStaffHome() {
+  const currentData = STAFF_DIRECTORY.find((s) => s.employee.id === activeStaffEmployeeId) || DEFAULT_STAFF_DATA;
   return `
     <div class="page-enter staff-dashboard-root" id="staff-dashboard-container" style="max-width:1240px; margin:0 auto; padding:12px 16px 40px 16px;">
       <!-- Dynamic Dashboard Mount -->
       <div id="staff-dashboard-content">
-        ${renderDashboardBody(DEFAULT_STAFF_DATA)}
+        ${renderDashboardBody(currentData)}
       </div>
     </div>
   `;
@@ -142,13 +385,13 @@ function renderDashboardBody(data) {
 
   const privacyActive = isPrivacyModeActive();
 
-  // ── 1. Top Greeting & Context ─────────────────────────────────────────────
+  // ── 1. Top Greeting & Context with Employee Switcher ───────────────────────
   const greetingHtml = `
     <div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px; margin-bottom:20px;">
       <div>
         <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
           <h1 style="font-size:24px; font-weight:700; margin:0; color:var(--ink);">Hi, ${emp.preferredName || emp.name || "Priya"} 👋</h1>
-          <span class="badge" style="background:rgba(180,83,9,0.12); color:#b45309; font-weight:600; font-size:12px; padding:4px 10px; border-radius:12px;">EMP-SCR-001</span>
+          <span class="badge" style="background:rgba(180,83,9,0.12); color:#b45309; font-weight:600; font-size:12px; padding:4px 10px; border-radius:12px;">${emp.badgeId || "EMP-SCR-001"}</span>
         </div>
         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:13px; color:var(--muted); margin-top:4px;">
           <span>📍 ${emp.cafeName || "Dawn Roast — Koramangala"}</span>
@@ -159,7 +402,23 @@ function renderDashboardBody(data) {
         </div>
       </div>
 
-      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <!-- Employee Switcher for Primary Master / Admin / Privileged Roles -->
+        <div class="flex items-center gap-xs" style="background:var(--surface); border:1px solid var(--border-subtle); padding:4px 10px; border-radius:var(--radius-md, 8px); box-shadow:var(--shadow-xs);">
+          <label for="staff-employee-switcher" style="font-size:11.5px; font-weight:700; color:var(--brand-gold, #c89d5c); display:flex; align-items:center; gap:4px; margin:0; white-space:nowrap;">
+            <span>👤</span> Viewing Staff:
+          </label>
+          <select id="staff-employee-switcher" class="select" style="font-size:12px; font-weight:700; padding:2px 8px; height:30px; border:none; background:transparent; color:var(--ink); cursor:pointer;">
+            ${STAFF_DIRECTORY.map(
+              (s) => `
+              <option value="${s.employee.id}" ${s.employee.id === emp.id ? "selected" : ""}>
+                ${s.employee.name} (${s.employee.id}) — ${s.employee.designation}
+              </option>
+            `
+            ).join("")}
+          </select>
+        </div>
+
         <button class="btn btn-secondary" id="btn-open-schedule-request" type="button" style="font-size:12px; padding:6px 12px;">
           🗓️ Schedule Request
         </button>
@@ -609,23 +868,29 @@ export function wireStaffHome(root) {
       });
     }
 
-    // 11. Document Upload Modal
-    const uploadDocBtn = container.querySelector("#btn-upload-document");
-    if (uploadDocBtn) {
-      uploadDocBtn.addEventListener("click", () => {
-        openDocumentUploadModal(emp);
+    // 12. Employee Switcher (Primary Master / Multi-Staff Switcher)
+    const empSwitcher = container.querySelector("#staff-employee-switcher");
+    if (empSwitcher) {
+      empSwitcher.addEventListener("change", (e) => {
+        const newEmpId = e.target.value;
+        activeStaffEmployeeId = newEmpId;
+        const targetData = STAFF_DIRECTORY.find((s) => s.employee.id === newEmpId) || DEFAULT_STAFF_DATA;
+        contentEl.innerHTML = renderDashboardBody(targetData);
+        bindDashboardInteractions(contentEl, targetData);
+        showToast(`Switched Self-Service view to ${targetData.employee.name} (${targetData.employee.id})`);
       });
     }
   }
 
   // Bind interactions immediately with default/pre-rendered state
-  bindDashboardInteractions(contentEl, DEFAULT_STAFF_DATA);
+  const initialData = STAFF_DIRECTORY.find((s) => s.employee.id === activeStaffEmployeeId) || DEFAULT_STAFF_DATA;
+  bindDashboardInteractions(contentEl, initialData);
 
   // Load live data from aggregated endpoint in background with graceful fallback
   async function loadDashboard() {
     try {
       const res = await apiGet("/employees/me/dashboard");
-      if (res && res.data) {
+      if (res && res.data && activeStaffEmployeeId === "EMP-0042") {
         contentEl.innerHTML = renderDashboardBody(res.data);
         bindDashboardInteractions(contentEl, res.data);
       }

@@ -2,10 +2,11 @@
   "name": "zamorin-cafe-erp-root",
   "version": "1.0.0",
   "description": "Zamorin Cafe ERP — Enterprise Management System Root Workspace",
+  "type": "module",
   "private": true,
   "scripts": {
-    "dev": "node scripts/serve_frontend.js & cd backend && npm run dev",
-    "start": "node scripts/serve_frontend.js & cd backend && npm start",
+    "dev": "node scripts/start_dev_all.mjs",
+    "start": "node scripts/start_dev_all.mjs",
     "start:backend": "cd backend && npm start",
     "start:backend:dev": "cd backend && npm run dev",
     "start:frontend": "node scripts/serve_frontend.js",
@@ -24,5 +25,8 @@
     "cafe-pos"
   ],
   "author": "Zamorin Cafe Operations Engineering",
-  "license": "UNLICENSED"
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "puppeteer-core": "^25.9.0"
+  }
 }

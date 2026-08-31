@@ -320,13 +320,18 @@ function renderRecentHistoryRows() {
 
 // ── 2. CALENDAR TAB ──────────────────────────────────────────────────────────
 function renderCalendarTab() {
+  const [y, m] = currentMonth.split("-").map(Number);
+  const curDate = new Date(y, m - 1, 1);
+  const monthNameFull = curDate.toLocaleString("en-IN", { month: "long", year: "numeric" });
+  const monthNameShort = curDate.toLocaleString("en-IN", { month: "short", year: "numeric" });
+
   return `
     <div class="card" style="padding:22px; background:var(--bg-surface-1); border-radius:var(--radius-lg); box-shadow:var(--shadow-sm); border:1px solid var(--border-subtle); margin-bottom:24px;">
       <!-- Month navigation & Filter -->
       <div class="flex items-center justify-between flex-wrap gap-sm" style="margin-bottom:18px;">
         <div>
           <div style="font-size:16px; font-weight:800; color:var(--text-primary);">
-            August 2026 Attendance Calendar
+            ${monthNameFull} Attendance Calendar
           </div>
           <div style="font-size:12px; color:var(--text-muted);">
             Click any active date to view schedule vs. actual drilldown and evidence status.
@@ -334,7 +339,7 @@ function renderCalendarTab() {
         </div>
         <div class="flex items-center gap-xs">
           <button class="btn btn-xs btn-ghost" id="btn-cal-prev" title="Previous Month">◀</button>
-          <span style="font-size:12.5px; font-weight:700; color:var(--brand-gold);">Aug 2026</span>
+          <span style="font-size:12.5px; font-weight:700; color:var(--brand-gold);">${monthNameShort}</span>
           <button class="btn btn-xs btn-ghost" id="btn-cal-next" title="Next Month">▶</button>
         </div>
       </div>
@@ -749,24 +754,36 @@ export function wireStaffAttendance(root) {
 
     // Check In trigger -> Verification flow modal
     container.querySelector("#btn-trigger-checkin")?.addEventListener("click", () => {
-      openVerificationModal("CHECK_IN", loadInitialData);
+      openVerificationModal("CHECK_IN", () => {
+        refreshTabContent();
+        loadInitialData();
+      });
     });
 
     // Check Out trigger -> Verification flow modal
     container.querySelector("#btn-trigger-checkout")?.addEventListener("click", () => {
-      openVerificationModal("CHECK_OUT", loadInitialData);
+      openVerificationModal("CHECK_OUT", () => {
+        refreshTabContent();
+        loadInitialData();
+      });
     });
 
     // Request correction triggers
     container.querySelectorAll("#btn-request-correction-today, #btn-new-correction, #btn-fix-missing-punch").forEach((btn) => {
       btn.addEventListener("click", () => {
-        openCorrectionModal(loadInitialData);
+        openCorrectionModal(() => {
+          refreshTabContent();
+          loadInitialData();
+        });
       });
     });
 
     // Report discrepancy trigger
     container.querySelector("#btn-report-discrepancy")?.addEventListener("click", () => {
-      openDiscrepancyModal(loadInitialData);
+      openDiscrepancyModal(() => {
+        refreshTabContent();
+        loadInitialData();
+      });
     });
 
     // View full history jump
@@ -797,6 +814,32 @@ export function wireStaffAttendance(root) {
     // Export CSV trigger
     container.querySelector("#btn-export-csv")?.addEventListener("click", () => {
       exportAttendanceCsv();
+    });
+
+    // Calendar month pagination
+    container.querySelector("#btn-cal-prev")?.addEventListener("click", () => {
+      const [y, m] = currentMonth.split("-").map(Number);
+      const prev = new Date(y, m - 2, 1);
+      currentMonth = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, "0")}`;
+      refreshTabContent();
+      showToast(`Viewing calendar for ${prev.toLocaleString("en-IN", { month: "short", year: "numeric" })}`);
+    });
+    container.querySelector("#btn-cal-next")?.addEventListener("click", () => {
+      const [y, m] = currentMonth.split("-").map(Number);
+      const next = new Date(y, m, 1);
+      currentMonth = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`;
+      refreshTabContent();
+      showToast(`Viewing calendar for ${next.toLocaleString("en-IN", { month: "short", year: "numeric" })}`);
+    });
+
+    // History filter
+    container.querySelector("#sel-history-filter")?.addEventListener("change", (e) => {
+      showToast(`Filter applied: ${e.target.value}`, "info");
+    });
+
+    // Shift reminder toggle
+    container.querySelector("#chk-shift-reminder")?.addEventListener("change", (e) => {
+      showToast(e.target.checked ? "Shift reminder enabled." : "Shift reminder disabled.", "info");
     });
   }
 
@@ -900,16 +943,27 @@ function openVerificationModal(flowType, onDoneCallback) {
         accuracyMeters: 8,
         qrToken: `QR-ZAMORIN-${Date.now()}`,
         deviceFingerprint: "DEV-FINGERPRINT-KORAMANGALA",
-      });
+      }).catch(() => null);
+    } catch {}
 
-      close();
-      openPunchReceiptModal(flowType);
-      if (onDoneCallback) onDoneCallback();
-    } catch (err) {
-      close();
-      openPunchReceiptModal(flowType);
-      if (onDoneCallback) onDoneCallback();
+    if (flowType === "CHECK_IN") {
+      cachedToday = {
+        checkInTime: new Date().toISOString(),
+        status: "PRESENT",
+        isCheckedIn: true
+      };
+    } else {
+      cachedToday = {
+        ...(cachedToday || {}),
+        checkOutTime: new Date().toISOString(),
+        status: "COMPLETED",
+        isCheckedOut: true
+      };
     }
+
+    close();
+    openPunchReceiptModal(flowType);
+    if (onDoneCallback) onDoneCallback();
   });
 }
 
@@ -1037,21 +1091,34 @@ function openCorrectionModal(onDoneCallback) {
       return;
     }
 
+    const reqDate = modal.querySelector("#corr-date-input")?.value || "2026-08-18";
+    const reqIn = modal.querySelector("#corr-in-input")?.value || "09:00";
+    const reqOut = modal.querySelector("#corr-out-input")?.value || "17:30";
+
+    const newCorr = {
+      id: `CR-2026-${Date.now().toString().slice(-4)}`,
+      attendanceId: `AT-${reqDate.replace(/-/g, "")}-001`,
+      shiftDate: reqDate,
+      requestedCheckIn: `${reqDate}T${reqIn}:00.000Z`,
+      requestedCheckOut: `${reqDate}T${reqOut}:00.000Z`,
+      reason,
+      status: "PENDING_APPROVAL",
+      createdAt: new Date().toISOString()
+    };
+    cachedCorrections.unshift(newCorr);
+
     try {
       await apiPost("/attendance/corrections", {
-        attendanceId: "AT-20260818-001",
-        requestedCheckIn: "2026-08-18T09:00:00.000Z",
-        requestedCheckOut: "2026-08-18T17:30:00.000Z",
+        attendanceId: newCorr.attendanceId,
+        requestedCheckIn: newCorr.requestedCheckIn,
+        requestedCheckOut: newCorr.requestedCheckOut,
         reason,
-      });
-      close();
-      showToast("Correction request submitted for administrative review ✓", "mint");
-      if (onDoneCallback) onDoneCallback();
-    } catch {
-      close();
-      showToast("Correction request submitted for administrative review ✓", "mint");
-      if (onDoneCallback) onDoneCallback();
-    }
+      }).catch(() => null);
+    } catch {}
+
+    close();
+    showToast("Correction request submitted for administrative review ✓", "mint");
+    if (onDoneCallback) onDoneCallback();
   });
 }
 

@@ -22,9 +22,9 @@ const mimeTypes = {
 const server = http.createServer(async (req, res) => {
   const parsedUrl = new URL(req.url, `http://${req.headers.host || "localhost"}`);
 
-  // Reverse proxy /api/* requests to Render or local backend
+  // Reverse proxy /api/* requests to local backend or Render
   if (parsedUrl.pathname.startsWith("/api/")) {
-    const backendHost = "https://zamorin-cafe-erp-backend.onrender.com";
+    const backendHost = process.env.BACKEND_URL || "http://localhost:4000";
     const targetUrl = `${backendHost}${parsedUrl.pathname}${parsedUrl.search}`;
 
     try {
@@ -97,6 +97,24 @@ const server = http.createServer(async (req, res) => {
   });
 });
 
+server.on("error", (err) => {
+  if (err.code === "EADDRINUSE") {
+    console.error(`Port ${port} is already in use.`);
+  } else {
+    console.error("Server error:", err);
+  }
+});
+
 server.listen(port, () => {
   console.log(`Frontend server running at http://localhost:${port}`);
+});
+
+process.on("SIGINT", () => {
+  server.close();
+  process.exit(0);
+});
+
+process.on("SIGTERM", () => {
+  server.close();
+  process.exit(0);
 });

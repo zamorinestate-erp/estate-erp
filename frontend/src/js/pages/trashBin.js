@@ -60,20 +60,23 @@ function statusPill(status, isHoldActive) {
 
 export function renderTrashBin() {
   return `
-    <div class="page-enter" style="max-width:1400px; margin:0 auto; padding-bottom:50px;">
-      <!-- Title & Header -->
-      <div style="margin-bottom:20px; display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:14px; border-bottom:1px solid var(--border-subtle); padding-bottom:16px;">
+    <div class="page-enter" style="padding-bottom:60px;">
+      <!-- Page Header -->
+      <div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px; margin-bottom:24px;">
         <div>
-          <h1 class="page-title" style="color:var(--ink); font-size:22px; font-weight:800; font-family:var(--font-display); letter-spacing:-0.3px; margin:0;">
-            Trash Bin, Recovery &amp; Data Disposition
-          </h1>
-          <div style="color:var(--muted); font-size:13px; margin-top:3px;">
-            Administration → Data Management · Governed recovery, retention holds &amp; multi-store purge
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <h1 class="page-title" style="font-size:26px; font-weight:700; color:var(--ink); margin:0;">
+              Trash Bin, Recovery &amp; Data Disposition
+            </h1>
+            <span class="badge" style="background:rgba(180,83,9,0.12); color:#b45309; font-weight:600; font-size:12px; padding:4px 10px; border-radius:12px;">SCR-028 TRASH</span>
           </div>
+          <p class="page-subtitle" style="font-size:14px; color:var(--muted); margin:4px 0 0 0;">
+            Administration → Data Management · Governed recovery, retention holds &amp; multi-store purge
+          </p>
         </div>
-        <div style="display:flex; gap:8px;">
-          <button class="btn btn-ghost btn-sm" id="trash-refresh-btn" type="button">↻ Refresh Register</button>
-          <button class="btn btn-ghost btn-sm" id="trash-emergency-pause-btn" type="button" style="border-color:var(--color-accent-coral); color:var(--color-accent-coral);">
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <button class="btn btn-secondary" id="trash-refresh-btn" type="button" style="font-weight:600;">↻ Refresh Register</button>
+          <button class="btn btn-ghost" id="trash-emergency-pause-btn" type="button" style="border-color:var(--color-accent-coral); color:var(--color-accent-coral); font-weight:600;">
             ${_emergencyPause.isPaused ? '▶ Resume Disposition' : '⏸ Pause Disposition'}
           </button>
         </div>

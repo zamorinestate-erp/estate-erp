@@ -74,23 +74,23 @@ export function renderFinance(subroute) {
   return `
     <div class="page-enter finance-page" style="padding-bottom: 60px;">
       <!-- Top Title Header -->
-      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 20px; flex-wrap:wrap; gap:16px;">
+      <div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 24px; flex-wrap:wrap; gap:16px;">
         <div>
           <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-            <h1 class="page-title" style="font-size:24px; font-weight:800; color:var(--ink); margin:0;">Finance &amp; Accounts</h1>
-            <span class="badge badge-accent" style="font-size:11px; padding:2px 8px; font-weight:700;">SCR-010 AUTHORITATIVE GL</span>
+            <h1 class="page-title" style="font-size:26px; font-weight:700; color:var(--ink); margin:0;">Finance &amp; Accounts</h1>
+            <span class="badge" style="background:rgba(180,83,9,0.12); color:#b45309; font-weight:600; font-size:12px; padding:4px 10px; border-radius:12px;">SCR-010 FIN</span>
             ${
               isPrimaryMaster
-                ? '<span class="badge badge-primary" style="font-size:11px; padding:2px 8px; font-weight:700;">PRIMARY MASTER CONTROLLER</span>'
+                ? '<span class="badge" style="background:rgba(201,154,92,0.2); color:#c99a5c; font-weight:800; font-size:11px; padding:4px 8px; border-radius:12px;">PRIMARY MASTER</span>'
                 : isOwner
-                ? '<span class="badge badge-accent" style="font-size:11px; padding:2px 8px; font-weight:700;">OWNER GOVERNANCE</span>'
-                : '<span class="badge badge-neutral" style="font-size:11px; padding:2px 8px; font-weight:700;">FINANCIAL OPERATIONS</span>'
+                ? '<span class="badge badge-accent" style="font-size:11px; padding:4px 8px; font-weight:700; border-radius:12px;">OWNER GOVERNANCE</span>'
+                : '<span class="badge badge-neutral" style="font-size:11px; padding:4px 8px; font-weight:700; border-radius:12px;">FINANCIAL OPERATIONS</span>'
             }
           </div>
           <p class="page-subtitle" style="font-size:14px; color:var(--muted); margin:4px 0 0;">General ledger, sales audit, accounts payable, receivables, bank reconciliation, GST review, and certified financial statements.</p>
         </div>
-        <div style="display:flex; gap:10px; align-items:center;">
-          <button id="btn-refresh-finance" class="btn btn-secondary" style="display:flex; align-items:center; gap:6px;">
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <button id="btn-refresh-finance" class="btn btn-secondary" style="display:flex; align-items:center; gap:6px; font-weight:600;">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
             Sync Ledgers
           </button>

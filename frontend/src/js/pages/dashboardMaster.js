@@ -341,36 +341,51 @@ export function renderRevenueTrendChartHtml(trendData = [], viewMode = "chart") 
   const width = 600;
   const height = 180;
   const paddingX = 40;
-  const paddingY = 20;
+  const paddingY = 24;
+  const chartW = width - paddingX * 2;
+  const chartH = height - paddingY * 2;
 
   const points = trendData.map((d, i) => {
-    const x = paddingX + (i / Math.max(trendData.length - 1, 1)) * (width - paddingX * 2);
-    const y = height - paddingY - (d.revenuePaisa / maxVal) * (height - paddingY * 2);
+    const x = paddingX + (i / Math.max(trendData.length - 1, 1)) * chartW;
+    const y = height - paddingY - (d.revenuePaisa / maxVal) * chartH;
     return { x, y, ...d };
   });
 
-  const pathD = points.reduce((acc, pt, i) => (i === 0 ? `M ${pt.x} ${pt.y}` : `${acc} L ${pt.x} ${pt.y}`), "");
-  const areaD = `${pathD} L ${points[points.length - 1].x} ${height - paddingY} L ${points[0].x} ${height - paddingY} Z`;
+  const polylinePoints = points.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+  const polygonPoints = `${paddingX},${height - paddingY} ${polylinePoints} ${points[points.length - 1].x.toFixed(1)},${height - paddingY}`;
+  const baselinePoints = points.map((p) => `${p.x.toFixed(1)},${Math.min(height - paddingY, (p.y * 1.06)).toFixed(1)}`).join(" ");
 
   return `
-    <svg viewBox="0 0 ${width} ${height}" style="width:100%;height:100%;overflow:visible;">
+    <svg viewBox="0 0 ${width} ${height}" style="width:100%;height:100%;overflow:visible;display:block;" preserveAspectRatio="none">
       <defs>
-        <linearGradient id="masterTrendGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="var(--bronze-500)" stop-opacity="0.3" />
-          <stop offset="100%" stop-color="var(--bronze-500)" stop-opacity="0.0" />
+        <linearGradient id="ccRevenueGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="var(--bronze-500)" stop-opacity="0.32"/>
+          <stop offset="100%" stop-color="var(--bronze-500)" stop-opacity="0.0"/>
         </linearGradient>
       </defs>
-      <line x1="${paddingX}" y1="${height - paddingY}" x2="${width - paddingX}" y2="${height - paddingY}" stroke="var(--line)" stroke-width="1" />
-      <line x1="${paddingX}" y1="${paddingY}" x2="${width - paddingX}" y2="${paddingY}" stroke="var(--line)" stroke-dasharray="3,3" stroke-width="1" />
-      <path d="${areaD}" fill="url(#masterTrendGrad)" />
-      <path d="${pathD}" fill="none" stroke="var(--bronze-500)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+
+      <!-- Background Grid Guidelines -->
+      <line x1="${paddingX}" y1="${paddingY}" x2="${width - paddingX}" y2="${paddingY}" stroke="var(--line)" stroke-width="1" stroke-dasharray="3 3"/>
+      <line x1="${paddingX}" y1="${paddingY + chartH / 2}" x2="${width - paddingX}" y2="${paddingY + chartH / 2}" stroke="var(--line)" stroke-width="1" stroke-dasharray="3 3"/>
+      <line x1="${paddingX}" y1="${height - paddingY}" x2="${width - paddingX}" y2="${height - paddingY}" stroke="var(--line)" stroke-width="1"/>
+
+      <!-- Budget Baseline (Dashed) -->
+      <polyline points="${baselinePoints}" fill="none" stroke="var(--line-strong)" stroke-width="1.8" stroke-dasharray="4 4"/>
+
+      <!-- Actual Revenue Area Fill -->
+      <polygon points="${polygonPoints}" fill="url(#ccRevenueGrad)"/>
+
+      <!-- Actual Revenue Line -->
+      <polyline points="${polylinePoints}" fill="none" stroke="var(--bronze-500)" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+
+      <!-- Data Dots and Date Markers -->
       ${points
         .map(
-          (pt) => `
-        <circle cx="${pt.x}" cy="${pt.y}" r="4" fill="var(--surface)" stroke="var(--bronze-600)" stroke-width="2">
-          <title>${pt.date}: ${fmtInr(pt.revenuePaisa)} (${pt.orders} orders)</title>
+          (p) => `
+        <circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="4" fill="var(--surface-raised, #ffffff)" stroke="var(--bronze-500)" stroke-width="2.5">
+          <title>${p.date}: ${fmtInr(p.revenuePaisa)} (${p.orders} orders)</title>
         </circle>
-        <text x="${pt.x}" y="${height - 4}" font-size="10" text-anchor="middle" fill="var(--muted)">${pt.date}</text>
+        <text x="${p.x.toFixed(1)}" y="${height - 6}" font-size="10" text-anchor="middle" fill="var(--muted)" font-family="var(--font-ui, sans-serif)">${p.date}</text>
       `
         )
         .join("")}
@@ -389,31 +404,27 @@ export function renderAttentionQueueHtml(queue = []) {
     `;
   }
 
-  const severityBadges = {
-    CRITICAL: `<span class="badge-tag badge-danger" style="font-size:10px; font-weight:700;">CRITICAL</span>`,
-    HIGH: `<span class="badge-tag badge-warning" style="font-size:10px; font-weight:700;">HIGH</span>`,
-    MEDIUM: `<span class="badge-tag badge-accent" style="font-size:10px; font-weight:700;">MEDIUM</span>`,
-    LOW: `<span class="badge-tag badge-neutral" style="font-size:10px; font-weight:600;">LOW</span>`,
-  };
-
   return `
-    <div style="display:flex;flex-direction:column;gap:12px;max-height:260px;overflow-y:auto;padding-right:4px;">
+    <div class="cc-attention-list">
       ${queue
         .map(
-          (item) => `
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:14px 16px;border-radius:12px;background:var(--surface);border:1px solid var(--line);box-shadow:var(--shadow-xs);">
-          <div style="display:flex;align-items:flex-start;gap:10px;">
-            ${severityBadges[item.severity] || severityBadges.MEDIUM}
-            <div>
-              <div style="font-size:13.5px;font-weight:700;color:var(--ink);">${item.title}</div>
-              <div style="font-size:12px;color:var(--muted);margin-top:2px;line-height:1.4;">${item.description}</div>
+          (item) => {
+            const sev = (item.severity || "MEDIUM").toLowerCase();
+            return `
+        <div class="cc-attention-item">
+          <div class="cc-attention-left">
+            <span class="cc-attention-badge ${sev}">${item.severity || "MEDIUM"}</span>
+            <div class="cc-attention-text">
+              <div class="cc-attention-title">${item.title}</div>
+              <div class="cc-attention-desc">${item.description}</div>
             </div>
           </div>
-          <button class="btn btn-xs btn-secondary" data-attention-route="${item.route}" type="button" style="flex-shrink:0; font-weight:600;">
+          <button class="btn btn-xs btn-secondary cc-attention-btn" data-attention-route="${item.route}" type="button">
             Resolve →
           </button>
         </div>
-      `
+      `;
+          }
         )
         .join("")}
     </div>
@@ -607,7 +618,7 @@ export function renderMasterDashboard({ roleLabel = "Master Administrator" } = {
   const commercial = initialData.commercialMix;
 
   return `
-    <div class="page-enter command-centre-wrap" style="max-width:1400px; margin:0 auto; padding-bottom:60px;">
+    <div class="page-enter cc-container command-centre-wrap">
 
       <!-- Page Header & Context Strip matching reference HRIS standard -->
       <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px; margin-bottom:20px; border-bottom:1px solid var(--line); padding-bottom:16px;">
@@ -716,7 +727,7 @@ export function renderMasterDashboard({ roleLabel = "Master Administrator" } = {
           </span>
           <span style="color:var(--line-strong);">|</span>
           <span>
-            💻 <strong style="color:#10b981;">All POS Online</strong>
+            💻 <strong style="#10b981;">All POS Online</strong>
           </span>
         </div>
         <div style="font-size:11.5px;color:var(--muted);">
@@ -825,52 +836,54 @@ export function renderMasterDashboard({ roleLabel = "Master Administrator" } = {
       </div>
 
       <!-- Tier 4: Portfolio Pulse KPI Grid (8 Cards with Definition tooltips) -->
-      <div id="cc-kpi-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin-bottom:24px;">
+      <div id="cc-kpi-grid" class="cc-kpi-grid">
         ${renderKpisHtml(kpis)}
       </div>
 
       <!-- Tier 5 & 6: Revenue Trend Visualizer (Dual Series + Chart/Data Switch) + Attention Queue -->
-      <div style="display:grid;grid-template-columns:1.6fr 1fr;gap:20px;margin-bottom:24px;">
+      <div class="cc-trend-attention-grid">
 
         <!-- Left: Revenue & Margin Trend Visualizer -->
-        <div class="card" style="padding:22px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:10px;">
-            <div>
-              <h2 style="font-size:16px;font-weight:700;margin:0 0 4px;color:var(--ink);">
-                Portfolio Revenue &amp; Trend Visualizer
-              </h2>
-              <p style="font-size:12px;color:var(--muted);margin:0;">
-                Daily completed gross billings across all operating locations.
-              </p>
-            </div>
-            <div style="display:flex;align-items:center;gap:12px;">
-              <!-- Chart / Data Switch (Section 45) -->
-              <div class="btn-group" style="display:inline-flex;border-radius:var(--radius-sm);overflow:hidden;border:1px solid var(--line);">
-                <button class="btn btn-xs ${dashboardState.trendViewMode === "chart" ? "btn-primary" : "btn-ghost"}" id="cc-toggle-trend-chart" type="button">Chart</button>
-                <button class="btn btn-xs ${dashboardState.trendViewMode === "data" ? "btn-primary" : "btn-ghost"}" id="cc-toggle-trend-data" type="button">Data</button>
+        <div class="card" style="padding:22px;display:flex;flex-direction:column;justify-content:space-between;min-width:0;">
+          <div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:12px;">
+              <div style="min-width:0;">
+                <h2 style="font-size:16px;font-weight:700;margin:0 0 4px;color:var(--ink);">
+                  Portfolio Revenue &amp; Trend Visualizer
+                </h2>
+                <p style="font-size:12px;color:var(--muted);margin:0;">
+                  Daily completed gross billings across all operating locations.
+                </p>
               </div>
+              <div style="display:flex;align-items:center;flex-wrap:wrap;gap:12px;">
+                <!-- Chart / Data Switch (Section 45) -->
+                <div class="btn-group" style="display:inline-flex;border-radius:var(--radius-sm);overflow:hidden;border:1px solid var(--line);">
+                  <button class="btn btn-xs ${dashboardState.trendViewMode === "chart" ? "btn-primary" : "btn-ghost"}" id="cc-toggle-trend-chart" type="button">Chart</button>
+                  <button class="btn btn-xs ${dashboardState.trendViewMode === "data" ? "btn-primary" : "btn-ghost"}" id="cc-toggle-trend-data" type="button">Data</button>
+                </div>
 
-              <div id="cc-trend-legend" style="display:flex;align-items:center;gap:10px;font-size:11.5px;">
-                <span style="display:flex;align-items:center;gap:4px;">
-                  <span style="width:8px;height:8px;background:var(--bronze-500);border-radius:2px;display:inline-block;"></span>
-                  <strong style="color:var(--ink);">Actual</strong>
-                </span>
-                <span style="display:flex;align-items:center;gap:4px;">
-                  <span style="width:8px;height:2px;background:var(--muted-2);display:inline-block;border-top:2px dashed var(--line-strong);"></span>
-                  <span style="color:var(--muted);">Budget</span>
-                </span>
+                <div id="cc-trend-legend" style="display:flex;align-items:center;gap:10px;font-size:11.5px;flex-wrap:nowrap;">
+                  <span style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap;">
+                    <span style="width:8px;height:8px;background:var(--bronze-500);border-radius:2px;display:inline-block;"></span>
+                    <strong style="color:var(--ink);">Actual</strong>
+                  </span>
+                  <span style="display:inline-flex;align-items:center;gap:5px;white-space:nowrap;">
+                    <span style="width:10px;height:2px;background:var(--muted-2);display:inline-block;border-top:2px dashed var(--line-strong);"></span>
+                    <span style="color:var(--muted);">Budget</span>
+                  </span>
+                </div>
               </div>
             </div>
-          </div>
 
-          <!-- Trend Display Mount (Chart or Data Table) -->
-          <div id="cc-trend-chart-mount" style="height:210px;width:100%;position:relative;">
-            ${renderRevenueTrendChartHtml(initialData.revenueTrend, dashboardState.trendViewMode)}
+            <!-- Trend Display Mount (Chart or Data Table) -->
+            <div id="cc-trend-chart-mount" style="height:210px;width:100%;position:relative;">
+              ${renderRevenueTrendChartHtml(initialData.revenueTrend, dashboardState.trendViewMode)}
+            </div>
           </div>
         </div>
 
         <!-- Right: Needs Your Attention Queue -->
-        <div class="card" style="padding:22px;display:flex;flex-direction:column;justify-content:space-between;">
+        <div class="card" style="padding:22px;display:flex;flex-direction:column;justify-content:space-between;min-width:0;">
           <div>
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
               <div>
@@ -893,7 +906,7 @@ export function renderMasterDashboard({ roleLabel = "Master Administrator" } = {
           </div>
 
           <div style="margin-top:14px;border-top:1px solid var(--line);padding-top:10px;">
-            <button class="btn btn-sm btn-ghost btn-block" data-quick-action="tasks" type="button">
+            <button class="btn btn-sm btn-ghost cc-card-bottom-btn" data-quick-action="tasks" type="button">
               Open Full Operational Task Centre →
             </button>
           </div>
@@ -920,16 +933,16 @@ export function renderMasterDashboard({ roleLabel = "Master Administrator" } = {
         </div>
 
         <!-- Cards Mount -->
-        <div id="cc-cafes-grid-mount" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;">
+        <div id="cc-cafes-grid-mount" class="cc-cafes-grid">
           ${renderCafePerformanceCardsHtml(cafes)}
         </div>
       </div>
 
       <!-- Tier 8 & 9: Operational Snapshots + Commercial Mix (Top Menu Items) -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px;">
+      <div class="cc-ops-commercial-grid">
 
         <!-- Operational Snapshots -->
-        <div class="card" style="padding:22px;">
+        <div class="card" style="padding:22px;min-width:0;">
           <h2 style="font-size:16px;font-weight:700;margin:0 0 4px;color:var(--ink);">
             Operational &amp; Workforce Pulse
           </h2>
@@ -943,7 +956,7 @@ export function renderMasterDashboard({ roleLabel = "Master Administrator" } = {
         </div>
 
         <!-- Commercial Mix: Top 5 Menu Items -->
-        <div class="card" style="padding:22px;">
+        <div class="card" style="padding:22px;min-width:0;">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
             <h2 style="font-size:16px;font-weight:700;margin:0;color:var(--ink);">
               Commercial Velocity (Top 5 Menu Items)
@@ -1311,107 +1324,7 @@ function renderDashboardContent(root, data) {
 function renderRevenueTrendChart(root, trendData) {
   const mount = root.querySelector("#cc-trend-chart-mount");
   if (!mount) return;
-
-  if (!trendData || trendData.length === 0) {
-    mount.innerHTML = `
-      <div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--muted);font-size:13px;">
-        No completed sales transactions in selected period.
-      </div>
-    `;
-    return;
-  }
-
-  // If in "Data" table mode, render structured table
-  if (dashboardState.trendViewMode === "data") {
-    mount.innerHTML = `
-      <div style="height:100%;overflow-y:auto;">
-        <table class="table" style="width:100%;font-size:12px;">
-          <thead>
-            <tr>
-              <th style="padding:6px 8px;">Date</th>
-              <th style="padding:6px 8px;text-align:right;">Orders</th>
-              <th style="padding:6px 8px;text-align:right;">Gross Sales (INR)</th>
-              <th style="padding:6px 8px;text-align:right;">AOV</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${trendData
-              .map((d) => {
-                const aov = d.orders > 0 ? Math.round(d.revenuePaisa / d.orders) : 0;
-                return `
-                <tr>
-                  <td style="padding:5px 8px;font-weight:600;color:var(--ink);">${d.date}</td>
-                  <td style="padding:5px 8px;text-align:right;">${fmtNum(d.orders)}</td>
-                  <td style="padding:5px 8px;text-align:right;font-weight:600;color:var(--bronze-600);">${fmtInr(d.revenuePaisa)}</td>
-                  <td style="padding:5px 8px;text-align:right;">${fmtInr(aov)}</td>
-                </tr>
-              `;
-              })
-              .join("")}
-          </tbody>
-        </table>
-      </div>
-    `;
-    return;
-  }
-
-  // Otherwise render SVG Chart
-  const maxVal = Math.max(...trendData.map((d) => d.revenuePaisa || 0), 100000);
-  const width = 600;
-  const height = 180;
-  const paddingX = 40;
-  const paddingY = 20;
-
-  const chartW = width - paddingX * 2;
-  const chartH = height - paddingY * 2;
-
-  const points = trendData.map((d, idx) => {
-    const x = paddingX + (idx / Math.max(trendData.length - 1, 1)) * chartW;
-    const y = height - paddingY - (d.revenuePaisa / maxVal) * chartH;
-    return { x, y, ...d };
-  });
-
-  const polylinePoints = points.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
-  const polygonPoints = `${paddingX},${height - paddingY} ${polylinePoints} ${points[points.length - 1].x.toFixed(1)},${height - paddingY}`;
-
-  // Generate budget baseline series
-  const baselinePoints = points.map((p) => `${p.x.toFixed(1)},${(p.y * 1.08).toFixed(1)}`).join(" ");
-
-  mount.innerHTML = `
-    <svg viewBox="0 0 ${width} ${height}" style="width:100%;height:100%;overflow:visible;">
-      <defs>
-        <linearGradient id="ccRevenueGrad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="var(--bronze-500)" stop-opacity="0.35"/>
-          <stop offset="100%" stop-color="var(--bronze-500)" stop-opacity="0.0"/>
-        </linearGradient>
-      </defs>
-
-      <!-- Baseline Grid Lines -->
-      <line x1="${paddingX}" y1="${paddingY}" x2="${width - paddingX}" y2="${paddingY}" stroke="var(--line)" stroke-width="1" stroke-dasharray="3 3"/>
-      <line x1="${paddingX}" y1="${paddingY + chartH / 2}" x2="${width - paddingX}" y2="${paddingY + chartH / 2}" stroke="var(--line)" stroke-width="1" stroke-dasharray="3 3"/>
-      <line x1="${paddingX}" y1="${height - paddingY}" x2="${width - paddingX}" y2="${height - paddingY}" stroke="var(--line)" stroke-width="1"/>
-
-      <!-- Budget Baseline (Dashed) -->
-      <polyline points="${baselinePoints}" fill="none" stroke="var(--line-strong)" stroke-width="2" stroke-dasharray="4 4"/>
-
-      <!-- Area Fill -->
-      <polygon points="${polygonPoints}" fill="url(#ccRevenueGrad)"/>
-
-      <!-- Actual Revenue Line -->
-      <polyline points="${polylinePoints}" fill="none" stroke="var(--bronze-500)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-
-      <!-- Data Dots -->
-      ${points
-        .map(
-          (p) => `
-        <circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="4" fill="var(--bronze-500)" stroke="var(--surface-raised)" stroke-width="2">
-          <title>${p.date}: ${fmtInr(p.revenuePaisa)} (${p.orders} orders)</title>
-        </circle>
-      `
-        )
-        .join("")}
-    </svg>
-  `;
+  mount.innerHTML = renderRevenueTrendChartHtml(trendData, dashboardState.trendViewMode);
 }
 
 // ─── Needs Your Attention Queue ──────────────────────────────────────────────
@@ -1422,47 +1335,7 @@ function renderAttentionQueue(root, queue) {
   if (!mount) return;
 
   if (countBadge) countBadge.textContent = `${queue.length} Item${queue.length === 1 ? "" : "s"}`;
-
-  if (!queue || queue.length === 0) {
-    mount.innerHTML = `
-      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;color:var(--muted);text-align:center;">
-        <span style="font-size:24px;margin-bottom:6px;">✨</span>
-        <strong style="color:var(--ink);font-size:13px;">All Operations Healthy</strong>
-        <span style="font-size:12px;">No critical stock breaches, overdue checklists, or unassigned maintenance jobs.</span>
-      </div>
-    `;
-    return;
-  }
-
-  const severityBadges = {
-    CRITICAL: `<span class="status danger" style="padding:2px 6px;font-size:10px;">CRITICAL</span>`,
-    HIGH: `<span class="status warning" style="padding:2px 6px;font-size:10px;">HIGH</span>`,
-    MEDIUM: `<span class="status info" style="padding:2px 6px;font-size:10px;">MEDIUM</span>`,
-    LOW: `<span class="status" style="padding:2px 6px;font-size:10px;background:var(--surface-sunken);">LOW</span>`,
-  };
-
-  mount.innerHTML = `
-    <div style="display:flex;flex-direction:column;gap:10px;max-height:220px;overflow-y:auto;padding-right:4px;">
-      ${queue
-        .map(
-          (item) => `
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;padding:10px 12px;border-radius:var(--radius-sm);background:var(--surface-sunken);border:1px solid var(--line);">
-          <div style="display:flex;align-items:flex-start;gap:8px;">
-            ${severityBadges[item.severity] || severityBadges.MEDIUM}
-            <div>
-              <div style="font-size:12.5px;font-weight:700;color:var(--ink);">${item.title}</div>
-              <div style="font-size:11.5px;color:var(--muted);">${item.description}</div>
-            </div>
-          </div>
-          <button class="btn btn-xs btn-ghost" data-attention-route="${item.route}" type="button" style="flex-shrink:0;">
-            Resolve →
-          </button>
-        </div>
-      `
-        )
-        .join("")}
-    </div>
-  `;
+  mount.innerHTML = renderAttentionQueueHtml(queue);
 
   mount.querySelectorAll("[data-attention-route]").forEach((btn) => {
     btn.addEventListener("click", () => navigate(btn.dataset.attentionRoute));
@@ -1475,101 +1348,7 @@ function renderCafePerformanceCards(root, cafes) {
   const mount = root.querySelector("#cc-cafes-grid-mount");
   if (!mount) return;
 
-  if (!cafes || cafes.length === 0) {
-    mount.innerHTML = `
-      <div style="grid-column:1/-1;text-align:center;padding:30px;color:var(--muted);font-size:13px;">
-        No active café locations configured in the portfolio.
-      </div>
-    `;
-    return;
-  }
-
-  const healthBadges = {
-    HEALTHY: `<span class="status success" style="font-size:10px;padding:2px 6px;">HEALTHY</span>`,
-    ATTENTION: `<span class="status warning" style="font-size:10px;padding:2px 6px;">ATTENTION</span>`,
-    CRITICAL: `<span class="status danger" style="font-size:10px;padding:2px 6px;">CRITICAL</span>`,
-  };
-
-  mount.innerHTML = cafes
-    .map((c) => {
-      const targetPct = c.targetAchievementPct !== null ? c.targetAchievementPct : 0;
-      const targetBarColor = targetPct >= 90 ? "var(--bronze-500)" : targetPct >= 70 ? "var(--bronze-400)" : "var(--danger)";
-
-      // Deterministic Pace to Target (Section 33)
-      let paceString = "";
-      if (c.targetSalesPaisa && c.totalSalesPaisa) {
-        const projectedPct = Math.min(Math.round(targetPct * 1.15), 110);
-        paceString = `On current pace: ~${projectedPct}% by close`;
-      }
-
-      return `
-        <div class="card" style="padding:16px 18px;background:var(--surface-raised);border:1px solid var(--line);display:flex;flex-direction:column;justify-content:space-between;position:relative;">
-
-          <!-- Top Row: Location Name & Badges -->
-          <div>
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
-              <div>
-                <div style="display:flex;align-items:center;gap:6px;">
-                  <strong style="font-size:14px;color:var(--ink);">${c.name}</strong>
-                  ${c.badge === "TOP" ? `<span title="Top Performing Location" style="font-size:12px;">🏆</span>` : ""}
-                  ${c.badge === "BOTTOM" && cafes.length > 2 ? `<span title="Underperforming Location" style="font-size:12px;">⚠️</span>` : ""}
-                </div>
-                <div style="font-size:11.5px;color:var(--muted);">${c.cafeId} · ${c.city}</div>
-              </div>
-              ${healthBadges[c.health] || healthBadges.HEALTHY}
-            </div>
-
-            <!-- Metrics Row -->
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:12px 0;padding:10px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);">
-              <div>
-                <div style="font-size:10.5px;color:var(--muted);text-transform:uppercase;">Sales</div>
-                <strong style="font-size:13.5px;color:var(--ink);">${fmtInr(c.totalSalesPaisa)}</strong>
-              </div>
-              <div>
-                <div style="font-size:10.5px;color:var(--muted);text-transform:uppercase;">Orders</div>
-                <strong style="font-size:13.5px;color:var(--ink);">${fmtNum(c.totalOrders)}</strong>
-              </div>
-              <div>
-                <div style="font-size:10.5px;color:var(--muted);text-transform:uppercase;">AOV</div>
-                <strong style="font-size:13.5px;color:var(--ink);">${fmtInr(c.aovPaisa)}</strong>
-              </div>
-            </div>
-
-            <!-- Target Pacing Bar with Projected Pace (Section 33) -->
-            ${
-              c.targetSalesPaisa
-                ? `
-              <div style="margin-bottom:10px;">
-                <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:3px;">
-                  <span style="color:var(--muted);">Target Pacing</span>
-                  <strong style="color:var(--ink);">${c.targetAchievementPct}% of ${fmtInr(c.targetSalesPaisa)}</strong>
-                </div>
-                <div style="width:100%;height:6px;background:var(--surface-sunken);border-radius:3px;overflow:hidden;margin-bottom:3px;">
-                  <div style="width:${Math.min(targetPct, 100)}%;height:100%;background:${targetBarColor};border-radius:3px;"></div>
-                </div>
-                ${paceString ? `<div style="font-size:10px;color:var(--muted);text-align:right;">${paceString}</div>` : ""}
-              </div>
-            `
-                : ""
-            }
-
-            <!-- Secondary Alerts Summary -->
-            <div style="display:flex;gap:12px;font-size:11.5px;color:var(--muted);margin-top:6px;">
-              <span>📦 Stock: <strong style="color:${c.inventoryCritical > 0 ? 'var(--danger)' : 'var(--ink)'};">${c.inventoryCritical} Crit / ${c.inventoryBelowPar} Low</strong></span>
-              <span>🔧 Maintenance: <strong style="color:${c.maintenanceOpen > 0 ? 'var(--warning)' : 'var(--ink)'};">${c.maintenanceOpen} Open</strong></span>
-            </div>
-          </div>
-
-          <!-- Bottom Action -->
-          <div style="margin-top:14px;padding-top:10px;border-top:1px solid var(--line);">
-            <button class="btn btn-xs btn-ghost btn-block" data-filter-cafe="${c.cafeId}" type="button">
-              Focus Location View →
-            </button>
-          </div>
-        </div>
-      `;
-    })
-    .join("");
+  mount.innerHTML = renderCafePerformanceCardsHtml(cafes);
 
   mount.querySelectorAll("[data-filter-cafe]").forEach((btn) => {
     btn.addEventListener("click", () => {

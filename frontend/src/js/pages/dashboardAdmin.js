@@ -36,7 +36,13 @@ import { state } from "../state.js";
 import { navigate } from "../router.js";
 
 // Register navigate globally so onclick="window.__navigate('route')" in rendered HTML works
-if (typeof window !== "undefined") window.__navigate = navigate;
+if (typeof window !== "undefined") {
+  window.__navigate = navigate;
+  window.__refreshAdminDashboard = () => {
+    const root = document.getElementById("page-content");
+    if (root) hydrateAdminDashboard(root);
+  };
+}
 
 // â”€â”€â”€ Formatters & Utility Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -265,7 +271,7 @@ export function renderAdminDashboard() {
           <div id="cafe-operating-status-badge" class="status success" style="font-size:12px; font-weight:700; padding:6px 14px; letter-spacing:0.04em;">
             🟢 OPEN · OPERATIONAL
           </div>
-          <button class="btn btn-sm btn-secondary" onclick="window.location.reload()" type="button" style="font-size:12px; font-weight:600;">
+          <button class="btn btn-sm btn-secondary" onclick="window.__refreshAdminDashboard ? window.__refreshAdminDashboard() : window.__navigate('dashboard')" type="button" style="font-size:12px; font-weight:600;">
             🔄 Refresh
           </button>
         </div>
@@ -717,6 +723,11 @@ export async function hydrateAdminDashboard(root) {
       const route = btn.dataset.actionRoute;
       if (route) navigate(route);
     }
+  });
+
+  // Wire resume-work-btn
+  root.querySelector("#resume-work-btn")?.addEventListener("click", () => {
+    navigate("tasks");
   });
 
   const bannerRetry = root.querySelector("#admin-dash-banner-retry");

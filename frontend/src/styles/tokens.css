@@ -79,14 +79,14 @@
   --shadow-lg: 0 20px 48px rgba(16,26,48,.12), 0 4px 16px rgba(16,26,48,.06);
   --shadow-xl: 0 32px 72px rgba(16,26,48,.16), 0 8px 24px rgba(16,26,48,.08);
 
-  /* ---- Radii ---- */
-  --radius-xs: 6px;
-  --radius-sm: 10px;
-  --radius-md: 14px;
-  --radius-lg: 20px;
-  --radius-xl: 26px;
-  --radius-card: 16px;
-  --radius-control: 10px;
+  /* ---- Radii (Soft-Edge Design System) ---- */
+  --radius-xs: 8px;
+  --radius-sm: 12px;
+  --radius-md: 16px;
+  --radius-lg: 22px;
+  --radius-xl: 28px;
+  --radius-card: 18px;
+  --radius-control: 12px;
   --radius-pill: 999px;
 
   /* ---- Spacing ---- */

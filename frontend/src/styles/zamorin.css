@@ -2181,3 +2181,392 @@ tr:last-child td { border-bottom: 0; }
     outline-color: var(--ink-900) !important;
   }
 }
+
+/* ============================================================
+   BTN-OUTLINE — Missing utility (used across all pages)
+   ============================================================ */
+.btn-outline {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--line-strong);
+}
+.btn-outline:hover {
+  background: var(--surface-sunken);
+  border-color: var(--ink);
+  box-shadow: none;
+  transform: none;
+}
+.btn-outline:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Dark theme btn-outline */
+[data-theme="midnight"] .btn-outline,
+[data-theme="noir"] .btn-outline {
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
+[data-theme="midnight"] .btn-outline:hover,
+[data-theme="noir"] .btn-outline:hover {
+  background: var(--surface-raised);
+  border-color: var(--bronze-500);
+}
+
+/* ============================================================
+   TABLE ROW HOVER — used in Sales & Cash Book table
+   ============================================================ */
+.table-row-hover { transition: background var(--motion-fast) var(--ease); }
+.table-row-hover:hover td,
+.table-row-hover:hover { background: var(--surface-sunken) !important; }
+
+/* Dark themes */
+[data-theme="midnight"] .table-row-hover:hover td,
+[data-theme="midnight"] .table-row-hover:hover,
+[data-theme="noir"] .table-row-hover:hover td,
+[data-theme="noir"] .table-row-hover:hover { background: var(--surface-raised) !important; }
+
+/* ============================================================
+   DARK THEME — Input & select fixes (ensure readable text)
+   ============================================================ */
+[data-theme="midnight"] .input,
+[data-theme="midnight"] input.input,
+[data-theme="midnight"] select.input,
+[data-theme="midnight"] textarea.input {
+  background: var(--surface-sunken) !important;
+  color: var(--ink) !important;
+  border-color: var(--line-strong) !important;
+}
+[data-theme="noir"] .input,
+[data-theme="noir"] input.input,
+[data-theme="noir"] select.input,
+[data-theme="noir"] textarea.input {
+  background: var(--surface-sunken) !important;
+  color: var(--ink) !important;
+  border-color: var(--line-strong) !important;
+}
+[data-theme="midnight"] .input::placeholder,
+[data-theme="noir"] .input::placeholder {
+  color: var(--muted) !important;
+  opacity: 1;
+}
+[data-theme="midnight"] select.input option,
+[data-theme="noir"] select.input option {
+  background: var(--surface) !important;
+  color: var(--ink) !important;
+}
+
+/* ============================================================
+   DARK THEME — Card & surface fixes
+   ============================================================ */
+[data-theme="midnight"] .card,
+[data-theme="noir"] .card {
+  background: var(--surface);
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+/* ============================================================
+   DARK THEME — Modal window fixes
+   ============================================================ */
+[data-theme="midnight"] .modal-window,
+[data-theme="noir"] .modal-window {
+  background: var(--surface) !important;
+  border: 1px solid var(--line-strong) !important;
+  color: var(--ink) !important;
+}
+[data-theme="midnight"] .modal-title,
+[data-theme="noir"] .modal-title {
+  color: var(--ink) !important;
+}
+[data-theme="midnight"] .modal-footer,
+[data-theme="noir"] .modal-footer {
+  border-top-color: var(--line) !important;
+  background: var(--surface-sunken) !important;
+}
+[data-theme="midnight"] .modal-content p,
+[data-theme="noir"] .modal-content p {
+  color: var(--muted) !important;
+}
+
+/* ============================================================
+   DARK THEME — Toast card fixes
+   ============================================================ */
+[data-theme="midnight"] .toast-card,
+[data-theme="noir"] .toast-card {
+  background: var(--surface-raised) !important;
+  border-color: var(--line-strong) !important;
+  color: var(--ink) !important;
+}
+[data-theme="midnight"] .toast-title-text,
+[data-theme="noir"] .toast-title-text {
+  color: var(--ink) !important;
+}
+[data-theme="midnight"] .toast-body-text,
+[data-theme="noir"] .toast-body-text {
+  color: var(--muted) !important;
+}
+
+/* ============================================================
+   DARK THEME — Sidebar & topbar text visibility
+   ============================================================ */
+[data-theme="midnight"] .sidebar,
+[data-theme="noir"] .sidebar {
+  background: var(--surface) !important;
+  border-right-color: var(--line) !important;
+}
+[data-theme="midnight"] .topbar,
+[data-theme="noir"] .topbar {
+  background: var(--surface) !important;
+  border-bottom-color: var(--line) !important;
+}
+[data-theme="midnight"] .brand-title,
+[data-theme="midnight"] .brand-subtitle,
+[data-theme="noir"] .brand-title,
+[data-theme="noir"] .brand-subtitle {
+  color: var(--ink) !important;
+}
+[data-theme="midnight"] .scope-pill,
+[data-theme="noir"] .scope-pill {
+  color: var(--bronze-400) !important;
+  background: rgba(255,255,255,0.06) !important;
+}
+[data-theme="midnight"] .nav-group-heading,
+[data-theme="noir"] .nav-group-heading {
+  color: var(--muted) !important;
+}
+[data-theme="midnight"] .nav-label,
+[data-theme="noir"] .nav-label {
+  color: var(--ink) !important;
+}
+
+/* ============================================================
+   DARK THEME — Toggle / switch button
+   ============================================================ */
+[data-theme="midnight"] .settings-switch-btn,
+[data-theme="noir"] .settings-switch-btn {
+  background: var(--surface-sunken);
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+[data-theme="midnight"] .settings-switch-btn .switch-track,
+[data-theme="noir"] .settings-switch-btn .switch-track {
+  background: var(--line-strong);
+}
+[data-theme="midnight"] .settings-switch-btn.active,
+[data-theme="noir"] .settings-switch-btn.active {
+  background: rgba(76,183,131,0.12);
+  border-color: rgba(76,183,131,0.35);
+}
+[data-theme="midnight"] .settings-switch-btn.active .switch-track,
+[data-theme="noir"] .settings-switch-btn.active .switch-track {
+  background: var(--success);
+}
+
+/* ============================================================
+   DARK THEME — Pagination and toolbar buttons
+   ============================================================ */
+[data-theme="midnight"] .btn-primary,
+[data-theme="noir"] .btn-primary {
+  background: var(--bronze-500);
+  color: #191207;
+  border-color: var(--bronze-600);
+}
+[data-theme="midnight"] .btn-primary:hover,
+[data-theme="noir"] .btn-primary:hover {
+  background: var(--bronze-400);
+  border-color: var(--bronze-500);
+}
+
+/* ============================================================
+   SALES & CASH BOOK — Inline modal overlay (dark-theme safe)
+   ============================================================ */
+#scb-modal-overlay {
+  background: rgba(0, 0, 0, 0.6) !important;
+}
+[data-theme="midnight"] #scb-modal-overlay > div,
+[data-theme="noir"] #scb-modal-overlay > div {
+  background: var(--surface) !important;
+  border-color: var(--line-strong) !important;
+}
+[data-theme="midnight"] #scb-modal-overlay select,
+[data-theme="midnight"] #scb-modal-overlay input,
+[data-theme="midnight"] #scb-modal-overlay textarea,
+[data-theme="noir"] #scb-modal-overlay select,
+[data-theme="noir"] #scb-modal-overlay input,
+[data-theme="noir"] #scb-modal-overlay textarea {
+  background: var(--surface-sunken) !important;
+  color: var(--ink) !important;
+  border-color: var(--line-strong) !important;
+}
+
+/* ============================================================
+   DEV PREVIEW BANNER — always readable regardless of theme
+   ============================================================ */
+.zamorin-dev-preview-banner {
+  background: #101a30 !important;
+  color: #e2bb87 !important;
+  border-bottom: 1px solid #1e2f50 !important;
+}
+.zamorin-dev-preview-banner a {
+  color: #e2bb87 !important;
+}
+
+/* =========================================================================
+   UNIVERSAL SOFT-EDGE DESIGN SYSTEM
+   Ensures all buttons, options, containers, boxes, cards, inputs, and widgets
+   have smooth, modern curved soft edges across light and dark themes.
+   ========================================================================= */
+
+/* ---- 1. All Buttons & Interactive Controls ---- */
+.btn,
+button.btn,
+a.btn,
+.topbar-action-btn,
+.btn-back-nav,
+.btn-back,
+.action-btn,
+.subnav-btn,
+.tab-btn,
+.occ-switch-btn,
+.login-card .btn {
+  border-radius: var(--radius-sm, 12px) !important;
+}
+
+.btn-sm,
+.btn-xs,
+.search-kbd,
+.kbd {
+  border-radius: var(--radius-xs, 8px) !important;
+}
+
+.btn-lg,
+.btn-xl {
+  border-radius: var(--radius-md, 16px) !important;
+}
+
+/* ---- 2. All Form Inputs, Selects & Textareas ---- */
+.input,
+.select,
+.textarea,
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+select,
+textarea,
+.select-scope,
+.global-search-wrap input,
+.search-input,
+.form-control {
+  border-radius: var(--radius-control, 12px) !important;
+}
+
+/* ---- 3. All Cards, Panels, Boxes & Containers ---- */
+.card,
+.glass-card,
+.kpi-card,
+.glass,
+.glass-dark,
+.settings-section-card,
+.module-hub-tile,
+.stat-card,
+.metric-box,
+.summary-card,
+.info-card,
+.dashboard-tile,
+.order-card,
+.table-container,
+.table-card {
+  border-radius: var(--radius-card, 18px) !important;
+}
+
+/* ---- 4. Inner Boxes, Filter Clusters & Group Containers ---- */
+.settings-toggle-row,
+.filter-cluster,
+.search-cluster,
+.filter-card,
+.stat-tile,
+.action-tile,
+.info-banner,
+.alert-box,
+.alert,
+.notification-card,
+.notification-item,
+.data-box,
+.empty-state,
+.skeleton,
+.drawer-content-box,
+.scb-stat-tile,
+.passbook-account-card {
+  border-radius: var(--radius-sm, 12px) !important;
+}
+
+/* ---- 5. Modals, Dialogs, Popovers & Toasts ---- */
+.modal-window,
+.occ-modal-card,
+.toast-card,
+.popover-menu,
+.dropdown-menu,
+.dialog-window,
+.context-menu,
+#scb-modal-overlay > div {
+  border-radius: var(--radius-lg, 22px) !important;
+}
+
+.modal-header,
+.occ-modal-header {
+  border-top-left-radius: var(--radius-lg, 22px) !important;
+  border-top-right-radius: var(--radius-lg, 22px) !important;
+}
+
+.modal-footer,
+.occ-modal-footer {
+  border-bottom-left-radius: var(--radius-lg, 22px) !important;
+  border-bottom-right-radius: var(--radius-lg, 22px) !important;
+}
+
+/* ---- 6. Tabs, Pills, Chips, Badges & Switch Controls ---- */
+.pill,
+.badge,
+.chip,
+.tag,
+.settings-status-chip,
+.status-pill,
+.status-badge,
+.role-badge,
+.category-badge,
+.scope-pill,
+.settings-switch-btn,
+.nav-pill {
+  border-radius: var(--radius-pill, 999px) !important;
+}
+
+.nav-link,
+.settings-nav-link,
+.popover-menu-item,
+.tab,
+.bills-nav-tab,
+.rs-tab-btn,
+.view-mode-btn {
+  border-radius: var(--radius-sm, 12px) !important;
+}
+
+/* ---- 7. Tables & Data Grids (Soft Corners on Inner Data Tables) ---- */
+.table-wrap,
+.glass-table-wrap,
+.table-responsive {
+  border-radius: var(--radius-sm, 12px) !important;
+  overflow: hidden;
+}
+
+table.glass-table thead tr:first-child th:first-child {
+  border-top-left-radius: var(--radius-sm, 12px);
+}
+table.glass-table thead tr:first-child th:last-child {
+  border-top-right-radius: var(--radius-sm, 12px);
+}
+table.glass-table tbody tr:last-child td:first-child {
+  border-bottom-left-radius: var(--radius-sm, 12px);
+}
+table.glass-table tbody tr:last-child td:last-child {
+  border-bottom-right-radius: var(--radius-sm, 12px);
+}
+

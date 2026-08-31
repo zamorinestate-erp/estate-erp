@@ -950,6 +950,15 @@ function wireFinanceEventListeners(root) {
   if (exportBtn) {
     exportBtn.addEventListener("click", () => openExportModal());
   }
+
+  // Health Audit Buttons
+  root.querySelectorAll(".btn-health-audit").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const cafeId = btn.dataset.cafeid;
+      const cafe = (cachedFinanceSummary?.multiCafeMatrix || DEFAULT_FINANCE_DATA.multiCafeMatrix).find((c) => c.cafeId === cafeId);
+      if (cafe) openHealthAuditModal(cafe);
+    });
+  });
 }
 
 async function fetchFinanceSummaryData() {

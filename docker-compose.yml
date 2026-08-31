@@ -26,8 +26,9 @@ services:
       TZ: Asia/Kolkata
       MONGODB_URI: mongodb://mongodb:27017/zamorin_cafe_erp
       DEFAULT_ORGANISATION_ID: ZAMORIN
-      DEFAULT_MASTER_EMAIL: master@example.com
-      DEFAULT_MASTER_PASSWORD: PK@NilaVega_8427!Cedar
+      # Set INITIAL_MASTER_EMAIL and INITIAL_MASTER_PASSWORD in your local shell or .env — never commit real values here.
+      INITIAL_MASTER_EMAIL: ${INITIAL_MASTER_EMAIL}
+      INITIAL_MASTER_PASSWORD: ${INITIAL_MASTER_PASSWORD}
     depends_on:
       - mongodb
 

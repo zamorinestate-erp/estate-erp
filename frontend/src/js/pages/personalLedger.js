@@ -235,51 +235,26 @@ export function renderLedger() {
   const net = overview.balances.netCurrentAccountPositionPaisa;
 
   return `
-    <div class="page-enter" style="max-width: 1440px; margin: 0 auto; padding-bottom: 40px;">
-
-      <!-- Top Header & Confidentiality -->
-      <div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px; margin-bottom: 20px; border-bottom: 1px solid var(--border-subtle, rgba(200,165,90,0.15)); padding-bottom: 16px;">
+    <div class="page-enter" style="padding-bottom: 60px;">
+      <!-- Page Header -->
+      <div class="page-header" style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px; margin-bottom: 24px;">
         <div>
-          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px;">
-            <h1 class="page-title" style="font-size: 24px; font-weight: 700; margin: 0; color: var(--ink, #1f2937);">Personal Ledger &amp; Owner Account</h1>
-            <span class="badge badge-warning" style="font-size: 10.5px; font-weight: 700; padding: 2px 8px; border-radius: 4px; letter-spacing: 0.5px;">CONFIDENTIAL</span>
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 4px; flex-wrap: wrap;">
+            <h1 class="page-title" style="font-size: 26px; font-weight: 700; margin: 0; color: var(--ink);">Personal Ledger &amp; Owner Account</h1>
+            <span class="badge" style="background:rgba(180,83,9,0.12); color:#b45309; font-weight:600; font-size:12px; padding:4px 10px; border-radius:12px;">SCR-026 LEDGER</span>
+            <span class="badge" style="background:rgba(201,154,92,0.2); color:#c99a5c; font-weight:800; font-size:11px; padding:4px 8px; border-radius:12px;">CONFIDENTIAL</span>
           </div>
-          <p class="page-subtitle" style="font-size: 13.5px; color: var(--muted, #6b7280); margin: 0;">
+          <p class="page-subtitle" style="font-size: 14px; color: var(--muted); margin: 4px 0 0;">
             Restricted company ↔ owner financial sub-ledger, reconciliation workspace, and statutory governance.
           </p>
         </div>
 
-        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-          <div style="display: flex; align-items: center; gap: 6px;">
-            <label style="font-size: 12px; font-weight: 600; color: var(--muted, #6b7280);">Account:</label>
-            <select id="pl-account-select" class="form-control" style="font-size: 12px; font-weight: 600; padding: 6px 10px; height: 36px;">
-              <option value="OWNER_CURRENT_ACCOUNT" ${selectedAccount === "OWNER_CURRENT_ACCOUNT" ? "selected" : ""}>Owner Current Account</option>
-              <option value="PRIMARY_MASTER_PERSONAL_LEDGER" ${selectedAccount === "PRIMARY_MASTER_PERSONAL_LEDGER" ? "selected" : ""}>Primary Master Personal Ledger</option>
-              <option value="DIRECTOR_SHAREHOLDER_LOAN" ${selectedAccount === "DIRECTOR_SHAREHOLDER_LOAN" ? "selected" : ""}>Director / Shareholder Loan</option>
-              <option value="OWNER_FUNDING_ACCOUNT" ${selectedAccount === "OWNER_FUNDING_ACCOUNT" ? "selected" : ""}>Owner Funding Account</option>
-              <option value="REIMBURSEMENT_PAYABLE" ${selectedAccount === "REIMBURSEMENT_PAYABLE" ? "selected" : ""}>Reimbursement Payable</option>
-            </select>
-          </div>
-
-          <div style="display: flex; align-items: center; gap: 6px;">
-            <label style="font-size: 12px; font-weight: 600; color: var(--muted, #6b7280);">FY:</label>
-            <select id="pl-period-select" class="form-control" style="font-size: 12px; font-weight: 600; padding: 6px 10px; height: 36px;">
-              <option value="2026-2027" ${selectedPeriod === "2026-2027" ? "selected" : ""}>FY 2026–27</option>
-              <option value="2025-2026" ${selectedPeriod === "2025-2026" ? "selected" : ""}>FY 2025–26</option>
-              <option value="ALL" ${selectedPeriod === "ALL" ? "selected" : ""}>All History</option>
-            </select>
-          </div>
-
-          <button class="btn btn-secondary" id="pl-privacy-toggle-btn" type="button" title="Toggle Privacy Masking" style="font-size: 12.5px; height: 36px; padding: 0 12px;">
+        <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+          <button class="btn btn-primary" id="pl-record-txn-btn" type="button" style="font-weight: 700;">+ Record Transaction</button>
+          <button class="btn btn-secondary" id="pl-privacy-toggle-btn" type="button" title="Toggle Privacy Masking" style="font-weight: 600;">
             ${privacyModeActive ? "👁️ Reveal Balances" : "🔒 Mask Values"}
           </button>
-
-          <button class="btn btn-secondary" id="pl-refresh-btn" type="button" style="font-size: 12.5px; height: 36px; padding: 0 12px;">↻ Refresh</button>
-
-          <button class="btn btn-secondary" id="pl-settle-batch-btn" type="button" style="font-size: 12.5px; height: 36px; padding: 0 14px; font-weight:600;">⚡ Settle Balances</button>
-          <button class="btn btn-secondary" id="pl-confirm-balance-btn" type="button" style="font-size: 12.5px; height: 36px; padding: 0 14px; font-weight:600;">✓ Confirm Balance</button>
-
-          <button class="btn btn-primary" id="pl-record-txn-btn" type="button" style="font-size: 12.5px; height: 36px; padding: 0 16px; font-weight: 600;">+ Record Transaction</button>
+          <button class="btn btn-secondary" id="pl-refresh-btn" type="button" style="font-weight: 600;">↻ Refresh</button>
         </div>
       </div>
 
@@ -377,27 +352,27 @@ export function renderLedger() {
 
       </div>
 
-      <!-- Navigation Tabs (UNIVERSAL BUTTON ARCHITECTURE MATCHING THE REST OF THE APP) -->
-      <div class="module-action-tabs-wrap" style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px;">
-        <button class="btn ${activeTab === 'journal' ? 'btn-primary' : 'btn-secondary'}" data-pl-tab="journal" type="button" style="display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600; padding:8px 14px;">
+      <!-- Navigation Tabs (STANDARD APP TAB NAVIGATION) -->
+      <div class="tabs subnav-bar" style="margin-bottom: 20px; display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px;">
+        <button class="tab-btn ${activeTab === 'journal' ? 'active' : ''}" data-pl-tab="journal" type="button" style="display:inline-flex; align-items:center; gap:6px;">
           <span>📜</span> <span>Transaction Journal (${entries.length})</span>
         </button>
-        <button class="btn ${activeTab === 'review' ? 'btn-primary' : 'btn-secondary'}" data-pl-tab="review" type="button" style="display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600; padding:8px 14px;">
+        <button class="tab-btn ${activeTab === 'review' ? 'active' : ''}" data-pl-tab="review" type="button" style="display:inline-flex; align-items:center; gap:6px;">
           <span>⚖️</span> <span>Review Queue (${overview.actionCentre.unclassifiedTransactions})</span>
         </button>
-        <button class="btn ${activeTab === 'reimbursements' ? 'btn-primary' : 'btn-secondary'}" data-pl-tab="reimbursements" type="button" style="display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600; padding:8px 14px;">
+        <button class="tab-btn ${activeTab === 'reimbursements' ? 'active' : ''}" data-pl-tab="reimbursements" type="button" style="display:inline-flex; align-items:center; gap:6px;">
           <span>💸</span> <span>Reimbursements &amp; Recoveries</span>
         </button>
-        <button class="btn ${activeTab === 'funding' ? 'btn-primary' : 'btn-secondary'}" data-pl-tab="funding" type="button" style="display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600; padding:8px 14px;">
+        <button class="tab-btn ${activeTab === 'funding' ? 'active' : ''}" data-pl-tab="funding" type="button" style="display:inline-flex; align-items:center; gap:6px;">
           <span>🤝</span> <span>Funding &amp; Director Loans</span>
         </button>
-        <button class="btn ${activeTab === 'reconciliation' ? 'btn-primary' : 'btn-secondary'}" data-pl-tab="reconciliation" type="button" style="display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600; padding:8px 14px;">
+        <button class="tab-btn ${activeTab === 'reconciliation' ? 'active' : ''}" data-pl-tab="reconciliation" type="button" style="display:inline-flex; align-items:center; gap:6px;">
           <span>🔄</span> <span>GL Reconciliation</span>
         </button>
-        <button class="btn ${activeTab === 'confirmations' ? 'btn-primary' : 'btn-secondary'}" data-pl-tab="confirmations" type="button" style="display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600; padding:8px 14px;">
+        <button class="tab-btn ${activeTab === 'confirmations' ? 'active' : ''}" data-pl-tab="confirmations" type="button" style="display:inline-flex; align-items:center; gap:6px;">
           <span>✍️</span> <span>Balance Confirmations</span>
         </button>
-        <button class="btn ${activeTab === 'audit' ? 'btn-primary' : 'btn-secondary'}" data-pl-tab="audit" type="button" style="display:inline-flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600; padding:8px 14px;">
+        <button class="tab-btn ${activeTab === 'audit' ? 'active' : ''}" data-pl-tab="audit" type="button" style="display:inline-flex; align-items:center; gap:6px;">
           <span>🛡️</span> <span>Audit Trail &amp; Reports</span>
         </button>
       </div>
@@ -1399,9 +1374,9 @@ function refreshLedgerView(root) {
     root.querySelectorAll("[data-pl-tab]").forEach((btn) => {
       const tabId = btn.getAttribute("data-pl-tab");
       if (tabId === activeTab) {
-        btn.className = "btn btn-primary";
+        btn.classList.add("active");
       } else {
-        btn.className = "btn btn-secondary";
+        btn.classList.remove("active");
       }
     });
     // Only re-render the tab content area, not the full page

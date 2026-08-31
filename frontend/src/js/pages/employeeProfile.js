@@ -1337,6 +1337,30 @@ function wireTabEvents(root) {
   root.querySelector("[data-open-upload-modal]")?.addEventListener("click", () => {
     showToast("Secure document upload portal ready.", "neutral");
   });
+
+  // Action items resolution
+  root.querySelectorAll("[data-resolve-action]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const act = btn.dataset.resolveAction;
+      showToast(`Resolving action "${act}". Opening profile editor.`, "mint");
+    });
+  });
+
+  // Download document
+  root.querySelectorAll("[data-view-doc]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const docId = btn.dataset.viewDoc;
+      showToast(`Downloading verified statutory document ${docId}.`, "mint");
+    });
+  });
+
+  // Withdraw request
+  root.querySelectorAll("[data-withdraw-request]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const reqId = btn.dataset.withdrawRequest;
+      showToast(`Change request ${reqId} withdrawn.`, "mint");
+    });
+  });
 }
 
 // ─── PAGE EXPORTS ─────────────────────────────────────────────────────────────

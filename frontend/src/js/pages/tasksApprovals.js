@@ -307,27 +307,25 @@ export function renderTasks() {
   });
 
   return `
-    <div class="page-enter">
+    <div class="page-enter" style="padding-bottom: 60px;">
       <!-- Screen Header -->
-      <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;margin-bottom:20px;">
+      <div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px; margin-bottom:24px;">
         <div>
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-            <h1 class="page-title" style="font-size:24px;font-weight:700;margin:0;color:var(--ink);">Operational Task Oversight</h1>
-            <span class="badge" style="background:rgba(212,175,55,0.15);color:#d4af37;border:1px solid rgba(212,175,55,0.3);font-size:11px;font-weight:700;">OWN-SCR-002</span>
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <h1 class="page-title" style="font-size:26px; font-weight:700; margin:0; color:var(--ink);">Operational Task Oversight</h1>
+            <span class="badge" style="background:rgba(180,83,9,0.12); color:#b45309; font-weight:600; font-size:12px; padding:4px 10px; border-radius:12px;">SCR-002 TASKS</span>
           </div>
-          <p class="page-subtitle" style="font-size:13.5px;color:var(--muted);margin:0;">
+          <p class="page-subtitle" style="font-size:14px; color:var(--muted); margin:4px 0 0;">
             Cross-café oversight of operational tasks, compliance obligations, recurring controls, verification and escalations.
           </p>
         </div>
-        <div style="display:flex;gap:10px;align-items:center;">
-          <div style="font-size:11.5px;color:var(--muted);margin-right:4px;">
-            Updated <span style="color:var(--ink);font-weight:600;">${getIstTimeString(lastRefreshedTime)} IST</span>
-          </div>
-          <button class="btn btn-ghost" id="refresh-tasks-btn" type="button" title="Refresh task queue">
-            <span style="font-size:13px;">↻</span> Refresh
-          </button>
-          <button class="btn btn-primary" id="add-task-btn" type="button">
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <button class="btn btn-primary" id="add-task-btn" type="button" style="font-weight:700;">
             + Assign Management Task
+          </button>
+          <button class="btn btn-secondary" id="refresh-tasks-btn" type="button" title="Refresh task queue" style="font-weight:600; display:flex; align-items:center; gap:6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            Refresh Tasks
           </button>
         </div>
       </div>

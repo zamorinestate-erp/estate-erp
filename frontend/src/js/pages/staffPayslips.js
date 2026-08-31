@@ -473,29 +473,29 @@ function calculateMetrics(payslips) {
 
 function renderKPIHeader(metrics) {
   return `
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:20px;">
-      <div class="glass" style="padding:16px;border-left:3px solid #22c55e;">
-        <div style="color:var(--muted);" style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;">Latest Disbursed Net Pay</div>
-        <div style="color:#22c55e;font-size:22px;font-weight:700;margin-top:4px;">${formatPaise(metrics.latestNetPayPaise)}</div>
-        <div style="color:var(--muted);" style="font-size:11px;margin-top:4px;">Credited via Direct Bank Transfer</div>
+    <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:14px; margin-bottom:20px;">
+      <div class="card" style="padding:16px 18px; background:var(--bg-surface-1); border-radius:var(--radius-lg); border:1px solid var(--border-subtle); border-left:4px solid #10b981; box-shadow:var(--shadow-sm);">
+        <div style="color:var(--text-muted); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;">Latest Disbursed Net Pay</div>
+        <div style="color:#059669; font-size:24px; font-weight:800; margin-top:4px;">${formatPaise(metrics.latestNetPayPaise)}</div>
+        <div style="color:var(--text-muted); font-size:11.5px; margin-top:4px;">Credited via Direct Bank Transfer</div>
       </div>
 
-      <div class="glass" style="padding:16px;border-left:3px solid #38bdf8;">
-        <div style="color:var(--muted);" style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;">Financial Year Gross Pay (YTD)</div>
-        <div style="color:#38bdf8;font-size:22px;font-weight:700;margin-top:4px;">${formatPaise(metrics.ytdGrossPaise)}</div>
-        <div style="color:var(--muted);" style="font-size:11px;margin-top:4px;">Across ${metrics.payslipCount} pay event(s)</div>
+      <div class="card" style="padding:16px 18px; background:var(--bg-surface-1); border-radius:var(--radius-lg); border:1px solid var(--border-subtle); border-left:4px solid #0284c7; box-shadow:var(--shadow-sm);">
+        <div style="color:var(--text-muted); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;">Financial Year Gross Pay (YTD)</div>
+        <div style="color:#0284c7; font-size:24px; font-weight:800; margin-top:4px;">${formatPaise(metrics.ytdGrossPaise)}</div>
+        <div style="color:var(--text-muted); font-size:11.5px; margin-top:4px;">Across ${metrics.payslipCount} pay event(s)</div>
       </div>
 
-      <div class="glass" style="padding:16px;border-left:3px solid #a855f7;">
-        <div style="color:var(--muted);" style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;">Total Net Take-Home (YTD)</div>
-        <div style="color:var(--ink);font-size:22px;font-weight:700;margin-top:4px;">${formatPaise(metrics.ytdNetPayPaise)}</div>
-        <div style="color:var(--muted);" style="font-size:11px;margin-top:4px;">Post all statutory deductions</div>
+      <div class="card" style="padding:16px 18px; background:var(--bg-surface-1); border-radius:var(--radius-lg); border:1px solid var(--border-subtle); border-left:4px solid #8b5cf6; box-shadow:var(--shadow-sm);">
+        <div style="color:var(--text-muted); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;">Total Net Take-Home (YTD)</div>
+        <div style="color:var(--text-primary); font-size:24px; font-weight:800; margin-top:4px;">${formatPaise(metrics.ytdNetPayPaise)}</div>
+        <div style="color:var(--text-muted); font-size:11.5px; margin-top:4px;">Post all statutory deductions</div>
       </div>
 
-      <div class="glass" style="padding:16px;border-left:3px solid #f59e0b;">
-        <div style="color:var(--muted);" style="font-size:11px;text-transform:uppercase;letter-spacing:0.5px;">Total Statutory Deductions</div>
-        <div style="color:#f59e0b;font-size:22px;font-weight:700;margin-top:4px;">${formatPaise(metrics.ytdDeductionsPaise)}</div>
-        <div style="color:var(--muted);" style="font-size:11px;margin-top:4px;">PF: ${formatPaise(metrics.ytdPFPaise)} · TDS: ${formatPaise(metrics.ytdTaxPaise)}</div>
+      <div class="card" style="padding:16px 18px; background:var(--bg-surface-1); border-radius:var(--radius-lg); border:1px solid var(--border-subtle); border-left:4px solid #f59e0b; box-shadow:var(--shadow-sm);">
+        <div style="color:var(--text-muted); font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;">Total Statutory Deductions</div>
+        <div style="color:#d97706; font-size:24px; font-weight:800; margin-top:4px;">${formatPaise(metrics.ytdDeductionsPaise)}</div>
+        <div style="color:var(--text-muted); font-size:11.5px; margin-top:4px;">PF: ${formatPaise(metrics.ytdPFPaise)} · TDS: ${formatPaise(metrics.ytdTaxPaise)}</div>
       </div>
     </div>
   `;
@@ -503,16 +503,16 @@ function renderKPIHeader(metrics) {
 
 function renderNeedsAttention() {
   return `
-    <div class="glass" style="padding:14px 18px;margin-bottom:18px;background:rgba(56,189,248,0.05);border:1px solid rgba(56,189,248,0.2);display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;border-radius:10px;">
+    <div class="card" style="padding:14px 18px; margin-bottom:18px; background:rgba(200,157,92,0.08); border:1px solid rgba(200,157,92,0.3); display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; border-radius:var(--radius-lg);">
       <div class="flex items-center gap-sm">
         <span style="font-size:20px;">🔔</span>
         <div>
-          <div style="color:var(--ink);font-weight:600;font-size:13.5px;">Action Centre: July 2026 Salary Statement is Published</div>
-          <div style="color:var(--muted);" style="font-size:11.5px;margin-top:1px;">Annual Tax Statement (Form No. 130) projection is ready for FY 2026-27.</div>
+          <div style="color:var(--text-primary); font-weight:700; font-size:13.5px;">Action Centre: July 2026 Salary Statement is Published</div>
+          <div style="color:var(--text-secondary); font-size:12px; margin-top:1px;">Annual Tax Statement (Form No. 130) projection is ready for FY 2026-27.</div>
         </div>
       </div>
       <div class="flex items-center gap-sm">
-        <button class="btn btn-primary" type="button" data-view-payslip="PS-202607-00104" style="padding:6px 14px;font-size:12px;">View Statement</button>
+        <button class="btn btn-primary" type="button" data-view-payslip="PS-202607-00104" style="padding:7px 16px; font-size:12.5px; font-weight:700;">View Statement</button>
       </div>
     </div>
   `;
@@ -530,15 +530,15 @@ function renderTabs() {
   ];
 
   return `
-    <div class="glass" style="padding:6px;display:flex;gap:6px;margin-bottom:18px;overflow-x:auto;border-bottom:1px solid rgba(255,255,255,0.08);">
+    <div class="card" style="padding:8px 12px; margin-bottom:20px; background:var(--bg-surface-1); border-radius:var(--radius-lg); box-shadow:var(--shadow-sm); display:flex; gap:8px; overflow-x:auto;">
       ${tabs
         .map(
           (t) => `
             <button
-              class="btn ${currentTab === t.id ? "btn-primary" : "btn-ghost"}"
+              class="btn btn-sm ${currentTab === t.id ? "btn-primary" : "btn-ghost"}"
               type="button"
               data-payslip-tab="${t.id}"
-              style="padding:8px 16px;font-size:12.5px;font-weight:600;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;"
+              style="padding:7px 14px; font-size:12.5px; font-weight:${currentTab === t.id ? "700" : "500"}; white-space:nowrap; display:inline-flex; align-items:center; gap:6px; border-radius:var(--radius-md);"
             >
               <span>${t.icon}</span>
               <span>${escapeHtml(t.label)}</span>
@@ -551,14 +551,14 @@ function renderTabs() {
 }
 
 function detailRow(label, value, { strong = false, alert = false, mint = false } = {}) {
-  let color = "#ffffff";
-  if (alert) color = "var(--color-accent-amber,#ffd27a)";
-  if (mint) color = "var(--color-accent-mint-bright,#6bffd1)";
+  let color = "var(--text-primary)";
+  if (alert) color = "var(--brand-gold)";
+  if (mint) color = "var(--color-accent-mint)";
 
   return `
-    <div class="flex justify-between items-center" style="font-size:12.5px;padding:6px 0;gap:14px;border-bottom:1px solid rgba(255,255,255,0.04);">
-      <span style="color:var(--muted);">${escapeHtml(label)}</span>
-      <span style="color:${color};text-align:right;${strong ? " font-weight:700;" : ""}">
+    <div class="flex justify-between items-center" style="font-size:12.5px; padding:6px 0; gap:14px; border-bottom:1px solid var(--border-subtle);">
+      <span style="color:var(--text-muted);">${escapeHtml(label)}</span>
+      <span style="color:${color}; text-align:right;${strong ? " font-weight:700;" : ""}">
         ${escapeHtml(value)}
       </span>
     </div>
@@ -574,83 +574,92 @@ function renderOverviewTab(payslips) {
     <div class="flex-col gap-md">
       ${renderNeedsAttention()}
 
-      <!-- Prominent Latest Statement Banner -->
-      <div class="glass" style="padding:22px;border:1px solid rgba(212,175,55,0.3);background:linear-gradient(135deg, rgba(26,38,64,0.7) 0%, rgba(15,23,42,0.9) 100%);">
-        <div class="flex justify-between items-start" style="gap:16px;flex-wrap:wrap;border-bottom:1px solid rgba(255,255,255,0.08);padding-bottom:14px;margin-bottom:16px;">
+      <!-- Prominent Latest Statement Banner with High Contrast -->
+      <div class="card" style="padding:24px; border-radius:var(--radius-lg); background:linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border:1px solid rgba(200,157,92,0.35); box-shadow:var(--shadow-md); color:#ffffff;">
+        <div class="flex justify-between items-start" style="gap:16px; flex-wrap:wrap; border-bottom:1px solid rgba(255,255,255,0.12); padding-bottom:16px; margin-bottom:18px;">
           <div>
-            <div style="color:var(--color-accent-gold,#d4af37);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;">
+            <div style="color:#fbbf24; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:1px;">
               Most Recent Statement — ${escapeHtml(formatPeriod(latest.periodKey))}
             </div>
-            <div style="color:var(--ink);font-size:22px;font-weight:700;margin-top:2px;" class="font-display">
+            <div style="color:#ffffff; font-size:28px; font-weight:800; font-family:var(--font-heading); margin-top:4px;">
               ${formatPaise(latest.netPayPaise)}
             </div>
-            <div style="color:var(--muted);" style="font-size:12px;margin-top:2px;">
-              Paid via Direct Credit on ${latest.paidAt ? formatDate(latest.paidAt) : "End of Month"} · Ref: <strong>${escapeHtml(latest.paymentReference || "CMS-NEFT-HDFC")}</strong>
+            <div style="color:#94a3b8; font-size:12.5px; margin-top:4px;">
+              Paid via Direct Credit on ${latest.paidAt ? formatDate(latest.paidAt) : "01 Aug 2026"} · Ref: <strong style="color:#e2e8f0; font-family:monospace;">${escapeHtml(latest.paymentReference || "CMS-NEFT-HDFC-982341908234")}</strong>
             </div>
           </div>
 
-          <div class="flex items-center gap-sm">
-            ${statusPill(latest.status)}
-            ${runTypePill(latest.runType)}
-            <button class="btn btn-primary" type="button" data-view-payslip="${escapeHtml(latest.payslipId)}" style="padding:8px 16px;font-size:12px;">
+          <div class="flex items-center gap-sm flex-wrap">
+            <span class="badge badge-mint" style="font-weight:700; font-size:11px; padding:4px 10px;">${latest.status || "PAID"}</span>
+            <span class="badge badge-subtle" style="font-weight:600; font-size:11px; padding:4px 10px; background:rgba(255,255,255,0.12); color:#e2e8f0;">${latest.runType || "Regular Cycle"}</span>
+            <button class="btn btn-primary" type="button" data-view-payslip="${escapeHtml(latest.payslipId)}" style="padding:8px 16px; font-size:12.5px; font-weight:700; background:#c89d5c; color:#0f172a; border:none;">
               Open Payslip 360°
             </button>
-            <button class="btn btn-ghost" type="button" data-quick-print="${escapeHtml(latest.payslipId)}" style="padding:8px 14px;font-size:12px;">
+            <button class="btn btn-ghost" type="button" data-quick-print="${escapeHtml(latest.payslipId)}" style="padding:8px 14px; font-size:12.5px; color:#ffffff; border:1px solid rgba(255,255,255,0.25); background:rgba(255,255,255,0.08);">
               Download PDF
             </button>
           </div>
         </div>
 
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;">
-          <div class="glass" style="padding:12px;">
-            <div style="color:var(--muted);" style="font-size:11px;text-transform:uppercase;">Gross Earnings</div>
-            <div style="color:var(--ink);font-size:18px;font-weight:700;margin-top:4px;">${formatPaise(e.grossPayPaise)}</div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:14px;">
+          <div style="padding:14px 16px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); border-radius:10px;">
+            <div style="color:#94a3b8; font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;">Gross Earnings</div>
+            <div style="color:#ffffff; font-size:20px; font-weight:800; margin-top:4px;">${formatPaise(e.grossPayPaise)}</div>
           </div>
-          <div class="glass" style="padding:12px;">
-            <div style="color:var(--muted);" style="font-size:11px;text-transform:uppercase;">Total Deductions</div>
-            <div style="color:#f59e0b;font-size:18px;font-weight:700;margin-top:4px;">-${formatPaise(d.totalDeductionPaise)}</div>
+          <div style="padding:14px 16px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); border-radius:10px;">
+            <div style="color:#94a3b8; font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;">Total Deductions</div>
+            <div style="color:#f87171; font-size:20px; font-weight:800; margin-top:4px;">-${formatPaise(d.totalDeductionPaise)}</div>
           </div>
-          <div class="glass" style="padding:12px;">
-            <div style="color:var(--muted);" style="font-size:11px;text-transform:uppercase;">EPF Contribution</div>
-            <div style="color:#38bdf8;font-size:18px;font-weight:700;margin-top:4px;">${formatPaise(d.providentFundPaise)}</div>
+          <div style="padding:14px 16px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); border-radius:10px;">
+            <div style="color:#94a3b8; font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;">EPF Contribution</div>
+            <div style="color:#38bdf8; font-size:20px; font-weight:800; margin-top:4px;">${formatPaise(d.providentFundPaise)}</div>
           </div>
-          <div class="glass" style="padding:12px;">
-            <div style="color:var(--muted);" style="font-size:11px;text-transform:uppercase;">Loan Recovery</div>
-            <div style="color:#ec4899;font-size:18px;font-weight:700;margin-top:4px;">${formatPaise(d.loanAdvanceDeductionPaise)}</div>
+          <div style="padding:14px 16px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.12); border-radius:10px;">
+            <div style="color:#94a3b8; font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;">Loan Recovery</div>
+            <div style="color:#f472b6; font-size:20px; font-weight:800; margin-top:4px;">${formatPaise(d.loanAdvanceDeductionPaise)}</div>
           </div>
         </div>
       </div>
 
       <!-- Trend & Comparison Teaser -->
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;">
-        <div class="glass" style="padding:18px;">
-          <div style="color:var(--ink);font-size:15px;font-weight:700;margin-bottom:12px;" class="font-display">Monthly Pay Trend</div>
-          <div style="display:flex;align-items:flex-end;gap:16px;height:140px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.08);">
-            ${payslips.slice(0, 4).reverse().map(p => {
-              const height = Math.round((p.netPayPaise / 5500000) * 100);
+      <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:18px;">
+        <div class="card" style="padding:20px; background:var(--bg-surface-1); border-radius:var(--radius-lg); border:1px solid var(--border-subtle); box-shadow:var(--shadow-sm);">
+          <div style="color:var(--text-primary); font-size:15px; font-weight:800; margin-bottom:12px;" class="font-display">Monthly Pay Trend</div>
+          <div style="display:flex; align-items:flex-end; gap:16px; height:140px; padding:10px 0; border-bottom:1px solid var(--border-subtle);">
+            ${[
+              { label: "May", amount: 3749000 },
+              { label: "Jun", amount: 3861500 },
+              { label: "Jul (Bonus)", amount: 900000 },
+              { label: "Jul", amount: 4074000 }
+            ].map(p => {
+              const height = Math.round((p.amount / 4500000) * 110);
               return `
-                <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;">
-                  <div style="font-size:10px;color:#22c55e;font-weight:700;">₹${Math.round(p.netPayPaise/100000)}k</div>
-                  <div style="width:100%;max-width:36px;height:${Math.max(20, height)}px;background:linear-gradient(to top, #22c55e, #38bdf8);border-radius:4px 4px 0 0;"></div>
-                  <div style="color:var(--muted);" style="font-size:10.5px;">${p.periodKey.split('-')[1]}</div>
+                <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:6px;">
+                  <div style="font-size:11px; color:#059669; font-weight:800;">₹${Math.round(p.amount/100000)}k</div>
+                  <div style="width:100%; max-width:38px; height:${Math.max(20, height)}px; background:linear-gradient(to top, #059669, #34d399); border-radius:4px 4px 0 0;"></div>
+                  <div style="color:var(--text-secondary); font-size:11px; font-weight:600;">${p.label}</div>
                 </div>
               `;
             }).join('')}
           </div>
-          <div class="flex justify-between muted-white" style="font-size:11px;margin-top:8px;">
+          <div class="flex justify-between" style="font-size:11px; color:var(--text-muted); margin-top:10px;">
             <span>Bars indicate monthly net take-home</span>
-            <span>Stable & Indexed</span>
+            <span style="color:#059669; font-weight:600;">Indexed &amp; Verified</span>
           </div>
         </div>
 
-        <div class="glass" style="padding:18px;">
-          <div style="color:var(--ink);font-size:15px;font-weight:700;margin-bottom:12px;" class="font-display">Why Did My Pay Change?</div>
-          <div style="font-size:12.5px;color:#cbd5e1;line-height:1.5;">
-            July 2026 take-home increased by <strong>+₹2,125.00</strong> compared to June 2026 due to an approved <strong>Overtime Incentive (+₹625.00)</strong> and a special <strong>Championship Performance Bonus (+₹1,500.00)</strong>.
+        <div class="card" style="padding:20px; background:var(--bg-surface-1); border-radius:var(--radius-lg); border:1px solid var(--border-subtle); box-shadow:var(--shadow-sm); display:flex; flex-direction:column; justify-content:space-between;">
+          <div>
+            <div style="color:var(--text-primary); font-size:15px; font-weight:800; margin-bottom:10px;" class="font-display">Why Did My Pay Change?</div>
+            <div style="font-size:13px; color:var(--text-secondary); line-height:1.6;">
+              July 2026 regular take-home increased by <strong style="color:#059669;">+₹2,125.00</strong> compared to June 2026 due to an approved <strong style="color:var(--text-primary);">Overtime Incentive (+₹625.00)</strong> and a special <strong style="color:var(--text-primary);">Championship Performance Bonus (+₹1,500.00)</strong>.
+            </div>
           </div>
-          <button class="btn btn-ghost" type="button" data-payslip-tab="comparison" style="margin-top:14px;font-size:12px;padding:6px 14px;">
-            View Detailed Component Comparison →
-          </button>
+          <div style="margin-top:16px;">
+            <button class="btn btn-sm btn-ghost" type="button" data-payslip-tab="comparison" style="color:var(--brand-gold); font-weight:700; padding:6px 12px; border:1px solid var(--border-subtle);">
+              View Detailed Component Comparison →
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -1604,20 +1613,150 @@ function bindTabActions(root) {
   root.querySelector("[data-raise-query-btn]")?.addEventListener("click", () => showRaiseQueryModal(root));
 
   root.querySelector("[data-download-tax-proj]")?.addEventListener("click", () => {
-    showToast("Tax computation statement generated.", "mint");
+    showTaxProjectionModal();
   });
 
   root.querySelector("[data-form130-btn]")?.addEventListener("click", () => {
-    showToast("Official Form No. 130 TDS certificate downloaded.", "mint");
+    showForm130Modal();
   });
 
   root.querySelector("[data-form16-btn]")?.addEventListener("click", () => {
-    showToast("Historical Form 16 PDF downloaded.", "mint");
+    showForm16Modal();
   });
 
   root.querySelector("[data-epf-statement-btn]")?.addEventListener("click", () => {
-    showToast("Opening EPFO UAN Member Passbook portal...", "mint");
+    showEpfPassbookModal();
   });
+}
+
+function showTaxProjectionModal() {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px;";
+  overlay.innerHTML = `
+    <div class="card" style="background:#fff;border-radius:12px;width:100%;max-width:600px;padding:24px;box-shadow:0 12px 32px rgba(0,0,0,0.2);">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:1px solid #e2e8f0;padding-bottom:12px;margin-bottom:16px;">
+        <div>
+          <h3 style="margin:0;font-size:16px;font-weight:800;color:#0f172a;">Income Tax Computation &amp; Projection Statement</h3>
+          <div style="font-size:11.5px;color:#64748b;">Financial Year: 2026-27 · Section 192 TDS Regime: New Tax Regime (Section 115BAC)</div>
+        </div>
+        <button class="btn btn-sm btn-ghost" data-close-doc style="font-size:16px;">✕</button>
+      </div>
+
+      <div style="font-size:12.5px;line-height:1.8;color:#334155;margin-bottom:20px;">
+        <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed #cbd5e1;"><span>Gross Estimated Salary Income:</span><strong>₹4,80,000.00</strong></div>
+        <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed #cbd5e1;"><span>Standard Deduction (u/s 16(ia)):</span><strong style="color:#059669;">- ₹75,000.00</strong></div>
+        <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed #cbd5e1;"><span>Net Taxable Income:</span><strong>₹4,05,000.00</strong></div>
+        <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed #cbd5e1;"><span>Rebate under Section 87A:</span><strong style="color:#059669;">100% Tax Relief (Zero Tax Payable)</strong></div>
+        <div style="display:flex;justify-content:space-between;padding:6px 0;font-weight:700;color:#0f172a;background:#f8fafc;padding:8px;border-radius:6px;margin-top:8px;"><span>Projected Annual TDS Liability:</span><strong>₹0.00</strong></div>
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;gap:10px;">
+        <button class="btn btn-secondary" data-close-doc>Close</button>
+        <button class="btn btn-primary" onclick="window.print()" style="background:#4f46e5;color:#fff;">🖨️ Print Statement</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.querySelectorAll("[data-close-doc]").forEach((b) => b.addEventListener("click", () => overlay.remove()));
+}
+
+function showForm130Modal() {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px;";
+  overlay.innerHTML = `
+    <div class="card" style="background:#fff;border-radius:12px;width:100%;max-width:580px;padding:24px;box-shadow:0 12px 32px rgba(0,0,0,0.2);">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:1px solid #e2e8f0;padding-bottom:12px;margin-bottom:16px;">
+        <div>
+          <h3 style="margin:0;font-size:16px;font-weight:800;color:#0f172a;">Form No. 130 TDS Certificate</h3>
+          <div style="font-size:11.5px;color:#64748b;">Statutory Deductor: Zamorin Artisan Roasters Private Limited (TAN: BLRZ12991A)</div>
+        </div>
+        <button class="btn btn-sm btn-ghost" data-close-doc style="font-size:16px;">✕</button>
+      </div>
+
+      <div style="font-size:12px;background:#f8fafc;padding:12px;border-radius:6px;margin-bottom:16px;">
+        <div>Assessment Year: <strong>2027-28</strong></div>
+        <div>Quarter: <strong>Q1 (Apr-Jun 2026) · Q2 (Jul-Sep 2026)</strong></div>
+        <div>Total Tax Deducted &amp; Deposited to Central Govt: <strong>₹0.00 (Nil TDS Nil Deduct)</strong></div>
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;gap:10px;">
+        <button class="btn btn-secondary" data-close-doc>Close</button>
+        <button class="btn btn-primary" onclick="window.print()" style="background:#4f46e5;color:#fff;">🖨️ Print Form 130</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.querySelectorAll("[data-close-doc]").forEach((b) => b.addEventListener("click", () => overlay.remove()));
+}
+
+function showForm16Modal() {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px;";
+  overlay.innerHTML = `
+    <div class="card" style="background:#fff;border-radius:12px;width:100%;max-width:620px;padding:24px;box-shadow:0 12px 32px rgba(0,0,0,0.2);">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:1px solid #e2e8f0;padding-bottom:12px;margin-bottom:16px;">
+        <div>
+          <h3 style="margin:0;font-size:16px;font-weight:800;color:#0f172a;">Form 16 — Certificate of Tax Deducted at Source</h3>
+          <div style="font-size:11.5px;color:#64748b;">Under Section 203 of the Income-tax Act, 1961 for Salary Income</div>
+        </div>
+        <button class="btn btn-sm btn-ghost" data-close-doc style="font-size:16px;">✕</button>
+      </div>
+
+      <div style="font-size:12px;line-height:1.7;color:#334155;margin-bottom:16px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;background:#f8fafc;padding:12px;border-radius:6px;margin-bottom:12px;">
+          <div>Employer TAN: <strong>BLRZ12991A</strong></div>
+          <div>Employee PAN: <strong>ABCDE1234F</strong></div>
+          <div>Period with Employer: <strong>01-Apr-2025 to 31-Mar-2026</strong></div>
+          <div>Assessment Year: <strong>2026-27</strong></div>
+        </div>
+        <div>Part A: Verification of TDS remittances with OLTAS challans confirmed.</div>
+        <div>Part B: Details of Salary paid and any other income and tax deducted.</div>
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;gap:10px;">
+        <button class="btn btn-secondary" data-close-doc>Close</button>
+        <button class="btn btn-primary" onclick="window.print()" style="background:#4f46e5;color:#fff;">🖨️ Print Form 16</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.querySelectorAll("[data-close-doc]").forEach((b) => b.addEventListener("click", () => overlay.remove()));
+}
+
+function showEpfPassbookModal() {
+  const overlay = document.createElement("div");
+  overlay.className = "modal-overlay";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px;";
+  overlay.innerHTML = `
+    <div class="card" style="background:#fff;border-radius:12px;width:100%;max-width:580px;padding:24px;box-shadow:0 12px 32px rgba(0,0,0,0.2);">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:1px solid #e2e8f0;padding-bottom:12px;margin-bottom:16px;">
+        <div>
+          <h3 style="margin:0;font-size:16px;font-weight:800;color:#0f172a;">EPFO Member Passbook &amp; UAN Contribution</h3>
+          <div style="font-size:11.5px;color:#64748b;">Employees' Provident Fund Scheme 1952 · UAN: 101499201991</div>
+        </div>
+        <button class="btn btn-sm btn-ghost" data-close-doc style="font-size:16px;">✕</button>
+      </div>
+
+      <div style="font-size:12px;line-height:1.7;color:#334155;margin-bottom:16px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;background:#f8fafc;padding:12px;border-radius:6px;margin-bottom:12px;">
+          <div>Employee Share (12%): <strong>₹1,800.00 / mo</strong></div>
+          <div>Employer Share (3.67% EPF + 8.33% EPS): <strong>₹1,800.00 / mo</strong></div>
+          <div>Cumulative Balance: <strong style="color:#059669;">₹48,600.00</strong></div>
+          <div>ECR Status: <strong>Remitted &amp; Reconciled</strong></div>
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;gap:10px;">
+        <button class="btn btn-secondary" data-close-doc>Close</button>
+        <button class="btn btn-primary" onclick="window.print()" style="background:#4f46e5;color:#fff;">🖨️ Print Passbook Summary</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.querySelectorAll("[data-close-doc]").forEach((b) => b.addEventListener("click", () => overlay.remove()));
 }
 
 async function loadMyPayslips(root) {

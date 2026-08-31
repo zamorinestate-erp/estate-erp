@@ -310,21 +310,21 @@ export function renderExpenses(subroute) {
   return `
     <div class="page-enter" style="padding-bottom: 40px;">
       <!-- Page Header -->
-      <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;margin-bottom:16px;">
+      <div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px; margin-bottom:24px;">
         <div>
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-            <span style="font-size:12px;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;color:var(--gold);background:rgba(212,160,23,0.12);padding:2px 8px;border-radius:4px;">SCR-009</span>
-            <span style="font-size:12px;color:var(--muted);">Authoritative Expense Control &amp; Pre-Spend Layer</span>
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <h1 style="font-size:26px; font-weight:700; margin:0; color:var(--ink);">Expense Management &amp; Approvals</h1>
+            <span class="badge" style="background:rgba(180,83,9,0.12); color:#b45309; font-weight:600; font-size:12px; padding:4px 10px; border-radius:12px;">SCR-009 EXP</span>
           </div>
-          <h1 class="page-title" style="font-size:26px;font-weight:700;margin:0 0 6px;color:var(--ink);">Expense Management &amp; Approvals</h1>
-          <p class="page-subtitle" style="font-size:14px;color:var(--muted);margin:0;">Manage operating expenses, receipt evidence, pre-spend authorisations, corporate card matching, and Finance handoffs.</p>
+          <p style="font-size:14px; color:var(--muted); margin:4px 0 0;">Manage operating expenses, receipt evidence, pre-spend authorisations, corporate card matching, and Finance handoffs.</p>
         </div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;">
-          <button class="btn btn-secondary" id="refresh-expenses-btn" type="button" style="font-weight:600;display:flex;align-items:center;gap:6px;">
-            <span>🔄</span> <span>Refresh</span>
-          </button>
-          <button class="btn btn-primary" id="record-expense-btn" type="button" style="font-weight:700;display:flex;align-items:center;gap:6px;">
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <button class="btn btn-primary" id="record-expense-btn" type="button" style="font-weight:700; display:flex; align-items:center; gap:6px;">
             <span>➕</span> <span>Record New Expense</span>
+          </button>
+          <button class="btn btn-secondary" id="refresh-expenses-btn" type="button" style="font-weight:600; display:flex; align-items:center; gap:6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            <span>Refresh</span>
           </button>
         </div>
       </div>
@@ -457,29 +457,49 @@ function renderOverviewSubpanel() {
       </div>
 
       <!-- Primary KPI Cards -->
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;">
-        <article class="card kpi-card" style="padding:18px;border-radius:8px;background:var(--card-bg);border:1px solid var(--border);">
-          <div class="kpi-label" style="font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;">Expenses This Month</div>
-          <div class="kpi-value" style="font-size:24px;font-weight:700;color:var(--ink);margin:6px 0;">₹${totalSpent.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</div>
-          <div class="kpi-trend" style="font-size:12px;color:var(--success);font-weight:600;">Across Active Outlets</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:16px;">
+        <article class="card" style="padding:18px 20px;border-radius:var(--radius-lg, 12px);background:var(--surface);border:1px solid var(--line);border-left:4px solid #0284c7;box-shadow:var(--shadow-xs);transition:transform 0.15s ease;">
+          <div style="font-size:11.5px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;display:flex;justify-content:space-between;align-items:center;">
+            <span>Expenses This Month</span>
+            <span>💳</span>
+          </div>
+          <div style="font-size:24px;font-weight:800;color:var(--ink);font-family:var(--font-mono, 'JetBrains Mono', ui-monospace, monospace);margin:8px 0 4px;letter-spacing:-0.3px;">₹${totalSpent.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</div>
+          <div style="font-size:12px;color:#0284c7;font-weight:700;display:flex;align-items:center;gap:4px;">
+            <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#0284c7;"></span> Across Active Outlets
+          </div>
         </article>
 
-        <article class="card kpi-card" style="padding:18px;border-radius:8px;background:var(--card-bg);border:1px solid var(--border);">
-          <div class="kpi-label" style="font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;">Approved &amp; Paid</div>
-          <div class="kpi-value" style="font-size:24px;font-weight:700;color:var(--color-success, #10b981);margin:6px 0;">₹${approvedSpent.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</div>
-          <div class="kpi-trend" style="font-size:12px;color:var(--muted);">Audited by Management</div>
+        <article class="card" style="padding:18px 20px;border-radius:var(--radius-lg, 12px);background:var(--surface);border:1px solid var(--line);border-left:4px solid #10b981;box-shadow:var(--shadow-xs);transition:transform 0.15s ease;">
+          <div style="font-size:11.5px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;display:flex;justify-content:space-between;align-items:center;">
+            <span>Approved &amp; Paid</span>
+            <span>✅</span>
+          </div>
+          <div style="font-size:24px;font-weight:800;color:#10b981;font-family:var(--font-mono, 'JetBrains Mono', ui-monospace, monospace);margin:8px 0 4px;letter-spacing:-0.3px;">₹${approvedSpent.toLocaleString("en-IN", { minimumFractionDigits: 2 })}</div>
+          <div style="font-size:12px;color:var(--muted);font-weight:600;display:flex;align-items:center;gap:4px;">
+            <span style="color:#10b981;">✓</span> Audited by Management
+          </div>
         </article>
 
-        <article class="card kpi-card" style="padding:18px;border-radius:8px;background:var(--card-bg);border:1px solid var(--border);">
-          <div class="kpi-label" style="font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;">Pending Approval</div>
-          <div class="kpi-value" style="font-size:24px;font-weight:700;color:var(--warning);margin:6px 0;">${pendingCount} Vouchers</div>
-          <div class="kpi-trend" style="font-size:12px;color:var(--warning);font-weight:600;">₹${pendingSpent.toLocaleString("en-IN", { minimumFractionDigits: 2 })} In Review</div>
+        <article class="card" style="padding:18px 20px;border-radius:var(--radius-lg, 12px);background:var(--surface);border:1px solid var(--line);border-left:4px solid #f59e0b;box-shadow:var(--shadow-xs);transition:transform 0.15s ease;">
+          <div style="font-size:11.5px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;display:flex;justify-content:space-between;align-items:center;">
+            <span>Pending Approval</span>
+            <span>⏳</span>
+          </div>
+          <div style="font-size:24px;font-weight:800;color:#d97706;font-family:var(--font-mono, 'JetBrains Mono', ui-monospace, monospace);margin:8px 0 4px;letter-spacing:-0.3px;">${pendingCount} Vouchers</div>
+          <div style="font-size:12px;color:#b45309;font-weight:700;display:flex;align-items:center;gap:4px;">
+            <span>⚠️</span> ₹${pendingSpent.toLocaleString("en-IN", { minimumFractionDigits: 2 })} In Review
+          </div>
         </article>
 
-        <article class="card kpi-card" style="padding:18px;border-radius:8px;background:var(--card-bg);border:1px solid var(--border);">
-          <div class="kpi-label" style="font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;">AP Handoff Readiness</div>
-          <div class="kpi-value" style="font-size:24px;font-weight:700;color:var(--ink);margin:6px 0;">100%</div>
-          <div class="kpi-trend" style="font-size:12px;color:var(--success);font-weight:600;">0 Unlinked POs</div>
+        <article class="card" style="padding:18px 20px;border-radius:var(--radius-lg, 12px);background:var(--surface);border:1px solid var(--line);border-left:4px solid #8b5cf6;box-shadow:var(--shadow-xs);transition:transform 0.15s ease;">
+          <div style="font-size:11.5px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:0.5px;display:flex;justify-content:space-between;align-items:center;">
+            <span>AP Handoff Readiness</span>
+            <span>📑</span>
+          </div>
+          <div style="font-size:24px;font-weight:800;color:#8b5cf6;font-family:var(--font-mono, 'JetBrains Mono', ui-monospace, monospace);margin:8px 0 4px;letter-spacing:-0.3px;">100%</div>
+          <div style="font-size:12px;color:#10b981;font-weight:700;display:flex;align-items:center;gap:4px;">
+            <span>🛡️</span> 0 Unlinked POs
+          </div>
         </article>
       </div>
 

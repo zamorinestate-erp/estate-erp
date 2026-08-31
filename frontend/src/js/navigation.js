@@ -49,6 +49,7 @@ const PRIMARY_MASTER_ITEMS = [
   // ── FINANCE ──────────────────────────────────────────────────────────────────
   { id: 'bills',         label: 'Bills & Receipts',       icon: 'bills',        route: 'bills',             group: 'FINANCE' },
   { id: 'expenses',      label: 'Expenses',               icon: 'expenses',     route: 'expenses',          group: 'FINANCE' },
+  { id: 'sales-cash',    label: 'Sales & Cash Book',      icon: 'finance',      route: 'sales-cash',        group: 'FINANCE' },
   { id: 'finance',       label: 'Finance & Accounts',     icon: 'finance',      route: 'finance',           group: 'FINANCE' },
   { id: 'passbook',      label: 'Passbook & Treasury',    icon: 'passbook',     route: 'passbook',          group: 'FINANCE', primaryMasterOnly: true },
   { id: 'ledger',        label: 'Personal Ledger & Owner Account', icon: 'ledger', route: 'ledger', group: 'FINANCE', primaryMasterOnly: true },
@@ -93,6 +94,7 @@ export const NAVIGATION = {
       { id: 'dashboard',    label: 'Overview',                icon: 'home',         route: 'dashboard',       group: 'COMMAND' },
       { id: 'approvals',    label: 'Tasks & Oversight',       icon: 'tasks',        route: 'approvals',       group: 'OPERATIONS' },
       { id: 'bills',        label: 'Bills & Receipts',        icon: 'bills',        route: 'bills',           group: 'FINANCE' },
+      { id: 'sales-cash',   label: 'Sales & Cash Book',       icon: 'finance',      route: 'sales-cash',      group: 'FINANCE' },
       { id: 'performance',  label: 'Café Performance',        icon: 'performance',  route: 'performance',     group: 'INSIGHTS' },
       { id: 'employees',    label: 'Employees',               icon: 'employees',    route: 'employees',       group: 'PEOPLE' },
       { id: 'finance',      label: 'Finance Summary',         icon: 'finance',      route: 'finance',         group: 'FINANCE' },
@@ -139,19 +141,6 @@ export const NAVIGATION = {
       { id: 'leave',         label: 'My Leave',       icon: 'calendar',   route: 'staff-leave',      group: 'SELF' },
       { id: 'settings',      label: 'Settings',       icon: 'settings',   route: 'staff-settings',   group: 'SYSTEM' },
     ],
-    footnote: 'Cafe-owned trusted device operational workspace. Operator sessions & device context.',
-  },
-
-  // ── STAFF ────────────────────────────────────────────────────────────────────
-  [ROLES.STAFF]: {
-    scopeLabel: null,
-    items: [
-      { id: 'home',          label: 'Home',           icon: 'home',       route: 'staff-home',       group: 'COMMAND' },
-      { id: 'announcements', label: 'Announcements',  icon: 'announce',   route: 'announcements',    group: 'COMMAND' },
-      { id: 'attendance',    label: 'My Attendance',  icon: 'attendance', route: 'staff-attendance', group: 'SELF' },
-      { id: 'leave',         label: 'My Leave',       icon: 'calendar',   route: 'staff-leave',      group: 'SELF' },
-      { id: 'settings',      label: 'Settings',       icon: 'settings',   route: 'staff-settings',   group: 'SYSTEM' },
-    ],
     footnote: 'Self-service only. Payslips & Loans are inside Settings.',
   },
 };
@@ -173,6 +162,13 @@ export const PRIMARY_MASTER_ONLY_ROUTES = new Set([
 const IMPLICIT_ROUTES_ALL = new Set([
   'notifications',
   'kiosk-attendance',
+  'staff-attendance',
+  'staff-leave',
+  'staff-payslips',
+  'staff-loans-advances',
+  'staff-settings',
+  'staff-home',
+  'announcements',
 ]);
 
 // Implicit routes specific to CAFE_ADMIN — auth-context pages (not sidebar items)

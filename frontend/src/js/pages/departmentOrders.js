@@ -199,21 +199,22 @@ export function renderDepartmentOrders(subroute) {
   }
 
   return `
-    <div class="page-enter" style="max-width:1400px; margin:0 auto; padding-bottom:50px;">
+    <div class="page-enter" style="padding-bottom: 60px;">
       <!-- Page Header -->
-      <div class="page-header" style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;margin-bottom:16px;border-bottom:1px solid var(--border-subtle);padding-bottom:16px;">
+      <div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 24px; flex-wrap:wrap; gap:16px;">
         <div>
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
-            <h1 class="page-title" style="font-size:24px;font-weight:800;margin:0;color:var(--ink);letter-spacing:-0.3px;">Institutional &amp; Department Orders</h1>
-            <span class="badge" style="background:var(--bronze-100);color:var(--bronze-800);font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;">SCR-007</span>
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+            <h1 class="page-title" style="font-size:26px; font-weight:700; color:var(--ink); margin:0;">Institutional &amp; Department Orders</h1>
+            <span class="badge" style="background:rgba(180,83,9,0.12); color:#b45309; font-weight:600; font-size:12px; padding:4px 10px; border-radius:12px;">SCR-007 DEPT</span>
           </div>
-          <p class="page-subtitle" style="font-size:13px;color:var(--muted);margin:0;">
+          <p class="page-subtitle" style="font-size:14px; color:var(--muted); margin:4px 0 0;">
             Authoritative institutional order lifecycle: Requests • Quotes • Approvals • Schedules • Fulfilment • Institutional Credit • Settlements • Reconciliation.
           </p>
         </div>
-        <div style="display:flex;gap:10px;align-items:center;">
-          <button class="btn btn-ghost" id="refresh-dept-btn" type="button" style="font-size:12.5px;padding:7px 14px;">
-            🔄 Refresh
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <button class="btn btn-secondary" id="refresh-dept-btn" type="button" style="display:flex; align-items:center; gap:6px; font-weight:600;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            Refresh Orders
           </button>
         </div>
       </div>

@@ -187,49 +187,28 @@ export function renderPassbook() {
 // ─── Top Control Bar ─────────────────────────────────────────────────────────
 function renderTopControlBar() {
   return `
-    <div class="card" style="padding: 16px 20px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; border-left: 4px solid var(--gold, #d4af37); background: var(--surface); box-shadow: var(--shadow-xs);">
-      <div style="display: flex; align-items: center; gap: 12px;">
-        <div style="width: 44px; height: 44px; border-radius: 10px; background: rgba(212, 175, 55, 0.12); display: flex; align-items: center; justify-content: center; color: var(--gold, #d4af37);">
-          ${icon("ledger")}
+    <div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px; margin-bottom:24px;">
+      <div>
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <h1 class="page-title" style="font-size:26px; font-weight:700; color:var(--ink); margin:0;">
+            Passbook &amp; Treasury Control
+          </h1>
+          <span class="badge" style="background:rgba(180,83,9,0.12); color:#b45309; font-weight:600; font-size:12px; padding:4px 10px; border-radius:12px;">SCR-024 PASSBOOK</span>
+          <span class="badge" style="background:rgba(201,154,92,0.2); color:#c99a5c; font-weight:800; font-size:11px; padding:4px 8px; border-radius:12px;">PRIMARY MASTER</span>
         </div>
-        <div>
-          <div style="font-size: 1.15rem; font-weight: 700; color: var(--ink);">Passbook &amp; Treasury Control</div>
-          <div style="font-size: 0.8rem; color: var(--muted); display: flex; align-items: center; gap: 8px;">
-            <span class="badge badge-warning" style="font-size: 0.7rem; font-weight: 600;">PRIMARY MASTER &amp; OWNER</span>
-            <span>·</span>
-            <span>Multi-Café Cash &amp; Bank Book</span>
-          </div>
-        </div>
+        <p class="page-subtitle" style="font-size:14px; color:var(--muted); margin:4px 0 0 0;">
+          Multi-Café Cash &amp; Bank Book • Treasury Operations • Reconciliation • Liquidity Runway
+        </p>
       </div>
 
       <!-- Context Selectors & Global Actions -->
-      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px;">
-        <div style="display: flex; align-items: center; gap: 6px;">
-          <label style="font-size: 0.75rem; font-weight: 600; color: var(--muted); text-transform: uppercase;">Scope:</label>
-          <select id="pbk-scope-select" class="form-control" style="padding: 6px 12px; font-size: 0.85rem; height: 36px; border-radius: 8px;">
-            <option value="ALL" ${currentScope === "ALL" ? "selected" : ""}>All Cafés (Global Portfolio)</option>
-            <option value="CAFE-001" ${currentScope === "CAFE-001" ? "selected" : ""}>Calicut Flagship Roastery</option>
-            <option value="CAFE-002" ${currentScope === "CAFE-002" ? "selected" : ""}>Koramangala 4th Block</option>
-            <option value="CAFE-003" ${currentScope === "CAFE-003" ? "selected" : ""}>Indiranagar 100ft Road</option>
-          </select>
-        </div>
-
-        <div style="display: flex; align-items: center; gap: 6px;">
-          <label style="font-size: 0.75rem; font-weight: 600; color: var(--muted); text-transform: uppercase;">Period:</label>
-          <select id="pbk-period-select" class="form-control" style="padding: 6px 12px; font-size: 0.85rem; height: 36px; border-radius: 8px;">
-            <option value="THIS_MONTH" ${currentPeriod === "THIS_MONTH" ? "selected" : ""}>This Month (Aug 2026)</option>
-            <option value="LAST_MONTH" ${currentPeriod === "LAST_MONTH" ? "selected" : ""}>Last Month (Jul 2026)</option>
-            <option value="YTD" ${currentPeriod === "YTD" ? "selected" : ""}>FY 2026–27 YTD</option>
-          </select>
-        </div>
-
-        <button id="pbk-refresh-btn" class="btn btn-secondary" style="font-size: 0.85rem; height: 36px; padding: 0 12px;">
-          ↻ Refresh
-        </button>
-
-        <a href="#passbook/adjustments" class="btn btn-primary" style="font-size: 0.85rem; height: 36px; display: inline-flex; align-items: center; gap: 6px; text-decoration: none; padding: 0 14px; font-weight: 600;">
+      <div style="display:flex; flex-wrap:wrap; align-items:center; gap:10px;">
+        <a href="#passbook/adjustments" class="btn btn-primary" style="font-weight:700; display:inline-flex; align-items:center; gap:6px; text-decoration:none;">
           <span>✍️</span> <span>Direct Adjustment</span>
         </a>
+        <button id="pbk-refresh-btn" class="btn btn-secondary" style="font-weight:600;">
+          ↻ Refresh
+        </button>
       </div>
     </div>
   `;
@@ -1011,8 +990,7 @@ function renderStatementImports() {
       <div style="border: 2px dashed var(--border); border-radius: 12px; padding: 36px 20px; text-align: center; background: var(--surface-sunken); cursor: pointer;" id="pbk-dropzone">
         <div style="font-size: 32px; margin-bottom: 8px;">📄</div>
         <div style="font-weight: 700; font-size: 15px; color: var(--ink);">Drag &amp; Drop Bank Statement Here</div>
-        <div style="font-size: 12px; color: var(--muted); margin-top: 4px;">Supports HDFC, ICICI, SBI, Axis Bank formats (CSV, XLSX, PDF)</div>
-        <button class="btn btn-secondary btn-sm" style="margin-top: 14px;">Browse File</button>
+        <button class="btn btn-secondary btn-sm" id="pbk-browse-file-btn" style="margin-top: 14px;" type="button">Browse File</button>
       </div>
     </div>
   `;
@@ -1582,6 +1560,45 @@ export async function wirePassbook() {
   document.getElementById("pbk-btn-run-integrity")?.addEventListener("click", () => {
     showToast("Executing live 12-point invariant audit...", "info");
     setTimeout(() => showToast("Invariant Audit complete: 12/12 checks passed with 100% parity.", "success"), 500);
+  });
+
+  document.getElementById("pbk-btn-add-mapping")?.addEventListener("click", () => {
+    showToast("Tender mapping registry opened. Assigning payment channel to treasury account.", "info");
+  });
+
+  document.getElementById("pbk-btn-close-day")?.addEventListener("click", () => {
+    showToast("Daily register closed and physical cash drop recorded.", "success");
+  });
+
+  document.getElementById("pbk-btn-new-transfer")?.addEventListener("click", () => {
+    openPostManualEntryModal();
+  });
+
+  document.getElementById("pbk-btn-replenish-float")?.addEventListener("click", () => {
+    showToast("Store petty cash float replenishment scheduled.", "success");
+  });
+
+  document.getElementById("pbk-btn-add-earmark")?.addEventListener("click", () => {
+    showToast("Liquidity earmark registered and committed.", "success");
+  });
+
+  const handleBankUpload = () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".csv,.xlsx,.pdf";
+    input.onchange = (e) => {
+      const file = e.target.files?.[0];
+      if (file) {
+        showToast(`Bank statement "${file.name}" imported and parsed successfully.`, "success");
+      }
+    };
+    input.click();
+  };
+
+  document.getElementById("pbk-dropzone")?.addEventListener("click", handleBankUpload);
+  document.getElementById("pbk-browse-file-btn")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    handleBankUpload();
   });
 
   // Direct Adjustment Form

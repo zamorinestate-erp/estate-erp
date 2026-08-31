@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Zamorin Cafe ERP</title>
+  <meta name="theme-color" content="#101a30" />
+  <meta name="description" content="Zamorin Cafe ERP — secure multi-location café management system" />
+  <link rel="icon" type="image/svg+xml" href="/assets/zamorin-app-icon-vector-BISQfrtP.svg" />
+  <link rel="apple-touch-icon" href="/assets/zamorin-app-icon-1024-D1r7TRT_.png" />
+  <link rel="manifest" href="/assets/manifest-CYoRw3o8.json" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400&family=Inter:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" />
+  <!-- Design system: tokens → layout → components → theme overrides -->
+  <script>
+    (function() {
+      try {
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistrations().then(function(registrations) {
+            for (var r of registrations) { r.unregister(); }
+          });
+        }
+        if ('caches' in window) {
+          caches.keys().then(function(names) {
+            for (var n of names) caches.delete(n);
+          });
+        }
+        var savedTheme = localStorage.getItem('zamorin-theme') || 'paper';
+        document.documentElement.dataset.theme = savedTheme;
+        var savedFontSize = localStorage.getItem('zamorin-font-size') || 'standard';
+        document.documentElement.dataset.fontSize = savedFontSize;
+      } catch (e) {}
+    })();
+    window.ZAMORIN_API_BASE_URL =
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+        ? ('http://' + window.location.hostname + ':4000/api/v1')
+        : 'https://zamorin-cafe-erp-backend.onrender.com/api/v1';
+  </script>
+  <script type="module" crossorigin src="/assets/index-Bkmz_g0P.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-CuY4iDnj.css">
+</head>
+<body>
+  <div id="app" class="auth-screen"></div>
+  <div id="toast-root"></div>
+
+</body>
+</html>
