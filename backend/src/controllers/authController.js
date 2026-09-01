@@ -231,20 +231,21 @@ function clearAuthenticationCookies(
 }
 
 function getLoginInput(request) {
-  const {
-    organisationId,
-    email,
-    password,
-  } = request.body || {};
+  let body = request.body || {};
+  if (typeof body === 'string') {
+    try {
+      body = JSON.parse(body);
+    } catch {}
+  }
+  if (body && typeof body === 'object' && body.body && typeof body.body === 'object') {
+    body = body.body;
+  }
 
-  if (
-    typeof organisationId !== 'string' ||
-    !organisationId.trim() ||
-    typeof email !== 'string' ||
-    !email.trim() ||
-    typeof password !== 'string' ||
-    !password
-  ) {
+  const organisationId = String(body.organisationId || body.orgId || body.organisation || '').trim();
+  const email = String(body.email || body.identifier || '').trim();
+  const password = typeof body.password === 'string' ? body.password : '';
+
+  if (!organisationId || !email || !password) {
     throw new ApiError(
       400,
       'LOGIN_FIELDS_REQUIRED',

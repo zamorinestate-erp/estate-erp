@@ -409,6 +409,7 @@ export function wireLogin(container, { onSubmit, onForgotPassword } = {}) {
   const form = container.querySelector("#zamorin-login-form");
   const forgotLink = container.querySelector("#login-forgot-password");
   const errorEl = container.querySelector("#login-error");
+  const submitBtn = container.querySelector("#login-submit");
 
   if (forgotLink && typeof onForgotPassword === "function") {
     forgotLink.addEventListener("click", (e) => {
@@ -436,12 +437,23 @@ export function wireLogin(container, { onSubmit, onForgotPassword } = {}) {
         return;
       }
 
+      const originalBtnText = submitBtn ? submitBtn.textContent : "Sign In to Command Centre";
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Authenticating...";
+      }
+
       try {
         await onSubmit({ organisationId, email, password });
       } catch (err) {
         if (errorEl) {
-          errorEl.textContent = err.message || "Invalid credentials.";
+          errorEl.textContent = err.userMessage || err.message || "Invalid credentials.";
           errorEl.style.display = "block";
+        }
+      } finally {
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = originalBtnText;
         }
       }
     });

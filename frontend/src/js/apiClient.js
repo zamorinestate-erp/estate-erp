@@ -554,7 +554,6 @@ export async function performRequest(
     timeoutMs = 30000,
   } = {}
 ) {
-  const hasJsonBody = body !== undefined && !(body instanceof FormData) && !(body instanceof Blob);
   const normalizedPath = normalizeApiPath(path);
 
   // Setup internal timeout controller
@@ -591,10 +590,6 @@ export async function performRequest(
     requestHeaders["Authorization"] = `Bearer ${token.trim()}`;
   }
 
-  if (hasJsonBody) {
-    requestHeaders["Content-Type"] = "application/json";
-  }
-
   if (headers) {
     if (headers instanceof Headers) {
       for (const [k, v] of headers.entries()) {
@@ -609,11 +604,19 @@ export async function performRequest(
     }
   }
 
+  const isStringBody = typeof body === "string";
   let finalBody = body;
-  if (finalBody && typeof finalBody === "object" && !(finalBody instanceof FormData) && !(finalBody instanceof Blob)) {
+  if (!isStringBody && finalBody && typeof finalBody === "object" && !(finalBody instanceof FormData) && !(finalBody instanceof Blob)) {
     if (Object.keys(finalBody).length === 1 && finalBody.body && typeof finalBody.body === "object" && !(finalBody.body instanceof FormData) && !(finalBody.body instanceof Blob)) {
       finalBody = finalBody.body;
     }
+  }
+
+  const hasJsonBody = finalBody !== undefined && !(finalBody instanceof FormData) && !(finalBody instanceof Blob);
+  const shouldStringify = !isStringBody && hasJsonBody;
+
+  if (hasJsonBody) {
+    requestHeaders["Content-Type"] = "application/json";
   }
 
   try {
@@ -624,7 +627,7 @@ export async function performRequest(
         credentials: "include",
         cache: "no-store",
         headers: requestHeaders,
-        body: hasJsonBody
+        body: shouldStringify
           ? JSON.stringify(finalBody)
           : finalBody,
         signal: timeoutCtrl.signal,
