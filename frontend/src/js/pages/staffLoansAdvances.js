@@ -75,7 +75,7 @@ const DEV_FIXTURE = {
       tenureMonths: 12,
       status: "ACTIVE",
       requestedAt: "2026-06-15T10:00:00.000Z",
-      requestReason: "Relocation & rental deposit support for Koramangala outlet transfer.",
+      requestReason: "Staff relocation support.",
       deductionReference: "DED-LN-2026-0001",
     },
     {
@@ -144,7 +144,7 @@ function renderHeader() {
           <span>My Loans &amp; Salary Advances</span>
         </div>
         <div style="font-size:13px; color:var(--text-muted); margin-top:2px;">
-          Dawn Roast — Koramangala · Employee Financial Self-Service &amp; Payroll Recoveries
+          Main Outlet · Employee Financial Self-Service &amp; Payroll Recoveries
         </div>
       </div>
 

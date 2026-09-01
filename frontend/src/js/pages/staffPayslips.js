@@ -167,7 +167,7 @@ const DEV_PAYSLIP_FIXTURES = [
     payrollRunId: "PR-2026-07",
     cafeId: "ZC-0001",
     employeeUserId: "ST-0042",
-    employeeName: "Rahul Sharma",
+    employeeName: "Staff Member",
     jobTitle: "Senior Head Barista & Shift Lead",
     department: "Food & Beverage",
     runType: "REGULAR",
@@ -233,7 +233,7 @@ const DEV_PAYSLIP_FIXTURES = [
     payrollRunId: "PR-2026-07-OFF",
     cafeId: "ZC-0001",
     employeeUserId: "ST-0042",
-    employeeName: "Rahul Sharma",
+    employeeName: "Staff Member",
     jobTitle: "Senior Head Barista & Shift Lead",
     department: "Food & Beverage",
     runType: "OFF_CYCLE",
@@ -299,7 +299,7 @@ const DEV_PAYSLIP_FIXTURES = [
     payrollRunId: "PR-2026-06",
     cafeId: "ZC-0001",
     employeeUserId: "ST-0042",
-    employeeName: "Rahul Sharma",
+    employeeName: "Staff Member",
     jobTitle: "Senior Head Barista & Shift Lead",
     department: "Food & Beverage",
     runType: "REGULAR",
@@ -365,7 +365,7 @@ const DEV_PAYSLIP_FIXTURES = [
     payrollRunId: "PR-2026-05",
     cafeId: "ZC-0001",
     employeeUserId: "ST-0042",
-    employeeName: "Rahul Sharma",
+    employeeName: "Staff Member",
     jobTitle: "Senior Head Barista & Shift Lead",
     department: "Food & Beverage",
     runType: "REGULAR",
@@ -897,7 +897,7 @@ function renderFormVTab(payslips) {
         <div class="glass" style="padding:14px;">
           <div style="color:#38bdf8;font-size:11px;font-weight:700;text-transform:uppercase;margin-bottom:8px;">Establishment & Workman</div>
           ${detailRow("Establishment", "Zamorin Speciality Coffee & Kitchens Pvt Ltd")}
-          ${detailRow("Outlet / Branch", "Koramangala 5th Block (ZC-0001)")}
+          ${detailRow("Outlet / Branch", "Main Outlet (ZC-0001)")}
           ${detailRow("Workman Name", p.employeeName, { strong: true })}
           ${detailRow("Employee ID / Token", p.employeeUserId)}
           ${detailRow("Designation", p.jobTitle || "Barista")}
@@ -1257,7 +1257,7 @@ function renderPrintablePayslip(payslip) {
   <div class="header">
     <div class="company">Zamorin Speciality Coffee & Kitchens Pvt. Ltd.</div>
     <div class="title">Salary Slip for the Month of ${escapeHtml(formatPeriod(payslip.periodKey))}</div>
-    <div style="font-size: 11px; color: #64748b; margin-top: 2px;">Regd. Office: 12th Main, Koramangala, Bengaluru · CIN: U55101KA2024PTC189201</div>
+    <div style="font-size: 11px; color: #64748b; margin-top: 2px;">Regd. Office: Calicut, Kerala · CIN: U55101KA2024PTC189201</div>
   </div>
 
   <table>

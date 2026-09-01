@@ -40,8 +40,8 @@ export function setVendorsActiveTab(tab) {
 const SAMPLE_VENDORS = [
   {
     vendorId: "VEN-0001",
-    name: "Blue Tokai Speciality Coffee Roasters",
-    tradeName: "Blue Tokai",
+    name: "Specialty Coffee Roasters Ltd",
+    tradeName: "Specialty Roastery",
     category: "FOOD_BEVERAGE",
     supplierType: "GOODS",
     phone: "+91 98450 11990",
@@ -54,18 +54,18 @@ const SAMPLE_VENDORS = [
     status: "ACTIVE",
     reliabilityRating: 4.8,
     bankDetails: {
-      accountHolderName: "Blue Tokai Coffee Pvt Ltd",
+      accountHolderName: "Specialty Roastery Pvt Ltd",
       bankName: "HDFC Bank",
       accountNumberMasked: "XXXXXXXXXX5678",
       ifscCode: "HDFC0000123",
-      branchName: "Indiranagar, Bangalore",
+      branchName: "Central Branch",
     },
     itemCatalogue: [
       { itemId: "ITEM-COFFEE-01", supplierItemCode: "BT-MALABAR-DARK", itemName: "Monsooned Malabar Beans", uom: "kg", packSize: "1 KG BAG", currentPricePaisa: 120000, sourcePriority: "PREFERRED", status: "ACTIVE" },
       { itemId: "ITEM-COFFEE-02", supplierItemCode: "BT-ATTICHO-LIGHT", itemName: "Attikan Estate Single Origin", uom: "kg", packSize: "1 KG BAG", currentPricePaisa: 145000, sourcePriority: "PREFERRED", status: "ACTIVE" },
     ],
     sites: [
-      { siteId: "SITE-BLR-01", siteName: "Bangalore Roastery & Hub", address: "100ft Road, Indiranagar, Bangalore", isPrimary: true },
+      { siteId: "SITE-BLR-01", siteName: "Bangalore Roastery & Hub", address: "Central Roastery Hub", isPrimary: true },
     ],
     contactPersons: [
       { name: "Ashok Menon", department: "SALES", designation: "Head of Institutional Accounts", phone: "+91 98450 11990", email: "ashok@bluetokai.com", isPrimary: true },
@@ -99,12 +99,12 @@ const SAMPLE_VENDORS = [
       bankName: "Canara Bank",
       accountNumberMasked: "XXXXXXXXXX4411",
       ifscCode: "CNRB0000456",
-      branchName: "Koramangala, Bangalore",
+      branchName: "Main Branch",
     },
     itemCatalogue: [
       { itemId: "ITEM-MILK-01", supplierItemCode: "KMF-PAST-FULL-500", itemName: "Standard Full Cream Milk", uom: "litre", packSize: "500 ML POUCH", currentPricePaisa: 5200, sourcePriority: "PRIMARY", status: "ACTIVE" },
     ],
-    sites: [{ siteId: "SITE-KOR-01", siteName: "Koramangala Depot", address: "80ft Road, Koramangala", isPrimary: true }],
+    sites: [{ siteId: "SITE-KOR-01", siteName: "Main Depot", address: "Main Depot", isPrimary: true }],
     contactPersons: [{ name: "Govind Gowda", department: "LOGISTICS", designation: "Depot Manager", phone: "+91 98450 22880", email: "govind@kmf.coop", isPrimary: true }],
     qualifications: [{ dimension: "FSSAI_COMPLIANCE", status: "VERIFIED", verifiedAt: "2026-01-05" }],
     holds: [],
@@ -137,7 +137,7 @@ const SAMPLE_VENDORS = [
       { itemId: "ITEM-CUP-12OZ", supplierItemCode: "ECO-CUP-PLA-12", itemName: "12oz Compostable Coffee Cups", uom: "pcs", packSize: "500 PCS CTN", currentPricePaisa: 460, sourcePriority: "PRIMARY", status: "ACTIVE" },
     ],
     sites: [{ siteId: "SITE-PEENYA-01", siteName: "Peenya Plant", address: "Peenya 2nd Stage, Bangalore", isPrimary: true }],
-    contactPersons: [{ name: "Sneha Reddy", department: "SALES", designation: "Regional Sales Manager", phone: "+91 98450 33770", email: "sneha@ecopackindia.com", isPrimary: true }],
+    contactPersons: [{ name: "Sales Manager", department: "SALES", designation: "Regional Sales Manager", phone: "+91 98450 33770", email: "sneha@ecopackindia.com", isPrimary: true }],
     qualifications: [{ dimension: "QUALITY_AUDIT", status: "VERIFIED", verifiedAt: "2026-03-01", notes: "ISO 14001 certified" }],
     holds: [],
     performanceMetrics: { otifPercent: 94.5, onTimeDeliveryPercent: 95.0, fullDeliveryPercent: 99.0, rejectionRatePercent: 1.1, averageLeadTimeDays: 3.2 },
@@ -168,7 +168,7 @@ const SAMPLE_VENDORS = [
       { itemId: "ITEM-SVC-ESPRESSO", supplierItemCode: "LM-SVC-PM-01", itemName: "Espresso Machine Quarterly Calibration", uom: "service", packSize: "1 VISIT", currentPricePaisa: 500000, sourcePriority: "EXCLUSIVE", status: "ACTIVE" },
     ],
     sites: [{ siteId: "SITE-BLR-HQ", siteName: "India HQ Service Centre", address: "Residency Road, Bangalore", isPrimary: true }],
-    contactPersons: [{ name: "Vikram Mehta", department: "SUPPORT", designation: "Master Technician", phone: "+91 98450 44660", email: "vikram@lamarzocco.in", isPrimary: true }],
+    contactPersons: [{ name: "Technical Lead", department: "SUPPORT", designation: "Master Technician", phone: "+91 98450 44660", email: "vikram@lamarzocco.in", isPrimary: true }],
     qualifications: [{ dimension: "TECHNICAL_CAPABILITY", status: "VERIFIED", verifiedAt: "2026-01-15", notes: "OEM Authorized Sole Service Provider" }],
     holds: [],
     performanceMetrics: { otifPercent: 99.0, onTimeDeliveryPercent: 100.0, fullDeliveryPercent: 100.0, rejectionRatePercent: 0.0, averageLeadTimeDays: 1.0 },
@@ -180,7 +180,7 @@ const SAMPLE_ORDERS = [
     purchaseOrderId: "PO-2026-0819",
     cafeId: "ZC-0001",
     vendorId: "VEN-0001",
-    vendorNameSnapshot: "Blue Tokai Speciality Coffee Roasters",
+    vendorNameSnapshot: "Specialty Coffee Roasters Ltd",
     status: "RECEIVED_PENDING_FINAL_POSTING",
     orderDate: "2026-08-18",
     orderPlacedAt: "2026-08-18T10:30:00.000Z",
@@ -881,7 +881,7 @@ function renderContinuityRiskTab(vendors) {
           </div>
           <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">Category: Food &amp; Beverage • Critical Core Menu SKU</div>
           <div style="font-size:12px;background:var(--bg);padding:10px;border-radius:6px;">
-            <div>Primary: <strong>Blue Tokai Roasters</strong> (₹1,200/kg)</div>
+            <div>Primary: <strong>Specialty Roastery</strong> (₹1,200/kg)</div>
             <div style="color:#b45309;margin-top:4px;">⚠ Alternate supplier qualification recommended.</div>
           </div>
         </div>
@@ -1566,7 +1566,7 @@ export function wireVendors(container, subroute) {
         <form id="vnd-onboard-form" style="display:flex;flex-direction:column;gap:14px;">
           <div>
             <label class="form-label">Legal Company Name *</label>
-            <input type="text" id="new-vnd-name" class="form-control" placeholder="e.g. Blue Tokai Roasters Pvt Ltd" required />
+            <input type="text" id="new-vnd-name" class="form-control" placeholder="e.g. Registered Vendor Name" required />
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
             <div>

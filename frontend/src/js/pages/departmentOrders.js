@@ -319,7 +319,7 @@ function renderOverviewTab(orders, totalOutstanding, totalSettled, upcomingCount
         <div style="display:flex;flex-direction:column;gap:10px;">
           <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px;background:var(--surface-sunken, rgba(0,0,0,0.02));border-radius:8px;border:1px solid var(--line);flex-wrap:wrap;gap:8px;">
             <div>
-              <div style="font-weight:700;font-size:13.5px;color:var(--ink);">University of Calicut</div>
+              <div style="font-weight:700;font-size:13.5px;color:var(--ink);">Corporate Client</div>
               <div style="font-size:11.5px;color:var(--muted);margin-top:2px;">Academic Affairs • Net 30 Term</div>
             </div>
             <div style="text-align:right;">
@@ -657,7 +657,7 @@ function renderScheduleTab(orders) {
               <span style="font-weight:700;color:var(--bronze-600);font-family:var(--font-mono);font-size:13px;">DO-2026-0001</span>
               <span class="badge-tag badge-neutral" style="font-size:11px;font-weight:600;">⏰ 10:00 - 10:30 AM</span>
             </div>
-            <div style="font-weight:700;font-size:13.5px;color:var(--ink);margin-bottom:2px;">University of Calicut (Dean Office)</div>
+            <div style="font-weight:700;font-size:13.5px;color:var(--ink);margin-bottom:2px;">Corporate Client (Dean Office)</div>
             <div style="font-size:12px;color:var(--muted);margin-bottom:8px;">20 Guests • Pour-Over Specialty Coffee, Croissants</div>
             <div style="font-size:11.5px;color:var(--bronze-700);font-weight:600;display:flex;align-items:center;gap:5px;">
               <span>📍</span> Delivery: Senate Hall, Floor 2
@@ -848,7 +848,7 @@ function openNewOrderWizard(root) {
       <form id="new-dept-order-form" class="form-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;">
         <div class="field" style="grid-column:1/-1;">
           <label class="label" style="font-weight:600;font-size:12.5px;">Institution Name *</label>
-          <input type="text" id="dept-institution" class="input" placeholder="e.g. University of Calicut" required />
+          <input type="text" id="dept-institution" class="input" placeholder="e.g. Corporate Client" required />
         </div>
         <div class="field">
           <label class="label" style="font-weight:600;font-size:12.5px;">Department / Cost Centre *</label>
@@ -865,8 +865,8 @@ function openNewOrderWizard(root) {
         <div class="field">
           <label class="label" style="font-weight:600;font-size:12.5px;">Café Location *</label>
           <select id="dept-cafe" class="select" required>
-            <option value="ZC-0001">ZC-0001 · Koramangala Main</option>
-            <option value="ZC-0002">ZC-0002 · Indiranagar Central</option>
+            <option value="ZC-0001">ZC-0001 · Main Outlet</option>
+            <option value="ZC-0002">ZC-0002 · Branch Outlet</option>
             <option value="ZC-0003">ZC-0003 · Calicut Beach</option>
           </select>
         </div>
@@ -1054,8 +1054,8 @@ function openConvertQuoteModal(quoteId, root) {
         <div class="field">
           <label class="label" style="font-weight:600;font-size:12.5px;">Café Location *</label>
           <select id="convert-cafe" class="select" required>
-            <option value="ZC-0001">ZC-0001 · Koramangala Main</option>
-            <option value="ZC-0002">ZC-0002 · Indiranagar Central</option>
+            <option value="ZC-0001">ZC-0001 · Main Outlet</option>
+            <option value="ZC-0002">ZC-0002 · Branch Outlet</option>
             <option value="ZC-0003">ZC-0003 · Calicut Beach</option>
           </select>
         </div>

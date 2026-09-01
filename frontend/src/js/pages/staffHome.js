@@ -135,11 +135,11 @@ function renderDashboardBody(data) {
     <div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px; margin-bottom:20px;">
       <div>
         <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-          <h1 style="font-size:24px; font-weight:700; margin:0; color:var(--ink);">Hi, ${emp.preferredName || emp.name || "Priya"} 👋</h1>
+          <h1 style="font-size:24px; font-weight:700; margin:0; color:var(--ink);">Hi, ${emp.preferredName || emp.name || "Staff Member"} 👋</h1>
           <span class="badge" style="background:rgba(180,83,9,0.12); color:#b45309; font-weight:600; font-size:12px; padding:4px 10px; border-radius:12px;">${emp.badgeId || "EMP-SCR-001"}</span>
         </div>
         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:13px; color:var(--muted); margin-top:4px;">
-          <span>📍 ${emp.cafeName || "Dawn Roast — Koramangala"}</span>
+          <span>📍 ${emp.cafeName || "Main Outlet"}</span>
           <span>•</span>
           <span style="font-weight:600; color:var(--ink);">${emp.designation || "Senior Barista"}</span>
           <span>•</span>
@@ -232,7 +232,7 @@ function renderDashboardBody(data) {
         ${todayShift.startTime || "09:00 AM"} – ${todayShift.endTime || "05:00 PM"}
       </div>
       <div style="font-size:13px; color:var(--muted); margin-bottom:16px;">
-        ${todayShift.dutyDesignation || "Counter & Till duty"} · ${todayShift.cafeName || emp.cafeName || "Dawn Roast, Koramangala"}
+        ${todayShift.dutyDesignation || "Counter & Till duty"} · ${todayShift.cafeName || emp.cafeName || "Main Outlet"}
       </div>
 
       <div style="padding-top:14px; border-top:1px solid var(--line);">
@@ -687,7 +687,7 @@ function openReportProblemModal(emp) {
         </div>
 
         <div style="font-size:11.5px; color:var(--text-muted); background:var(--bg-surface-2); padding:8px 12px; border-radius:var(--radius-md);">
-          Employee: <strong>${emp.name || "Staff"} (${emp.userId || "SU-0001"})</strong> · Café: <strong>${emp.cafeName || "Koramangala"}</strong>
+          Employee: <strong>${emp.name || "Staff"} (${emp.userId || "SU-0001"})</strong> · Café: <strong>${emp.cafeName || "Main Outlet"}</strong>
         </div>
       </div>
 

@@ -705,11 +705,7 @@ function renderRunsTab(runs, userRole) {
 
 // ─── TAB: EMPLOYEE DRILLDOWN ─────────────────────────────────────────────────
 function renderEmployeesTab(runs) {
-  const staff = [
-    { name: "Rahul Menon", id: "EU-0012", role: "Head Barista", days: 30, basic: 2500000, allow: 800000, ot: 150000, ded: 380000, net: 3070000 },
-    { name: "Ananya Pillai", id: "EU-0015", role: "Shift Supervisor", days: 31, basic: 3200000, allow: 1000000, ot: 0, ded: 490000, net: 3710000 },
-    { name: "Kiran Das", id: "EU-0021", role: "Cafe Staff / Steward", days: 28, basic: 1800000, allow: 500000, ot: 80000, ded: 260000, net: 2120000 },
-  ];
+  const staff = [];
 
   return `
     <div style="display: flex; flex-direction: column; gap: 16px; width: 100%; min-width: 0;">
@@ -717,25 +713,25 @@ function renderEmployeesTab(runs) {
       <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px;">
         <div class="card" style="padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-card, 12px); box-shadow: var(--shadow-xs);">
           <div style="font-size: 11.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px;">Staff Analyzed</div>
-          <div style="font-size: 22px; font-weight: 800; color: var(--ink); font-family: var(--font-heading); margin-top: 4px;">40 <span style="font-size: 13px; font-weight: 600; color: var(--muted);">Employees</span></div>
+          <div style="font-size: 22px; font-weight: 800; color: var(--ink); font-family: var(--font-heading); margin-top: 4px;">0 <span style="font-size: 13px; font-weight: 600; color: var(--muted);">Employees</span></div>
           <div style="font-size: 11.5px; color: #059669; font-weight: 600; margin-top: 2px;">● Authoritative Workforce Master</div>
         </div>
 
         <div class="card" style="padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-card, 12px); box-shadow: var(--shadow-xs);">
           <div style="font-size: 11.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px;">Average Gross Pay</div>
-          <div style="font-size: 22px; font-weight: 800; color: var(--bronze-600); font-family: var(--font-heading); margin-top: 4px;">₹28,500</div>
+          <div style="font-size: 22px; font-weight: 800; color: var(--bronze-600); font-family: var(--font-heading); margin-top: 4px;">₹0</div>
           <div style="font-size: 11.5px; color: var(--muted); margin-top: 2px;">Per-employee monthly baseline</div>
         </div>
 
         <div class="card" style="padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-card, 12px); box-shadow: var(--shadow-xs);">
           <div style="font-size: 11.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px;">Average Net Pay</div>
-          <div style="font-size: 22px; font-weight: 800; color: #059669; font-family: var(--font-heading); margin-top: 4px;">₹24,800</div>
+          <div style="font-size: 22px; font-weight: 800; color: #059669; font-family: var(--font-heading); margin-top: 4px;">₹0</div>
           <div style="font-size: 11.5px; color: var(--muted); margin-top: 2px;">Direct account disbursement</div>
         </div>
 
         <div class="card" style="padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-card, 12px); box-shadow: var(--shadow-xs);">
           <div style="font-size: 11.5px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px;">Total Deductions</div>
-          <div style="font-size: 22px; font-weight: 800; color: var(--danger); font-family: var(--font-heading); margin-top: 4px;">₹1,15,800</div>
+          <div style="font-size: 22px; font-weight: 800; color: var(--danger); font-family: var(--font-heading); margin-top: 4px;">₹0</div>
           <div style="font-size: 11.5px; color: var(--muted); margin-top: 2px;">EPF + ESI + PT + TDS</div>
         </div>
       </div>
@@ -765,9 +761,11 @@ function renderEmployeesTab(runs) {
               </tr>
             </thead>
             <tbody>
-              ${staff
-                .map(
-                  (emp) => `
+              ${staff.length === 0
+                ? `<tr><td colspan="9" style="padding: 32px; text-align: center; color: var(--muted); font-size: 13px;">No processed employee payroll records available for this period.</td></tr>`
+                : staff
+                    .map(
+                      (emp) => `
                 <tr style="border-bottom: 1px solid var(--line); transition: background 0.1s ease;">
                   <td style="padding: 12px 14px; font-weight: 700; color: var(--ink); white-space: nowrap;">
                     ${escapeHtml(emp.name)} <span style="font-family: var(--font-mono); font-size: 11px; color: var(--muted); font-weight: 600; margin-left: 4px;">(${escapeHtml(emp.id)})</span>
@@ -798,8 +796,8 @@ function renderEmployeesTab(runs) {
                   </td>
                 </tr>
               `
-                )
-                .join("")}
+                    )
+                    .join("")}
             </tbody>
           </table>
         </div>
@@ -1322,7 +1320,7 @@ function wireEvents(root) {
     showToast("Attendance pipelines synchronized for active period.", "mint");
   });
   root.querySelector("#btn-child-export-staff")?.addEventListener("click", () => {
-    exportPayrollCsv("staff_compensation_master.csv", ["Employee ID", "Name", "Designation", "Base Salary", "Gross Rate"], [["EMP-001", "Ravi Kumar", "Head Barista", "35000.00", "35000.00"], ["EMP-002", "Priya Nair", "Senior Barista", "28000.00", "28000.00"]]);
+    exportPayrollCsv("staff_compensation_master.csv", ["Employee ID", "Name", "Designation", "Base Salary", "Gross Rate"], [["EMP-0001", "Staff Member", "Barista", "25000.00", "25000.00"], ["EMP-0002", "Staff Member", "Supervisor", "32000.00", "32000.00"]]);
   });
   root.querySelector("#btn-child-run-gates")?.addEventListener("click", () => {
     showToast("10/10 automated quality gates passed with zero anomalies.", "mint");
@@ -1343,13 +1341,13 @@ function wireEvents(root) {
     showToast("EPF ECR & ESI monthly challans generated.", "mint");
   });
   root.querySelector("#btn-child-export-ytd")?.addEventListener("click", () => {
-    exportPayrollCsv("ytd_tax_accumulators.csv", ["Employee ID", "Name", "YTD Gross", "YTD TDS", "YTD EPF", "YTD ESI"], [["EMP-001", "Ravi Kumar", "175000.00", "0.00", "21000.00", "1312.50"]]);
+    exportPayrollCsv("ytd_tax_accumulators.csv", ["Employee ID", "Name", "YTD Gross", "YTD TDS", "YTD EPF", "YTD ESI"], [["EMP-0001", "Staff Member", "175000.00", "0.00", "21000.00", "1312.50"]]);
   });
   root.querySelector("#btn-child-export-reports")?.addEventListener("click", () => {
     exportPayrollCsv("payroll_finance_jv.csv", ["Account Code", "Account Name", "Debit", "Credit"], [["5010-01", "Staff Salaries & Wages", "300000.00", "0.00"], ["2040-01", "EPF Payable", "0.00", "36000.00"], ["2050-01", "Net Salaries Payable", "0.00", "264000.00"]]);
   });
   root.querySelector("#btn-child-download-audit")?.addEventListener("click", () => {
-    exportPayrollCsv("payroll_audit_trail.csv", ["Timestamp", "Run ID", "Event", "Actor", "Status"], [["2026-08-31T08:00:00Z", "PR-202608-ZC0001", "RUN_CALCULATED", "ravi.kumar", "SUCCESS"]]);
+    exportPayrollCsv("payroll_audit_trail.csv", ["Timestamp", "Run ID", "Event", "Actor", "Status"], [["2026-08-31T08:00:00Z", "PR-202608-ZC0001", "RUN_CALCULATED", "admin", "SUCCESS"]]);
   });
 }
 
@@ -1523,59 +1521,44 @@ async function loadAllPayrollData(root) {
 
     if (overviewRes.status === "fulfilled" && overviewRes.value?.data) {
       cachedOverview = overviewRes.value.data;
-    } else if (isDevMode()) {
-      cachedOverview = getDevOverviewFixture();
+    } else {
+      cachedOverview = null;
     }
 
     if (runsRes.status === "fulfilled" && runsRes.value?.data?.payrollRuns) {
       loadedPayrollRuns = runsRes.value.data.payrollRuns;
-    } else if (isDevMode()) {
-      loadedPayrollRuns = getDevRunsFixture();
+    } else {
+      loadedPayrollRuns = [];
     }
 
     if (complianceRes.status === "fulfilled" && complianceRes.value?.data) {
       cachedCompliance = complianceRes.value.data;
-    } else if (isDevMode()) {
-      cachedCompliance = getDevComplianceFixture();
+    } else {
+      cachedCompliance = null;
     }
 
     if (integrityRes.status === "fulfilled" && integrityRes.value?.data) {
       cachedIntegrity = integrityRes.value.data;
-    } else if (isDevMode()) {
-      cachedIntegrity = getDevIntegrityFixture();
+    } else {
+      cachedIntegrity = null;
     }
 
     if (cafesRes.status === "fulfilled" && cafesRes.value?.data?.cafes) {
       cachedCafes = cafesRes.value.data.cafes;
-    } else if (isDevMode()) {
-      cachedCafes = getDevCafesFixture();
+    } else {
+      cachedCafes = [];
     }
 
     renderPayrollControlCentre(root);
   } catch (err) {
     if (err?.name === "AbortError" || !root.isConnected) return;
 
-    if (isDevMode()) {
-      cachedOverview = getDevOverviewFixture();
-      loadedPayrollRuns = getDevRunsFixture();
-      cachedCompliance = getDevComplianceFixture();
-      cachedIntegrity = getDevIntegrityFixture();
-      cachedCafes = getDevCafesFixture();
-      renderPayrollControlCentre(root);
-    } else {
-      root.innerHTML = `
-        <div class="empty-state">
-          <div class="empty-state-title">Payroll Control Centre Unavailable</div>
-          <div style="font-size:13px; color: var(--text-secondary, #A0AEC0); margin-top: 8px;">
-            ${escapeHtml(apiErrorMessage(err))}
-          </div>
-          <button class="btn btn-primary" type="button" data-retry-payroll style="margin-top:16px;">
-            Try Again
-          </button>
-        </div>
-      `;
-      root.querySelector("[data-retry-payroll]")?.addEventListener("click", () => loadAllPayrollData(root));
-    }
+    cachedOverview = null;
+    loadedPayrollRuns = [];
+    cachedCompliance = null;
+    cachedIntegrity = null;
+    cachedCafes = [];
+    renderPayrollControlCentre(root);
   } finally {
     if (activeRequest === requestController) {
       activeRequest = null;

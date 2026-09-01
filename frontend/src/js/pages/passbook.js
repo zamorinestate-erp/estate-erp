@@ -11,116 +11,17 @@ import { showToast, setButtonBusy, openModal } from "../components.js";
 // ─── Default Sample Data ─────────────────────────────────────────────────────
 const DEFAULT_PASSBOOK_DATA = {
   kpis: {
-    totalTreasuryBalancePaisa: 284500000,
-    totalBankBalancePaisa: 254500000,
-    totalVaultCashPaisa: 30000000,
-    reservedFundsPaisa: 50000000,
-    freeLiquidityPaisa: 234500000,
+    totalTreasuryBalancePaisa: 0,
+    totalBankBalancePaisa: 0,
+    totalVaultCashPaisa: 0,
+    reservedFundsPaisa: 0,
+    freeLiquidityPaisa: 0,
     unreconciledCount: 0,
-    activeAccountsCount: 6,
+    activeAccountsCount: 0,
   },
-  accounts: [
-    {
-      accountId: "ACC-HDFC-01",
-      accountName: "HDFC Bank — Main Treasury Current Account",
-      accountType: "BANK_OPERATING",
-      maskedAccountNumber: "••••4821",
-      institutionName: "HDFC Bank Ltd.",
-      bookBalancePaisa: 185000000,
-      verifiedStatementBalancePaisa: 185000000,
-      reservedPaisa: 35000000,
-      freeBalancePaisa: 150000000,
-      scopeType: "ORGANISATION_GLOBAL",
-      lastReconciledDate: "2026-08-25",
-      status: "ACTIVE",
-    },
-    {
-      accountId: "ACC-ICICI-02",
-      accountName: "ICICI Bank — Digital POS & UPI Settlement",
-      accountType: "BANK_SETTLEMENT",
-      maskedAccountNumber: "••••9102",
-      institutionName: "ICICI Bank Ltd.",
-      bookBalancePaisa: 49500000,
-      verifiedStatementBalancePaisa: 49500000,
-      reservedPaisa: 10000000,
-      freeBalancePaisa: 39500000,
-      scopeType: "ORGANISATION_GLOBAL",
-      lastReconciledDate: "2026-08-26",
-      status: "ACTIVE",
-    },
-    {
-      accountId: "ACC-SBI-03",
-      accountName: "State Bank of India — Calicut Roastery Current Account",
-      accountType: "BANK_OPERATING",
-      maskedAccountNumber: "••••3390",
-      institutionName: "State Bank of India",
-      bookBalancePaisa: 20000000,
-      verifiedStatementBalancePaisa: 20000000,
-      reservedPaisa: 5000000,
-      freeBalancePaisa: 15000000,
-      scopeType: "CAFE_SPECIFIC",
-      cafeId: "CAFE-001",
-      lastReconciledDate: "2026-08-24",
-      status: "ACTIVE",
-    },
-    {
-      accountId: "ACC-VAULT-01",
-      accountName: "Central Head Office Vault Cash",
-      accountType: "CASH_IN_HAND",
-      maskedAccountNumber: "VAULT-HQ",
-      institutionName: "Central Treasury Vault",
-      bookBalancePaisa: 18000000,
-      verifiedStatementBalancePaisa: 18000000,
-      reservedPaisa: 0,
-      freeBalancePaisa: 18000000,
-      scopeType: "ORGANISATION_GLOBAL",
-      lastReconciledDate: "2026-08-26",
-      status: "ACTIVE",
-    },
-    {
-      accountId: "ACC-FLOAT-KOR",
-      accountName: "Koramangala Store Petty Cash Float",
-      accountType: "CASH_IN_HAND",
-      maskedAccountNumber: "FLOAT-KOR",
-      institutionName: "Store Petty Cash",
-      bookBalancePaisa: 6000000,
-      verifiedStatementBalancePaisa: 6000000,
-      reservedPaisa: 0,
-      freeBalancePaisa: 6000000,
-      scopeType: "CAFE_SPECIFIC",
-      cafeId: "CAFE-002",
-      lastReconciledDate: "2026-08-26",
-      status: "ACTIVE",
-    },
-    {
-      accountId: "ACC-FLOAT-IND",
-      accountName: "Indiranagar Store Petty Cash Float",
-      accountType: "CASH_IN_HAND",
-      maskedAccountNumber: "FLOAT-IND",
-      institutionName: "Store Petty Cash",
-      bookBalancePaisa: 6000000,
-      verifiedStatementBalancePaisa: 6000000,
-      reservedPaisa: 0,
-      freeBalancePaisa: 6000000,
-      scopeType: "CAFE_SPECIFIC",
-      cafeId: "CAFE-003",
-      lastReconciledDate: "2026-08-26",
-      status: "ACTIVE",
-    },
-  ],
-  cafes: [
-    { cafeId: "CAFE-001", cafeName: "Calicut Flagship Roastery", accountCount: 2, bookBalancePaisa: 98000000, reservedPaisa: 15000000, freeBalancePaisa: 83000000, reconciliationStatus: "RECONCILED" },
-    { cafeId: "CAFE-002", cafeName: "Koramangala 4th Block", accountCount: 2, bookBalancePaisa: 112500000, reservedPaisa: 20000000, freeBalancePaisa: 92500000, reconciliationStatus: "RECONCILED" },
-    { cafeId: "CAFE-003", cafeName: "Indiranagar 100ft Road", accountCount: 2, bookBalancePaisa: 74000000, reservedPaisa: 15000000, freeBalancePaisa: 59000000, reconciliationStatus: "RECONCILED" },
-  ],
-  recentActivity: [
-    { transactionId: "PBK-202608-0001", postingDate: "2026-08-26", narration: "Consolidated POS PineLabs Card Payout — Day Close", type: "EXTERNAL_INCOME", direction: "CREDIT", amountPaisa: 18500000, runningBalancePaisa: 284500000, externalReference: "UTR-PINELABS-99120", accountName: "ICICI POS Settlement" },
-    { transactionId: "PBK-202608-0002", postingDate: "2026-08-25", narration: "Estate Organic Green Coffee Batch #489 Sourcing", type: "EXTERNAL_EXPENSE", direction: "DEBIT", amountPaisa: 12500000, runningBalancePaisa: 266000000, externalReference: "NEFT-HDFC-88129", accountName: "HDFC Main Treasury" },
-    { transactionId: "PBK-202608-0003", postingDate: "2026-08-24", narration: "Inter-Account Sweep: ICICI POS Settlement -> HDFC Treasury", type: "INTERNAL_TRANSFER", direction: "CREDIT", amountPaisa: 40000000, runningBalancePaisa: 278500000, externalReference: "TRF-SWEEP-20260824", accountName: "HDFC Main Treasury" },
-    { transactionId: "PBK-202608-0004", postingDate: "2026-08-23", narration: "Weekly Store Float Replenishment — Koramangala & Indiranagar", type: "INTERNAL_TRANSFER", direction: "DEBIT", amountPaisa: 12000000, runningBalancePaisa: 238500000, externalReference: "CHQ-009124", accountName: "HDFC Main Treasury" },
-    { transactionId: "PBK-202608-0005", postingDate: "2026-08-22", narration: "Swiggy & Zomato Aggregator Direct Bank Settlement", type: "EXTERNAL_INCOME", direction: "CREDIT", amountPaisa: 29500000, runningBalancePaisa: 250500000, externalReference: "UTR-SWIGGY-88129", accountName: "ICICI POS Settlement" },
-    { transactionId: "PBK-202608-0006", postingDate: "2026-08-21", narration: "Commercial Roaster Scheduled Annual Service & Parts", type: "EXTERNAL_EXPENSE", direction: "DEBIT", amountPaisa: 8500000, runningBalancePaisa: 221000000, externalReference: "RTGS-MARZOCCO-019", accountName: "HDFC Main Treasury" },
-  ],
+  accounts: [],
+  cafes: [],
+  recentActivity: [],
 };
 
 let passbookData = null;
@@ -838,7 +739,7 @@ function renderCafeMapping() {
               <td style="padding:10px 8px; text-align:right;"><button class="btn btn-xs btn-secondary">Edit</button></td>
             </tr>
             <tr style="border-bottom:1px solid var(--border);">
-              <td style="padding:10px 8px; font-weight:600;">Koramangala 4th Block</td>
+              <td style="padding:10px 8px; font-weight:600;">Main Outlet</td>
               <td style="padding:10px 8px;"><span class="badge badge-neutral">PhonePe UPI QR</span></td>
               <td style="padding:10px 8px;">HDFC Main Treasury (••••4821)</td>
               <td style="padding:10px 8px;">Real-Time Instant</td>
@@ -846,7 +747,7 @@ function renderCafeMapping() {
               <td style="padding:10px 8px; text-align:right;"><button class="btn btn-xs btn-secondary">Edit</button></td>
             </tr>
             <tr style="border-bottom:1px solid var(--border);">
-              <td style="padding:10px 8px; font-weight:600;">Indiranagar 100ft</td>
+              <td style="padding:10px 8px; font-weight:600;">Branch Outlet</td>
               <td style="padding:10px 8px;"><span class="badge badge-neutral">Swiggy Online</span></td>
               <td style="padding:10px 8px;">ICICI POS Settlement (••••9102)</td>
               <td style="padding:10px 8px;">T+3 Weekly Batch</td>
@@ -1045,12 +946,12 @@ function renderPettyCash() {
           <div style="font-size:12px; color:var(--muted); margin-top:4px;">90% Float Available · Normal</div>
         </div>
         <div class="card" style="padding:16px; border-left:4px solid #10b981;">
-          <h4 style="margin:0 0 6px; font-size:14px; font-weight:700;">Koramangala 4th Block Float</h4>
+          <h4 style="margin:0 0 6px; font-size:14px; font-weight:700;">Main Outlet Float</h4>
           <div style="font-size:20px; font-weight:800; color:#059669; font-family:var(--font-mono);">₹16,500.00 / ₹20,000</div>
           <div style="font-size:12px; color:var(--muted); margin-top:4px;">82% Float Available · Normal</div>
         </div>
         <div class="card" style="padding:16px; border-left:4px solid #10b981;">
-          <h4 style="margin:0 0 6px; font-size:14px; font-weight:700;">Indiranagar 100ft Float</h4>
+          <h4 style="margin:0 0 6px; font-size:14px; font-weight:700;">Branch Outlet Float</h4>
           <div style="font-size:20px; font-weight:800; color:#059669; font-family:var(--font-mono);">₹17,200.00 / ₹20,000</div>
           <div style="font-size:12px; color:var(--muted); margin-top:4px;">86% Float Available · Normal</div>
         </div>
@@ -1266,14 +1167,14 @@ function renderCafeComparison() {
               <td style="padding:10px 8px; text-align:right; font-weight:700; color:#059669;">99.4 / 100</td>
             </tr>
             <tr style="border-bottom:1px solid var(--border);">
-              <td style="padding:10px 8px; font-weight:600;">Koramangala 4th Block</td>
+              <td style="padding:10px 8px; font-weight:600;">Main Outlet</td>
               <td style="padding:10px 8px; text-align:right; font-weight:700;">₹1,12,50,000.00</td>
               <td style="padding:10px 8px; text-align:right;">82%</td>
               <td style="padding:10px 8px; text-align:center;"><span class="badge badge-success">Same-Day T+0</span></td>
               <td style="padding:10px 8px; text-align:right; font-weight:700; color:#059669;">98.8 / 100</td>
             </tr>
             <tr style="border-bottom:1px solid var(--border);">
-              <td style="padding:10px 8px; font-weight:600;">Indiranagar 100ft</td>
+              <td style="padding:10px 8px; font-weight:600;">Branch Outlet</td>
               <td style="padding:10px 8px; text-align:right; font-weight:700;">₹74,00,000.00</td>
               <td style="padding:10px 8px; text-align:right;">86%</td>
               <td style="padding:10px 8px; text-align:center;"><span class="badge badge-success">Same-Day T+0</span></td>

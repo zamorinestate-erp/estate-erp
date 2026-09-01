@@ -24,11 +24,11 @@ let pinDigits = []; // array of 0–6 digits collected from keypad
 function getDeviceContext() {
   try {
     const id = localStorage.getItem('zamorin_device_id') || 'ZC-DEV-0001';
-    const cafe = localStorage.getItem('zamorin_bound_cafe_name') || 'Koramangala Main';
+    const cafe = localStorage.getItem('zamorin_bound_cafe_name') || 'Main Outlet';
     const cafeId = localStorage.getItem('zamorin_bound_cafe_id') || 'ZC-0001';
     return { id, cafe, cafeId };
   } catch {
-    return { id: 'ZC-DEV-0001', cafe: 'Koramangala Main', cafeId: 'ZC-0001' };
+    return { id: 'ZC-DEV-0001', cafe: 'Main Outlet', cafeId: 'ZC-0001' };
   }
 }
 

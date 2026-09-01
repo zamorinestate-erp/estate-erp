@@ -186,9 +186,9 @@ export function renderTopbar({ scopeChip } = {}) {
 
   let cafeScopeHtml = '';
   if (isCafeOps) {
-    const operatorName = user.name || "Rahul K (Operations Lead)";
+    const operatorName = user.name || "Operations Lead";
     const operatorId = user.userId || "AD-0001";
-    const cafeName = user.primaryCafeName || "Koramangala Main";
+    const cafeName = user.primaryCafeName || "Main Outlet";
     const cafeId = user.primaryCafeId || "ZC-0001";
     const todayStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 
@@ -208,14 +208,14 @@ export function renderTopbar({ scopeChip } = {}) {
   } else if (isStaff) {
     cafeScopeHtml = `<div class="cafe-scope-context" style="display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius:var(--radius-md); background:var(--bg-surface-2); border:1px solid var(--border-subtle); font-size:12px; font-weight:600; color:var(--text-primary);">
         <span style="font-size:13px;">📍</span>
-        <span>${user.primaryCafeName || user.primaryCafeId || "ZC-0001"} · Koramangala</span>
+        <span>${user.primaryCafeName || user.primaryCafeId || "ZC-0001"} · Main Outlet</span>
       </div>`;
   } else {
     cafeScopeHtml = `<div class="cafe-scope-dropdown">
         <select id="global-cafe-selector" class="select-scope" aria-label="Selected Cafe Scope">
           <option value="ALL">🏠 All Cafés (Global Portfolio)</option>
-          <option value="ZC-0001">☕ ZC-0001 · Koramangala Main</option>
-          <option value="ZC-0002">☕ ZC-0002 · Indiranagar Central</option>
+          <option value="ZC-0001">☕ ZC-0001 · Main Outlet</option>
+          <option value="ZC-0002">☕ ZC-0002 · Branch Outlet</option>
           <option value="ZC-0003">☕ ZC-0003 · Calicut Beach</option>
         </select>
       </div>`;
@@ -445,7 +445,7 @@ export function wireBell(root) {
       state.selectedCafeId = newCafeId;
       if (state.user) {
         state.user.primaryCafeId = newCafeId;
-        state.user.primaryCafeName = newCafeId === "ZC-0002" ? "Indiranagar Central" : newCafeId === "ZC-0003" ? "Calicut Beach" : "Koramangala Main";
+        state.user.primaryCafeName = newCafeId === "ZC-0002" ? "Branch Outlet" : newCafeId === "ZC-0003" ? "Calicut Beach" : "Main Outlet";
       }
       showToast(`Global café scope switched to ${newCafeId === "ALL" ? "All Cafés (Portfolio)" : newCafeId}`, "info");
       // Trigger navigation refresh to update the active page data under new cafe context
@@ -1116,9 +1116,9 @@ export function setButtonBusy(btn, isBusy = true, busyText = "Processing...") {
    ------------------------------------------------------------------------- */
 export function openOperatorLockModal() {
   const user = state.auth?.user || state.user || {};
-  const operatorName = user.name || "Rahul K (Operations Lead)";
+  const operatorName = user.name || "Operations Lead";
   const operatorId = user.userId || "AD-0001";
-  const cafeName = user.primaryCafeName || "Koramangala Main";
+  const cafeName = user.primaryCafeName || "Main Outlet";
   const cafeId = user.primaryCafeId || "ZC-0001";
 
   const content = `
@@ -1179,8 +1179,8 @@ export function openOperatorLockModal() {
 
 export function openSwitchOperatorModal() {
   const user = state.auth?.user || state.user || {};
-  const currentOperatorName = user.name || "Rahul K (Operations Lead)";
-  const cafeName = user.primaryCafeName || "Koramangala Main";
+  const currentOperatorName = user.name || "Operations Lead";
+  const cafeName = user.primaryCafeName || "Main Outlet";
   const cafeId = user.primaryCafeId || "ZC-0001";
 
   const content = `
@@ -1275,10 +1275,10 @@ export function renderCafeContextStrip({
 } = {}) {
   const isCafeOps = state.role === ROLES.CAFE_ADMIN;
   const user = state.auth?.user || state.user || {};
-  const cafeName = user.primaryCafeName || "Koramangala Flagship";
+  const cafeName = user.primaryCafeName || "Main Outlet";
   const cafeId = user.primaryCafeId || "ZC-0001";
   const terminalId = user.terminalId || "TERM-01";
-  const operatorName = user.name || "Rahul K";
+  const operatorName = user.name || "Duty Operator";
   const operatorId = user.userId || "EMP-0042";
 
   if (isCafeOps) {
@@ -1330,8 +1330,8 @@ export function renderCafeContextStrip({
       <div style="display:flex; align-items:center; gap:12px;">
         <select id="ctx-cafe-selector" class="input" style="height:36px; font-size:12.5px; padding:4px 10px; min-width:220px; font-weight:600;">
           <option value="ALL" ${effectiveCafe === "ALL" ? "selected" : ""}>🌐 All Cafés (Global Portfolio)</option>
-          <option value="ZC-0001" ${effectiveCafe === "ZC-0001" ? "selected" : ""}>📍 Koramangala Flagship (ZC-0001)</option>
-          <option value="ZC-0002" ${effectiveCafe === "ZC-0002" ? "selected" : ""}>📍 Indiranagar Roastery (ZC-0002)</option>
+          <option value="ZC-0001" ${effectiveCafe === "ZC-0001" ? "selected" : ""}>📍 Main Outlet (ZC-0001)</option>
+          <option value="ZC-0002" ${effectiveCafe === "ZC-0002" ? "selected" : ""}>📍 Branch Outlet (ZC-0002)</option>
           <option value="ZC-0003" ${effectiveCafe === "ZC-0003" ? "selected" : ""}>📍 Whitefield Tech Park (ZC-0003)</option>
           <option value="ZC-0004" ${effectiveCafe === "ZC-0004" ? "selected" : ""}>📍 MG Road Express (ZC-0004)</option>
         </select>
@@ -1362,14 +1362,14 @@ export function wireCafeContextStrip(root = document, onCafeChange = null) {
       state.user.primaryCafeId = newCafeId === "ALL" ? "ZC-0001" : newCafeId;
       state.user.primaryCafeName =
         newCafeId === "ZC-0002"
-          ? "Indiranagar Roastery"
+          ? "Branch Outlet"
           : newCafeId === "ZC-0003"
           ? "Whitefield Tech Park"
           : newCafeId === "ZC-0004"
           ? "MG Road Express"
           : newCafeId === "ALL"
           ? "All Cafés (Global Portfolio)"
-          : "Koramangala Flagship";
+          : "Main Outlet";
     }
 
     // Sync with Topbar selector if present
@@ -1382,9 +1382,9 @@ export function wireCafeContextStrip(root = document, onCafeChange = null) {
       newCafeId === "ALL"
         ? "All Cafés (Global Portfolio)"
         : newCafeId === "ZC-0001"
-        ? "Koramangala Flagship (ZC-0001)"
+        ? "Main Outlet (ZC-0001)"
         : newCafeId === "ZC-0002"
-        ? "Indiranagar Roastery (ZC-0002)"
+        ? "Branch Outlet (ZC-0002)"
         : newCafeId === "ZC-0003"
         ? "Whitefield Tech Park (ZC-0003)"
         : newCafeId === "ZC-0004"
@@ -2220,7 +2220,7 @@ export function openUniversalDocumentModal({
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
         <div>
           <label style="font-size:12px; font-weight:700; color:var(--ink); display:block; margin-bottom:4px;">Vendor / Payee Name</label>
-          <input type="text" id="u-doc-vendor" class="input" placeholder="e.g. Blue Tokai Coffee" style="width:100%; font-size:12.5px;" />
+          <input type="text" id="u-doc-vendor" class="input" placeholder="e.g. Registered Vendor" style="width:100%; font-size:12.5px;" />
         </div>
         <div>
           <label style="font-size:12px; font-weight:700; color:var(--ink); display:block; margin-bottom:4px;">Total Amount (₹)</label>

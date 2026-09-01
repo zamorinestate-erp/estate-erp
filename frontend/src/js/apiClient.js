@@ -424,6 +424,10 @@ export function mapErrorToUserMessage(code, status, fallbackMessage) {
       return "Your account is unavailable. Please contact an administrator.";
     case "STEP_UP_AUTHENTICATION_REQUIRED":
       return "Recent security verification is required for this action.";
+    case "MFA_SETUP_REQUIRED":
+      return "Multi-factor authentication setup is required for this account.";
+    case "MFA_REQUIRED":
+      return "Multi-factor authentication code is required.";
     case "PERMISSION_DENIED":
     case "FORBIDDEN":
     case "CAFE_ACCESS_DENIED":

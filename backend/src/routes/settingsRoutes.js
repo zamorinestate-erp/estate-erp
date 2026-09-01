@@ -107,6 +107,10 @@ router.post('/company-identity/unlock', unlockCompanyIdentity);
 router.put('/company-identity', updateCompanyIdentity);
 router.get('/company-identity/history', getCompanyIdentityHistory);
 
+// ── Application Updates & Version Control (Role-Targeted) ────────────────────
+const updateRoutes = require('./updateRoutes');
+router.use('/updates', updateRoutes);
+
 // ── Legacy redirect aliases ───────────────────────────────────────────────────
 // My Profile was previously navigated to directly; now lives in Settings.
 router.get('/my-profile', (req, res) => res.redirect(301, '/api/v1/settings/profile'));

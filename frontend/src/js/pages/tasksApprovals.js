@@ -23,8 +23,8 @@ let searchQuery = "";
 let lastRefreshedTime = new Date();
 
 const CAFE_NAMES = {
-  "ZC-0001": "Kozhikode Beach Main",
-  "ZC-0002": "Calicut Cyberpark Outpost",
+  "ZC-0001": "Main Outlet",
+  "ZC-0002": "Branch Outlet",
   "ZC-0003": "Wayanad Heritage Roastery",
 };
 
@@ -36,8 +36,8 @@ const SAMPLE_TASKS = [
     category: "EQUIPMENT_MAINTENANCE",
     risk: "HIGH",
     isCriticalControl: true,
-    assignedUserId: "Priya Nair",
-    responsibleUserId: "Ravi Kumar",
+    assignedUserId: "Duty Staff",
+    responsibleUserId: "Admin Lead",
     cafeId: "ZC-0001",
     dueDate: "2026-08-22",
     dueTime: "22:00",
@@ -63,8 +63,8 @@ const SAMPLE_TASKS = [
     category: "INVENTORY_RECEIVING",
     risk: "MEDIUM",
     isCriticalControl: false,
-    assignedUserId: "Ravi Kumar",
-    responsibleUserId: "Ravi Kumar",
+    assignedUserId: "Admin Lead",
+    responsibleUserId: "Admin Lead",
     cafeId: "ZC-0001",
     dueDate: "2026-08-23",
     dueTime: "11:00",
@@ -118,7 +118,7 @@ const SAMPLE_TASKS = [
     risk: "CRITICAL",
     isCriticalControl: true,
     assignedUserId: "Anjali Pillai",
-    responsibleUserId: "Ravi Kumar",
+    responsibleUserId: "Admin Lead",
     cafeId: "ZC-0001",
     dueDate: "2026-08-22",
     dueTime: "23:00",
@@ -140,7 +140,7 @@ const SAMPLE_TASKS = [
     category: "HYGIENE_INSPECTION",
     risk: "HIGH",
     isCriticalControl: true,
-    assignedUserId: "Vikram Das",
+    assignedUserId: "Supervisor",
     responsibleUserId: "Suresh Menon",
     cafeId: "ZC-0002",
     dueDate: "2026-08-21",
@@ -381,7 +381,7 @@ export function renderTasks() {
             <select id="filter-task-cafe" class="select select-sm" style="background:var(--surface);color:var(--ink);border:1px solid var(--line);font-size:12px;">
               <option value="ALL" ${selectedCafeFilter === "ALL" ? "selected" : ""}>All Authorized Cafés</option>
               <option value="ZC-0001" ${selectedCafeFilter === "ZC-0001" ? "selected" : ""}>ZC-0001 · Kozhikode Beach</option>
-              <option value="ZC-0002" ${selectedCafeFilter === "ZC-0002" ? "selected" : ""}>ZC-0002 · Calicut Cyberpark</option>
+              <option value="ZC-0002" ${selectedCafeFilter === "ZC-0002" ? "selected" : ""}>ZC-0002 · Branch Outlet</option>
               <option value="ZC-0003" ${selectedCafeFilter === "ZC-0003" ? "selected" : ""}>ZC-0003 · Wayanad Roastery</option>
             </select>
 
@@ -603,21 +603,21 @@ export function renderTasks() {
             <div style="padding:8px 10px;background:var(--surface-sunken);border:1px solid var(--line);border-radius:6px;display:flex;justify-content:space-between;align-items:center;">
               <div>
                 <div style="font-weight:600;color:var(--ink);">Fire Extinguisher & First Aid Audit</div>
-                <div style="font-size:11px;color:var(--muted);">Calicut Cyberpark · Suresh Menon</div>
+                <div style="font-size:11px;color:var(--muted);">Branch Outlet · Duty Manager</div>
               </div>
               <span class="badge" style="background:var(--bronze-100);color:var(--bronze-700);font-size:11px;">24 Aug</span>
             </div>
             <div style="padding:8px 10px;background:var(--surface-sunken);border:1px solid var(--line);border-radius:6px;display:flex;justify-content:space-between;align-items:center;">
               <div>
                 <div style="font-weight:600;color:var(--ink);">Espresso Machine Group 1 Service</div>
-                <div style="font-size:11px;color:var(--muted);">Kozhikode Beach · Priya Nair</div>
+                <div style="font-size:11px;color:var(--muted);">Main Outlet · Duty Barista</div>
               </div>
               <span class="badge" style="background:var(--bronze-100);color:var(--bronze-700);font-size:11px;">25 Aug</span>
             </div>
             <div style="padding:8px 10px;background:var(--surface-sunken);border:1px solid var(--line);border-radius:6px;display:flex;justify-content:space-between;align-items:center;">
               <div>
                 <div style="font-weight:600;color:var(--ink);">Quarterly Water Filtration & TDS Test</div>
-                <div style="font-size:11px;color:var(--muted);">Wayanad Heritage · Vikram Das</div>
+                <div style="font-size:11px;color:var(--muted);">Roastery · Supervisor</div>
               </div>
               <span class="badge" style="background:var(--bronze-100);color:var(--bronze-700);font-size:11px;">27 Aug</span>
             </div>
@@ -1237,8 +1237,8 @@ function openAssignTaskModal(root) {
         <div>
           <label class="label" style="color:var(--ink, #18181b);font-weight:700;font-size:12px;margin-bottom:4px;display:block;">Authorized Café *</label>
           <select id="assign-cafe" class="select" required style="width:100%;box-sizing:border-box;">
-            <option value="ZC-0001">ZC-0001 · Kozhikode Beach Main</option>
-            <option value="ZC-0002">ZC-0002 · Calicut Cyberpark Outpost</option>
+            <option value="ZC-0001">ZC-0001 · Main Outlet</option>
+            <option value="ZC-0002">ZC-0002 · Branch Outlet Outpost</option>
             <option value="ZC-0003">ZC-0003 · Wayanad Heritage Roastery</option>
           </select>
         </div>
@@ -1258,12 +1258,12 @@ function openAssignTaskModal(root) {
 
         <div>
           <label class="label" style="color:var(--ink, #18181b);font-weight:700;font-size:12px;margin-bottom:4px;display:block;">Assignee (Performer) *</label>
-          <input type="text" id="assign-user" class="input" placeholder="e.g. Priya Nair" required style="width:100%;box-sizing:border-box;" />
+          <input type="text" id="assign-user" class="input" placeholder="e.g. Assignee Name" required style="width:100%;box-sizing:border-box;" />
         </div>
 
         <div>
           <label class="label" style="color:var(--ink, #18181b);font-weight:700;font-size:12px;margin-bottom:4px;display:block;">Accountable Manager</label>
-          <input type="text" id="assign-responsible" class="input" placeholder="e.g. Ravi Kumar" style="width:100%;box-sizing:border-box;" />
+          <input type="text" id="assign-responsible" class="input" placeholder="e.g. Supervisor Name" style="width:100%;box-sizing:border-box;" />
         </div>
 
         <div>

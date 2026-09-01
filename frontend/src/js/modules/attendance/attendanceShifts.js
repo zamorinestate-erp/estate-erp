@@ -17,43 +17,16 @@ let cachedOverview = null;
 let cachedLiveAttendance = [];
 let cachedRoster = null;
 let cachedServerTime = null;
-let selectedUserId = "EMP-001";
-let selectedRosterCafe = "ZC-0001";
+let selectedUserId = "";
+let selectedRosterCafe = "";
 let selectedRosterWeekOffset = 0;
-let selectedCalendarMonth = "2026-08";
+let selectedCalendarMonth = new Date().toISOString().slice(0, 7);
 
-const CAFE_NAMES = {
-  "ZC-0001": "Dawn Roast — Koramangala (Flagship)",
-  "ZC-0002": "Indiranagar Central Roastery",
-  "ZC-0003": "Calicut Beach Outpost",
-};
+const CAFE_NAMES = {};
 
-let rosterPublishedMap = {
-  "ZC-0001": true,
-  "ZC-0002": true,
-  "ZC-0003": false,
-};
+let rosterPublishedMap = {};
 
-let cafeRosterSchedules = {
-  "ZC-0001": [
-    { name: "Priya Nair", id: "EMP-001", role: "Head Barista", mon: "06:30 - 15:00", tue: "06:30 - 15:00", wed: "OFF", thu: "13:00 - 21:30", fri: "06:30 - 15:00", sat: "06:30 - 15:00", sun: "OFF" },
-    { name: "Anjali Rao", id: "EMP-002", role: "Barista", mon: "13:00 - 21:30", tue: "13:00 - 21:30", wed: "06:30 - 15:00", thu: "OFF", fri: "13:00 - 21:30", sat: "13:00 - 21:30", sun: "OFF" },
-    { name: "Kiran Shetty", id: "EMP-003", role: "Service Crew", mon: "06:30 - 15:00", tue: "OFF", wed: "06:30 - 15:00", thu: "06:30 - 15:00", fri: "OFF", sat: "06:30 - 15:00", sun: "13:00 - 21:30" },
-    { name: "Rahul Verma", id: "EMP-004", role: "Junior Barista", mon: "06:30 - 15:00", tue: "06:30 - 15:00", wed: "06:30 - 15:00", thu: "OFF", fri: "06:30 - 15:00", sat: "OFF", sun: "06:30 - 15:00" },
-  ],
-  "ZC-0002": [
-    { name: "Siddharth Menon", id: "EMP-005", role: "Master Roaster & Lead", mon: "06:30 - 15:00", tue: "06:30 - 15:00", wed: "06:30 - 15:00", thu: "06:30 - 15:00", fri: "06:30 - 15:00", sat: "OFF", sun: "OFF" },
-    { name: "Deepa Kurian", id: "EMP-006", role: "Lead Barista", mon: "13:00 - 21:30", tue: "13:00 - 21:30", wed: "OFF", thu: "13:00 - 21:30", fri: "13:00 - 21:30", sat: "06:30 - 15:00", sun: "OFF" },
-    { name: "Farhan Ali", id: "EMP-007", role: "Barista & Kitchen", mon: "OFF", tue: "06:30 - 15:00", wed: "13:00 - 21:30", thu: "OFF", fri: "06:30 - 15:00", sat: "13:00 - 21:30", sun: "06:30 - 15:00" },
-    { name: "Sneha Joseph", id: "EMP-008", role: "Service & Cash", mon: "06:30 - 15:00", tue: "OFF", wed: "06:30 - 15:00", thu: "13:00 - 21:30", fri: "OFF", sat: "06:30 - 15:00", sun: "13:00 - 21:30" },
-  ],
-  "ZC-0003": [
-    { name: "Mohammed Fasil", id: "EMP-009", role: "Operations Lead", mon: "06:30 - 15:00", tue: "06:30 - 15:00", wed: "06:30 - 15:00", thu: "OFF", fri: "06:30 - 15:00", sat: "06:30 - 15:00", sun: "OFF" },
-    { name: "Arjun Nair", id: "EMP-010", role: "Speciality Barista", mon: "13:00 - 21:30", tue: "13:00 - 21:30", wed: "13:00 - 21:30", thu: "13:00 - 21:30", fri: "OFF", sat: "13:00 - 21:30", sun: "OFF" },
-    { name: "Devika Pillai", id: "EMP-011", role: "Service & Cashier", mon: "06:30 - 15:00", tue: "OFF", wed: "06:30 - 15:00", thu: "06:30 - 15:00", fri: "13:00 - 21:30", sat: "OFF", sun: "06:30 - 15:00" },
-    { name: "Nithin Raj", id: "EMP-012", role: "Kitchen Assistant", mon: "OFF", tue: "06:30 - 15:00", wed: "OFF", thu: "06:30 - 15:00", fri: "06:30 - 15:00", sat: "06:30 - 15:00", sun: "13:00 - 21:30" },
-  ],
-};
+let cafeRosterSchedules = {};
 
 export function setAttendanceActiveTab(tab) {
   const norm = (tab || "overview").toLowerCase();
@@ -87,8 +60,8 @@ export function renderAttendance(subroute) {
   const isOwner = role === ROLES.OWNER;
 
   const assignedCafe = state.user?.assignedCafeIds?.[0] || "ZC-0001";
-  const cafeDisplayName = assignedCafe === "ZC-0003" ? "Calicut Beach" : assignedCafe === "ZC-0002" ? "Indiranagar Central" : "Dawn Roast — Koramangala";
-  const operatorName = state.user?.name || state.user?.fullName || (isCafeAdmin ? "Rahul K" : "Zamorin Master");
+  const cafeDisplayName = assignedCafe === "ZC-0003" ? "Calicut Beach" : assignedCafe === "ZC-0002" ? "Branch Outlet" : "Main Outlet";
+  const operatorName = state.user?.name || state.user?.fullName || (isCafeAdmin ? "Duty Lead" : "Zamorin Master");
   const operatorEmpId = state.user?.employeeId || state.user?.userId || "EMP-0042";
 
   if (activeSubTab && activeSubTab !== "overview") {
@@ -279,8 +252,8 @@ function renderOverviewSubpanel() {
       overtimePending: 1,
     },
     cafeWorkforce: [
-      { cafeId: "ZC-0001", cafeName: "Dawn Roast — Koramangala", scheduled: 6, present: 5, adequacyStatus: "ADEQUATE" },
-      { cafeId: "ZC-0002", cafeName: "Indiranagar Central", scheduled: 5, present: 4, adequacyStatus: "ADEQUATE" },
+      { cafeId: "ZC-0001", cafeName: "Main Outlet", scheduled: 6, present: 5, adequacyStatus: "ADEQUATE" },
+      { cafeId: "ZC-0002", cafeName: "Branch Outlet", scheduled: 5, present: 4, adequacyStatus: "ADEQUATE" },
       { cafeId: "ZC-0003", cafeName: "Calicut Beach", scheduled: 4, present: 3, adequacyStatus: "ADEQUATE" },
     ],
     needsAttention: [
@@ -310,7 +283,7 @@ function renderOverviewSubpanel() {
         type: "OVERTIME_PENDING",
         severity: "MEDIUM",
         userId: "EMP-001",
-        userName: "Priya Nair",
+        userName: "Duty Barista",
         role: "Head Barista",
         shiftName: "Full Day",
         age: "Yesterday",
@@ -540,7 +513,7 @@ function renderLiveSubpanel() {
   const records = cachedLiveAttendance.length > 0 ? cachedLiveAttendance : [
     {
       userId: "EMP-001",
-      name: "Priya Nair",
+      name: "Duty Barista",
       role: "HEAD_BARISTA",
       cafeId: "ZC-0001",
       status: "CHECKED_IN",
@@ -579,7 +552,7 @@ function renderLiveSubpanel() {
     },
     {
       userId: "EMP-004",
-      name: "Rahul Verma",
+      name: "Barista",
       role: "JUNIOR_BARISTA",
       cafeId: "ZC-0001",
       status: "CHECKED_OUT",
@@ -719,7 +692,7 @@ function renderRosterSubpanel() {
   const role = state.role || state.user?.role || ROLES.MASTER;
   const isCafeAdmin = role === ROLES.CAFE_ADMIN;
   const activeCafeId = isCafeAdmin ? (state.user?.assignedCafeIds?.[0] || "ZC-0001") : selectedRosterCafe;
-  const cafeName = CAFE_NAMES[activeCafeId] || "Dawn Roast Koramangala";
+  const cafeName = CAFE_NAMES[activeCafeId] || "Main Outlet";
   const isPublished = rosterPublishedMap[activeCafeId] ?? true;
 
   const staff = cafeRosterSchedules[activeCafeId] || cafeRosterSchedules["ZC-0001"];
@@ -775,8 +748,8 @@ function renderRosterSubpanel() {
               <div style="display:inline-flex; align-items:center; gap:6px; background:var(--surface-sunken); padding:4px 8px; border-radius:6px; border:1px solid var(--line);">
                 <span style="font-size:12px; font-weight:700; color:var(--ink);">🏛️ Switch Café:</span>
                 <select id="roster-cafe-select" class="input" style="font-size:12.5px; padding:4px 8px; width:auto; font-weight:600;">
-                  <option value="ZC-0001" ${activeCafeId === "ZC-0001" ? "selected" : ""}>ZC-0001 · Koramangala Flagship</option>
-                  <option value="ZC-0002" ${activeCafeId === "ZC-0002" ? "selected" : ""}>ZC-0002 · Indiranagar Central</option>
+                  <option value="ZC-0001" ${activeCafeId === "ZC-0001" ? "selected" : ""}>ZC-0001 · Main Outlet</option>
+                  <option value="ZC-0002" ${activeCafeId === "ZC-0002" ? "selected" : ""}>ZC-0002 · Branch Outlet</option>
                   <option value="ZC-0003" ${activeCafeId === "ZC-0003" ? "selected" : ""}>ZC-0003 · Calicut Beach Outpost</option>
                 </select>
               </div>
@@ -936,11 +909,11 @@ function renderCalendar360Subpanel() {
   const days = Array.from({ length: 31 }, (_, i) => i + 1);
 
   const employeeProfiles = {
-    "EMP-001": { name: "Priya Nair", role: "Head Barista", totalWorked: "142.5 hrs", ot: "4.0 hrs", presentDays: 16, lateDays: 1, lateDayNum: 12 },
+    "EMP-001": { name: "Duty Barista", role: "Head Barista", totalWorked: "142.5 hrs", ot: "4.0 hrs", presentDays: 16, lateDays: 1, lateDayNum: 12 },
     "EMP-002": { name: "Anjali Rao", role: "Speciality Barista", totalWorked: "138.0 hrs", ot: "2.5 hrs", presentDays: 15, lateDays: 2, lateDayNum: 8 },
     "EMP-003": { name: "Kiran Shetty", role: "Service Crew Lead", totalWorked: "145.0 hrs", ot: "6.0 hrs", presentDays: 17, lateDays: 0, lateDayNum: -1 },
-    "EMP-004": { name: "Rahul Verma", role: "Junior Barista", totalWorked: "132.0 hrs", ot: "0.0 hrs", presentDays: 15, lateDays: 3, lateDayNum: 14 },
-    "EMP-005": { name: "Siddharth Menon", role: "Master Roaster", totalWorked: "150.0 hrs", ot: "8.0 hrs", presentDays: 18, lateDays: 0, lateDayNum: -1 },
+    "EMP-004": { name: "Barista", role: "Junior Barista", totalWorked: "132.0 hrs", ot: "0.0 hrs", presentDays: 15, lateDays: 3, lateDayNum: 14 },
+    "EMP-005": { name: "Master Roaster", role: "Master Roaster", totalWorked: "150.0 hrs", ot: "8.0 hrs", presentDays: 18, lateDays: 0, lateDayNum: -1 },
     "EMP-006": { name: "Deepa Kurian", role: "Lead Barista", totalWorked: "140.0 hrs", ot: "3.0 hrs", presentDays: 16, lateDays: 1, lateDayNum: 5 },
   };
 
@@ -961,11 +934,11 @@ function renderCalendar360Subpanel() {
           <div style="display:flex; align-items:center; gap:6px;">
             <label style="font-size:12px; font-weight:700; color:var(--ink);">Employee:</label>
             <select id="calendar-user-select" class="input" style="font-size:12.5px; width:auto; font-weight:600;">
-              <option value="EMP-001" ${selectedUserId === "EMP-001" ? "selected" : ""}>Priya Nair (EMP-001 — Head Barista)</option>
+              <option value="EMP-001" ${selectedUserId === "EMP-001" ? "selected" : ""}>Duty Barista (EMP-001 — Head Barista)</option>
               <option value="EMP-002" ${selectedUserId === "EMP-002" ? "selected" : ""}>Anjali Rao (EMP-002 — Barista)</option>
               <option value="EMP-003" ${selectedUserId === "EMP-003" ? "selected" : ""}>Kiran Shetty (EMP-003 — Service Crew)</option>
-              <option value="EMP-004" ${selectedUserId === "EMP-004" ? "selected" : ""}>Rahul Verma (EMP-004 — Junior Barista)</option>
-              <option value="EMP-005" ${selectedUserId === "EMP-005" ? "selected" : ""}>Siddharth Menon (EMP-005 — Master Roaster)</option>
+              <option value="EMP-004" ${selectedUserId === "EMP-004" ? "selected" : ""}>Barista (EMP-004 — Junior Barista)</option>
+              <option value="EMP-005" ${selectedUserId === "EMP-005" ? "selected" : ""}>Master Roaster (EMP-005 — Master Roaster)</option>
               <option value="EMP-006" ${selectedUserId === "EMP-006" ? "selected" : ""}>Deepa Kurian (EMP-006 — Lead Barista)</option>
             </select>
           </div>
@@ -1076,8 +1049,8 @@ function renderExceptionsSubpanel() {
         <div style="padding:14px; border:1px solid var(--border-subtle); border-radius:8px; background:var(--surface-sunken);">
           <div style="display:flex; justify-content:space-between; align-items:flex-start;">
             <div>
-              <strong style="color:var(--ink); font-size:13.5px;">Priya Nair (EMP-001) — 90 Min Overtime</strong>
-              <div style="font-size:12px; color:var(--muted); margin-top:2px;">Dawn Roast Koramangala · 18 Aug 2026 · Reason: Peak evening rush coverage</div>
+              <strong style="color:var(--ink); font-size:13.5px;">Duty Barista (EMP-001) — 90 Min Overtime</strong>
+              <div style="font-size:12px; color:var(--muted); margin-top:2px;">Main Outlet · 18 Aug 2026 · Reason: Peak evening rush coverage</div>
             </div>
             <span class="status info" style="font-size:11px;">Awaiting Review</span>
           </div>
@@ -1360,7 +1333,7 @@ function renderClosureSubpanel() {
               <tbody>
                 <tr style="border-bottom:1px solid var(--line);">
                   <td style="padding:10px 12px; font-weight:700; color:var(--ink); white-space:nowrap;">
-                    ZC-0001 · Dawn Roast Koramangala
+                    ZC-0001 · Main Outlet
                   </td>
                   <td style="padding:10px 12px; text-align:right; font-family:var(--font-mono);">14</td>
                   <td style="padding:10px 12px; text-align:right; font-family:var(--font-mono); font-weight:700; color:var(--bronze-600);">2,410.0 hrs</td>
@@ -1368,7 +1341,7 @@ function renderClosureSubpanel() {
                 </tr>
                 <tr style="border-bottom:1px solid var(--line);">
                   <td style="padding:10px 12px; font-weight:700; color:var(--ink); white-space:nowrap;">
-                    ZC-0002 · Indiranagar Central
+                    ZC-0002 · Branch Outlet
                   </td>
                   <td style="padding:10px 12px; text-align:right; font-family:var(--font-mono);">12</td>
                   <td style="padding:10px 12px; text-align:right; font-family:var(--font-mono); font-weight:700; color:var(--bronze-600);">2,120.0 hrs</td>
@@ -1440,7 +1413,7 @@ function renderClosureSubpanel() {
             <div style="padding:12px; border:1px solid rgba(245,158,11,0.3); border-radius:8px; background:rgba(245,158,11,0.05); display:flex; justify-content:space-between; align-items:center;">
               <div>
                 <strong style="color:var(--ink); display:block;">Overtime Claims Approval</strong>
-                <span style="color:var(--muted); font-size:11.5px;">Priya Nair (90 min) awaiting Primary Master decision</span>
+                <span style="color:var(--muted); font-size:11.5px;">Duty Barista (90 min) awaiting Primary Master decision</span>
               </div>
               <span class="status warning" style="font-size:10.5px; font-weight:700;">1 AWAITING SIGN-OFF</span>
             </div>
@@ -1573,7 +1546,7 @@ function renderAnalyticsSubpanel() {
               <tbody>
                 <tr style="border-bottom:1px solid var(--line);">
                   <td style="padding:10px 12px; font-weight:700; color:var(--ink); white-space:nowrap;">
-                    ZC-0001 · Koramangala
+                    ZC-0001 · Main Outlet
                   </td>
                   <td style="padding:10px 12px; text-align:right; font-family:var(--font-mono); font-weight:700; color:var(--bronze-600);">2,410.0h</td>
                   <td style="padding:10px 12px; text-align:right; font-family:var(--font-mono); color:#059669; font-weight:700;">97.4%</td>
@@ -1581,7 +1554,7 @@ function renderAnalyticsSubpanel() {
                 </tr>
                 <tr style="border-bottom:1px solid var(--line);">
                   <td style="padding:10px 12px; font-weight:700; color:var(--ink); white-space:nowrap;">
-                    ZC-0002 · Indiranagar
+                    ZC-0002 · Branch Outlet
                   </td>
                   <td style="padding:10px 12px; text-align:right; font-family:var(--font-mono); font-weight:700; color:var(--bronze-600);">2,120.0h</td>
                   <td style="padding:10px 12px; text-align:right; font-family:var(--font-mono); color:#059669; font-weight:700;">96.0%</td>
@@ -1795,7 +1768,7 @@ function wireAttendanceSubpanelActions(root) {
 
   // Overtime decision / recommendation buttons
   root.querySelector("#recommend-ot-btn")?.addEventListener("click", async () => {
-    confirmAction("Verify and recommend 90 minutes overtime for Priya Nair (EMP-001) to Primary Master?", async () => {
+    confirmAction("Verify and recommend 90 minutes overtime for Duty Barista (EMP-001) to Primary Master?", async () => {
       await apiPost("/api/v1/attendance/overtime/decide", { attendanceId: "AT-20260818-001", decision: "VERIFY_ADMIN", reason: "Peak evening rush coverage recommendation" });
       showToast("Overtime verified and recommended to Master for final decision.", "success");
       await loadLiveAttendanceData();
@@ -1804,7 +1777,7 @@ function wireAttendanceSubpanelActions(root) {
   });
 
   root.querySelector("#approve-ot-btn")?.addEventListener("click", async () => {
-    confirmAction("Approve 90 minutes overtime for Priya Nair (EMP-001)?", async () => {
+    confirmAction("Approve 90 minutes overtime for Duty Barista (EMP-001)?", async () => {
       await apiPost("/api/v1/attendance/overtime/decide", { attendanceId: "AT-20260818-001", decision: "APPROVE", approvedMinutes: 90, reason: "Peak evening rush coverage" });
       showToast("Overtime approved with Primary Master authority.", "success");
       await loadLiveAttendanceData();
@@ -1813,7 +1786,7 @@ function wireAttendanceSubpanelActions(root) {
   });
 
   root.querySelector("#reject-ot-btn")?.addEventListener("click", async () => {
-    confirmAction("Reject overtime claim for Priya Nair (EMP-001)?", async () => {
+    confirmAction("Reject overtime claim for Duty Barista (EMP-001)?", async () => {
       await apiPost("/api/v1/attendance/overtime/decide", { attendanceId: "AT-20260818-001", decision: "REJECT", reason: "Overtime unverified" });
       showToast("Overtime rejected.", "info");
       await loadLiveAttendanceData();
@@ -1988,11 +1961,11 @@ function wireAttendanceSubpanelActions(root) {
       const statusText = target.dataset.statusText || "Present";
 
       const employeeProfiles = {
-        "EMP-001": { name: "Priya Nair", role: "Head Barista" },
+        "EMP-001": { name: "Duty Barista", role: "Head Barista" },
         "EMP-002": { name: "Anjali Rao", role: "Speciality Barista" },
         "EMP-003": { name: "Kiran Shetty", role: "Service Crew Lead" },
-        "EMP-004": { name: "Rahul Verma", role: "Junior Barista" },
-        "EMP-005": { name: "Siddharth Menon", role: "Master Roaster" },
+        "EMP-004": { name: "Barista", role: "Junior Barista" },
+        "EMP-005": { name: "Master Roaster", role: "Master Roaster" },
         "EMP-006": { name: "Deepa Kurian", role: "Lead Barista" },
       };
       const emp = employeeProfiles[selectedUserId] || employeeProfiles["EMP-001"];
@@ -2137,7 +2110,7 @@ function openDayAttendanceDetailsModal({ root, dayNum, emp, isPresent, isLate, i
         <div style="padding:12px; border:1px solid var(--line); border-radius:6px; background:var(--surface);">
           <div style="font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; margin-bottom:6px;">Biometric & Hardware Telemetry</div>
           <div style="display:flex; flex-direction:column; gap:4px; font-size:11.5px; color:var(--muted);">
-            <div>📍 GPS Location Proof: <strong style="color:var(--ink);">Koramangala Flagship (48.1m from centroid · PASSED)</strong></div>
+            <div>📍 GPS Location Proof: <strong style="color:var(--ink);">Main Outlet (48.1m from centroid · PASSED)</strong></div>
             <div>🔐 Punch Token Signature: <code style="color:var(--bronze-600); font-size:10.5px;">SIG_78B2A991E4C02...VERIFIED</code></div>
             <div>🛡️ Facial Architecture: <strong style="color:#059669;">Compliant (Signed Ephemeral Link · Zero Biometric Store)</strong></div>
           </div>
@@ -2240,7 +2213,7 @@ function openScopedManualAttendanceModal(root) {
   const role = state.role || state.user?.role || ROLES.MASTER;
   const isCafeAdmin = role === ROLES.CAFE_ADMIN;
   const assignedCafe = state.user?.assignedCafeIds?.[0] || "ZC-0001";
-  const cafeName = assignedCafe === "ZC-0003" ? "Calicut Beach" : assignedCafe === "ZC-0002" ? "Indiranagar Central" : "Dawn Roast Koramangala";
+  const cafeName = assignedCafe === "ZC-0003" ? "Calicut Beach" : assignedCafe === "ZC-0002" ? "Branch Outlet" : "Main Outlet";
 
   openModal({
     title: isCafeAdmin ? "Record Manual Attendance · Single Café" : "Master Manual Attendance Entry",
@@ -2262,8 +2235,8 @@ function openScopedManualAttendanceModal(root) {
           <select id="modal-man-user" class="input" style="font-size:12.5px;">
             <option value="EMP-002">Anjali Rao (EMP-002 — Barista)</option>
             <option value="EMP-003">Kiran Shetty (EMP-003 — Service Crew)</option>
-            <option value="EMP-001">Priya Nair (EMP-001 — Head Barista)</option>
-            <option value="EMP-004">Rahul Verma (EMP-004 — Junior Barista)</option>
+            <option value="EMP-001">Duty Barista (EMP-001 — Head Barista)</option>
+            <option value="EMP-004">Barista (EMP-004 — Junior Barista)</option>
           </select>
         </div>
 
@@ -2448,7 +2421,7 @@ function openAddStaffToRosterModal(root) {
         <div class="form-group" style="margin:0;">
           <label style="font-weight:700; display:block; margin-bottom:4px; color:var(--ink);">Staff Member *</label>
           <select id="modal-add-staff-select" class="input" style="font-size:12.5px; width:100%; box-sizing:border-box;">
-            <option value="EMP-013|Vikram Sen|Barista Specialist">Vikram Sen (EMP-013 — Barista Specialist)</option>
+            <option value="EMP-013|Specialist Barista|Barista Specialist">Specialist Barista (EMP-013)</option>
             <option value="EMP-014|Meera Nambiar|Senior Cashier & Hospitality">Meera Nambiar (EMP-014 — Senior Cashier)</option>
             <option value="EMP-015|Arvind Swamy|Roastery Dispatch Lead">Arvind Swamy (EMP-015 — Roastery Dispatch)</option>
             <option value="EMP-016|Pooja Hegde|Trainee Barista">Pooja Hegde (EMP-016 — Trainee Barista)</option>
@@ -2531,8 +2504,8 @@ function openCreateShiftRosterModal(root) {
         <div class="form-group" style="margin:0;">
           <label style="font-weight:700; display:block; margin-bottom:4px; color:var(--ink);">Target Café *</label>
           <select id="modal-roster-cafe" class="input" style="font-size:12.5px; width:100%; box-sizing:border-box;">
-            <option value="ZC-0001">ZC-0001 · Dawn Roast — Koramangala</option>
-            <option value="ZC-0002">ZC-0002 · Indiranagar Central</option>
+            <option value="ZC-0001">ZC-0001 · Main Outlet</option>
+            <option value="ZC-0002">ZC-0002 · Branch Outlet</option>
             <option value="ZC-0003">ZC-0003 · Calicut Beach Outpost</option>
           </select>
         </div>
@@ -2572,10 +2545,10 @@ function openCreateShiftRosterModal(root) {
 function exportTimesheetsCsv() {
   const headers = ["Employee ID", "Employee Name", "Role", "Café", "Date", "Shift", "Clock In", "Clock Out", "Total Hours", "Status"];
   const rows = [
-    ["EMP-001", "Priya Nair", "Head Barista", "ZC-0001", "2026-08-25", "Morning Roastery", "06:28", "15:02", "8.57", "ON_TIME"],
+    ["EMP-001", "Duty Barista", "Head Barista", "ZC-0001", "2026-08-25", "Morning Roastery", "06:28", "15:02", "8.57", "ON_TIME"],
     ["EMP-002", "Anjali Rao", "Barista", "ZC-0001", "2026-08-25", "Evening Close", "13:18", "21:35", "8.28", "LATE"],
     ["EMP-003", "Kiran Shetty", "Service Crew", "ZC-0001", "2026-08-25", "Morning Roastery", "06:30", "15:00", "8.50", "ON_TIME"],
-    ["EMP-004", "Rahul Verma", "Junior Barista", "ZC-0001", "2026-08-25", "Morning Roastery", "06:25", "15:00", "8.58", "ON_TIME"],
+    ["EMP-004", "Barista", "Junior Barista", "ZC-0001", "2026-08-25", "Morning Roastery", "06:25", "15:00", "8.58", "ON_TIME"],
   ];
   const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
   const encodedUri = encodeURI(csvContent);
@@ -2645,8 +2618,8 @@ function openCompliancePolicyModal(root) {
 function exportAnalyticsCsv() {
   const headers = ["Outlet ID", "Outlet Name", "Staff Headcount", "Scheduled Hours", "Actual Hours", "On-Time Rate %", "Overtime Hours", "Manual Adjustments %", "Status"];
   const rows = [
-    ["ZC-0001", "Dawn Roast — Koramangala", "14", "2400.0", "2410.0", "97.4%", "10.0", "1.8%", "EXCELLENT"],
-    ["ZC-0002", "Indiranagar Central", "12", "2100.0", "2120.0", "96.0%", "5.5", "2.1%", "EXCELLENT"],
+    ["ZC-0001", "Main Outlet", "14", "2400.0", "2410.0", "97.4%", "10.0", "1.8%", "EXCELLENT"],
+    ["ZC-0002", "Branch Outlet", "12", "2100.0", "2120.0", "96.0%", "5.5", "2.1%", "EXCELLENT"],
     ["ZC-0003", "Calicut Beach Outpost", "14", "2300.0", "2310.5", "95.2%", "3.0", "2.4%", "HEALTHY"],
   ];
   const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map((e) => e.join(","))].join("\n");

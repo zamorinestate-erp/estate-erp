@@ -13,61 +13,8 @@ import { navigate } from "../router.js";
 
 let activeSubTab = "overview"; // 'overview' | 'assets' | 'maintenance' | 'work_orders' | 'inspections' | 'analytics'
 let cachedOverview = null;
-let cachedAssets = [
-  {
-    assetId: "AST-001",
-    name: "La Marzocco Linea PB 2-Group Espresso Machine",
-    category: "BREWING_EQUIPMENT",
-    serialNumber: "LM-PB-99412",
-    cafeId: "ZC-0001",
-    placementArea: "Main Bar",
-    operationalStatus: "IN_SERVICE",
-    condition: "EXCELLENT",
-    criticality: "CRITICAL",
-    nextMaintenanceDue: "2026-11-01",
-    warrantyExpiryDate: "2027-01-10",
-  },
-  {
-    assetId: "AST-002",
-    name: "Mahlkönig EK43 Commercial Coffee Grinder",
-    category: "GRINDERS_MILLS",
-    serialNumber: "MK-EK43-7721",
-    cafeId: "ZC-0001",
-    placementArea: "Filter Bar",
-    operationalStatus: "IN_SERVICE",
-    condition: "GOOD",
-    criticality: "HIGH",
-    nextMaintenanceDue: "2026-10-15",
-    warrantyExpiryDate: "2026-12-15",
-  },
-  {
-    assetId: "AST-003",
-    name: "True Double-Door Commercial Undercounter Refrigerator",
-    category: "REFRIGERATION",
-    serialNumber: "TRU-UC-4412",
-    cafeId: "ZC-0002",
-    placementArea: "Back Bar",
-    operationalStatus: "UNDER_MAINTENANCE",
-    condition: "FAIR",
-    criticality: "CRITICAL",
-    nextMaintenanceDue: "2026-08-25",
-    warrantyExpiryDate: "2026-09-01",
-  },
-];
-let cachedWorkOrders = [
-  {
-    workOrderId: "WO-0001",
-    assetId: "AST-003",
-    title: "Compressor Temperature Fluctuation",
-    workType: "CORRECTIVE_REPAIR",
-    priority: "CRITICAL",
-    status: "IN_PROGRESS",
-    blocker: "WAITING_FOR_PART",
-    cafeId: "ZC-0002",
-    reportedByUserId: "MU-NORMAL-01",
-    createdAt: "2026-08-19",
-  }
-];
+let cachedAssets = [];
+let cachedWorkOrders = [];
 const ASSET_CATEGORIES = [
   { id: "BREWING_EQUIPMENT", name: "Brewing Equipment" },
   { id: "GRINDERS_MILLS", name: "Grinders & Mills" },
@@ -578,7 +525,7 @@ function renderMaintenanceSubpanel() {
           <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 12px; background:var(--bg-subtle, rgba(0,0,0,0.02)); border-radius:6px;">
             <div>
               <div style="font-size:13px; font-weight:700; color:var(--ink);">Water Filter Cartridge Replacement</div>
-              <div style="font-size:11.5px; color:var(--muted);">AST-001 (Dawn Roast Koramangala) · Due: 2026-09-05</div>
+              <div style="font-size:11.5px; color:var(--muted);">AST-001 (Main Outlet) · Due: 2026-09-05</div>
             </div>
             <span class="status warning" style="font-size:11px;">Waiting Parts</span>
           </div>
@@ -586,7 +533,7 @@ function renderMaintenanceSubpanel() {
           <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 12px; background:var(--bg-subtle, rgba(0,0,0,0.02)); border-radius:6px;">
             <div>
               <div style="font-size:13px; font-weight:700; color:var(--ink);">Grinder Burr Alignment &amp; Zeroing</div>
-              <div style="font-size:11.5px; color:var(--muted);">AST-002 (Dawn Roast Koramangala) · Due: 2026-09-12</div>
+              <div style="font-size:11.5px; color:var(--muted);">AST-002 (Main Outlet) · Due: 2026-09-12</div>
             </div>
             <span class="status info" style="font-size:11px;">Ready</span>
           </div>
@@ -1049,8 +996,8 @@ function openRegisterAssetWizard(root) {
             <div class="form-group">
               <label class="label">Assigned Café*</label>
               <select id="wiz-asset-cafe" class="input">
-                <option value="ZC-0001" ${formData.cafeId === "ZC-0001" ? "selected" : ""}>Dawn Roast — Koramangala (ZC-0001)</option>
-                <option value="ZC-0002" ${formData.cafeId === "ZC-0002" ? "selected" : ""}>Indiranagar Central (ZC-0002)</option>
+                <option value="ZC-0001" ${formData.cafeId === "ZC-0001" ? "selected" : ""}>Main Outlet (ZC-0001)</option>
+                <option value="ZC-0002" ${formData.cafeId === "ZC-0002" ? "selected" : ""}>Branch Outlet (ZC-0002)</option>
                 <option value="ZC-0003" ${formData.cafeId === "ZC-0003" ? "selected" : ""}>Calicut Beach (ZC-0003)</option>
               </select>
             </div>
@@ -1321,8 +1268,8 @@ function openTransferAssetModal(root, assetId) {
       <div class="form-group">
         <label class="label">Destination Café*</label>
         <select id="transfer-dest-cafe" class="input">
-          <option value="ZC-0001">Dawn Roast — Koramangala (ZC-0001)</option>
-          <option value="ZC-0002">Indiranagar Central (ZC-0002)</option>
+          <option value="ZC-0001">Main Outlet (ZC-0001)</option>
+          <option value="ZC-0002">Branch Outlet (ZC-0002)</option>
           <option value="ZC-0003">Calicut Beach (ZC-0003)</option>
         </select>
       </div>
@@ -1546,9 +1493,9 @@ function openRecordInspectionModal(root) {
       <div class="form-group" style="margin-bottom:12px;">
         <label class="label">Target Asset*</label>
         <select id="insp-asset-id" class="input" style="font-size:12.5px;">
-          <option value="AST-001">La Marzocco Linea PB 2-Group (AST-001 — Koramangala)</option>
-          <option value="AST-002">Mahlkönig EK43 S Grinder (AST-002 — Koramangala)</option>
-          <option value="AST-003">Commercial Double-Door Chiller (AST-003 — Indiranagar)</option>
+          <option value="AST-001">La Marzocco Linea PB 2-Group (AST-001 — Main Outlet)</option>
+          <option value="AST-002">Mahlkönig EK43 S Grinder (AST-002 — Main Outlet)</option>
+          <option value="AST-003">Commercial Double-Door Chiller (AST-003 — Branch Outlet)</option>
         </select>
       </div>
 

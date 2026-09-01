@@ -1359,8 +1359,8 @@ function openNewJournalModal(wrap) {
           <label class="form-label" style="font-size:12px; font-weight:600;">Café Location</label>
           <select name="cafeId" class="form-input">
             <option value="">Global / Corporate HQ</option>
-            <option value="ZC-0001">Koramangala Flagship (ZC-0001)</option>
-            <option value="ZC-0002">Indiranagar Roastery (ZC-0002)</option>
+            <option value="ZC-0001">Main Outlet (ZC-0001)</option>
+            <option value="ZC-0002">Branch Outlet (ZC-0002)</option>
           </select>
         </div>
 
@@ -1428,7 +1428,7 @@ function openNewAPBillModal(wrap) {
       <form id="form-new-ap-bill">
         <div style="margin-bottom:12px;">
           <label class="form-label" style="font-size:12px; font-weight:600;">Vendor / Supplier Name</label>
-          <input type="text" name="vendorName" class="form-input" required placeholder="e.g. Roastery Milk Depot or Coffee Importers Ltd" value="Blue Tokai Specialty Roastery">
+          <input type="text" name="vendorName" class="form-input" required placeholder="e.g. Vendor or Supplier Legal Entity Name" value="">
         </div>
 
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
@@ -1450,8 +1450,8 @@ function openNewAPBillModal(wrap) {
           <div>
             <label class="form-label" style="font-size:12px; font-weight:600;">Café Allocation</label>
             <select name="cafeId" class="form-input">
-              <option value="ZC-0001">Koramangala Flagship (ZC-0001)</option>
-              <option value="ZC-0002">Indiranagar Roastery (ZC-0002)</option>
+              <option value="ZC-0001">Main Outlet (ZC-0001)</option>
+              <option value="ZC-0002">Branch Outlet (ZC-0002)</option>
               <option value="ZC-0003">Calicut Beach Main (ZC-0003)</option>
             </select>
           </div>

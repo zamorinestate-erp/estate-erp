@@ -562,112 +562,37 @@ async function loadSavedViews() {
 
 export const DEFAULT_OWNER_DASHBOARD_DATA = {
   meta: {
-    activeCafes: 3,
-    totalEmployees: 21,
+    activeCafes: 0,
+    totalEmployees: 0,
     generatedAt: new Date().toISOString()
   },
   portfolioKpis: {
-    salesTotal: { valuePaisa: 12485000, deltaPercent: 8.4, comparisonPaisa: 11517500 },
-    totalOrders: { value: 384, deltaPercent: 5.2 },
-    aov: { valuePaisa: 32510, deltaPercent: 3.1 },
-    expenses: { valuePaisa: 2840000, deltaPercent: -2.1 },
-    staffPresent: { value: 18, scheduled: 21 },
-    stockRisk: { critical: 1, belowPar: 4 },
-    openActions: { value: 2 }
+    salesTotal: { valuePaisa: 0, deltaPercent: 0, comparisonPaisa: 0 },
+    totalOrders: { value: 0, deltaPercent: 0 },
+    aov: { valuePaisa: 0, deltaPercent: 0 },
+    expenses: { valuePaisa: 0, deltaPercent: 0 },
+    staffPresent: { value: 0, scheduled: 0 },
+    stockRisk: { critical: 0, belowPar: 0 },
+    openActions: { value: 0 }
   },
-  whatChanged: [
-    { type: "POSITIVE", text: "Gross sales increased by +8.4% compared to yesterday, led by specialty pour-over volume." },
-    { type: "NEUTRAL", text: "Operating expense ratio sits at 23%, well within the 30% executive threshold." },
-    { type: "ATTENTION", text: "Wayanad Robusta Bean stock is below par (4.5kg remaining against 15kg par)." }
-  ],
-  attentionQueue: [
-    {
-      severity: "CRITICAL",
-      title: "Wayanad Robusta Bean Stock Low",
-      category: "INVENTORY",
-      description: "Central roastery inventory is 4.5kg. Reorder required to prevent stockout.",
-      route: "inventory",
-      agingHours: 3
-    },
-    {
-      severity: "MEDIUM",
-      title: "Executive Expense Sign-off",
-      category: "EXPENSES",
-      description: "Consolidated utility & dairy invoices for ₹42,500 pending owner review.",
-      route: "bills",
-      agingHours: 6
-    }
-  ],
-  revenueTrend: [
-    { date: "18 Aug", revenuePaisa: 1040000, orders: 32 },
-    { date: "19 Aug", revenuePaisa: 1210000, orders: 38 },
-    { date: "20 Aug", revenuePaisa: 1450000, orders: 46 },
-    { date: "21 Aug", revenuePaisa: 1680000, orders: 54 },
-    { date: "22 Aug", revenuePaisa: 2420000, orders: 74 },
-    { date: "23 Aug", revenuePaisa: 2890000, orders: 88 },
-    { date: "24 Aug", revenuePaisa: 1795000, orders: 52 }
-  ],
-  cafePerformanceCards: [
-    {
-      cafeId: "ZC-0001",
-      name: "Koramangala Main",
-      city: "Bengaluru",
-      badge: "TOP",
-      health: "HEALTHY",
-      totalSalesPaisa: 5840000,
-      totalOrders: 182,
-      aovPaisa: 32088,
-      targetSalesPaisa: 6000000,
-      targetAchievementPct: 97,
-      inventoryCritical: 0,
-      inventoryBelowPar: 2,
-      drawerStatus: "BALANCED"
-    },
-    {
-      cafeId: "ZC-0002",
-      name: "Indiranagar Express",
-      city: "Bengaluru",
-      badge: "NORMAL",
-      health: "HEALTHY",
-      totalSalesPaisa: 3870000,
-      totalOrders: 124,
-      aovPaisa: 31210,
-      targetSalesPaisa: 4000000,
-      targetAchievementPct: 96,
-      inventoryCritical: 1,
-      inventoryBelowPar: 1,
-      drawerStatus: "BALANCED"
-    },
-    {
-      cafeId: "ZC-0003",
-      name: "Wayanad Heritage Roastery",
-      city: "Wayanad",
-      badge: "BOTTOM",
-      health: "ATTENTION",
-      totalSalesPaisa: 2775000,
-      totalOrders: 78,
-      aovPaisa: 35577,
-      targetSalesPaisa: 3500000,
-      targetAchievementPct: 79,
-      inventoryCritical: 1,
-      inventoryBelowPar: 2,
-      drawerStatus: "BALANCED"
-    }
-  ],
+  whatChanged: [],
+  attentionQueue: [],
+  revenueTrend: [],
+  cafePerformanceCards: [],
   financialControl: {
     cashDrawer: {
-      openDrawers: 3,
+      openDrawers: 0,
       unreconciledDrawers: 0,
       totalVariancePaisa: 0
     },
     personalLedger: {
-      pendingReimbursementsPaisa: 1250000,
-      netPersonalBalancePaisa: 48500000
+      pendingReimbursementsPaisa: 0,
+      netPersonalBalancePaisa: 0
     },
     paymentMix: {
-      upi: 62,
-      card: 24,
-      cash: 14
+      upi: 0,
+      card: 0,
+      cash: 0
     },
     reconciliationWatch: {
       bankStatus: "MATCHED",
@@ -676,36 +601,26 @@ export const DEFAULT_OWNER_DASHBOARD_DATA = {
   },
   operationalSnapshot: {
     attendance: {
-      staffPresent: 18,
-      staffAbsent: 3,
-      attendanceExceptions: 1
+      staffPresent: 0,
+      staffAbsent: 0,
+      attendanceExceptions: 0
     },
     inventory: {
-      critical: 1,
-      belowPar: 4,
-      wastageCostPaisa: 32000
+      critical: 0,
+      belowPar: 0,
+      wastageCostPaisa: 0
     },
     facilities: {
-      maintenanceOpen: 1
+      maintenanceOpen: 0
     }
   },
   commercialMix: {
-    topMenuItems: [
-      { itemName: "Zamorin Signature Pour-Over (Arabica)", totalQty: 142, totalRevenuePaisa: 3976000 },
-      { itemName: "Malabar Cold Brew & Tonic", totalQty: 118, totalRevenuePaisa: 3068000 },
-      { itemName: "Classic South Indian Filter Kaapi", totalQty: 164, totalRevenuePaisa: 2296000 },
-      { itemName: "Cardamom & Jaggery Brioche Bun", totalQty: 95, totalRevenuePaisa: 1805000 },
-      { itemName: "Avocado & Sourdough Toast", totalQty: 46, totalRevenuePaisa: 1334000 }
-    ],
-    categoryMix: [
-      { category: "Beverages", percent: 68 },
-      { category: "Bakery & Desserts", percent: 22 },
-      { category: "Hot Kitchen", percent: 10 }
-    ]
+    topMenuItems: [],
+    categoryMix: []
   },
   systemRisk: {
     incidentsP0: 0,
-    posUptimePct: 99.9,
+    posUptimePct: 100.0,
     deviceTrust: "ALL_SECURE"
   }
 };

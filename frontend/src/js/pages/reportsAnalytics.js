@@ -238,7 +238,7 @@ async function loadAnalyticsOverview(root) {
         attentionItems: '3',
       },
       actionCentreItems: [
-        { title: 'Till Variance', description: 'Koramangala 5th Block ₹320 till discrepancy flagged', deepTab: 'sales' },
+        { title: 'Till Variance', description: 'Till discrepancy check complete', deepTab: 'sales' },
         { title: 'Invoiced Not Received (INR)', description: 'PO-2026-084 supplier invoice pending physical GRN', deepTab: 'procurement' },
         { title: 'Food Safety CAPA', description: 'Milk fridge sensor calibration audit required', deepTab: 'quality' },
       ],
@@ -785,9 +785,9 @@ async function renderWorkforceSubtab(root, container) {
         overtimeHours: 14.5,
       },
       exceptions: [
-        { employeeName: 'Praveen K. (Barista)', cafe: 'Koramangala 5th Block', type: 'Late Clock-In (>15m)', minutes: 22, status: 'RESOLVED' },
-        { employeeName: 'Ananya S. (Shift Lead)', cafe: 'Indiranagar 100ft Rd', type: 'Overtime (>2h)', minutes: 135, status: 'PENDING_APPROVAL' },
-        { employeeName: 'Rohit M. (Kitchen Prep)', cafe: 'Koramangala 5th Block', type: 'Missed Break Punch', minutes: null, status: 'RESOLVED' },
+        { employeeName: 'Staff Member', cafe: 'Main Outlet', type: 'Late Clock-In (>15m)', minutes: 22, status: 'RESOLVED' },
+        { employeeName: 'Shift Supervisor', cafe: 'Branch Outlet', type: 'Overtime (>2h)', minutes: 135, status: 'PENDING_APPROVAL' },
+        { employeeName: 'Kitchen Prep', cafe: 'Main Outlet', type: 'Missed Break Punch', minutes: null, status: 'RESOLVED' },
       ],
     };
   }
@@ -1148,8 +1148,8 @@ async function renderQualitySubtab(root, container) {
         activeQualityHoldsCount: 0,
       },
       recentIncidents: [
-        { ref: 'CAPA-2026-08-01', cafe: 'Koramangala 5th Block', title: 'Milk Refrigerator Sensor Calibration Check', status: 'RESOLVED' },
-        { ref: 'AUD-2026-08-14', cafe: 'Indiranagar 100ft Rd', title: 'Routine Monthly FSSAI Hygiene Self-Audit (Score: 96/100)', status: 'RESOLVED' },
+        { ref: 'CAPA-2026-08-01', cafe: 'Main Outlet', title: 'Milk Refrigerator Sensor Calibration Check', status: 'RESOLVED' },
+        { ref: 'AUD-2026-08-14', cafe: 'Branch Outlet', title: 'Routine Monthly FSSAI Hygiene Self-Audit (Score: 96/100)', status: 'RESOLVED' },
       ],
     };
   }
@@ -1262,8 +1262,8 @@ async function renderPortfolioSubtab(root, container) {
     cachedPortfolio = {
       overallLikeForLikeGrowthPct: 11.4,
       portfolio: [
-        { name: 'Koramangala 5th Block Flagship', cafeId: 'ZC-0001', category: 'MATURE', operatingDays: 365, netSales: 215420, priorYearNetSales: 192800, likeForLikeGrowthPct: 11.7, labourCostPct: 21.5, marginPct: 70.5 },
-        { name: 'Indiranagar 100ft Rd Bistro', cafeId: 'ZC-0002', category: 'MATURE', operatingDays: 310, netSales: 127430, priorYearNetSales: 115200, likeForLikeGrowthPct: 10.6, labourCostPct: 22.8, marginPct: 69.2 },
+        { name: 'Main Outlet', cafeId: 'ZC-0001', category: 'MATURE', operatingDays: 365, netSales: 215420, priorYearNetSales: 192800, likeForLikeGrowthPct: 11.7, labourCostPct: 21.5, marginPct: 70.5 },
+        { name: 'Branch Outlet', cafeId: 'ZC-0002', category: 'MATURE', operatingDays: 310, netSales: 127430, priorYearNetSales: 115200, likeForLikeGrowthPct: 10.6, labourCostPct: 22.8, marginPct: 69.2 },
       ],
     };
   }
@@ -1493,8 +1493,8 @@ function renderExplorerSubtab(root, container) {
             <tr><th>Café Scope</th><th>Net Sales</th><th>Share %</th></tr>
           </thead>
           <tbody>
-            <tr><td>Koramangala 5th Block (ZC-0001)</td><td>₹2,15,420.00</td><td>62.8%</td></tr>
-            <tr><td>Indiranagar 100ft Rd (ZC-0002)</td><td>₹1,27,430.00</td><td>37.2%</td></tr>
+            <tr><td>Main Outlet (ZC-0001)</td><td>₹2,15,420.00</td><td>62.8%</td></tr>
+            <tr><td>Branch Outlet (ZC-0002)</td><td>₹1,27,430.00</td><td>37.2%</td></tr>
           </tbody>
         </table>
       `;
@@ -1718,7 +1718,7 @@ async function renderExportsSubtab(root, container) {
         jobId: 'EXP-20260830-001',
         reportId: 'Inventory Movement & Valuation',
         format: 'XLSX',
-        scope: 'Koramangala 5th Block',
+        scope: 'Main Outlet',
         createdAt: new Date(Date.now() - 86400000).toISOString(),
         status: 'READY',
       },

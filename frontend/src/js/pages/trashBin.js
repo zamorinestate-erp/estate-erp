@@ -273,14 +273,14 @@ const SAMPLE_TRASH_ITEMS = [
     recordId: 'MENU-ITEM-0042',
     recordTitle: 'Seasonal Cold Brew Tonic',
     module: 'MENU',
-    deletedByName: 'Rahul K',
+    deletedByName: 'Operator',
     deletedByUserId: 'AD-0001',
     deletedAt: new Date(Date.now() - 86400000 * 3).toISOString(),
     retentionExpiresAt: new Date(Date.now() + 86400000 * 27).toISOString(),
     status: 'ACTIVE',
     daysRemaining: 27,
     cafeId: 'ZC-0001',
-    cafeName: 'Koramangala Main',
+    cafeName: 'Main Outlet',
     hasHold: false
   },
   {
@@ -288,14 +288,14 @@ const SAMPLE_TRASH_ITEMS = [
     recordId: 'RECIPE-0018',
     recordTitle: 'Cardamom Infused Cold Foam',
     module: 'MENU',
-    deletedByName: 'Rahul K',
+    deletedByName: 'Operator',
     deletedByUserId: 'AD-0001',
     deletedAt: new Date(Date.now() - 86400000 * 28).toISOString(),
     retentionExpiresAt: new Date(Date.now() + 86400000 * 2).toISOString(),
     status: 'EXPIRING_SOON',
     daysRemaining: 2,
     cafeId: 'ZC-0001',
-    cafeName: 'Koramangala Main',
+    cafeName: 'Main Outlet',
     hasHold: false
   },
   {

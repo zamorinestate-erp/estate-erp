@@ -157,8 +157,8 @@ function canReverse()   { return isMaster(); }
 function getAssignedCafes() {
   const u = state.auth?.user || state.user || {};
   return u.assignedCafes || state.assignedCafes || [
-    { cafeId: "ZC-0001", name: "Kozhikode Beach Main" },
-    { cafeId: "ZC-0002", name: "Calicut Cyberpark Outpost" },
+    { cafeId: "ZC-0001", name: "Main Outlet" },
+    { cafeId: "ZC-0002", name: "Branch Outlet" },
     { cafeId: "ZC-0003", name: "Wayanad Heritage Roastery" },
   ];
 }

@@ -69,7 +69,7 @@ export const DEV_PREVIEW_USERS = Object.freeze({
     email: "admin@example.com",
     role: "CAFE_ADMIN",
     primaryCafeId: "ZC-0001",
-    primaryCafeName: "Koramangala Main",
+    primaryCafeName: "Main Outlet",
     assignedCafeIds: ["ZC-0001"],
     organisationId: "ZAMORIN",
     status: "ACTIVE",

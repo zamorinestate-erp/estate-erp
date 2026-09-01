@@ -59,13 +59,13 @@ function getDevProfileFixture(currentUser) {
   const role = currentUser?.role || "STAFF";
   const userId = currentUser?.id || currentUser?._id || (role === "MASTER" ? "MU-0001" : (role === "OWNER" ? "OU-0001" : (role === "CAFE_ADMIN" ? "AU-0001" : "SU-0001")));
   const isPrimary = Boolean(currentUser?.isPrimaryMaster || role === "MASTER");
-  const name = currentUser?.name || (role === "MASTER" ? "Zamorin Primary Master" : (role === "OWNER" ? "Zamorin Executive Owner" : (role === "CAFE_ADMIN" ? "Ananya Sharma" : "Rahul Varma")));
+  const name = currentUser?.name || (role === "MASTER" ? "Zamorin Primary Master" : (role === "OWNER" ? "Zamorin Executive Owner" : (role === "CAFE_ADMIN" ? "Operations Admin" : "Staff Member")));
 
   return {
     identity: {
       userId,
       name,
-      preferredName: role === "STAFF" ? "Rahul" : (role === "CAFE_ADMIN" ? "Ananya" : ""),
+      preferredName: "",
       role,
       accountStatus: "ACTIVE",
       isPrimaryMaster: isPrimary,
@@ -188,7 +188,7 @@ function getDevProfileFixture(currentUser) {
       { id: "HIST-03", type: "ONBOARDING", section: "EMPLOYMENT", description: "Initial employee profile created and onboarded", timestamp: "2026-01-15T08:30:00.000Z", actor: "System" },
     ],
     preferences: {
-      preferredName: role === "STAFF" ? "Rahul" : "",
+      preferredName: "",
       preferredContactChannel: "EMAIL",
       notificationSummaryFrequency: "DAILY",
       language: "English / Malayalam",

@@ -23,8 +23,8 @@ let lastRefreshedTime = new Date();
 let cachedFinanceSummary = null;
 
 const CAFE_NAMES = {
-  "ZC-0001": "Kozhikode Beach Main",
-  "ZC-0002": "Calicut Cyberpark Outpost",
+  "ZC-0001": "Main Outlet",
+  "ZC-0002": "Branch Outlet",
   "ZC-0003": "Wayanad Heritage Roastery",
 };
 
@@ -58,118 +58,51 @@ function getIstTimeString(date = new Date()) {
 
 const DEFAULT_FINANCE_DATA = {
   kpis: {
-    netSales: 148520,
-    grossSales: 151240,
-    itemDiscounts: 1820,
-    refundsTotal: 900,
-    taxCollected: 7426,
-    cgstAmount: 3713,
-    sgstAmount: 3713,
-    operatingExpenses: 62450,
-    expenseRatio: 42.04,
-    payrollCost: 44556,
-    payrollRatio: 30.0,
-    overtimeCost: 3200,
-    wastageValue: 2840,
-    procurementSpend: 21410,
-    committedSpend: 14500,
+    netSales: 0,
+    grossSales: 0,
+    itemDiscounts: 0,
+    refundsTotal: 0,
+    taxCollected: 0,
+    cgstAmount: 0,
+    sgstAmount: 0,
+    operatingExpenses: 0,
+    expenseRatio: 0,
+    payrollCost: 0,
+    payrollRatio: 0,
+    overtimeCost: 0,
+    wastageValue: 0,
+    procurementSpend: 0,
+    committedSpend: 0,
     reconciliationVariance: 0,
     exceptionsCount: 0,
-    physicalCashInTill: 23800,
+    physicalCashInTill: 0,
   },
-  cafes: [
-    {
-      cafeId: "ZC-0001",
-      cafeName: "Kozhikode Beach Main",
-      netSales: 74260,
-      grossSales: 75620,
-      discounts: 910,
-      refunds: 450,
-      revenueSharePct: 50.0,
-      expenses: 29700,
-      costSharePct: 47.6,
-      expenseRatio: 40.0,
-      payrollCost: 20792,
-      payrollRatio: 28.0,
-      overtimeCost: 1600,
-      wastageValue: 1420,
-      reconciliationStatus: "MATCHED",
-      drawerStatus: "RECONCILED",
-      drawerVariance: 0,
-      exceptions: 0,
-      health: "HEALTHY",
-      healthReason: "Strong sales volume, expense ratio well controlled at 40.0%",
-    },
-    {
-      cafeId: "ZC-0002",
-      cafeName: "Calicut Cyberpark Outpost",
-      netSales: 47080,
-      grossSales: 47940,
-      discounts: 580,
-      refunds: 280,
-      revenueSharePct: 31.7,
-      expenses: 20240,
-      costSharePct: 32.4,
-      expenseRatio: 43.0,
-      payrollCost: 14594,
-      payrollRatio: 31.0,
-      overtimeCost: 1100,
-      wastageValue: 890,
-      reconciliationStatus: "MATCHED",
-      drawerStatus: "RECONCILED",
-      drawerVariance: 0,
-      exceptions: 0,
-      health: "HEALTHY",
-      healthReason: "Stable weekday tech-park demand, zero tender or cash drawer variances",
-    },
-    {
-      cafeId: "ZC-0003",
-      cafeName: "Wayanad Heritage Roastery",
-      netSales: 27180,
-      grossSales: 27680,
-      discounts: 330,
-      refunds: 170,
-      revenueSharePct: 18.3,
-      expenses: 12510,
-      costSharePct: 20.0,
-      expenseRatio: 46.0,
-      payrollCost: 9170,
-      payrollRatio: 33.7,
-      overtimeCost: 500,
-      wastageValue: 530,
-      reconciliationStatus: "MATCHED",
-      drawerStatus: "OPEN",
-      drawerVariance: 0,
-      exceptions: 0,
-      health: "HEALTHY",
-      healthReason: "Active daily till open, zero unresolved variance detected",
-    },
-  ],
+  cafes: [],
   personalLedger: {
-    openingBalance: 125000,
-    creditsMtd: 25000,
-    debitsMtd: 10000,
-    currentBalance: 140000,
-    lastActivity: "21 Aug 2026 · Partner Draw #402",
+    openingBalance: 0,
+    creditsMtd: 0,
+    debitsMtd: 0,
+    currentBalance: 0,
+    lastActivity: "No activity recorded",
   },
   departmentOrders: {
-    totalBilled: 18400,
-    collected: 12200,
-    outstanding: 6200,
+    totalBilled: 0,
+    collected: 0,
+    outstanding: 0,
     overdue: 0,
   },
   payables: {
-    totalUnpaid: 32500,
-    dueNext7Days: 14200,
+    totalUnpaid: 0,
+    dueNext7Days: 0,
     overdue: 0,
   },
   budgets: {
-    revenueTarget: 140000,
-    actualRevenue: 148520,
-    expenseBudget: 65000,
-    actualExpense: 62450,
-    payrollBudget: 45000,
-    actualPayroll: 44556,
+    revenueTarget: 0,
+    actualRevenue: 0,
+    expenseBudget: 0,
+    actualExpense: 0,
+    payrollBudget: 0,
+    actualPayroll: 0,
   },
 };
 
@@ -249,8 +182,8 @@ export function renderOwnerFinanceSummary() {
             <label style="font-size:12px; color:var(--muted); font-weight:600;">Café Scope:</label>
             <select id="finance-cafe-scope" class="select select-sm" style="font-size:12px;">
               <option value="ALL" ${selectedCafeFilter === "ALL" ? "selected" : ""}>All Authorized Cafés (${data.cafes.length})</option>
-              <option value="ZC-0001" ${selectedCafeFilter === "ZC-0001" ? "selected" : ""}>ZC-0001 · Kozhikode Beach Main</option>
-              <option value="ZC-0002" ${selectedCafeFilter === "ZC-0002" ? "selected" : ""}>ZC-0002 · Calicut Cyberpark Outpost</option>
+              <option value="ZC-0001" ${selectedCafeFilter === "ZC-0001" ? "selected" : ""}>ZC-0001 · Main Outlet</option>
+              <option value="ZC-0002" ${selectedCafeFilter === "ZC-0002" ? "selected" : ""}>ZC-0002 · Branch Outlet</option>
               <option value="ZC-0003" ${selectedCafeFilter === "ZC-0003" ? "selected" : ""}>ZC-0003 · Wayanad Heritage Roastery</option>
             </select>
           </div>
@@ -449,8 +382,8 @@ function renderMatrixTab(filteredCafes) {
           <p style="font-size:12px; color:var(--muted); margin:0;">Branch-by-branch financial efficiency, revenue share, cost ratios &amp; drawer health</p>
         </div>
         <div style="font-size:12px; color:var(--muted);">
-          <span>Strongest Revenue: <strong>Kozhikode Beach Main (50.0%)</strong></span> · 
-          <span>Lowest OpEx Ratio: <strong>Kozhikode Beach Main (40.0%)</strong></span>
+          <span>Strongest Revenue: <strong>Main Outlet (0.0%)</strong></span> · 
+          <span>Lowest OpEx Ratio: <strong>Main Outlet (0.0%)</strong></span>
         </div>
       </div>
 

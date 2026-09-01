@@ -105,7 +105,7 @@ async function loadFleetData(root) {
     cachedDevices = devicesRes?.data?.devices || [
       {
         deviceId: "ZC-DEV-0001",
-        deviceName: "Koramangala Main Operations Tablet",
+        deviceName: "Main Outlet Operations Tablet",
         deviceClass: "CAFE_OWNED",
         assignedCafeId: "ZC-0001",
         status: "ACTIVE",
@@ -115,7 +115,7 @@ async function loadFleetData(root) {
       },
       {
         deviceId: "ZC-DEV-0002",
-        deviceName: "Indiranagar Central Operations Terminal",
+        deviceName: "Branch Outlet Operations Terminal",
         deviceClass: "CAFE_OWNED",
         assignedCafeId: "ZC-0002",
         status: "ACTIVE",
@@ -588,8 +588,8 @@ function openEnrollDeviceModal(root) {
       <div class="form-group" style="margin-bottom:14px;">
         <label class="label">Assigned Cafe Location*</label>
         <select id="enr-cafe-id" class="input">
-          <option value="ZC-0001">ZC-0001 · Koramangala Main</option>
-          <option value="ZC-0002">ZC-0002 · Indiranagar Central</option>
+          <option value="ZC-0001">ZC-0001 · Main Outlet</option>
+          <option value="ZC-0002">ZC-0002 · Branch Outlet</option>
           <option value="ZC-0003">ZC-0003 · Calicut Beach</option>
         </select>
       </div>

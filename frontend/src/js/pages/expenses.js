@@ -143,7 +143,7 @@ function renderActiveSubpanel() {
 function renderOverviewSubpanel() {
   const isCafeOps = state.role === ROLES.CAFE_ADMIN;
   const user = state.auth?.user || state.user || {};
-  const cafeName = user.primaryCafeName || "Koramangala Flagship";
+  const cafeName = user.primaryCafeName || "Main Outlet";
   const cafeId = user.primaryCafeId || "ZC-0001";
 
   const pendingCount = EXPENSE_VOUCHERS.filter((v) => v.status === "SUBMITTED").length;
@@ -301,7 +301,7 @@ function renderOverviewSubpanel() {
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;">
           <div class="card" style="padding:16px;background:var(--surface);">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-              <h4 style="margin:0;font-size:15px;color:var(--ink);font-weight:700;">☕ Koramangala Flagship</h4>
+              <h4 style="margin:0;font-size:15px;color:var(--ink);font-weight:700;">☕ Main Outlet</h4>
               <span class="badge badge-neutral" style="font-size:11px;">ZC-0001</span>
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;margin-bottom:8px;">
@@ -322,7 +322,7 @@ function renderOverviewSubpanel() {
 
           <div class="card" style="padding:16px;background:var(--surface);">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-              <h4 style="margin:0;font-size:15px;color:var(--ink);font-weight:700;">☕ Indiranagar Roastery</h4>
+              <h4 style="margin:0;font-size:15px;color:var(--ink);font-weight:700;">☕ Branch Outlet</h4>
               <span class="badge badge-neutral" style="font-size:11px;">ZC-0002</span>
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;margin-bottom:8px;">
@@ -1258,8 +1258,8 @@ function openRecordExpenseModal(root) {
         <div>
           <label style="font-weight:600;display:block;margin-bottom:4px;">Café Location *</label>
           <select id="modal-exp-cafe" class="form-control" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;">
-            <option value="ZC-0001">Koramangala Flagship (ZC-0001)</option>
-            <option value="ZC-0002">Indiranagar Roastery (ZC-0002)</option>
+            <option value="ZC-0001">Main Outlet (ZC-0001)</option>
+            <option value="ZC-0002">Branch Outlet (ZC-0002)</option>
             <option value="ZC-0003">Calicut Beach Main (ZC-0003)</option>
           </select>
         </div>
@@ -1278,7 +1278,7 @@ function openRecordExpenseModal(root) {
 
         <div>
           <label style="font-weight:600;display:block;margin-bottom:4px;">Payee / Vendor Name *</label>
-          <input type="text" id="modal-exp-payee" class="form-control" placeholder="e.g. Blue Tokai Coffee Roasters" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;">
+          <input type="text" id="modal-exp-payee" class="form-control" placeholder="e.g. Vendor / Supplier Name" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;">
         </div>
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
@@ -1334,7 +1334,7 @@ function openRecordExpenseModal(root) {
         payee,
         invoiceRef: `Manual #${Math.floor(1000 + Math.random() * 9000)}`,
         cafeId,
-        cafeName: cafeId === "ZC-0001" ? "Koramangala Flagship" : cafeId === "ZC-0002" ? "Indiranagar Roastery" : "Calicut Beach Main",
+        cafeName: cafeId === "ZC-0001" ? "Main Outlet" : cafeId === "ZC-0002" ? "Branch Outlet" : "Calicut Beach Main",
         date: new Date().toISOString().split("T")[0],
         paymentSource: source === "COMPANY_BANK_UPI" ? "Bank UPI" : source === "PETTY_CASH" ? "Petty Cash" : "Corporate Card",
         paymentSourceCode: source,
@@ -1521,14 +1521,14 @@ function openDisburseFloatModal(root) {
       <div style="display:flex;flex-direction:column;gap:12px;font-size:13px;">
         <div>
           <label style="font-weight:600;display:block;margin-bottom:4px;">Employee Name *</label>
-          <input type="text" id="float-employee" class="form-control" placeholder="e.g. Priya Nair" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;">
+          <input type="text" id="float-employee" class="form-control" placeholder="e.g. Employee Name" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;">
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
           <div>
             <label style="font-weight:600;display:block;margin-bottom:4px;">Café Outlet *</label>
             <select id="float-cafe" class="form-control" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;">
-              <option value="ZC-0001">Koramangala (ZC-0001)</option>
-              <option value="ZC-0002">Indiranagar (ZC-0002)</option>
+              <option value="ZC-0001">Main Outlet (ZC-0001)</option>
+              <option value="ZC-0002">Branch Outlet (ZC-0002)</option>
               <option value="ZC-0003">Calicut Beach (ZC-0003)</option>
             </select>
           </div>
@@ -1561,7 +1561,7 @@ function openDisburseFloatModal(root) {
         employee,
         role: "Store Staff",
         cafeId,
-        cafeName: cafeId === "ZC-0001" ? "Koramangala Flagship" : cafeId === "ZC-0002" ? "Indiranagar Roastery" : "Calicut Beach Main",
+        cafeName: cafeId === "ZC-0001" ? "Main Outlet" : cafeId === "ZC-0002" ? "Branch Outlet" : "Calicut Beach Main",
         disbursedAmount: amount,
         spentAmount: 0.0,
         returnedAmount: 0.0,

@@ -16,10 +16,10 @@ function getOperatorSession() {
   const user = state.auth?.user || state.user || {};
   return {
     operatorUserId: user.userId || "EMP-0042",
-    operatorName: user.name || "Rahul K (Operations Lead)",
+    operatorName: user.name || "Operations Lead",
     role: user.role || "CAFE_ADMIN",
     primaryCafeId: user.primaryCafeId || "ZC-0001",
-    primaryCafeName: user.primaryCafeName || "Koramangala Main",
+    primaryCafeName: user.primaryCafeName || "Main Outlet",
     deviceId: "DEV-CAF-01",
     businessDate: new Date().toISOString().slice(0, 10),
   };
@@ -96,9 +96,9 @@ export function renderPOS() {
 function renderTerminalView() {
   const isCafeOps = state.role === ROLES.CAFE_ADMIN;
   const operator = getOperatorSession();
-  const operatorName = operator?.name || state.user?.name || "Rahul K";
+  const operatorName = operator?.name || state.user?.name || "Duty Operator";
   const operatorEmpId = operator?.employeeId || state.user?.employeeId || "EMP-0042";
-  const cafeName = isCafeOps ? "📍 Koramangala Main (ZC-0001)" : "☕ Zamorin Master POS Terminal · All Outlets";
+  const cafeName = isCafeOps ? "📍 Main Outlet (ZC-0001)" : "☕ Zamorin Master POS Terminal · All Outlets";
   const deviceName = "Register 01 · DEV-CAF-01";
   const businessDateStr = new Intl.DateTimeFormat("en-IN", {
     timeZone: "Asia/Kolkata",
@@ -1420,7 +1420,7 @@ function openReceiptModal(bill, isReprint = false) {
     body: `
       <div style="font-family:var(--font-mono);background:var(--surface-sunken);padding:18px;border-radius:var(--radius-sm);font-size:12px;line-height:1.5;border:1px solid var(--line);">
         <div style="text-align:center;font-weight:800;font-size:15px;margin-bottom:2px;color:var(--ink);">ZAMORIN CAFE ESTATE</div>
-        <div style="text-align:center;font-size:10px;color:var(--muted);">GSTIN: 29AABCT1332L1ZV · Koramangala Main</div>
+        <div style="text-align:center;font-size:10px;color:var(--muted);">GSTIN: 32AABCT1332L1ZV · Main Outlet</div>
         <div style="text-align:center;font-size:11px;font-weight:700;color:var(--bronze-600);margin-bottom:10px;">
           ${isReprint ? "TAX INVOICE — [DUPLICATE REPRINT]" : "TAX INVOICE / RETAIL BILL"}
         </div>

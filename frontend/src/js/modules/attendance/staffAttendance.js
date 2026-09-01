@@ -63,7 +63,7 @@ function renderHeader() {
           <h1 style="font-size:24px; font-weight:700; margin:0; color:var(--ink);">My Attendance &amp; Shifts</h1>
           <span class="badge" style="background:rgba(180,83,9,0.12); color:#b45309; font-weight:600; font-size:12px; padding:4px 10px; border-radius:12px; white-space:nowrap;">EMP-SCR-002</span>
         </div>
-        <p style="font-size:13px; color:var(--muted); margin:4px 0 0;">Dawn Roast — Koramangala · Employee Attendance &amp; Shifts Self-Service</p>
+        <p style="font-size:13px; color:var(--muted); margin:4px 0 0;">${state.user?.primaryCafeName || state.user?.primaryCafeId || "Zamorin Operations"} · Employee Attendance &amp; Shifts Self-Service</p>
       </div>
 
       <!-- Live Server Clock Badge -->
@@ -116,10 +116,10 @@ function renderActiveTabContent() {
 function renderTodayTab() {
   const today = cachedToday;
   const shift = cachedShift || {
-    shiftName: "Morning Roastery Shift",
-    scheduledStartAt: "2026-08-19T09:00:00.000Z",
-    scheduledEndAt: "2026-08-19T17:30:00.000Z",
-    assignedCafeName: "Dawn Roast — Koramangala",
+    shiftName: "Standard Duty Shift",
+    scheduledStartAt: new Date().toISOString(),
+    scheduledEndAt: new Date().toISOString(),
+    assignedCafeName: state.user?.primaryCafeName || state.user?.primaryCafeId || "Primary Outlet",
     unpaidBreakMinutes: 30,
   };
 
@@ -152,7 +152,7 @@ function renderTodayTab() {
           ${shift.shiftName}
         </div>
         <div style="font-size:13px; color:var(--text-muted); margin-bottom:16px;">
-          ${shift.assignedCafeName || "Dawn Roast — Koramangala"}
+          ${shift.assignedCafeName || "Main Outlet"}
         </div>
 
         <!-- Shift details grid -->
@@ -206,7 +206,7 @@ function renderTodayTab() {
           <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:16px;">
             <div class="flex items-center justify-between" style="padding:8px 12px; background:var(--bg-surface-2); border-radius:var(--radius-sm);">
               <span style="font-size:12.5px; color:var(--text-primary); display:flex; align-items:center; gap:6px;">
-                <span>📍</span> GPS Geofence (Dawn Roast)
+                <span>📍</span> GPS Geofence (Main Outlet)
               </span>
               <span class="badge badge-mint" style="font-size:10px;">In Radius (8m)</span>
             </div>
@@ -992,7 +992,7 @@ function openPunchReceiptModal(flowType) {
 
       <div style="padding:14px; background:var(--bg-surface-2); border-radius:var(--radius-md); text-align:left; font-size:12.5px; display:flex; flex-direction:column; gap:8px; margin-bottom:20px;">
         <div class="flex justify-between"><span>Punch Time:</span><strong style="color:var(--color-accent-mint);">${timeStr} IST</strong></div>
-        <div class="flex justify-between"><span>Assigned Café:</span><strong>Dawn Roast — Koramangala</strong></div>
+        <div class="flex justify-between"><span>Assigned Café:</span><strong>${state.user?.primaryCafeName || state.user?.primaryCafeId || "Primary Outlet"}</strong></div>
         <div class="flex justify-between"><span>Attendance Ref:</span><strong style="font-family:monospace;">AT-${now.toISOString().slice(0, 10).replace(/-/g, "")}-001</strong></div>
         <div class="flex justify-between"><span>Verification:</span><strong style="color:var(--color-accent-mint);">Geo-Selfie + QR Verified</strong></div>
       </div>

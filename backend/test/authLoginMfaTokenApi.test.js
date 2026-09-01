@@ -105,6 +105,7 @@ function makeUser(overrides) {
 
 test.before(async function setup() {
   process.env.JWT_ACCESS_SECRET = JWT_SECRET;
+  process.env.REQUIRE_MFA = 'true';
   passwordHash = await authService.hashPassword(PASSWORD);
 });
 

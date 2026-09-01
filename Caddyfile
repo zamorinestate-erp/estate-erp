@@ -1,0 +1,32 @@
+# =============================================================================
+# ZAMORIN CAFE ERP — PRODUCTION CADDY CONFIGURATION (AUTOMATIC HTTPS)
+# =============================================================================
+# Usage:
+#   caddy run --config Caddyfile
+# =============================================================================
+
+:3000, :80 {
+    # Serve static frontend files
+    root * ./frontend
+    file_server
+
+    # Reverse proxy backend API endpoints
+    handle /api/* {
+        reverse_proxy 127.0.0.1:4000
+    }
+
+    # SPA Fallback
+    handle {
+        try_files {path} /index.html
+    }
+
+    # Security Headers
+    header {
+        X-Content-Type-Options nosniff
+        X-Frame-Options SAMEORIGIN
+        Referrer-Policy strict-origin-when-cross-origin
+    }
+
+    # Compression
+    encode gzip zstd
+}

@@ -394,8 +394,8 @@ function renderOverviewTab() {
 
 function renderCafesTab() {
   const cafes = adminState.cafes.length > 0 ? adminState.cafes : [
-    { cafeId: "ZC-0001", name: "Dawn Roast — Koramangala", city: "Bengaluru", address: "80 Feet Rd, 4th Block", managerName: "Ravi Kumar", status: "ACTIVE", phone: "+91 98450 11223", health: "HEALTHY", staffCount: 8, setupCompleteness: "5/5 Complete" },
-    { cafeId: "ZC-0002", name: "Indiranagar Central", city: "Bengaluru", address: "100 Feet Rd, HAL 2nd Stage", managerName: "Suresh Menon", status: "ACTIVE", phone: "+91 98450 44556", health: "HEALTHY", staffCount: 7, setupCompleteness: "5/5 Complete" },
+    { cafeId: "ZC-0001", name: "Main Outlet", city: "Bengaluru", address: "80 Feet Rd, 4th Block", managerName: "Admin User", status: "ACTIVE", phone: "+91 98450 11223", health: "HEALTHY", staffCount: 8, setupCompleteness: "5/5 Complete" },
+    { cafeId: "ZC-0002", name: "Branch Outlet", city: "Bengaluru", address: "100 Feet Rd, HAL 2nd Stage", managerName: "Suresh Menon", status: "ACTIVE", phone: "+91 98450 44556", health: "HEALTHY", staffCount: 7, setupCompleteness: "5/5 Complete" },
     { cafeId: "ZC-0003", name: "Calicut Beachside", city: "Kozhikode", address: "Beach Road, Vellayil", managerName: "Meera Iyer", status: "ACTIVE", phone: "+91 98450 77889", health: "ATTENTION", staffCount: 6, setupCompleteness: "4/5 Complete" },
   ];
 
@@ -506,7 +506,7 @@ function renderUsersTab() {
   const users = adminState.users.length > 0 ? adminState.users : [
     { userId: "MU-0001", fullName: "Zamorin Executive Master", email: "master@zamorincafe.com", role: "MASTER", isPrimaryMaster: true, assignedCafeIds: ["ALL"], accountStatus: "ACTIVE", lastActivityAt: new Date() },
     { userId: "MU-0002", fullName: "Operational Master", email: "ops.master@zamorincafe.com", role: "MASTER", isPrimaryMaster: false, assignedCafeIds: ["ALL"], accountStatus: "ACTIVE", lastActivityAt: new Date() },
-    { userId: "AD-0001", fullName: "Ravi Kumar", email: "ravi.kumar@zamorincafe.com", role: "CAFE_ADMIN", isPrimaryMaster: false, assignedCafeIds: ["ZC-0001"], accountStatus: "ACTIVE", lastActivityAt: new Date() },
+    { userId: "AD-0001", fullName: "Admin User", email: "ravi.kumar@zamorincafe.com", role: "CAFE_ADMIN", isPrimaryMaster: false, assignedCafeIds: ["ZC-0001"], accountStatus: "ACTIVE", lastActivityAt: new Date() },
     { userId: "AD-0002", fullName: "Suresh Menon", email: "suresh.m@zamorincafe.com", role: "CAFE_ADMIN", isPrimaryMaster: false, assignedCafeIds: ["ZC-0002"], accountStatus: "ACTIVE", lastActivityAt: new Date() },
     { userId: "AD-0003", fullName: "Meera Iyer", email: "meera.i@zamorincafe.com", role: "CAFE_ADMIN", isPrimaryMaster: false, assignedCafeIds: ["ZC-0003"], accountStatus: "ACTIVE", lastActivityAt: new Date() },
     { userId: "OW-0001", fullName: "Deepak Varma", email: "owner@zamorincafe.com", role: "OWNER", isPrimaryMaster: false, assignedCafeIds: ["ZC-0001", "ZC-0002"], accountStatus: "ACTIVE", lastActivityAt: new Date() },
@@ -753,7 +753,7 @@ function renderGovSubpanel(sub) {
                 <tr>
                   <td style="font-family:var(--font-mono);font-weight:700;color:var(--bronze-600);">DEV-ZC01-POS01</td>
                   <td><strong>POS Terminal #1</strong> · Samsung Tab S8</td>
-                  <td>ZC-0001 · Koramangala</td>
+                  <td>ZC-0001 · Main Outlet</td>
                   <td><span class="status success" style="font-size:10px;">TRUSTED</span></td>
                   <td>Just now</td>
                   <td style="text-align:right;"><button class="btn btn-xs btn-ghost" type="button">Replace Device</button></td>
@@ -761,7 +761,7 @@ function renderGovSubpanel(sub) {
                 <tr>
                   <td style="font-family:var(--font-mono);font-weight:700;color:var(--bronze-600);">DEV-ZC02-POS01</td>
                   <td><strong>POS Terminal #1</strong> · Apple iPad 10th Gen</td>
-                  <td>ZC-0002 · Indiranagar</td>
+                  <td>ZC-0002 · Branch Outlet</td>
                   <td><span class="status success" style="font-size:10px;">TRUSTED</span></td>
                   <td>4 mins ago</td>
                   <td style="text-align:right;"><button class="btn btn-xs btn-ghost" type="button">Replace Device</button></td>
@@ -1352,7 +1352,7 @@ function openAddCafeWizard(root) {
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
             <div class="form-group">
               <label class="form-label" style="font-size:12px;font-weight:700;">Café Name*</label>
-              <input type="text" id="cafe-wiz-name" class="form-control" placeholder="e.g. Dawn Roast — Whitefield" required />
+              <input type="text" id="cafe-wiz-name" class="form-control" placeholder="e.g. Calicut Roastery Hub" required />
             </div>
             <div class="form-group">
               <label class="form-label" style="font-size:12px;font-weight:700;">Display Name*</label>
@@ -1461,7 +1461,7 @@ function openAddUserWizard(root) {
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
             <div class="form-group">
               <label class="form-label" style="font-size:12px;font-weight:700;">Full Name*</label>
-              <input type="text" id="user-wiz-name" class="form-control" placeholder="e.g. Ananya Sharma" required />
+              <input type="text" id="user-wiz-name" class="form-control" placeholder="e.g. Full Name" required />
             </div>
             <div class="form-group">
               <label class="form-label" style="font-size:12px;font-weight:700;">Login Email*</label>
@@ -1481,8 +1481,8 @@ function openAddUserWizard(root) {
             <div class="form-group">
               <label class="form-label" style="font-size:12px;font-weight:700;">Assigned Café</label>
               <select id="user-wiz-cafe" class="form-control">
-                <option value="ZC-0001">ZC-0001 · Koramangala Main</option>
-                <option value="ZC-0002">ZC-0002 · Indiranagar Central</option>
+                <option value="ZC-0001">ZC-0001 · Main Outlet</option>
+                <option value="ZC-0002">ZC-0002 · Branch Outlet</option>
                 <option value="ZC-0003">ZC-0003 · Calicut Beach</option>
               </select>
             </div>

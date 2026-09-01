@@ -9,7 +9,8 @@
     "dev": "node src/scripts/startDev.js",
     "seed": "node src/scripts/seedInitialData.js",
     "check": "node src/scripts/checkAllJavaScript.js",
-    "check:server": "node --check src/server.js"
+    "check:server": "node --check src/server.js",
+    "check:deploy": "node src/scripts/verifyDeploymentConfig.js"
   },
   "keywords": [],
   "author": "",

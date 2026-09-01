@@ -875,11 +875,11 @@ function showCreateOperatorModal() {
       <form id="form-create-operator">
         <div style="margin-bottom:14px;">
           <label style="display:block; font-size:12px; font-weight:700; margin-bottom:5px; color:var(--ink);">Legal Entity Name *</label>
-          <input type="text" id="op-name" class="form-input" required placeholder="e.g. Blue Tokai Specialty Roasters LLP" style="width:100%;" />
+          <input type="text" id="op-name" class="form-input" required placeholder="e.g. Registered Operator Legal Entity" style="width:100%;" />
         </div>
         <div style="margin-bottom:14px;">
           <label style="display:block; font-size:12px; font-weight:700; margin-bottom:5px; color:var(--ink);">Trade / Brand Name</label>
-          <input type="text" id="op-trade" class="form-input" placeholder="e.g. Blue Tokai" style="width:100%;" />
+          <input type="text" id="op-trade" class="form-input" placeholder="e.g. Operator Brand Name" style="width:100%;" />
         </div>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:18px;">
           <div>

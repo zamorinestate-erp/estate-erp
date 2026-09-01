@@ -94,57 +94,32 @@ function getConnectivityStatus() {
 
 export const DEFAULT_CAFE_ADMIN_PAYLOAD = {
   cafeContext: {
-    cafeName: "Koramangala Main",
+    cafeName: "Main Outlet",
     cafeId: "ZC-0001",
     cafeStatus: "OPEN",
   },
   businessDate: new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }),
   todaySales: {
-    totalPaisa: 5840000,
-    billsCount: 182,
-    aovPaisa: 32088,
+    totalPaisa: 0,
+    billsCount: 0,
+    aovPaisa: 0,
   },
-  salesByHour: [
-    { hour: 7, salesPaisa: 120000, billsCount: 4 },
-    { hour: 8, salesPaisa: 420000, billsCount: 14 },
-    { hour: 9, salesPaisa: 680000, billsCount: 22 },
-    { hour: 10, salesPaisa: 920000, billsCount: 30 },
-    { hour: 11, salesPaisa: 1150000, billsCount: 38 },
-    { hour: 12, salesPaisa: 840000, billsCount: 26 },
-    { hour: 13, salesPaisa: 750000, billsCount: 24 },
-    { hour: 14, salesPaisa: 580000, billsCount: 18 },
-    { hour: 15, salesPaisa: 380000, billsCount: 6 }
-  ],
+  salesByHour: [],
   attendanceSummary: {
-    scheduled: 8,
-    present: 7,
-    exceptions: 1
+    scheduled: 0,
+    present: 0,
+    exceptions: 0
   },
   inventoryHealth: {
     critical: 0,
-    low: 2,
-    items: [
-      { name: "Wayanad Arabica Beans", currentStock: "4.5 kg", parLevel: "15 kg", status: "BELOW_PAR" },
-      { name: "Full Cream Milk (Nandini)", currentStock: "12 L", parLevel: "25 L", status: "BELOW_PAR" }
-    ]
+    low: 0,
+    items: []
   },
-  expensesSummary: { draft: 1, returned: 0, submitted: 2, totalPaisa: 845000 },
-  procurementSummary: { expectedToday: 2, receivedToday: 1, late: 0 },
-  departmentOrders: { open: 1, dueToday: 1, overdue: 0 },
-  actionRequired: [
-    {
-      severity: "MEDIUM",
-      title: "Mid-Shift Cash Drawer Reconciliation",
-      description: "Counter Till #1 reaches â‚¹25,000 threshold for vault drop.",
-      route: "sales-cash",
-      openedAt: new Date().toISOString()
-    }
-  ],
-  recentActivity: [
-    { description: "Bill #ZAM-882104 completed via UPI (â‚¹560.00)", timestamp: new Date(Date.now() - 5 * 60000).toISOString() },
-    { description: "Shift clock-in: Rahul Verma (Barista)", timestamp: new Date(Date.now() - 45 * 60000).toISOString() },
-    { description: "Stock received: Amul Butter 500g (10 packs)", timestamp: new Date(Date.now() - 120 * 60000).toISOString() }
-  ],
+  expensesSummary: { draft: 0, returned: 0, submitted: 0, totalPaisa: 0 },
+  procurementSummary: { expectedToday: 0, receivedToday: 0, late: 0 },
+  departmentOrders: { open: 0, dueToday: 0, overdue: 0 },
+  actionRequired: [],
+  recentActivity: [],
   dataFreshness: { generatedAt: new Date().toISOString() }
 };
 
@@ -154,7 +129,7 @@ export function renderAdminDashboard() {
   const user = state.auth?.user || state.user || {};
   const operatorName = user.name || user.fullName || "Operator";
   const operatorId = user.permanentEmployeeId || user.userId || user.id || "EMP-0042";
-  const cafeName = user.primaryCafeName || user.primaryCafeId || "Koramangala Main";
+  const cafeName = user.primaryCafeName || user.primaryCafeId || "Main Outlet";
   const cafeId = user.primaryCafeId || "ZC-0001";
   const deviceId = getOrCreateDeviceId()?.slice(0, 8) || "DEV-CAF-01";
   const conn = getConnectivityStatus();
@@ -586,7 +561,7 @@ export function renderAdminDashboard() {
               <div style="color:var(--muted); font-size:11px;">5 mins ago</div>
             </div>
             <div style="margin-bottom:6px; padding-bottom:6px; border-bottom:1px solid rgba(255,255,255,0.06); font-size:12px;">
-              <span style="color:var(--ink);">Shift clock-in: Rahul Verma (Barista)</span>
+              <span style="color:var(--ink);">Shift clock-in: Duty Barista</span>
               <div style="color:var(--muted); font-size:11px;">45 mins ago</div>
             </div>
             <div style="font-size:12px;">

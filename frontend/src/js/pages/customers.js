@@ -11,6 +11,30 @@ let cachedRewards = [];
 let cachedFeedbacks = [];
 let cachedProgramme = null;
 
+const DEFAULT_OVERVIEW = {
+  kpis: {
+    totalCustomers: 0,
+    activeMembers: 0,
+    repeatCustomers: 0,
+    outstandingPoints: 0,
+    rewardsRedeemed: 0,
+    rewardsAvailable: 0,
+    lapsedMembers: 0,
+    memberSales: 0,
+    averageMemberBill: 0,
+    feedbackOpen: 0,
+  },
+  cafeSummary: [],
+  controlStrip: {
+    newMembersToday: 0,
+    rewardsAvailable: 0,
+    pointsExpiringSoon: 0,
+    duplicateCandidates: 0,
+    reconciliationIssues: 0,
+    feedbackOpen: 0,
+  },
+};
+
 export function setCustomersActiveTab(tab) {
   activeSubTab = tab || "overview";
 }
@@ -159,39 +183,11 @@ function renderOverviewSubpanel() {
   const isCafeOps = state.role === ROLES.CAFE_ADMIN;
   const userCafe = state.auth?.user?.primaryCafeId || state.user?.primaryCafeId || "ZC-0001";
 
-  const ov = cachedOverview || {
-    kpis: {
-      totalCustomers: isCafeOps ? 620 : 1240,
-      activeMembers: isCafeOps ? 480 : 980,
-      repeatCustomers: isCafeOps ? 320 : 642,
-      outstandingPoints: isCafeOps ? 42100 : 84250,
-      rewardsRedeemed: isCafeOps ? 82 : 148,
-      rewardsAvailable: 184,
-      lapsedMembers: isCafeOps ? 60 : 124,
-      memberSales: isCafeOps ? 215400 : 412500,
-      averageMemberBill: 341.60,
-      feedbackOpen: isCafeOps ? 1 : 3,
-    },
-    cafeSummary: isCafeOps
-      ? [{ cafeId: "ZC-0001", cafeName: "Dawn Roast — Koramangala", customerCount: 620, memberSales: 215400, rewardsRedeemed: 82, feedbackOpen: 1 }]
-      : [
-          { cafeId: "ZC-0001", cafeName: "Dawn Roast — Koramangala", customerCount: 620, memberSales: 215400, rewardsRedeemed: 82, feedbackOpen: 1 },
-          { cafeId: "ZC-0002", cafeName: "Indiranagar Central", customerCount: 410, memberSales: 138600, rewardsRedeemed: 44, feedbackOpen: 2 },
-          { cafeId: "ZC-0003", cafeName: "Calicut Beach", customerCount: 210, memberSales: 58500, rewardsRedeemed: 22, feedbackOpen: 0 },
-        ],
-    controlStrip: {
-      newMembersToday: isCafeOps ? 6 : 12,
-      rewardsAvailable: 184,
-      pointsExpiringSoon: isCafeOps ? 36 : 72,
-      duplicateCandidates: 4,
-      reconciliationIssues: 0,
-      feedbackOpen: isCafeOps ? 1 : 3,
-    },
-  };
+  const ov = cachedOverview || DEFAULT_OVERVIEW;
 
   const visibleSummaries = isCafeOps
-    ? ov.cafeSummary.filter((c) => c.cafeId === userCafe)
-    : ov.cafeSummary;
+    ? (ov.cafeSummary || []).filter((c) => c.cafeId === userCafe)
+    : (ov.cafeSummary || []);
 
   const custTiles = [
     { id: "directory", icon: "👤", title: "Customer Directory", subtitle: "Guest profiles, purchase history & phone lookup", badge: `${ov.kpis.totalCustomers} Guests`, badgeType: "accent" },
@@ -344,8 +340,8 @@ function renderDirectorySubpanel() {
           </select>
           <select class="input" id="cust-cafe-filter" style="font-size:12.5px; width:auto;">
             <option value="">All Cafés</option>
-            <option value="ZC-0001">Dawn Roast Koramangala</option>
-            <option value="ZC-0002">Indiranagar Central</option>
+            <option value="ZC-0001">Main Outlet</option>
+            <option value="ZC-0002">Branch Outlet</option>
             <option value="ZC-0003">Calicut Beach</option>
           </select>
           <button class="btn btn-ghost" id="open-merge-btn" type="button" style="font-size:12px;">Merge Duplicates</button>
@@ -755,8 +751,8 @@ function openRegisterCustomerModal(root) {
       <div class="form-group">
         <label class="label">Preferred Home Café</label>
         <select id="new-cust-cafe" class="input">
-          <option value="ZC-0001">Dawn Roast Koramangala</option>
-          <option value="ZC-0002">Indiranagar Central</option>
+          <option value="ZC-0001">Main Outlet</option>
+          <option value="ZC-0002">Branch Outlet</option>
           <option value="ZC-0003">Calicut Beach</option>
         </select>
       </div>

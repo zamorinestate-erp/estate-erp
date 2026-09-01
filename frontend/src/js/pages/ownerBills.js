@@ -35,8 +35,8 @@ const DEFAULT_UPLOADED_INVOICES = [];
 let cachedUploadedInvoices = [];
 
 const CAFE_NAMES = {
-  "ZC-0001": "Kozhikode Beach Main",
-  "ZC-0002": "Calicut Cyberpark Outpost",
+  "ZC-0001": "Main Outlet",
+  "ZC-0002": "Branch Outlet",
   "ZC-0003": "Wayanad Heritage Roastery",
 };
 
@@ -143,8 +143,8 @@ export function renderOwnerBills(subroute) {
             <label style="font-size:12px; color:var(--muted); font-weight:600;">Café Scope:</label>
             <select id="scope-cafe-selector" class="select select-sm" style="font-size:12px;">
               <option value="ALL" ${selectedCafeFilter === "ALL" ? "selected" : ""}>All Authorized Cafés</option>
-              <option value="ZC-0001" ${selectedCafeFilter === "ZC-0001" ? "selected" : ""}>ZC-0001 · Kozhikode Beach Main</option>
-              <option value="ZC-0002" ${selectedCafeFilter === "ZC-0002" ? "selected" : ""}>ZC-0002 · Calicut Cyberpark Outpost</option>
+              <option value="ZC-0001" ${selectedCafeFilter === "ZC-0001" ? "selected" : ""}>ZC-0001 · Main Outlet</option>
+              <option value="ZC-0002" ${selectedCafeFilter === "ZC-0002" ? "selected" : ""}>ZC-0002 · Branch Outlet</option>
               <option value="ZC-0003" ${selectedCafeFilter === "ZC-0003" ? "selected" : ""}>ZC-0003 · Wayanad Heritage Roastery</option>
             </select>
           </div>
@@ -306,8 +306,8 @@ function renderUploadSubpanel() {
             <div>
               <label style="font-size:12px; font-weight:700; color:var(--ink); display:block; margin-bottom:6px;">Café Outlet *</label>
               <select id="bill-doc-cafe" class="select" style="width:100%; font-size:12.5px; height:38px;">
-                <option value="ZC-0001">ZC-0001 · Kozhikode Beach Main</option>
-                <option value="ZC-0002">ZC-0002 · Calicut Cyberpark Outpost</option>
+                <option value="ZC-0001">ZC-0001 · Main Outlet</option>
+                <option value="ZC-0002">ZC-0002 · Branch Outlet</option>
                 <option value="ZC-0003">ZC-0003 · Wayanad Heritage Roastery</option>
               </select>
             </div>
@@ -316,7 +316,7 @@ function renderUploadSubpanel() {
           <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:14px;">
             <div>
               <label style="font-size:12px; font-weight:700; color:var(--ink); display:block; margin-bottom:6px;">Vendor / Supplier Name *</label>
-              <input type="text" id="bill-doc-vendor" class="input" placeholder="e.g. Blue Tokai Coffee" required style="width:100%; font-size:12.5px; height:38px;" />
+              <input type="text" id="bill-doc-vendor" class="input" placeholder="e.g. Vendor Name" required style="width:100%; font-size:12.5px; height:38px;" />
             </div>
             <div>
               <label style="font-size:12px; font-weight:700; color:var(--ink); display:block; margin-bottom:6px;">Invoice / Bill Number *</label>
@@ -947,7 +947,7 @@ function renderAdjustmentsSubpanel() {
               <span class="status danger" style="font-size:10.5px;">VOIDED</span>
             </div>
             <div style="font-size:11.5px; color:var(--muted); margin-top:4px;">
-              Branch: Kozhikode Beach Main · Operator: Priya Nair · Reason: Customer cancelled before preparation
+              Branch: Main Outlet · Operator: Duty Lead · Reason: Customer cancelled before preparation
             </div>
           </div>
 
@@ -1067,7 +1067,7 @@ function renderPaymentsSubpanel() {
             </thead>
             <tbody>
               <tr>
-                <td><strong>Kozhikode Beach Main</strong> (ZC-0001)</td>
+                <td><strong>Main Outlet</strong> (ZC-0001)</td>
                 <td>UPI (Razorpay/BHIM)</td>
                 <td style="font-family:var(--font-mono);">₹15,584.00</td>
                 <td style="font-family:var(--font-mono);">₹15,584.00</td>
@@ -1076,7 +1076,7 @@ function renderPaymentsSubpanel() {
                 <td style="font-size:11.5px; color:var(--muted);">22 Aug 2026 · 11:34 AM</td>
               </tr>
               <tr>
-                <td><strong>Calicut Cyberpark Outpost</strong> (ZC-0002)</td>
+                <td><strong>Branch Outlet</strong> (ZC-0002)</td>
                 <td>EDC Card Terminal</td>
                 <td style="font-family:var(--font-mono);">₹4,312.00</td>
                 <td style="font-family:var(--font-mono);">₹4,312.00</td>
@@ -1169,7 +1169,7 @@ function renderTaxSubpanel() {
             <tr>
               <td><strong style="color:var(--color-accent-amber); font-family:var(--font-mono);">ZAM-BILL-882104</strong></td>
               <td>22 Aug 2026</td>
-              <td>Kozhikode Beach Main</td>
+              <td>Main Outlet</td>
               <td style="color:var(--muted);">B2C Retail</td>
               <td style="font-family:var(--font-mono);">₹660.00</td>
               <td style="font-family:var(--font-mono);">₹16.50</td>
@@ -1180,7 +1180,7 @@ function renderTaxSubpanel() {
             <tr>
               <td><strong style="color:var(--color-accent-amber); font-family:var(--font-mono);">ZAM-BILL-882103</strong></td>
               <td>22 Aug 2026</td>
-              <td>Kozhikode Beach Main</td>
+              <td>Main Outlet</td>
               <td style="color:var(--muted);">B2C Retail</td>
               <td style="font-family:var(--font-mono);">₹550.00</td>
               <td style="font-family:var(--font-mono);">₹13.75</td>
@@ -1769,8 +1769,8 @@ function handleExportReport(exportType) {
       `"${dateStr}","ZC-0001 · Beach Main","UPI / QR",15584.00,15584.00,0.00,"MATCHED"`,
       `"${dateStr}","ZC-0001 · Beach Main","Credit / Debit Card",4870.00,4870.00,0.00,"MATCHED"`,
       `"${dateStr}","ZC-0001 · Beach Main","Cash Drawer",3896.00,3896.00,0.00,"RECONCILED"`,
-      `"${dateStr}","ZC-0002 · Cyberpark","UPI / QR",8932.00,8932.00,0.00,"MATCHED"`,
-      `"${dateStr}","ZC-0002 · Cyberpark","Cash Drawer",2156.00,2156.00,0.00,"RECONCILED"`,
+      `"${dateStr}","ZC-0002 · Branch Outlet","UPI / QR",8932.00,8932.00,0.00,"MATCHED"`,
+      `"${dateStr}","ZC-0002 · Branch Outlet","Cash Drawer",2156.00,2156.00,0.00,"RECONCILED"`,
     ].join("\n");
     triggerDownload(headers + rows, `Zamorin_Tender_Reconciliation_${dateStr}.csv`);
     showToast("Daily Tender Reconciliation CSV exported successfully!", "success");
@@ -1780,7 +1780,7 @@ function handleExportReport(exportType) {
   if (exportType === "adjustments-csv") {
     const headers = "Date,Invoice Ref,Adjustment Type,Reason / Narration,Authorized By,Amount (INR),Accounting Action\n";
     const rows = [
-      `"${dateStr}","ZAM-BILL-882103","VOID_BEFORE_PREP","Customer changed mind before brewing","Priya Nair",294.00,"DRAWER_ADJUSTMENT"`,
+      `"${dateStr}","ZAM-BILL-882103","VOID_BEFORE_PREP","Customer changed mind before brewing","Duty Barista",294.00,"DRAWER_ADJUSTMENT"`,
       `"${dateStr}","ZAM-BILL-882098","PARTIAL_REFUND","Wrong syrup pump dispensed - replaced with refund","Suresh Menon",120.00,"REVERSAL_LEDGER"`,
     ].join("\n");
     triggerDownload(headers + rows, `Zamorin_Adjustments_Voids_Audit_${dateStr}.csv`);

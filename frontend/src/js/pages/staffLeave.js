@@ -66,7 +66,7 @@ function renderHeader() {
           <h1 style="font-size:24px; font-weight:700; margin:0; color:var(--ink);">My Leave Self-Service</h1>
           <span class="badge" style="background:rgba(180,83,9,0.12); color:#b45309; font-weight:600; font-size:12px; padding:4px 10px; border-radius:12px; white-space:nowrap;">EMP-SCR-003</span>
         </div>
-        <p style="font-size:13px; color:var(--muted); margin:4px 0 0;">Dawn Roast — Koramangala · Employee Leave Entitlement &amp; Requests</p>
+        <p style="font-size:13px; color:var(--muted); margin:4px 0 0;">Main Outlet · Employee Leave Entitlement &amp; Requests</p>
       </div>
 
       <!-- Total Available Balance Pill -->

@@ -204,8 +204,8 @@ function renderOverviewSubpanel() {
     documentsMissing: 2,
   };
   const cafes = liveOverview?.cafeWorkforce || [
-    { cafeId: "ZC-0001", name: "Dawn Roast — Koramangala", totalHeadcount: 14, approvedPositions: 16, capacityGap: 2, openPositions: 1, vacancies: 1, frozenPositions: 1, probation: 2, crossTrained: 6 },
-    { cafeId: "ZC-0002", name: "Zamorin Bay — Indiranagar", totalHeadcount: 11, approvedPositions: 12, capacityGap: 1, openPositions: 1, vacancies: 1, frozenPositions: 0, probation: 1, crossTrained: 4 },
+    { cafeId: "ZC-0001", name: "Main Outlet", totalHeadcount: 14, approvedPositions: 16, capacityGap: 2, openPositions: 1, vacancies: 1, frozenPositions: 1, probation: 2, crossTrained: 6 },
+    { cafeId: "ZC-0002", name: "Branch Outlet", totalHeadcount: 11, approvedPositions: 12, capacityGap: 1, openPositions: 1, vacancies: 1, frozenPositions: 0, probation: 1, crossTrained: 4 },
     { cafeId: "ZC-0003", name: "Calicut Heritage Flagship", totalHeadcount: 9, approvedPositions: 10, capacityGap: 1, openPositions: 1, vacancies: 1, frozenPositions: 0, probation: 1, crossTrained: 3 },
   ];
 
@@ -358,10 +358,10 @@ function renderOverviewSubpanel() {
 // ─── 2. EMPLOYEE DIRECTORY & SEARCH ──────────────────────────────────────────
 function renderDirectorySubpanel() {
   let filtered = liveEmployees.length > 0 ? [...liveEmployees] : [
-    { userId: "AD-0003", name: "Ravi Kumar", preferredName: "Ravi", role: "CAFE_ADMIN", designation: "General Store Manager", department: "Management", primaryCafeId: "ZC-0001", employmentType: "Full Time", workerType: "PERMANENT", employmentStatus: "ACTIVE", joiningDate: "2024-01-15", email: "ravi@zamorin.cafe" },
-    { userId: "ST-0004", name: "Priya Nair", preferredName: "Priya", role: "STAFF", designation: "Senior Head Barista", department: "Barista", primaryCafeId: "ZC-0001", employmentType: "Full Time", workerType: "PERMANENT", employmentStatus: "ACTIVE", joiningDate: "2024-03-01", email: "priya@zamorin.cafe" },
+    { userId: "AD-0003", name: "Operations Admin", preferredName: "", role: "CAFE_ADMIN", designation: "General Store Manager", department: "Management", primaryCafeId: "ZC-0001", employmentType: "Full Time", workerType: "PERMANENT", employmentStatus: "ACTIVE", joiningDate: "2024-01-15", email: "ravi@zamorin.cafe" },
+    { userId: "ST-0004", name: "Senior Barista", preferredName: "", role: "STAFF", designation: "Senior Head Barista", department: "Barista", primaryCafeId: "ZC-0001", employmentType: "Full Time", workerType: "PERMANENT", employmentStatus: "ACTIVE", joiningDate: "2024-03-01", email: "priya@zamorin.cafe" },
     { userId: "ST-0005", name: "Arjun Das", preferredName: "Arjun", role: "STAFF", designation: "Sous Chef", department: "Kitchen", primaryCafeId: "ZC-0002", employmentType: "Full Time", workerType: "PERMANENT", employmentStatus: "ACTIVE", joiningDate: "2024-04-10", email: "arjun@zamorin.cafe" },
-    { userId: "ST-0006", name: "Ananya Sen", preferredName: "Ananya", role: "STAFF", designation: "Floor Lead / Cashier", department: "Service", primaryCafeId: "ZC-0003", employmentType: "Full Time", workerType: "PERMANENT", employmentStatus: "PROBATION", joiningDate: "2026-06-15", email: "ananya@zamorin.cafe" },
+    { userId: "ST-0006", name: "Floor Lead", preferredName: "", role: "STAFF", designation: "Floor Lead / Cashier", department: "Service", primaryCafeId: "ZC-0003", employmentType: "Full Time", workerType: "PERMANENT", employmentStatus: "PROBATION", joiningDate: "2026-06-15", email: "ananya@zamorin.cafe" },
   ];
 
   if (searchQuery) {
@@ -397,8 +397,8 @@ function renderDirectorySubpanel() {
         <div style="display:flex; gap:10px; flex-wrap:wrap;">
           <select id="cafe-filter-select" style="padding:8px 12px; border:1px solid rgba(0,0,0,0.12); border-radius:8px; font-size:13px;">
             <option value="ALL" ${selectedCafe === 'ALL' ? 'selected' : ''}>All Cafés</option>
-            <option value="ZC-0001" ${selectedCafe === 'ZC-0001' ? 'selected' : ''}>Dawn Roast (Koramangala)</option>
-            <option value="ZC-0002" ${selectedCafe === 'ZC-0002' ? 'selected' : ''}>Zamorin Bay (Indiranagar)</option>
+            <option value="ZC-0001" ${selectedCafe === 'ZC-0001' ? 'selected' : ''}>Main Outlet</option>
+            <option value="ZC-0002" ${selectedCafe === 'ZC-0002' ? 'selected' : ''}>Branch Outlet</option>
             <option value="ZC-0003" ${selectedCafe === 'ZC-0003' ? 'selected' : ''}>Calicut Heritage Flagship</option>
           </select>
           <select id="dept-filter-select" style="padding:8px 12px; border:1px solid rgba(0,0,0,0.12); border-radius:8px; font-size:13px;">
@@ -602,7 +602,7 @@ function renderOnboardingSubpanel() {
           <div class="card" style="background:var(--surface-sunken, rgba(0,0,0,0.02)); border:1px solid var(--line); border-radius:var(--radius-sm, 8px); padding:16px;">
             <div style="display:flex; justify-content:space-between; align-items:flex-start;">
               <div>
-                <div style="font-weight:700; color:var(--ink); font-size:13.5px;">Ananya Sen</div>
+                <div style="font-weight:700; color:var(--ink); font-size:13.5px;">Floor Lead</div>
                 <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">ST-0006 · Floor Lead (Calicut)</div>
               </div>
               <span class="badge-tag badge-warning" style="font-weight:700;">Probation Review Due</span>
@@ -1028,11 +1028,11 @@ function openOnboardingWizard() {
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
           <div>
             <label style="font-size:12px; font-weight:600; display:block; margin-bottom:4px;">Legal Full Name *</label>
-            <input type="text" id="ob-name" required placeholder="e.g. Rahul Sharma" style="width:100%; padding:8px 12px; border:1px solid rgba(0,0,0,0.15); border-radius:6px; font-size:13px;" />
+            <input type="text" id="ob-name" required placeholder="e.g. Employee Full Name" style="width:100%; padding:8px 12px; border:1px solid rgba(0,0,0,0.15); border-radius:6px; font-size:13px;" />
           </div>
           <div>
             <label style="font-size:12px; font-weight:600; display:block; margin-bottom:4px;">Preferred / Calling Name</label>
-            <input type="text" id="ob-preferred" placeholder="e.g. Rahul" style="width:100%; padding:8px 12px; border:1px solid rgba(0,0,0,0.15); border-radius:6px; font-size:13px;" />
+            <input type="text" id="ob-preferred" placeholder="e.g. First Name" style="width:100%; padding:8px 12px; border:1px solid rgba(0,0,0,0.15); border-radius:6px; font-size:13px;" />
           </div>
         </div>
 
@@ -1051,8 +1051,8 @@ function openOnboardingWizard() {
           <div>
             <label style="font-size:12px; font-weight:600; display:block; margin-bottom:4px;">Primary Café Location *</label>
             <select id="ob-cafe" style="width:100%; padding:8px 12px; border:1px solid rgba(0,0,0,0.15); border-radius:6px; font-size:13px;">
-              <option value="ZC-0001">Dawn Roast (Koramangala)</option>
-              <option value="ZC-0002">Zamorin Bay (Indiranagar)</option>
+              <option value="ZC-0001">Main Outlet</option>
+              <option value="ZC-0002">Branch Outlet</option>
               <option value="ZC-0003">Calicut Heritage Flagship</option>
             </select>
           </div>
@@ -1142,8 +1142,8 @@ function openStaffingRequestModal() {
         <div>
           <label style="font-size:12px; font-weight:600; display:block; margin-bottom:4px;">Target Café *</label>
           <select id="sr-cafe" style="width:100%; padding:8px 12px; border:1px solid rgba(0,0,0,0.15); border-radius:6px; font-size:13px;">
-            <option value="ZC-0001">Dawn Roast (Koramangala)</option>
-            <option value="ZC-0002">Zamorin Bay (Indiranagar)</option>
+            <option value="ZC-0001">Main Outlet</option>
+            <option value="ZC-0002">Branch Outlet</option>
             <option value="ZC-0003">Calicut Heritage Flagship</option>
           </select>
         </div>
@@ -1248,8 +1248,8 @@ function openCreatePositionModal() {
           <div>
             <label style="font-size:12px; font-weight:600; display:block; margin-bottom:4px;">Location *</label>
             <select id="cp-cafe" style="width:100%; padding:8px 12px; border:1px solid rgba(0,0,0,0.15); border-radius:6px; font-size:13px;">
-              <option value="ZC-0001">Dawn Roast (Koramangala)</option>
-              <option value="ZC-0002">Zamorin Bay (Indiranagar)</option>
+              <option value="ZC-0001">Main Outlet</option>
+              <option value="ZC-0002">Branch Outlet</option>
               <option value="ZC-0003">Calicut Heritage Flagship</option>
             </select>
           </div>
@@ -1326,8 +1326,8 @@ function openTransferModal(userId) {
         <div>
           <label style="font-size:12px; font-weight:600; display:block; margin-bottom:4px;">Destination Café *</label>
           <select id="tr-cafe" style="width:100%; padding:8px 12px; border:1px solid rgba(0,0,0,0.15); border-radius:6px; font-size:13px;">
-            <option value="ZC-0001">Dawn Roast (Koramangala)</option>
-            <option value="ZC-0002">Zamorin Bay (Indiranagar)</option>
+            <option value="ZC-0001">Main Outlet</option>
+            <option value="ZC-0002">Branch Outlet</option>
             <option value="ZC-0003">Calicut Heritage Flagship</option>
           </select>
         </div>
@@ -1497,7 +1497,7 @@ function openVerifySkillModal() {
         userId,
         employeeName: liveEmployees.find(e => e.userId === userId)?.name || userId,
         designation: liveEmployees.find(e => e.userId === userId)?.designation || "Staff Member",
-        cafeName: "Koramangala",
+        cafeName: "Main Outlet",
         skills: []
       };
       liveSkills.unshift(existingEmp);
@@ -1571,7 +1571,7 @@ function openAssignTrainingModal() {
         userId,
         employeeName: liveEmployees.find(e => e.userId === userId)?.name || userId,
         designation: liveEmployees.find(e => e.userId === userId)?.designation || "Staff Member",
-        cafeName: "Koramangala",
+        cafeName: "Main Outlet",
         skills: []
       };
       liveSkills.unshift(existingEmp);
@@ -1702,7 +1702,7 @@ function openEmployee360Drawer(userId) {
           </div>
           <div style="background:#fff; border:1px solid rgba(0,0,0,0.06); padding:12px; border-radius:8px;">
             <div style="color:var(--muted); font-size:11px;">Primary Location</div>
-            <div style="font-weight:600;" id="e360-loc">Dawn Roast (Koramangala)</div>
+            <div style="font-weight:600;" id="e360-loc">Main Outlet</div>
           </div>
           <div style="background:#fff; border:1px solid rgba(0,0,0,0.06); padding:12px; border-radius:8px;">
             <div style="color:var(--muted); font-size:11px;">Department &amp; Title</div>

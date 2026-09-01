@@ -100,112 +100,33 @@ function getIstClockString() {
 
 export const DEFAULT_MASTER_DASHBOARD_DATA = {
   portfolioKpis: {
-    salesTotal: { valuePaisa: 12485000, deltaPercent: 8.4, comparisonPaisa: 11517500 },
-    totalOrders: { value: 384, deltaPercent: 5.2 },
-    aov: { valuePaisa: 32510, deltaPercent: 3.1 },
-    expenses: { valuePaisa: 2840000, restricted: false },
-    staffPresent: { value: 18, scheduled: 21 },
-    attendanceExceptions: { value: 1 },
-    stockRisk: { critical: 1, belowPar: 4 },
-    openActions: { value: 3 }
+    salesTotal: { valuePaisa: 0, deltaPercent: 0, comparisonPaisa: 0 },
+    totalOrders: { value: 0, deltaPercent: 0 },
+    aov: { valuePaisa: 0, deltaPercent: 0 },
+    expenses: { valuePaisa: 0, restricted: false },
+    staffPresent: { value: 0, scheduled: 0 },
+    attendanceExceptions: { value: 0 },
+    stockRisk: { critical: 0, belowPar: 0 },
+    openActions: { value: 0 }
   },
-  revenueTrend: [
-    { date: "18 Aug", revenuePaisa: 1040000, orders: 32 },
-    { date: "19 Aug", revenuePaisa: 1210000, orders: 38 },
-    { date: "20 Aug", revenuePaisa: 1450000, orders: 46 },
-    { date: "21 Aug", revenuePaisa: 1680000, orders: 54 },
-    { date: "22 Aug", revenuePaisa: 2420000, orders: 74 },
-    { date: "23 Aug", revenuePaisa: 2890000, orders: 88 },
-    { date: "24 Aug", revenuePaisa: 1795000, orders: 52 }
-  ],
-  attentionQueue: [
-    {
-      severity: "CRITICAL",
-      title: "Wayanad Robusta Bean Consignment Below Par",
-      description: "Remaining stock in central roastery is 4.5kg against 15kg reorder threshold.",
-      route: "inventory"
-    },
-    {
-      severity: "HIGH",
-      title: "Overtime Claim Review — Koramangala Main",
-      description: "4.5 hours overtime recorded for weekend rush shift awaiting master sign-off.",
-      route: "tasks"
-    },
-    {
-      severity: "MEDIUM",
-      title: "Quarterly GST 5% Filing Preparation",
-      description: "Q2 GST input tax credit reconciliation statement ready for review.",
-      route: "bills"
-    }
-  ],
-  cafePerformanceCards: [
-    {
-      cafeId: "ZC-0001",
-      name: "Koramangala Main",
-      city: "Bengaluru",
-      badge: "TOP",
-      health: "HEALTHY",
-      totalSalesPaisa: 5840000,
-      totalOrders: 182,
-      aovPaisa: 32088,
-      targetSalesPaisa: 6000000,
-      targetAchievementPct: 97,
-      inventoryCritical: 0,
-      inventoryBelowPar: 2,
-      maintenanceOpen: 0
-    },
-    {
-      cafeId: "ZC-0002",
-      name: "Indiranagar Express",
-      city: "Bengaluru",
-      badge: "NORMAL",
-      health: "HEALTHY",
-      totalSalesPaisa: 3870000,
-      totalOrders: 124,
-      aovPaisa: 31210,
-      targetSalesPaisa: 4000000,
-      targetAchievementPct: 96,
-      inventoryCritical: 1,
-      inventoryBelowPar: 1,
-      maintenanceOpen: 1
-    },
-    {
-      cafeId: "ZC-0003",
-      name: "Wayanad Heritage Roastery",
-      city: "Wayanad",
-      badge: "BOTTOM",
-      health: "ATTENTION",
-      totalSalesPaisa: 2775000,
-      totalOrders: 78,
-      aovPaisa: 35577,
-      targetSalesPaisa: 3500000,
-      targetAchievementPct: 79,
-      inventoryCritical: 1,
-      inventoryBelowPar: 2,
-      maintenanceOpen: 0
-    }
-  ],
+  revenueTrend: [],
+  attentionQueue: [],
+  cafePerformanceCards: [],
   operationalSnapshot: {
     attendance: {
-      staffPresent: 18,
-      staffAbsent: 3,
-      attendanceExceptions: 1
+      staffPresent: 0,
+      staffAbsent: 0,
+      attendanceExceptions: 0
     },
     inventory: {
-      critical: 1,
-      belowPar: 4
+      critical: 0,
+      belowPar: 0
     },
-    maintenanceOpen: 1,
+    maintenanceOpen: 0,
     complianceOverdue: 0
   },
   commercialMix: {
-    topMenuItems: [
-      { itemName: "Zamorin Signature Pour-Over (Arabica)", totalQty: 142, totalRevenuePaisa: 3976000 },
-      { itemName: "Malabar Cold Brew & Tonic", totalQty: 118, totalRevenuePaisa: 3068000 },
-      { itemName: "Classic South Indian Filter Kaapi", totalQty: 164, totalRevenuePaisa: 2296000 },
-      { itemName: "Cardamom & Jaggery Brioche Bun", totalQty: 95, totalRevenuePaisa: 1805000 },
-      { itemName: "Avocado & Sourdough Toast", totalQty: 46, totalRevenuePaisa: 1334000 }
-    ]
+    topMenuItems: []
   }
 };
 
@@ -1673,8 +1594,8 @@ function openTargetModal(root) {
         <div class="form-group" style="margin-bottom:12px;">
           <label class="form-label" style="font-size:12px;font-weight:700;">Café Location</label>
           <select id="cc-target-cafe-id" class="form-control">
-            <option value="ZC-0001">ZC-0001 · Koramangala Main</option>
-            <option value="ZC-0002">ZC-0002 · Indiranagar Central</option>
+            <option value="ZC-0001">ZC-0001 · Main Outlet</option>
+            <option value="ZC-0002">ZC-0002 · Branch Outlet</option>
             <option value="ZC-0003">ZC-0003 · Calicut Beach</option>
           </select>
         </div>

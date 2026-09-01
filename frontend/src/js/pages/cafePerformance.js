@@ -113,11 +113,7 @@ export function renderPerformance() {
             <label for="perf-cafe-scope" style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;">Café Scope:</label>
             <select id="perf-cafe-scope" class="form-input" style="font-size:12px;font-weight:600;padding:4px 10px;height:32px;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:var(--radius-sm);">
               <option value="">All Cafés (Authorized Portfolio)</option>
-              ${(state.assignedCafes || [
-                { cafeId: 'ZC-0001', name: 'Dawn Roast — Koramangala' },
-                { cafeId: 'ZC-0002', name: 'Indiranagar Central' },
-                { cafeId: 'ZC-0003', name: 'Whitefield Roastery' },
-              ]).map(c => `<option value="${c.cafeId}">${c.name || c.cafeId} (${c.cafeId})</option>`).join('')}
+              ${(state.assignedCafes || []).map(c => `<option value="${c.cafeId}">${c.name || c.cafeId} (${c.cafeId})</option>`).join('')}
             </select>
           </div>
 
@@ -566,34 +562,24 @@ function renderPerformanceBody(root) {
 
   const data = perfState.dashboardData || {};
   const kpis = data.portfolioKpis || {};
-  const cafes = data.cafePerformanceCards || (perfState.portfolioData?.portfolio ? mapPortfolioToCards(perfState.portfolioData.portfolio) : [
-    { cafeId: 'ZC-0001', cafeName: 'Dawn Roast — Koramangala', salesTodayPaisa: 21542000, completedBills: 840, aovPaisa: 25645, labourPct: 19.5, splhPaisa: 85000, wastagePaisa: 280000, avtVariancePct: 1.2, targetAchievementPct: 94, health: 'HEALTHY' },
-    { cafeId: 'ZC-0002', cafeName: 'Indiranagar Central', salesTodayPaisa: 12743000, completedBills: 580, aovPaisa: 21970, labourPct: 20.8, splhPaisa: 72000, wastagePaisa: 190000, avtVariancePct: 1.4, targetAchievementPct: 88, health: 'ATTENTION' },
-  ]);
+  const cafes = data.cafePerformanceCards || (perfState.portfolioData?.portfolio ? mapPortfolioToCards(perfState.portfolioData.portfolio) : []);
 
   // Compute Weighted Multi-Location Portfolio Aggregations (Sections 133-138)
   const totalSalesPaisa = cafes.reduce((sum, c) => sum + (c.salesTodayPaisa || 0), 0);
-  const totalBills = cafes.reduce((sum, c) => sum + (c.completedBills || c.orders || 1), 0);
+  const totalBills = cafes.reduce((sum, c) => sum + (c.completedBills || c.orders || 0), 0);
   const weightedAbvPaisa = totalBills > 0 ? Math.round(totalSalesPaisa / totalBills) : 0;
 
   // Weighted Labor % = Total Labor Cost / Total Net Sales
-  const totalLaborCostPaisa = cafes.reduce((sum, c) => sum + (Math.round((c.salesTodayPaisa || 0) * ((c.labourPct || 20) / 100))), 0);
-  const weightedLaborPct = totalSalesPaisa > 0 ? ((totalLaborCostPaisa / totalSalesPaisa) * 100).toFixed(1) : '20.0';
+  const totalLaborCostPaisa = cafes.reduce((sum, c) => sum + (Math.round((c.salesTodayPaisa || 0) * ((c.labourPct || 0) / 100))), 0);
+  const weightedLaborPct = totalSalesPaisa > 0 ? ((totalLaborCostPaisa / totalSalesPaisa) * 100).toFixed(1) : '0.0';
 
   // Total Wastage & AvT
-  const totalWastagePaisa = cafes.reduce((sum, c) => sum + (c.wastagePaisa || 200000), 0);
-  const weightedWastagePct = totalSalesPaisa > 0 ? ((totalWastagePaisa / totalSalesPaisa) * 100).toFixed(1) : '1.2';
+  const totalWastagePaisa = cafes.reduce((sum, c) => sum + (c.wastagePaisa || 0), 0);
+  const weightedWastagePct = totalSalesPaisa > 0 ? ((totalWastagePaisa / totalSalesPaisa) * 100).toFixed(1) : '0.0';
 
-  const whatChanged = data.whatChanged || [
-    { type: 'POSITIVE', text: 'Dawn Roast Koramangala like-for-like sales grew +8.8% vs previous period.' },
-    { type: 'ATTENTION', text: 'Indiranagar Central experienced a 1.4 pp increase in labor ratio during morning rush.' },
-    { type: 'POSITIVE', text: 'Portfolio wastage remained strictly within target threshold at 1.2% of net sales.' },
-  ];
+  const whatChanged = data.whatChanged || [];
 
-  const attentionQueue = data.attentionQueue || [
-    { id: 'EX-01', severity: 'WARNING', title: 'Labor Cost Spike', cafeName: 'Indiranagar Central', metric: 'Labor %', value: '20.8%', target: '19.0%', age: '2 days' },
-    { id: 'EX-02', severity: 'ATTENTION', title: 'Inventory Reorder Alert', cafeName: 'Koramangala 5th Block', metric: 'Coffee Beans - Estate Dark', value: '3.2 kg remaining', target: 'Par: 10 kg', age: 'Today' },
-  ];
+  const attentionQueue = data.attentionQueue || [];
 
   container.innerHTML = `
     <!-- Top 6 Primary Headline KPI Cards -->

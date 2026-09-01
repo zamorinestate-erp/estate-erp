@@ -1063,8 +1063,8 @@ function openComposeModal(wrap) {
             <label class="form-label" style="font-size:12px; font-weight:600;">Café Context (Optional)</label>
             <select name="cafeId" class="form-input">
               <option value="">Global / Non-Café</option>
-              <option value="ZC-0001">Koramangala (ZC-0001)</option>
-              <option value="ZC-0002">Indiranagar (ZC-0002)</option>
+              <option value="ZC-0001">Main Outlet (ZC-0001)</option>
+              <option value="ZC-0002">Branch Outlet (ZC-0002)</option>
             </select>
           </div>
         </div>

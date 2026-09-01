@@ -252,11 +252,11 @@ function renderOverviewContentHtml() {
           <div style="display:flex; flex-direction:column; gap:8px; font-size:12px;">
             <div style="display:flex; justify-content:space-between; color:var(--ink);">
               <span>Goods Receipt Note GRN-2026-088</span>
-              <span style="color:var(--muted);">Koramangala (ZC-0001)</span>
+              <span style="color:var(--muted);">Main Outlet (ZC-0001)</span>
             </div>
             <div style="display:flex; justify-content:space-between; color:var(--ink);">
               <span>Inter-Café Dispatch TR-0042</span>
-              <span style="color:var(--muted);">Indiranagar (ZC-0002)</span>
+              <span style="color:var(--muted);">Branch Outlet (ZC-0002)</span>
             </div>
           </div>
           <div style="margin-top:12px;">
@@ -344,8 +344,8 @@ async function renderStockLevelsTab(wrap) {
           </div>
           <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
             <select id="sel-cafe-stock" class="form-input" style="width:170px; padding:5px 8px; font-size:12.5px;">
-              <option value="ZC-0001" ${cafeId === "ZC-0001" ? "selected" : ""}>Koramangala (ZC-0001)</option>
-              <option value="ZC-0002" ${cafeId === "ZC-0002" ? "selected" : ""}>Indiranagar (ZC-0002)</option>
+              <option value="ZC-0001" ${cafeId === "ZC-0001" ? "selected" : ""}>Main Outlet (ZC-0001)</option>
+              <option value="ZC-0002" ${cafeId === "ZC-0002" ? "selected" : ""}>Branch Outlet (ZC-0002)</option>
             </select>
             <select id="sel-cat-filter" class="form-input" style="width:160px; padding:5px 8px; font-size:12.5px;">
               <option value="ALL">All Categories</option>
@@ -494,8 +494,8 @@ async function loadStockLevelsData(wrap, cafeId) {
             <tr style="text-align:left; border-bottom:1px solid var(--border-color, var(--line));">
               <th style="padding:10px 12px;">SKU &amp; Item Name</th>
               <th style="padding:10px 12px;">UOM</th>
-              <th style="padding:10px 12px; text-align:center;">Koramangala (ZC-0001)</th>
-              <th style="padding:10px 12px; text-align:center;">Indiranagar (ZC-0002)</th>
+              <th style="padding:10px 12px; text-align:center;">Main Outlet (ZC-0001)</th>
+              <th style="padding:10px 12px; text-align:center;">Branch Outlet (ZC-0002)</th>
               <th style="padding:10px 12px; text-align:center;">Status</th>
             </tr>
           </thead>
@@ -789,8 +789,8 @@ function renderReceiptsTab(wrap) {
               <div>
                 <label class="form-label" style="font-size:12px; font-weight:700; color:var(--ink);">Café Destination</label>
                 <select name="cafeId" class="form-input" style="width:100%;" required>
-                  <option value="ZC-0001">Koramangala (ZC-0001)</option>
-                  <option value="ZC-0002">Indiranagar (ZC-0002)</option>
+                  <option value="ZC-0001">Main Outlet (ZC-0001)</option>
+                  <option value="ZC-0002">Branch Outlet (ZC-0002)</option>
                   <option value="ZC-0003">Whitefield (ZC-0003)</option>
                 </select>
               </div>
@@ -1007,8 +1007,8 @@ async function renderMovementsTab(wrap) {
             <!-- Café Filter -->
             <select id="sel-mov-cafe" class="form-input" style="padding:5px 8px; font-size:12.5px;">
               <option value="ALL" ${movementCafeFilter === "ALL" ? "selected" : ""}>All Cafés</option>
-              <option value="ZC-0001" ${movementCafeFilter === "ZC-0001" ? "selected" : ""}>Koramangala (ZC-0001)</option>
-              <option value="ZC-0002" ${movementCafeFilter === "ZC-0002" ? "selected" : ""}>Indiranagar (ZC-0002)</option>
+              <option value="ZC-0001" ${movementCafeFilter === "ZC-0001" ? "selected" : ""}>Main Outlet (ZC-0001)</option>
+              <option value="ZC-0002" ${movementCafeFilter === "ZC-0002" ? "selected" : ""}>Branch Outlet (ZC-0002)</option>
               <option value="ZC-0003" ${movementCafeFilter === "ZC-0003" ? "selected" : ""}>Whitefield (ZC-0003)</option>
             </select>
 
@@ -1200,8 +1200,8 @@ async function renderLotsExpiryTab(wrap) {
           <div style="display:flex; gap:8px; align-items:center;">
             <select id="sel-lots-cafe" class="form-input" style="padding:5px 8px; font-size:12.5px;">
               <option value="ALL" ${lotsCafeFilter === "ALL" ? "selected" : ""}>All Locations</option>
-              <option value="ZC-0001" ${lotsCafeFilter === "ZC-0001" ? "selected" : ""}>Koramangala (ZC-0001)</option>
-              <option value="ZC-0002" ${lotsCafeFilter === "ZC-0002" ? "selected" : ""}>Indiranagar (ZC-0002)</option>
+              <option value="ZC-0001" ${lotsCafeFilter === "ZC-0001" ? "selected" : ""}>Main Outlet (ZC-0001)</option>
+              <option value="ZC-0002" ${lotsCafeFilter === "ZC-0002" ? "selected" : ""}>Branch Outlet (ZC-0002)</option>
               <option value="ZC-0003" ${lotsCafeFilter === "ZC-0003" ? "selected" : ""}>Whitefield (ZC-0003)</option>
             </select>
 
@@ -1792,8 +1792,8 @@ function renderWastageTab(wrap) {
               <div>
                 <label class="form-label" style="font-size:12px; font-weight:700; color:var(--ink);">Café Location</label>
                 <select name="cafeId" class="form-input" style="width:100%;" required>
-                  <option value="ZC-0001">Koramangala (ZC-0001)</option>
-                  <option value="ZC-0002">Indiranagar (ZC-0002)</option>
+                  <option value="ZC-0001">Main Outlet (ZC-0001)</option>
+                  <option value="ZC-0002">Branch Outlet (ZC-0002)</option>
                   <option value="ZC-0003">Whitefield (ZC-0003)</option>
                 </select>
               </div>
@@ -2509,8 +2509,8 @@ function openRecordMovementModal(wrap, defaultCafeId) {
           <div>
             <label class="form-label" style="font-size:12px; font-weight:600;">Café</label>
             <select name="cafeId" class="form-input" required>
-              <option value="ZC-0001" ${defaultCafeId === "ZC-0001" ? "selected" : ""}>Koramangala (ZC-0001)</option>
-              <option value="ZC-0002" ${defaultCafeId === "ZC-0002" ? "selected" : ""}>Indiranagar (ZC-0002)</option>
+              <option value="ZC-0001" ${defaultCafeId === "ZC-0001" ? "selected" : ""}>Main Outlet (ZC-0001)</option>
+              <option value="ZC-0002" ${defaultCafeId === "ZC-0002" ? "selected" : ""}>Branch Outlet (ZC-0002)</option>
             </select>
           </div>
           <div>
@@ -2582,8 +2582,8 @@ function openInternalLocationMoveModal(wrap, defaultCafeId) {
           <div>
             <label class="form-label" style="font-size:12px; font-weight:600;">Café</label>
             <select name="cafeId" class="form-input" required>
-              <option value="ZC-0001" ${defaultCafeId === "ZC-0001" ? "selected" : ""}>Koramangala (ZC-0001)</option>
-              <option value="ZC-0002" ${defaultCafeId === "ZC-0002" ? "selected" : ""}>Indiranagar (ZC-0002)</option>
+              <option value="ZC-0001" ${defaultCafeId === "ZC-0001" ? "selected" : ""}>Main Outlet (ZC-0001)</option>
+              <option value="ZC-0002" ${defaultCafeId === "ZC-0002" ? "selected" : ""}>Branch Outlet (ZC-0002)</option>
             </select>
           </div>
           <div>
@@ -2668,8 +2668,8 @@ function openCreateReservationModal(wrap) {
           <div>
             <label class="form-label" style="font-size:12px; font-weight:600;">Café</label>
             <select name="cafeId" class="form-input" required>
-              <option value="ZC-0001">Koramangala (ZC-0001)</option>
-              <option value="ZC-0002">Indiranagar (ZC-0002)</option>
+              <option value="ZC-0001">Main Outlet (ZC-0001)</option>
+              <option value="ZC-0002">Branch Outlet (ZC-0002)</option>
             </select>
           </div>
           <div>
@@ -2741,15 +2741,15 @@ function openNewTransferModal(wrap) {
           <div>
             <label class="form-label" style="font-size:12px; font-weight:600;">Source Café (Origin)</label>
             <select name="sourceCafeId" class="form-input" required>
-              <option value="ZC-0001">Koramangala (ZC-0001)</option>
-              <option value="ZC-0002">Indiranagar (ZC-0002)</option>
+              <option value="ZC-0001">Main Outlet (ZC-0001)</option>
+              <option value="ZC-0002">Branch Outlet (ZC-0002)</option>
             </select>
           </div>
           <div>
             <label class="form-label" style="font-size:12px; font-weight:600;">Destination Café</label>
             <select name="destCafeId" class="form-input" required>
-              <option value="ZC-0002">Indiranagar (ZC-0002)</option>
-              <option value="ZC-0001">Koramangala (ZC-0001)</option>
+              <option value="ZC-0002">Branch Outlet (ZC-0002)</option>
+              <option value="ZC-0001">Main Outlet (ZC-0001)</option>
             </select>
           </div>
         </div>
@@ -2812,8 +2812,8 @@ function openSubmitCountModal(wrap) {
           <div>
             <label class="form-label" style="font-size:12px; font-weight:600;">Café</label>
             <select name="cafeId" class="form-input" required>
-              <option value="ZC-0001">Koramangala (ZC-0001)</option>
-              <option value="ZC-0002">Indiranagar (ZC-0002)</option>
+              <option value="ZC-0001">Main Outlet (ZC-0001)</option>
+              <option value="ZC-0002">Branch Outlet (ZC-0002)</option>
             </select>
           </div>
           <div>
