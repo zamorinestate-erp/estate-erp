@@ -274,6 +274,7 @@
   border: 1.5px solid var(--line-strong);
   border-radius: var(--radius-input);
   background: var(--paper-start);
+  box-sizing: border-box;
   box-shadow: inset 0 1px 2px rgba(23, 20, 15, .035);
   font: inherit;
   font-size: 1rem;
