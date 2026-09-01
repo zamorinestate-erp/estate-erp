@@ -370,7 +370,7 @@ export function renderLogin({ notice = "", error = "" } = {}) {
               id="login-email"
               name="email"
               class="auth-input"
-              placeholder="user@example.com"
+              placeholder="Email ID"
               required
               autocomplete="email"
             />
@@ -386,7 +386,7 @@ export function renderLogin({ notice = "", error = "" } = {}) {
               id="login-password"
               name="password"
               class="auth-input"
-              placeholder="••••••••••••"
+              placeholder="Password"
               required
               autocomplete="current-password"
             />

@@ -52,6 +52,10 @@
   --ease: cubic-bezier(.2, .8, .2, 1);
 }
 
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
 /* ---------------------------------------------------------------------
    Page canvas — porcelain cream radial gradient, replaces all photo
    backgrounds. Two soft bronze/navy blobs drift very slowly for depth;
