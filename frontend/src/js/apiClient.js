@@ -609,6 +609,13 @@ export async function performRequest(
     }
   }
 
+  let finalBody = body;
+  if (finalBody && typeof finalBody === "object" && !(finalBody instanceof FormData) && !(finalBody instanceof Blob)) {
+    if (Object.keys(finalBody).length === 1 && finalBody.body && typeof finalBody.body === "object" && !(finalBody.body instanceof FormData) && !(finalBody.body instanceof Blob)) {
+      finalBody = finalBody.body;
+    }
+  }
+
   try {
     const res = await fetch(
       `${API_BASE_URL}${normalizedPath}`,
@@ -618,8 +625,8 @@ export async function performRequest(
         cache: "no-store",
         headers: requestHeaders,
         body: hasJsonBody
-          ? JSON.stringify(body)
-          : body,
+          ? JSON.stringify(finalBody)
+          : finalBody,
         signal: timeoutCtrl.signal,
       }
     );

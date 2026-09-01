@@ -23,6 +23,7 @@ const {
   seedMasterUser,
   seedPermissionRules,
   seedSystemCommunicationSettings,
+  seedCafeOperationsData,
 } = require('./seedInitialData');
 
 const { seedPassbookData } = require('./seedPassbookData');
@@ -54,7 +55,7 @@ async function main() {
     process.env.INITIAL_MASTER_PASSWORD ||
     'PK@NilaVega_8427!Cedar';
 
-  console.log('[dev] Seeding MASTER account...');
+  console.log('[dev] Seeding MASTER account and canonical role users...');
 
   const masterUser = await seedMasterUser({
     organisationId,
@@ -72,6 +73,8 @@ async function main() {
     organisationId,
     masterEmail,
   });
+
+  await seedCafeOperationsData(organisationId, masterUser.userId);
 
   await seedPassbookData();
 

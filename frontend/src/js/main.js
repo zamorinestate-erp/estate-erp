@@ -127,7 +127,7 @@ export function renderProductionFailClosedScreen() {
 
 // Password Reset & Authentication Frontend Handlers
 export async function handleLoginSubmit({ organisationId, email, password }) {
-  const result = await apiPost("/auth/login", { body: { organisationId, email, password } });
+  const result = await apiPost("/auth/login", { organisationId, email, password, identifier: email });
   if (result?.data?.accessToken) {
     setAccessToken(result.data.accessToken);
   }
@@ -135,12 +135,12 @@ export async function handleLoginSubmit({ organisationId, email, password }) {
 }
 
 export async function handlePasswordResetRequest({ organisationId, email }) {
-  const result = await apiPost("/auth/password/forgot", { body: { organisationId, email } });
+  const result = await apiPost("/auth/password/forgot", { organisationId, email });
   return result;
 }
 
 export async function handlePasswordResetVerify({ organisationId, email, code }) {
-  const result = await apiPost("/auth/password/reset/verify", { body: { organisationId, email, code } });
+  const result = await apiPost("/auth/password/reset/verify", { organisationId, email, code });
   const challengeId = result?.data?.challengeId;
   const resetToken = result?.data?.resetToken;
   if (!challengeId || !resetToken) {
@@ -150,7 +150,7 @@ export async function handlePasswordResetVerify({ organisationId, email, code })
 }
 
 export async function handlePasswordResetFinal({ organisationId, challengeId, resetToken, newPassword }) {
-  const result = await apiPost("/auth/password/reset", { body: { organisationId, challengeId, resetToken, newPassword } });
+  const result = await apiPost("/auth/password/reset", { organisationId, challengeId, resetToken, newPassword });
   return result;
 }
 
@@ -171,7 +171,15 @@ export function mountAuthScreen(screen = "login", params = {}) {
       onSubmit: async ({ organisationId, email, password }) => {
         try {
           const res = await apiPost("/auth/login", {
-            body: { organisationId, email, password, identifier: email }
+            organisationId,
+            email,
+            password,
+            identifier: email,
+            device: {
+              deviceId: getOrCreateDeviceId(),
+              deviceName: "Browser Client",
+              deviceType: "DESKTOP"
+            }
           });
           const accessToken = res?.data?.accessToken || res?.data?.token;
           if (accessToken) {
@@ -179,13 +187,32 @@ export function mountAuthScreen(screen = "login", params = {}) {
           }
           const user = res?.data?.user;
           if (user) {
+            const rawRole = String(user.role || "").toUpperCase();
+            let mappedRole = "master";
+            let isPrimary = false;
+
+            if (rawRole === "MASTER") {
+              isPrimary = Boolean(user.isPrimaryMaster);
+              mappedRole = isPrimary ? "master" : "master_normal";
+            } else if (rawRole === "OWNER") {
+              mappedRole = "owner";
+            } else if (rawRole === "CAFE_ADMIN" || rawRole === "ADMIN") {
+              mappedRole = "cafe_admin";
+            } else if (rawRole === "STAFF" || rawRole === "EMPLOYEE") {
+              mappedRole = "staff";
+            }
+
+            const landingRoute = (mappedRole === "staff") ? "staff-home" : "dashboard";
+
             setState({
               auth: { authenticated: true, user, loading: false },
               user,
-              role: String(user.role).toLowerCase(),
-              isPrimaryMaster: Boolean(user.isPrimaryMaster),
+              role: (mappedRole === "master_normal") ? "master" : mappedRole,
+              isPrimaryMaster: isPrimary,
+              route: landingRoute,
             });
-            window.location.hash = "#dashboard";
+
+            window.location.hash = `#${landingRoute}`;
             boot();
             return;
           }

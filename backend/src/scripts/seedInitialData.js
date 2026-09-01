@@ -551,14 +551,9 @@ async function seedMasterUser({
       userId: 1,
     });
 
-  if (existingMasters.length > 1) {
-    throw new Error(
-      'Multiple MASTER accounts exist and no Primary Master can be selected automatically.'
-    );
-  }
-
-  if (existingMasters.length === 1) {
+  if (existingMasters.length >= 1) {
     const legacyMaster =
+      existingMasters.find((m) => m.email === masterEmail) ||
       existingMasters[0];
 
     assertPrimaryMasterCandidate({
@@ -1055,7 +1050,7 @@ async function seedWorkforceData({ organisationId, masterUserId }) {
   if (positionsCount === 0) {
     await Position.create([
       {
-        positionId: 'POS-001-01',
+        positionId: 'POS-ZC0001-001',
         organisationId,
         positionTitle: 'General Store Manager',
         department: 'Management',
@@ -1065,7 +1060,7 @@ async function seedWorkforceData({ organisationId, masterUserId }) {
         isCritical: true,
       },
       {
-        positionId: 'POS-001-02',
+        positionId: 'POS-ZC0001-002',
         organisationId,
         positionTitle: 'Senior Head Barista',
         department: 'Barista',
@@ -1075,7 +1070,7 @@ async function seedWorkforceData({ organisationId, masterUserId }) {
         isCritical: true,
       },
       {
-        positionId: 'POS-001-03',
+        positionId: 'POS-ZC0001-003',
         organisationId,
         positionTitle: 'Junior Barista',
         department: 'Barista',
@@ -1290,7 +1285,9 @@ async function seedInventoryData({ organisationId, masterUserId }) {
   }
 }
 
-async function seedMenuData(organisationId, masterUserId) {
+async function seedMenuData(orgOrObj, mUserId) {
+  const organisationId = typeof orgOrObj === 'object' ? orgOrObj.organisationId : orgOrObj;
+  const masterUserId = typeof orgOrObj === 'object' ? orgOrObj.masterUserId : mUserId;
   const { MenuItem } = require('../models/MenuItem');
   const { Recipe } = require('../models/Recipe');
   const { ModifierGroup } = require('../models/ModifierGroup');
@@ -1450,7 +1447,9 @@ async function seedMenuData(organisationId, masterUserId) {
   }
 }
 
-async function seedLoansData(organisationId, masterUserId) {
+async function seedLoansData(orgOrObj, mUserId) {
+  const organisationId = typeof orgOrObj === 'object' ? orgOrObj.organisationId : orgOrObj;
+  const masterUserId = typeof orgOrObj === 'object' ? orgOrObj.masterUserId : mUserId;
   const { LoanPolicy } = require('../models/LoanPolicy');
   const { StaffLoanAdvance } = require('../models/StaffLoanAdvance');
 
@@ -1503,7 +1502,9 @@ async function seedLoansData(organisationId, masterUserId) {
   }
 }
 
-async function seedCafeOperationsData(organisationId, masterUserId) {
+async function seedCafeOperationsData(orgOrObj, mUserId) {
+  const organisationId = typeof orgOrObj === 'object' ? orgOrObj.organisationId : orgOrObj;
+  const masterUserId = typeof orgOrObj === 'object' ? orgOrObj.masterUserId : mUserId;
   const { DeviceRegistration } = require('../models/DeviceRegistration');
   const { User } = require('../models/User');
   const bcrypt = require('bcrypt');
@@ -1598,24 +1599,104 @@ async function seedCafeOperationsData(organisationId, masterUserId) {
     existingAdmin2.operatorPinSetAt = new Date();
     await existingAdmin2.save();
   }
+
+  // 3. Seed Canonical Role Accounts for Complete Role Recognition
+  const defaultPasswordHash = await bcrypt.hash('PK@NilaVega_8427!Cedar', 10);
+
+  // Normal Master Account (role MASTER, isPrimaryMaster: false)
+  const existingNormalMaster = await User.findOne({ organisationId, email: 'normal.master@example.com' });
+  if (!existingNormalMaster) {
+    await User.create({
+      userId: 'MU-0002',
+      organisationId,
+      name: 'Zamorin Normal Master',
+      email: 'normal.master@example.com',
+      role: 'MASTER',
+      accountStatus: 'ACTIVE',
+      passwordHash: defaultPasswordHash,
+      isPrimaryMaster: false,
+      createdBy: masterUserId,
+      updatedBy: masterUserId,
+    });
+  }
+
+  // Owner Account
+  const existingOwner = await User.findOne({ organisationId, email: 'owner@example.com' });
+  if (!existingOwner) {
+    await User.create({
+      userId: 'OW-0001',
+      organisationId,
+      name: 'Zamorin Owner',
+      email: 'owner@example.com',
+      role: 'OWNER',
+      accountStatus: 'ACTIVE',
+      passwordHash: defaultPasswordHash,
+      isPrimaryMaster: false,
+      createdBy: masterUserId,
+      updatedBy: masterUserId,
+    });
+  }
+
+  // Admin Account (Ops)
+  const existingAdmin = await User.findOne({ organisationId, email: 'admin@example.com' });
+  if (!existingAdmin) {
+    await User.create({
+      userId: 'AD-0003',
+      organisationId,
+      name: 'Cafe Admin (Ops)',
+      email: 'admin@example.com',
+      role: 'CAFE_ADMIN',
+      accountStatus: 'ACTIVE',
+      primaryCafeId: 'ZC-0001',
+      assignedCafeIds: ['ZC-0001'],
+      passwordHash: defaultPasswordHash,
+      isPrimaryMaster: false,
+      createdBy: masterUserId,
+      updatedBy: masterUserId,
+    });
+  }
+
+  // Staff / Normal Employee Account
+  const existingStaff = await User.findOne({ organisationId, email: 'staff@example.com' });
+  if (!existingStaff) {
+    await User.create({
+      userId: 'ST-0001',
+      organisationId,
+      name: 'Normal Employee / Staff',
+      email: 'staff@example.com',
+      role: 'STAFF',
+      accountStatus: 'ACTIVE',
+      primaryCafeId: 'ZC-0001',
+      assignedCafeIds: ['ZC-0001'],
+      passwordHash: defaultPasswordHash,
+      isPrimaryMaster: false,
+      createdBy: masterUserId,
+      updatedBy: masterUserId,
+    });
+  }
 }
 
 async function runSeed() {
   const env = loadEnvironment();
-  await connectDatabase(env.MONGO_URI);
+  await connectDatabase({ uri: env.mongodbUri });
   try {
-    const org = env.DEFAULT_ORGANISATION_ID || 'ORG-ZAMORIN';
-    const master = await seedMasterUser(org, env.MASTER_EMAIL, env.MASTER_PASSWORD);
-    await seedPermissionRules(org);
-    await seedSystemCommunicationSettings(org, master.userId);
-    await seedDepartmentOrdersData(org, master.userId);
-    await seedWorkforceData(org, master.userId);
-    await seedExpensePolicyData(org, master.userId);
-    await seedFinanceData(org, master.userId);
-    await seedInventoryData(org, master.userId);
-    await seedMenuData(org, master.userId);
-    await seedLoansData(org, master.userId);
-    await seedCafeOperationsData(org, master.userId);
+    const organisationId = env.initialOrganisationId || 'ZAMORIN';
+    const master = await seedMasterUser({
+      organisationId,
+      masterName: env.initialMasterName || 'Zamorin Master',
+      masterEmail: env.initialMasterEmail || 'master@example.com',
+      masterPassword: env.initialMasterPassword || 'PK@NilaVega_8427!Cedar',
+    });
+    await seedPermissionRules({ organisationId, masterUserId: master.userId });
+    await seedSystemCommunicationSettings({ organisationId, masterEmail: env.initialMasterEmail || 'master@example.com' });
+    await seedDepartmentOrdersData({ organisationId, masterUserId: master.userId });
+    await seedWorkforceData({ organisationId, masterUserId: master.userId });
+    await seedExpensePolicyData({ organisationId, masterUserId: master.userId });
+    await seedFinanceData({ organisationId, masterUserId: master.userId });
+    await seedInventoryData({ organisationId, masterUserId: master.userId });
+    await seedMenuData({ organisationId, masterUserId: master.userId });
+    await seedLoansData({ organisationId, masterUserId: master.userId });
+    await seedCafeOperationsData(organisationId, master.userId);
   } finally {
     await disconnectDatabase();
   }
