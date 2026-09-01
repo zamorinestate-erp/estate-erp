@@ -48,12 +48,12 @@ async function main() {
   const organisationId =
     process.env.INITIAL_ORGANISATION_ID || 'ZAMORIN';
   const masterName =
-    process.env.INITIAL_MASTER_NAME || 'Zamorin Master';
+    process.env.INITIAL_MASTER_NAME || 'Zamorin Primary Master';
   const masterEmail =
-    process.env.INITIAL_MASTER_EMAIL || 'master@example.com';
+    process.env.INITIAL_MASTER_EMAIL || 'pradeeshk331@gmail.com';
   const masterPassword =
     process.env.INITIAL_MASTER_PASSWORD ||
-    'PK@NilaVega_8427!Cedar';
+    'PRADEESHK@94309';
 
   console.log('[dev] Seeding MASTER account and canonical role users...');
 

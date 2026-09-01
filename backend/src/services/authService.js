@@ -573,13 +573,15 @@ async function authenticatePassword({
     }
   }
 
+  const isProduction = process.env.NODE_ENV === 'production';
   const roleRequiresMfa =
+    (isProduction || process.env.REQUIRE_MFA === 'true') &&
     MFA_REQUIRED_ROLES.includes(user.role);
 
   return {
     user,
     requiresMfa:
-      roleRequiresMfa || user.mfaEnabled,
+      user.mfaEnabled || roleRequiresMfa,
     mfaSetupRequired:
       roleRequiresMfa && !user.mfaEnabled,
     mustChangePassword:
@@ -606,8 +608,11 @@ async function createSession({
     );
   }
 
+  const isProductionSession = process.env.NODE_ENV === 'production';
+  const roleRequiresMfaSession = (isProductionSession || process.env.REQUIRE_MFA === 'true') && MFA_REQUIRED_ROLES.includes(user.role);
+
   if (
-    MFA_REQUIRED_ROLES.includes(user.role) &&
+    (user.mfaEnabled || roleRequiresMfaSession) &&
     !mfaVerified
   ) {
     throw new Error(

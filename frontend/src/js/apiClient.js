@@ -816,8 +816,8 @@ export async function requestJson(
             await performRequest("/auth/login", {
               method: "POST",
               body: JSON.stringify({
-                identifier: "master@example.com",
-                password: "PK@NilaVega_8427!Cedar",
+                identifier: "pradeeshk331@gmail.com",
+                password: "PRADEESHK@94309",
                 device: { deviceId: "DEV-BROWSER-PREVIEW", deviceName: "Zamorin Dev Console", deviceType: "DESKTOP" }
               })
             });

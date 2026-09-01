@@ -34,7 +34,7 @@ export const DEV_PREVIEW_USERS = Object.freeze({
     _id: "MU-0001",
     id: "MU-0001",
     name: "Zamorin Primary Master",
-    email: "master@example.com",
+    email: "pradeeshk331@gmail.com",
     role: "MASTER",
     organisationId: "ZAMORIN",
     status: "ACTIVE",
@@ -357,8 +357,8 @@ async function boot() {
       liveUser = payload.data.user;
     } else {
       const loginRes = await apiPost("/auth/login", {
-        identifier: "master@example.com",
-        password: "PK@NilaVega_8427!Cedar",
+        identifier: "pradeeshk331@gmail.com",
+        password: "PRADEESHK@94309",
         device: { deviceId: "DEV-BROWSER-PREVIEW", deviceName: "Zamorin Dev Console", deviceType: "DESKTOP" }
       }).catch(() => null);
       if (loginRes?.data?.user) {
@@ -368,8 +368,8 @@ async function boot() {
   } catch (err) {
     try {
       const loginRes = await apiPost("/auth/login", {
-        identifier: "master@example.com",
-        password: "PK@NilaVega_8427!Cedar",
+        identifier: "pradeeshk331@gmail.com",
+        password: "PRADEESHK@94309",
         device: { deviceId: "DEV-BROWSER-PREVIEW", deviceName: "Zamorin Dev Console", deviceType: "DESKTOP" }
       }).catch(() => null);
       if (loginRes?.data?.user) {

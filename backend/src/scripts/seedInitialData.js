@@ -502,146 +502,34 @@ async function seedMasterUser({
   masterEmail,
   masterPassword,
 }) {
-  const existingPrimaryMasters =
-    await User.find({
-      organisationId,
-      isPrimaryMaster: true,
-    }).sort({
-      createdAt: 1,
-      userId: 1,
-    });
+  const normEmail = masterEmail.trim().toLowerCase();
+  const passwordHash = await hashPassword(masterPassword);
+  const designatedAt = new Date();
 
-  if (
-    existingPrimaryMasters.length > 1
-  ) {
-    throw new Error(
-      'Multiple Primary Master accounts exist for this organisation.'
-    );
+  // 1. Check if primary master user already exists in organisation
+  let existingPrimary = await User.findOne({
+    organisationId,
+    $or: [{ isPrimaryMaster: true }, { email: normEmail }],
+  });
+
+  if (existingPrimary) {
+    existingPrimary.name = masterName;
+    existingPrimary.email = normEmail;
+    existingPrimary.role = 'MASTER';
+    existingPrimary.isPrimaryMaster = true;
+    existingPrimary.accountStatus = 'ACTIVE';
+    existingPrimary.passwordHash = passwordHash;
+    existingPrimary.primaryMasterDesignatedAt = designatedAt;
+    existingPrimary.primaryMasterDesignatedBy = existingPrimary.userId;
+    existingPrimary.primaryMasterDesignationReason = PRIMARY_MASTER_DESIGNATION_REASON;
+    existingPrimary.failedLoginAttempts = 0;
+    existingPrimary.lockoutUntil = null;
+    await existingPrimary.save();
+    console.log(`Primary MASTER updated and secured: ${existingPrimary.userId} (${existingPrimary.email})`);
+    return existingPrimary;
   }
 
-  if (
-    existingPrimaryMasters.length === 1
-  ) {
-    const primaryMaster =
-      existingPrimaryMasters[0];
-
-    assertPrimaryMasterCandidate({
-      user: primaryMaster,
-      organisationId,
-    });
-
-    await primaryMaster.validate();
-
-    console.log(
-      `Primary MASTER already exists: ${primaryMaster.userId}`
-    );
-
-    return primaryMaster;
-  }
-
-  const existingMasters =
-    await User.find({
-      organisationId,
-      role: 'MASTER',
-      accountStatus: {
-        $ne: 'ARCHIVED',
-      },
-    }).sort({
-      createdAt: 1,
-      userId: 1,
-    });
-
-  if (existingMasters.length >= 1) {
-    const legacyMaster =
-      existingMasters.find((m) => m.email === masterEmail) ||
-      existingMasters[0];
-
-    assertPrimaryMasterCandidate({
-      user: legacyMaster,
-      organisationId,
-    });
-
-    const designatedAt = new Date();
-
-    const designationResult =
-      await User.collection.updateOne(
-        {
-          _id: legacyMaster._id,
-          organisationId,
-          role: 'MASTER',
-          accountStatus: 'ACTIVE',
-          isPrimaryMaster: {
-            $ne: true,
-          },
-        },
-        {
-          $set: {
-            isPrimaryMaster: true,
-            primaryMasterDesignatedAt:
-              designatedAt,
-            primaryMasterDesignatedBy:
-              legacyMaster.userId,
-            primaryMasterDesignationReason:
-              PRIMARY_MASTER_DESIGNATION_REASON,
-            updatedBy:
-              legacyMaster.userId,
-          },
-          $push: {
-            roleHistory: {
-              toRole: 'MASTER',
-              changedAt:
-                designatedAt,
-              changedBy:
-                legacyMaster.userId,
-              reason:
-                PRIMARY_MASTER_DESIGNATION_REASON,
-              correlationId: null,
-              sessionId: null,
-            },
-          },
-        }
-      );
-
-    if (
-      designationResult.matchedCount !== 1 ||
-      designationResult.modifiedCount !== 1
-    ) {
-      throw new Error(
-        'The existing MASTER could not be designated as Primary Master.'
-      );
-    }
-
-    const primaryMaster =
-      await User.findById(
-        legacyMaster._id
-      );
-
-    assertPrimaryMasterCandidate({
-      user: primaryMaster,
-      organisationId,
-    });
-
-    await primaryMaster.validate();
-
-    console.log(
-      `Designated existing MASTER as Primary Master: ${primaryMaster.userId}`
-    );
-
-    return primaryMaster;
-  }
-
-  const duplicateEmail =
-    await User.findOne({
-      organisationId,
-      email: masterEmail,
-    });
-
-  if (duplicateEmail) {
-    throw new Error(
-      'The MASTER email is already used by another user.'
-    );
-  }
-
+  // 2. Create fresh Primary Master account for pradeeshk331@gmail.com
   const userId =
     await SequenceCounter.generateId({
       organisationId,
@@ -650,61 +538,37 @@ async function seedMasterUser({
       minimumDigits: 4,
     });
 
-  const passwordHash =
-    await hashPassword(
-      masterPassword
-    );
+  const masterUser = await User.create({
+    userId,
+    organisationId,
+    name: masterName,
+    preferredName: '',
+    email: normEmail,
+    phone: '',
+    role: 'MASTER',
+    accountStatus: 'ACTIVE',
+    primaryCafeId: null,
+    assignedCafeIds: [],
+    isPrimaryMaster: true,
+    primaryMasterDesignatedAt: designatedAt,
+    primaryMasterDesignatedBy: userId,
+    primaryMasterDesignationReason: PRIMARY_MASTER_DESIGNATION_REASON,
+    passwordHash,
+    roleHistory: [
+      {
+        toRole: 'MASTER',
+        changedAt: designatedAt,
+        changedBy: userId,
+        reason: PRIMARY_MASTER_DESIGNATION_REASON,
+        correlationId: null,
+        sessionId: null,
+      },
+    ],
+    createdBy: userId,
+    updatedBy: userId,
+  });
 
-  const designatedAt = new Date();
-
-  const masterUser =
-    await User.create({
-      userId,
-      organisationId,
-      name: masterName,
-      preferredName: '',
-      email: masterEmail,
-      phone: '',
-      role: 'MASTER',
-      accountStatus: 'ACTIVE',
-      primaryCafeId: null,
-      assignedCafeIds: [],
-      isPrimaryMaster: true,
-      primaryMasterDesignatedAt:
-        designatedAt,
-      primaryMasterDesignatedBy:
-        userId,
-      primaryMasterDesignationReason:
-        PRIMARY_MASTER_DESIGNATION_REASON,
-      roleHistory: [
-        {
-          toRole: 'MASTER',
-          changedAt:
-            designatedAt,
-          changedBy:
-            userId,
-          reason:
-            PRIMARY_MASTER_DESIGNATION_REASON,
-          correlationId: null,
-          sessionId: null,
-        },
-      ],
-      cafeAssignmentHistory: [],
-      passwordHash,
-      mustChangePassword: false,
-      passwordChangedAt: new Date(),
-      mfaEnabled: false,
-      mfaMethod: 'NONE',
-      preferredLanguage: 'en',
-      timezone: 'Asia/Kolkata',
-      createdBy: userId,
-      updatedBy: userId,
-    });
-
-  console.log(
-    `Created Primary MASTER user: ${masterUser.userId}`
-  );
-
+  console.log(`Primary MASTER created and locked: ${masterUser.userId} (${masterUser.email})`);
   return masterUser;
 }
 
