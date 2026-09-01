@@ -220,7 +220,8 @@ export function mountAuthScreen(screen = "login", params = {}) {
           window.location.hash = "#dashboard";
           boot();
         } catch (err) {
-          mountAuthScreen("login", { error: err.message || "Invalid credentials. Please check your Organisation ID, email, and password." });
+          const userMsg = err.userMessage || err.message || "Invalid credentials. Please check your Organisation ID, email, and password.";
+          throw new Error(userMsg);
         }
       },
       onForgotPassword: ({ organisationId, email }) => {

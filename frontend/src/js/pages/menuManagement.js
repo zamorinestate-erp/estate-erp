@@ -19,64 +19,21 @@ export function setMenuActiveTab(tab) {
   activeTab = tab || "overview";
 }
 
-const SAMPLE_MENU = [
-  { id: "MENU-01", menuItemId: "MENU-01", name: "Zamorin Signature Estate Pour-Over", category: "COFFEE", price: 240, foodType: "Veg", isAvailable: true, conceptEligibility: "CAFE", description: "Single-estate Arabica brewed through V60 dripper." },
-  { id: "MENU-02", menuItemId: "MENU-02", name: "Spanish Cortado (Double Shot)", category: "COFFEE", price: 210, foodType: "Veg", isAvailable: true, conceptEligibility: "CAFE", description: "Equal parts rich espresso and textured whole milk." },
-  { id: "MENU-03", menuItemId: "MENU-03", name: "18-Hour Slow Cold Brew", category: "COFFEE", price: 260, foodType: "Veg", isAvailable: true, conceptEligibility: "CAFE", description: "Steeped for 18 hours in cold filtered spring water." },
-  { id: "MENU-04", menuItemId: "MENU-04", name: "Iced Spiced Cardamom Latte", category: "COFFEE", price: 280, foodType: "Veg", isAvailable: true, conceptEligibility: "CAFE", description: "House cardamom syrup with espresso over ice." },
-  { id: "MENU-05", menuItemId: "MENU-05", name: "Butter Croissant (French Butter)", category: "BAKERY", price: 180, foodType: "Veg", isAvailable: true, conceptEligibility: "SHARED", description: "Layered flaky pastry baked fresh daily." },
-  { id: "MENU-06", menuItemId: "MENU-06", name: "Avocado & Sourdough Toast", category: "SNACKS", price: 340, foodType: "Veg", isAvailable: true, conceptEligibility: "SHARED", description: "Hass avocado, chili flakes, feta on toasted sourdough." },
-  { id: "MENU-07", menuItemId: "MENU-07", name: "Smoked Chicken Ciabatta Panini", category: "MAIN_COURSE", price: 380, foodType: "Non-Veg", isAvailable: true, conceptEligibility: "RESTAURANT", description: "Oak-smoked chicken, aged cheddar, dijon mustard." },
-];
-
-const SAMPLE_MENUS = [
-  { menuId: "MN-ALL-DAY", name: "All-Day Café & Roastery Menu", concept: "CAFE", menuType: "A_LA_CARTE", schedule: { startTime: "07:00", endTime: "23:00" }, status: "ACTIVE" },
-  { menuId: "MN-BREAKFAST", name: "Artisanal Breakfast & Viennoiserie", concept: "CAFE", menuType: "A_LA_CARTE", schedule: { startTime: "07:00", endTime: "11:30" }, status: "ACTIVE" },
-  { menuId: "MN-REST-EVENING", name: "Estate Dinner & Chef's Table", concept: "RESTAURANT", menuType: "A_LA_CARTE", schedule: { startTime: "19:00", endTime: "23:30" }, status: "ACTIVE" },
-];
-
-const SAMPLE_RECIPES = [
-  { recipeId: "RCP-POUR-01", name: "V60 Single Origin Pour-Over", isSubRecipe: false, batchYield: 1, yieldUom: "CUP", ingredients: [1, 2], confidentiality: "PUBLIC", status: "ACTIVE" },
-  { recipeId: "RCP-COLDBREW-01", name: "Slow Drip Cold Brew Concentrate", isSubRecipe: true, batchYield: 5, yieldUom: "LITRE", ingredients: [1, 2], confidentiality: "CONFIDENTIAL", status: "ACTIVE" },
-  { recipeId: "RCP-LATTE-CARD", name: "Spiced Cardamom Syrup Base", isSubRecipe: true, batchYield: 2, yieldUom: "LITRE", ingredients: [1, 2, 3], confidentiality: "CONFIDENTIAL", status: "ACTIVE" },
-];
-
-const SAMPLE_MODIFIER_GROUPS = [
-  { modifierGroupId: "MOD-MILK-01", name: "Dairy & Plant Milk Selection", minSelections: 1, maxSelections: 1, isRequired: true, status: "ACTIVE", modifiers: [{ name: "Whole Milk", pricePaisaDelta: 0 }, { name: "Oat Milk (Oatly)", pricePaisaDelta: 4500 }, { name: "Almond Milk", pricePaisaDelta: 4500 }] },
-  { modifierGroupId: "MOD-SHOTS-01", name: "Extra Espresso Extraction", minSelections: 0, maxSelections: 2, isRequired: false, status: "ACTIVE", modifiers: [{ name: "Extra Espresso Shot", pricePaisaDelta: 5000 }, { name: "Vanilla Bean Syrup", pricePaisaDelta: 3000 }] },
-];
-
-const SAMPLE_COMBOS = [
-  { comboId: "CMB-BRKFST-01", name: "Morning Ritual (Croissant + Flat White)", pricingType: "FIXED_PRICE", groups: [{ groupName: "Hot Beverage" }, { groupName: "Fresh Bakery" }], status: "ACTIVE" },
-  { comboId: "CMB-LUNCH-01", name: "Estate Lunch Box (Panini + Cold Brew)", pricingType: "FIXED_PRICE", groups: [{ groupName: "Gourmet Panini" }, { groupName: "Cold Beverage" }], status: "ACTIVE" },
-];
-
-const SAMPLE_CHANGESETS = [
-  { changeSetId: "CS-2026-08-01", name: "Autumn Single Origin Price Alignment", scope: "GLOBAL", targetOutletIds: ["All Outlets"], status: "DRAFT" },
-  { changeSetId: "CS-2026-07-15", name: "Monsoon Special Beverage Introductions", scope: "CONCEPT", targetOutletIds: ["ZC-0001", "ZC-0002"], status: "PUBLISHED" },
-];
-
-const SAMPLE_SIMULATOR = [
-  { name: "Zamorin Signature Estate Pour-Over", category: "COFFEE", effectivePriceRupees: "240.00", sourceExplanation: "Base Price (Global Master)", isAvailable: true },
-  { name: "Spanish Cortado (Double Shot)", category: "COFFEE", effectivePriceRupees: "210.00", sourceExplanation: "Base Price (Global Master)", isAvailable: true },
-  { name: "18-Hour Slow Cold Brew", category: "COFFEE", effectivePriceRupees: "260.00", sourceExplanation: "Base Price (Global Master)", isAvailable: true },
-  { name: "Butter Croissant (French Butter)", category: "BAKERY", effectivePriceRupees: "180.00", sourceExplanation: "Base Price (Global Master)", isAvailable: true },
-];
-
+const SAMPLE_MENU = [];
+const SAMPLE_MENUS = [];
+const SAMPLE_RECIPES = [];
+const SAMPLE_MODIFIER_GROUPS = [];
+const SAMPLE_COMBOS = [];
+const SAMPLE_CHANGESETS = [];
+const SAMPLE_SIMULATOR = [];
 const SAMPLE_INTEGRITY = {
   status: "PASS",
-  checksEvaluated: 32,
+  checksEvaluated: 0,
   issuesFound: 0,
   issues: [],
 };
-
 const SAMPLE_ANALYTICS = {
-  salesMix: [
-    { name: "Zamorin Signature Estate Pour-Over", category: "COFFEE", unitsSold: 412, netSalesPaisa: 9888000, contributionMarginPercent: 78 },
-    { name: "18-Hour Slow Cold Brew", category: "COFFEE", unitsSold: 328, netSalesPaisa: 8528000, contributionMarginPercent: 82 },
-    { name: "Spanish Cortado", category: "COFFEE", unitsSold: 284, netSalesPaisa: 5964000, contributionMarginPercent: 74 },
-    { name: "Butter Croissant", category: "BAKERY", unitsSold: 195, netSalesPaisa: 3510000, contributionMarginPercent: 68 },
-  ]
+  salesMix: []
 };
 
 export function renderMenuManagement(subroute) {

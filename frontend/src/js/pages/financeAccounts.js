@@ -131,114 +131,63 @@ export async function wireFinance(root, subroute) {
 // ── Default Authoritative Datasets ──────────────────────────────────────────
 const DEFAULT_FINANCE_DATA = {
   kpis: {
-    revenueMtdPaisa: 14852000,
-    expensesMtdPaisa: 6245000,
-    grossProfitMtdPaisa: 8607000,
-    netOperatingResultMtdPaisa: 4125000,
-    totalBankBalancePaisa: 39300000,
-    payablesOutstandingPaisa: 3250000,
-    dueThisWeekPaisa: 1420000,
+    revenueMtdPaisa: 0,
+    expensesMtdPaisa: 0,
+    grossProfitMtdPaisa: 0,
+    netOperatingResultMtdPaisa: 0,
+    totalBankBalancePaisa: 0,
+    payablesOutstandingPaisa: 0,
+    dueThisWeekPaisa: 0,
   },
   controlStrip: {
-    payablesDueCount: 4,
-    salesAuditExceptionsCount: 1,
-    marketplaceExceptionsCount: 2,
-    journalsPendingCount: 3,
-    gstReviewCount: 1,
+    payablesDueCount: 0,
+    salesAuditExceptionsCount: 0,
+    marketplaceExceptionsCount: 0,
+    journalsPendingCount: 0,
+    gstReviewCount: 0,
   },
-  cafeBreakdown: [
-    { cafeId: "ZC-0001", name: "Koramangala Flagship", settlementStatus: "RECONCILED", revenueMtdPaisa: 6845000, expensesMtdPaisa: 2850000, grossProfitPaisa: 3995000, payablesPaisa: 1450000 },
-    { cafeId: "ZC-0002", name: "Indiranagar Roastery", settlementStatus: "RECONCILED", revenueMtdPaisa: 5289000, expensesMtdPaisa: 2144000, grossProfitPaisa: 3145000, payablesPaisa: 1120000 },
-    { cafeId: "ZC-0003", name: "Calicut Beach Main", settlementStatus: "RECONCILED", revenueMtdPaisa: 2718000, expensesMtdPaisa: 1251000, grossProfitPaisa: 1467000, payablesPaisa: 680000 },
-  ],
+  cafeBreakdown: [],
 };
 
-let DEFAULT_STORE_DAYS = [
-  { storeDayId: "SD-20260825-01", businessDate: "2026-08-25", cafeId: "ZC-0001", posEventCount: 312, financeEventCount: 312, grossSalesPaisa: 14850000, netSalesPaisa: 14107500, cashVariancePaisa: 0, status: "FINANCE_CLEARED", clearedBy: "Finance Lead" },
-  { storeDayId: "SD-20260825-02", businessDate: "2026-08-25", cafeId: "ZC-0002", posEventCount: 248, financeEventCount: 248, grossSalesPaisa: 11240000, netSalesPaisa: 10678000, cashVariancePaisa: -12000, status: "AUDIT_REQUIRED", clearedBy: null },
-  { storeDayId: "SD-20260825-03", businessDate: "2026-08-25", cafeId: "ZC-0003", posEventCount: 189, financeEventCount: 189, grossSalesPaisa: 8950000, netSalesPaisa: 8502500, cashVariancePaisa: 0, status: "FINANCE_CLEARED", clearedBy: "Finance Lead" },
-  { storeDayId: "SD-20260824-01", businessDate: "2026-08-24", cafeId: "ZC-0001", posEventCount: 345, financeEventCount: 345, grossSalesPaisa: 16200000, netSalesPaisa: 15390000, cashVariancePaisa: 0, status: "FINANCE_CLEARED", clearedBy: "Finance Lead" },
-];
-
-let DEFAULT_JOURNALS = [
-  { journalId: "JNL-202608-0041", journalDate: "2026-08-25", periodId: "FY2026-P05", journalType: "MANUAL", sourceModule: "GENERAL", description: "Monthly Roastery roast master consulting fee adjustment", totalDebitPaisa: 4500000, totalCreditPaisa: 4500000, status: "POSTED" },
-  { journalId: "JNL-202608-0042", journalDate: "2026-08-25", periodId: "FY2026-P05", journalType: "SALES", sourceModule: "POS_SYNC", description: "Consolidated POS daily revenue posting - ZC-0001", totalDebitPaisa: 14850000, totalCreditPaisa: 14850000, status: "POSTED" },
-  { journalId: "JNL-202608-0043", journalDate: "2026-08-24", periodId: "FY2026-P05", journalType: "EXPENSE", sourceModule: "AP_LEDGER", description: "Specialty green coffee bean procurement batch #89", totalDebitPaisa: 28500000, totalCreditPaisa: 28500000, status: "POSTED" },
-  { journalId: "JNL-202608-0044", journalDate: "2026-08-26", periodId: "FY2026-P05", journalType: "MANUAL", sourceModule: "TREASURY", description: "Imprest cash float top-up for Indiranagar Roastery", totalDebitPaisa: 1000000, totalCreditPaisa: 1000000, status: "DRAFT" },
-];
-
-let DEFAULT_AP_INVOICES = [
-  { invoiceId: "AP-2026-0881", vendorName: "Blue Tokai Roastery Equipment", supplierInvoiceNumber: "INV-BTE-9921", dueDate: "2026-08-28", totalPaisa: 8500000, outstandingPaisa: 8500000, paymentStatus: "UNPAID", cafeId: "ZC-0001" },
-  { invoiceId: "AP-2026-0882", vendorName: "Nandini Dairy Mega Depot", supplierInvoiceNumber: "SLIP-ND-4412", dueDate: "2026-08-26", totalPaisa: 320000, outstandingPaisa: 0, paymentStatus: "PAID", cafeId: "ZC-0001" },
-  { invoiceId: "AP-2026-0883", vendorName: "Ecopack Sustainable Containers", supplierInvoiceNumber: "EP-BLR-1099", dueDate: "2026-09-02", totalPaisa: 1140000, outstandingPaisa: 1140000, paymentStatus: "UNPAID", cafeId: "ZC-0002" },
-  { invoiceId: "AP-2026-0884", vendorName: "La Marzocco Technical Services", supplierInvoiceNumber: "LM-SVC-776", dueDate: "2026-08-30", totalPaisa: 875000, outstandingPaisa: 875000, paymentStatus: "UNPAID", cafeId: "ZC-0002" },
-];
-
-let DEFAULT_RECEIVABLES = [
-  { receivableId: "AR-2026-0210", customerName: "Infosys Campus B2B Catering", invoiceDate: "2026-08-20", cafeId: "ZC-0001", amountPaisa: 4250000, status: "PENDING", dueDate: "2026-09-05" },
-  { receivableId: "AR-2026-0211", customerName: "WeWork Galaxy Specialty Coffee Bar", invoiceDate: "2026-08-18", cafeId: "ZC-0002", amountPaisa: 6800000, status: "SETTLED", dueDate: "2026-08-24" },
-  { receivableId: "AR-2026-0212", customerName: "Kite Robotics Corporate Account", invoiceDate: "2026-08-22", cafeId: "ZC-0001", amountPaisa: 2150000, status: "PENDING", dueDate: "2026-09-10" },
-];
-
-let DEFAULT_MARKETPLACE_SETTLEMENTS = [
-  { settlementId: "SET-SWIGGY-202608-W3", platform: "Swiggy", periodStart: "2026-08-15", periodEnd: "2026-08-21", grossSalesPaisa: 6450000, commissionPaisa: 1419000, platformFeesPaisa: 161250, netSettlementPaisa: 4869750, status: "RECONCILED" },
-  { settlementId: "SET-ZOMATO-202608-W3", platform: "Zomato", periodStart: "2026-08-15", periodEnd: "2026-08-21", grossSalesPaisa: 5820000, commissionPaisa: 1280400, platformFeesPaisa: 145500, netSettlementPaisa: 4394100, status: "RECONCILED" },
-  { settlementId: "SET-SWIGGY-202608-W4", platform: "Swiggy", periodStart: "2026-08-22", periodEnd: "2026-08-28", grossSalesPaisa: 7120000, commissionPaisa: 1566400, platformFeesPaisa: 178000, netSettlementPaisa: 5375600, status: "PENDING_PAYOUT" },
-];
-
-let DEFAULT_BANK_ACCOUNTS = [
-  { accountAlias: "Primary Corporate Current A/C", bankName: "HDFC Bank Ltd", maskedAccountNumber: "•••• •••• 4491", bookBalancePaisa: 24500000, glAccountCode: "1020-BANK-HDFC", status: "ACTIVE" },
-  { accountAlias: "Outlet Operations Float A/C", bankName: "ICICI Bank Ltd", maskedAccountNumber: "•••• •••• 8820", bookBalancePaisa: 11800000, glAccountCode: "1021-BANK-ICICI", status: "ACTIVE" },
-  { accountAlias: "Statutory Tax & TDS Reserve", bankName: "State Bank of India", maskedAccountNumber: "•••• •••• 1039", bookBalancePaisa: 3000000, glAccountCode: "1025-BANK-SBI-TAX", status: "ACTIVE" },
-];
-
-let DEFAULT_BUDGETS = [
-  { category: "Food & Beverage Ingredients (COGS)", monthlyBudgetPaisa: 4500000, committedPaisa: 3800000, actualPaisa: 3650000, variancePaisa: 850000 },
-  { category: "Staff Salaries & Barista Payroll", monthlyBudgetPaisa: 2800000, committedPaisa: 2800000, actualPaisa: 2750000, variancePaisa: 50000 },
-  { category: "Rent & Real Estate Lease", monthlyBudgetPaisa: 2200000, committedPaisa: 2200000, actualPaisa: 2200000, variancePaisa: 0 },
-  { category: "Store Maintenance & Equipment Servicing", monthlyBudgetPaisa: 600000, committedPaisa: 450000, actualPaisa: 410000, variancePaisa: 190000 },
-  { category: "Packaging & Sustainable Supplies", monthlyBudgetPaisa: 500000, committedPaisa: 410000, actualPaisa: 385000, variancePaisa: 115000 },
-  { category: "Marketing, Branding & Local Events", monthlyBudgetPaisa: 400000, committedPaisa: 290000, actualPaisa: 270000, variancePaisa: 130000 },
-];
+let DEFAULT_STORE_DAYS = [];
+let DEFAULT_JOURNALS = [];
+let DEFAULT_AP_INVOICES = [];
+let DEFAULT_RECEIVABLES = [];
+let DEFAULT_MARKETPLACE_SETTLEMENTS = [];
+let DEFAULT_BANK_ACCOUNTS = [];
+let DEFAULT_BUDGETS = [];
 
 let DEFAULT_TAX_DATA = {
-  gstr1Readiness: { status: "READY_TO_FILE", outwardTaxablePaisa: 14852000, totalTaxPaisa: 742600 },
-  gstr2bReconciliation: { status: "MATCHED_98_PCT", totalInwardInvoices: 42, matchedCount: 40, itcEligiblePaisa: 312500 },
-  tdsRegister: { status: "RECONCILED", totalDeductedPaisa: 185000, depositedPaisa: 185000 },
+  gstr1Readiness: { status: "READY_TO_FILE", outwardTaxablePaisa: 0, totalTaxPaisa: 0 },
+  gstr2bReconciliation: { status: "MATCHED_100_PCT", totalInwardInvoices: 0, matchedCount: 0, itcEligiblePaisa: 0 },
+  tdsRegister: { status: "RECONCILED", totalDeductedPaisa: 0, depositedPaisa: 0 },
 };
 
 let DEFAULT_CLOSE_DATA = {
-  currentPeriod: { periodId: "FY2026-P05", periodName: "August 2026", status: "OPEN" },
-  closeChecklist: [
-    { task: "All Daily POS Cash Drawer Store Days Certified", status: "COMPLETED" },
-    { task: "Accounts Payable 3-Way Match & Expense Accruals Posted", status: "COMPLETED" },
-    { task: "Bank Reconciliation & Feed Feeds Matched (HDFC / ICICI)", status: "COMPLETED" },
-    { task: "Depreciation Run on Roastery & Espresso Hardware", status: "COMPLETED" },
-    { task: "Food Aggregator (Swiggy / Zomato) Commission Deductions Balanced", status: "COMPLETED" },
-    { task: "GST Output & Input Tax Credit Inter-ledger Clearance", status: "IN_PROGRESS" },
-  ],
+  currentPeriod: { periodId: "FY2026-P01", periodName: "Current Period", status: "OPEN" },
+  closeChecklist: [],
 };
 
 let DEFAULT_STATEMENTS_DATA = {
   pnl: {
     basis: "Accrual",
-    period: "FY2026-P05 (August 2026)",
-    revenue: { totalRevenuePaisa: 14852000 },
-    costOfGoodsSold: { totalCogsPaisa: 4620000 },
-    grossProfitPaisa: 10232000,
-    operatingExpenses: { totalOpexPaisa: 6107000 },
-    netOperatingProfitPaisa: 4125000,
+    period: "Current Period",
+    revenue: { totalRevenuePaisa: 0 },
+    costOfGoodsSold: { totalCogsPaisa: 0 },
+    grossProfitPaisa: 0,
+    operatingExpenses: { totalOpexPaisa: 0 },
+    netOperatingProfitPaisa: 0,
   },
   balanceSheet: {
-    assets: { totalAssetsPaisa: 58400000 },
-    liabilities: { totalLiabilitiesPaisa: 14200000 },
-    equity: { totalEquityPaisa: 44200000 },
+    assets: { totalAssetsPaisa: 0 },
+    liabilities: { totalLiabilitiesPaisa: 0 },
+    equity: { totalEquityPaisa: 0 },
   },
 };
 
 let DEFAULT_INTEGRITY_DATA = {
   status: "HEALTHY",
-  checksEvaluated: 18,
+  checksEvaluated: 0,
   issuesFound: 0,
   issues: [],
 };

@@ -312,43 +312,20 @@ async function loadAllData() {
 // ── Canonical sample fixtures (dev / staging / offline fallback) ──────────────
 const _SAMPLE_OVERVIEW = {
   metrics: {
-    totalGrossSalesPaisa: 18450000,
-    totalRevenueShareEarnedPaisa: 2767500,
-    totalOutstandingPaisa: 924000,
-    collectionRatePercent: 96.5,
-    activeOutletsCount: 3,
-    activeAgreementsCount: 3,
+    totalGrossSalesPaisa: 0,
+    totalRevenueShareEarnedPaisa: 0,
+    totalOutstandingPaisa: 0,
+    collectionRatePercent: 100,
+    activeOutletsCount: 0,
+    activeAgreementsCount: 0,
   },
 };
-const _SAMPLE_OUTLETS = [
-  { outletId: 'OUT-0001', name: 'Kozhikode Beach Main Atrium Kiosk', spaceType: 'KIOSK', zoneFloor: 'Ground', stallNumber: 'K-01', areaSqFt: 80, currentOperatorId: 'OP-0001', status: 'OCCUPIED' },
-  { outletId: 'OUT-0002', name: 'Cyberpark Food Court Counter', spaceType: 'COUNTER', zoneFloor: 'Level 1', stallNumber: 'FC-12', areaSqFt: 120, currentOperatorId: 'OP-0002', status: 'OCCUPIED' },
-  { outletId: 'OUT-0003', name: 'Wayanad Roastery Pop-Up', spaceType: 'POP_UP', zoneFloor: 'Ground', stallNumber: null, areaSqFt: 60, currentOperatorId: 'OP-0003', status: 'OCCUPIED' },
-];
-const _SAMPLE_OPERATORS = [
-  { operatorId: 'OP-0001', name: 'Kerala Heritage Foods Pvt Ltd', contactPerson: 'Suresh Nair', contactEmail: 'suresh@khf.in', gstin: '32AABCK1234L1Z5', status: 'ACTIVE' },
-  { operatorId: 'OP-0002', name: 'Malabar Café Concepts LLP', contactPerson: 'Priya Menon', contactEmail: 'priya@mcc.in', gstin: '32AABCM5678L1Z3', status: 'ACTIVE' },
-  { operatorId: 'OP-0003', name: 'Wayanad Organics Co-op', contactPerson: 'Ravi Varma', contactEmail: 'ravi@woc.in', gstin: '32AABCW9012L1ZA', status: 'ACTIVE' },
-];
-const _SAMPLE_AGREEMENTS = [
-  { agreementId: 'AGR-0001', outletId: 'OUT-0001', operatorId: 'OP-0001', effectiveFrom: '2026-01-01', effectiveTo: '2026-12-31', rateMethod: 'PERCENTAGE_OF_GROSS', rateValue: 15, status: 'ACTIVE', version: 2 },
-  { agreementId: 'AGR-0002', outletId: 'OUT-0002', operatorId: 'OP-0002', effectiveFrom: '2026-04-01', effectiveTo: '2027-03-31', rateMethod: 'PERCENTAGE_OF_GROSS', rateValue: 12, status: 'ACTIVE', version: 1 },
-  { agreementId: 'AGR-0003', outletId: 'OUT-0003', operatorId: 'OP-0003', effectiveFrom: '2026-06-01', effectiveTo: '2027-05-31', rateMethod: 'FLAT_FEE_PLUS_PERCENTAGE', rateValue: 10, flatFeePaisa: 500000, status: 'ACTIVE', version: 1 },
-];
-const _SAMPLE_SALES = [
-  { submissionId: 'SS-20260801-001', outletId: 'OUT-0001', agreementId: 'AGR-0001', periodFrom: '2026-08-01', periodTo: '2026-08-15', grossSalesPaisa: 6150000, revenueShareDuePaisa: 922500, status: 'APPROVED', financePosting: { status: 'POSTED', financeInvoiceId: 'INV-2026-0401' } },
-  { submissionId: 'SS-20260801-002', outletId: 'OUT-0002', agreementId: 'AGR-0002', periodFrom: '2026-08-01', periodTo: '2026-08-15', grossSalesPaisa: 4800000, revenueShareDuePaisa: 576000, status: 'SUBMITTED', financePosting: { status: 'PENDING' } },
-  { submissionId: 'SS-20260801-003', outletId: 'OUT-0003', agreementId: 'AGR-0003', periodFrom: '2026-08-01', periodTo: '2026-08-15', grossSalesPaisa: 3200000, revenueShareDuePaisa: 370000, status: 'DRAFT', financePosting: { status: 'NOT_POSTED' } },
-];
-const _SAMPLE_SETTLEMENTS = [
-  { settlementId: 'STL-20260815-001', outletId: 'OUT-0001', operatorId: 'OP-0001', periodFrom: '2026-08-01', periodTo: '2026-08-15', grossSalesPaisa: 6150000, shareAmountPaisa: 922500, status: 'SETTLED', settledDate: '2026-08-16' },
-  { settlementId: 'STL-20260815-002', outletId: 'OUT-0002', operatorId: 'OP-0002', periodFrom: '2026-08-01', periodTo: '2026-08-15', grossSalesPaisa: 4800000, shareAmountPaisa: 576000, status: 'CALCULATED', settledDate: null },
-];
-const _SAMPLE_DEPOSITS = [
-  { depositId: 'DEP-0001', outletId: 'OUT-0001', operatorId: 'OP-0001', depositPaisa: 1500000, heldBalancePaisa: 1500000, currency: 'INR', receivedDate: '2026-01-01', status: 'HELD' },
-  { depositId: 'DEP-0002', outletId: 'OUT-0002', operatorId: 'OP-0002', depositPaisa: 1200000, heldBalancePaisa: 1200000, currency: 'INR', receivedDate: '2026-04-01', status: 'HELD' },
-  { depositId: 'DEP-0003', outletId: 'OUT-0003', operatorId: 'OP-0003', depositPaisa: 900000, heldBalancePaisa: 900000, currency: 'INR', receivedDate: '2026-06-01', status: 'HELD' },
-];
+const _SAMPLE_OUTLETS = [];
+const _SAMPLE_OPERATORS = [];
+const _SAMPLE_AGREEMENTS = [];
+const _SAMPLE_SALES = [];
+const _SAMPLE_SETTLEMENTS = [];
+const _SAMPLE_DEPOSITS = [];
 
 function _loadSampleFixture() {
   overviewData    = _SAMPLE_OVERVIEW;

@@ -394,16 +394,7 @@ async function renderStockLevelsTab(wrap) {
   await loadStockLevelsData(wrap, cafeId);
 }
 
-const DEFAULT_STOCK_ITEMS = [
-  { itemId: "ITEM-1001", sku: "SKU-BEANS-01", name: "Single Origin Arabica Beans", category: "COFFEE_BEANS", currentStock: 45, availableStock: 45, reorderLevel: 20, parLevel: 50, maxLevel: 80, baseUnit: "KG", primaryLocation: "Dry Storage A1", status: "OPTIMAL" },
-  { itemId: "ITEM-1002", sku: "SKU-MILK-01", name: "Farm Fresh Whole Milk 1L", category: "DAIRY_FRESH", currentStock: 12, availableStock: 12, reorderLevel: 25, parLevel: 60, maxLevel: 80, baseUnit: "LTR", primaryLocation: "Walk-in Chiller C2", status: "LOW" },
-  { itemId: "ITEM-1003", sku: "SKU-SYRUP-01", name: "Vanilla Bean Artisan Syrup 750ml", category: "SYRUPS_FLAVOURS", currentStock: 14, availableStock: 14, reorderLevel: 5, parLevel: 20, maxLevel: 30, baseUnit: "BTL", primaryLocation: "Bar Under-Counter S1", status: "OPTIMAL" },
-  { itemId: "ITEM-1004", sku: "SKU-CUP-01", name: "Kraft 12oz Hot Cups (50pk)", category: "PACKAGING_CONSUMABLES", currentStock: 25, availableStock: 25, reorderLevel: 10, parLevel: 30, maxLevel: 50, baseUnit: "SLV", primaryLocation: "Packaging Rack P1", status: "OPTIMAL" },
-  { itemId: "ITEM-1005", sku: "SKU-OAT-01", name: "Oat Milk Barista Edition 1L", category: "DAIRY_FRESH", currentStock: 8, availableStock: 8, reorderLevel: 15, parLevel: 40, maxLevel: 60, baseUnit: "LTR", primaryLocation: "Walk-in Chiller C1", status: "LOW" },
-  { itemId: "ITEM-1006", sku: "SKU-MATCHA-01", name: "Ceremonial Grade Uji Matcha", category: "COFFEE_BEANS", currentStock: 3.5, availableStock: 3.5, reorderLevel: 2, parLevel: 5, maxLevel: 10, baseUnit: "KG", primaryLocation: "Dry Storage M2", status: "OPTIMAL" },
-  { itemId: "ITEM-1007", sku: "SKU-STRAW-01", name: "Biodegradable Paper Straws (250pk)", category: "PACKAGING_CONSUMABLES", currentStock: 18, availableStock: 18, reorderLevel: 5, parLevel: 25, maxLevel: 40, baseUnit: "BOX", primaryLocation: "Packaging Rack P2", status: "OPTIMAL" },
-  { itemId: "ITEM-1008", sku: "SKU-CARAMEL-01", name: "Salted Caramel Drizzle 1L", category: "SYRUPS_FLAVOURS", currentStock: 3, availableStock: 3, reorderLevel: 6, parLevel: 15, maxLevel: 25, baseUnit: "BTL", primaryLocation: "Bar Under-Counter S2", status: "LOW" },
-];
+const DEFAULT_STOCK_ITEMS = [];
 
 async function loadStockLevelsData(wrap, cafeId) {
   const tableWrap = wrap.querySelector("#stock-levels-table-container");
@@ -590,14 +581,7 @@ async function renderGlobalItemsTab(wrap) {
   await loadGlobalItemsData(wrap);
 }
 
-const DEFAULT_GLOBAL_ITEMS = [
-  { itemId: "ITEM-1001", sku: "SKU-BEANS-01", name: "Single Origin Arabica Beans", category: "Coffee Beans", baseUnit: "KG", criticality: "CRITICAL", lotControl: true, shelfLifeDays: 90, unitCostPaisa: 85000, status: "ACTIVE" },
-  { itemId: "ITEM-1002", sku: "SKU-MILK-01", name: "Farm Fresh Whole Milk 1L", category: "Dairy & Milks", baseUnit: "LTR", criticality: "CRITICAL", lotControl: true, shelfLifeDays: 5, unitCostPaisa: 6500, status: "ACTIVE" },
-  { itemId: "ITEM-1003", sku: "SKU-OAT-01", name: "Barista Edition Oat Milk 1L", category: "Dairy & Milks", baseUnit: "LTR", criticality: "STANDARD", lotControl: true, shelfLifeDays: 180, unitCostPaisa: 24000, status: "ACTIVE" },
-  { itemId: "ITEM-1004", sku: "SKU-SYRUP-01", name: "Vanilla Bean Artisan Syrup 750ml", category: "Syrups & Flavours", baseUnit: "BTL", criticality: "STANDARD", lotControl: true, shelfLifeDays: 365, unitCostPaisa: 68000, status: "ACTIVE" },
-  { itemId: "ITEM-1005", sku: "SKU-CUP-01", name: "Kraft 12oz Hot Cups (50pk)", category: "Packaging", baseUnit: "SLV", criticality: "STANDARD", lotControl: false, shelfLifeDays: 730, unitCostPaisa: 32000, status: "ACTIVE" },
-  { itemId: "ITEM-1006", sku: "SKU-MATCHA-01", name: "Uji Ceremonial Matcha Powder 500g", category: "Teas & Powders", baseUnit: "TIN", criticality: "STANDARD", lotControl: true, shelfLifeDays: 180, unitCostPaisa: 220000, status: "ACTIVE" },
-];
+const DEFAULT_GLOBAL_ITEMS = [];
 
 async function loadGlobalItemsData(wrap) {
   const container = wrap.querySelector("#global-items-table-container");
@@ -691,11 +675,7 @@ async function renderReplenishmentTab(wrap) {
   await loadReplenishmentData(wrap);
 }
 
-const DEFAULT_REPLENISHMENT = [
-  { itemId: "ITEM-1002", sku: "SKU-MILK-01", name: "Farm Fresh Whole Milk 1L", cafeId: "ZC-0001", currentStock: 12, baseUnit: "LTR", min: 25, par: 60, inTransit: 0, suggestedQty: 48, suggestedSource: "LOCAL_VENDOR" },
-  { itemId: "ITEM-1005", sku: "SKU-OAT-01", name: "Oat Milk Barista Edition 1L", cafeId: "ZC-0001", currentStock: 8, baseUnit: "LTR", min: 15, par: 40, inTransit: 10, suggestedQty: 22, suggestedSource: "CENTRAL_COMMISSARY" },
-  { itemId: "ITEM-1008", sku: "SKU-CARAMEL-01", name: "Salted Caramel Drizzle 1L", cafeId: "ZC-0001", currentStock: 3, baseUnit: "BTL", min: 6, par: 15, inTransit: 0, suggestedQty: 12, suggestedSource: "LOCAL_VENDOR" },
-];
+const DEFAULT_REPLENISHMENT = [];
 
 async function loadReplenishmentData(wrap) {
   const container = wrap.querySelector("#replenishment-table-container");
@@ -747,12 +727,7 @@ async function loadReplenishmentData(wrap) {
 }
 
 // ── 5. Receipts & Put-Away ───────────────────────────────────────────────────
-const DEFAULT_RECENT_RECEIPTS = [
-  { grnId: "GRN-2026-0889", receivedAt: new Date(Date.now() - 3600000).toISOString(), cafeId: "ZC-0001", itemId: "ITEM-1001", itemName: "Single Origin Arabica Beans", supplierLot: "LOT-BT-991", quantity: 20, baseUnit: "KG", storageLocation: "Main Store", status: "PUT_AWAY_VERIFIED" },
-  { grnId: "GRN-2026-0888", receivedAt: new Date(Date.now() - 14400000).toISOString(), cafeId: "ZC-0001", itemId: "ITEM-1002", itemName: "Farm Fresh Whole Milk 1L", supplierLot: "MILK-AM-0824", quantity: 50, baseUnit: "LTR", storageLocation: "Cold Store", status: "PUT_AWAY_VERIFIED" },
-  { grnId: "GRN-2026-0887", receivedAt: new Date(Date.now() - 86400000).toISOString(), cafeId: "ZC-0002", itemId: "ITEM-1004", itemName: "Vanilla Bean Artisan Syrup 750ml", supplierLot: "SYR-VN-4412", quantity: 12, baseUnit: "BTL", storageLocation: "Bar Counter", status: "PUT_AWAY_VERIFIED" },
-  { grnId: "GRN-2026-0886", receivedAt: new Date(Date.now() - 172800000).toISOString(), cafeId: "ZC-0001", itemId: "ITEM-1005", itemName: "Kraft 12oz Hot Cups (50pk)", supplierLot: "CUP-KF-2026", quantity: 30, baseUnit: "SLV", storageLocation: "Main Store", status: "PUT_AWAY_VERIFIED" },
-];
+const DEFAULT_RECENT_RECEIPTS = [];
 
 function renderReceiptsTab(wrap) {
   wrap.innerHTML = `
@@ -975,17 +950,7 @@ function renderReceiptsTab(wrap) {
 }
 
 // ── 6. Stock Movement Ledger ─────────────────────────────────────────────────
-const DEFAULT_MOVEMENTS = [
-  { movementId: "MOV-89108", performedAt: new Date(Date.now() - 3600000).toISOString(), cafeId: "ZC-0001", itemId: "ITEM-1001", itemName: "Single Origin Arabica Beans", movementType: "PO_RECEIPT", quantityBase: 25, unit: "KG", balanceAfterBase: 45, reason: "PO-2026-0812 Verified GRN" },
-  { movementId: "MOV-89107", performedAt: new Date(Date.now() - 7200000).toISOString(), cafeId: "ZC-0001", itemId: "ITEM-1002", itemName: "Farm Fresh Whole Milk 1L", movementType: "POS_CONSUMPTION", quantityBase: -18, unit: "LTR", balanceAfterBase: 12, reason: "POS Live Batch Recipe Depletion (Order #POS-8821)" },
-  { movementId: "MOV-89106", performedAt: new Date(Date.now() - 14400000).toISOString(), cafeId: "ZC-0002", itemId: "ITEM-1003", itemName: "Oat Milk Barista Edition", movementType: "INTERNAL_TRANSFER", quantityBase: 10, unit: "LTR", balanceAfterBase: 22, reason: "Inbound transfer TRF-0091 from ZC-0001" },
-  { movementId: "MOV-89105", performedAt: new Date(Date.now() - 21600000).toISOString(), cafeId: "ZC-0001", itemId: "ITEM-1003", itemName: "Oat Milk Barista Edition", movementType: "INTERNAL_TRANSFER", quantityBase: -10, unit: "LTR", balanceAfterBase: 8, reason: "Outbound transfer TRF-0091 to ZC-0002" },
-  { movementId: "MOV-89104", performedAt: new Date(Date.now() - 28800000).toISOString(), cafeId: "ZC-0001", itemId: "ITEM-1004", itemName: "Vanilla Bean Artisan Syrup", movementType: "POS_CONSUMPTION", quantityBase: -2, unit: "BTL", balanceAfterBase: 14, reason: "POS Counter Depletion (Morning Shift)" },
-  { movementId: "MOV-89103", performedAt: new Date(Date.now() - 36000000).toISOString(), cafeId: "ZC-0002", itemId: "ITEM-1001", itemName: "Single Origin Arabica Beans", movementType: "PO_RECEIPT", quantityBase: 20, unit: "KG", balanceAfterBase: 38, reason: "PO-2026-0810 Direct Delivery" },
-  { movementId: "MOV-89102", performedAt: new Date(Date.now() - 43200000).toISOString(), cafeId: "ZC-0001", itemId: "ITEM-1002", itemName: "Farm Fresh Whole Milk 1L", movementType: "WASTAGE_EXPIRED", quantityBase: -2, unit: "LTR", balanceAfterBase: 30, reason: "Spillage accident during prep rush" },
-  { movementId: "MOV-89101", performedAt: new Date(Date.now() - 86400000).toISOString(), cafeId: "ZC-0001", itemId: "ITEM-1005", itemName: "Kraft 12oz Hot Cups", movementType: "CYCLE_COUNT_ADJUSTMENT", quantityBase: 2, unit: "SLV", balanceAfterBase: 32, reason: "End-of-day cycle recount verification" },
-  { movementId: "MOV-89100", performedAt: new Date(Date.now() - 172800000).toISOString(), cafeId: "ZC-0003", itemId: "ITEM-1006", itemName: "Uji Ceremonial Matcha", movementType: "PO_RECEIPT", quantityBase: 5, unit: "TIN", balanceAfterBase: 12, reason: "PO-2026-0808 Central Commissary Delivery" },
-];
+const DEFAULT_MOVEMENTS = [];
 
 let movementCafeFilter = "ALL";
 let movementTypeFilter = "ALL";
@@ -1187,14 +1152,7 @@ async function loadMovementsData(wrap) {
 }
 
 // ── 7. Lots & FEFO Expiry ────────────────────────────────────────────────────
-const DEFAULT_LOTS = [
-  { lotId: "LOT-2026-0801", itemId: "ITEM-1001", itemName: "Single Origin Arabica Beans", cafeId: "ZC-0001", supplierLot: "SUP-COF-9921", expiryDate: "2026-11-30", quantityBase: 45, unit: "KG", status: "AVAILABLE" },
-  { lotId: "LOT-2026-0814", itemId: "ITEM-1002", itemName: "Farm Fresh Whole Milk 1L", cafeId: "ZC-0001", supplierLot: "MILK-AM-0824", expiryDate: "2026-08-28", quantityBase: 12, unit: "LTR", status: "NEAR_EXPIRY" },
-  { lotId: "LOT-2026-0720", itemId: "ITEM-1003", itemName: "Vanilla Bean Artisan Syrup", cafeId: "ZC-0001", supplierLot: "SYR-VN-4412", expiryDate: "2027-02-15", quantityBase: 14, unit: "BTL", status: "AVAILABLE" },
-  { lotId: "LOT-2026-0810", itemId: "ITEM-1005", itemName: "Barista Edition Oat Milk", cafeId: "ZC-0001", supplierLot: "OAT-BL-1109", expiryDate: "2026-09-10", quantityBase: 8, unit: "LTR", status: "AVAILABLE" },
-  { lotId: "LOT-2026-0802", itemId: "ITEM-1001", itemName: "Single Origin Arabica Beans", cafeId: "ZC-0002", supplierLot: "SUP-COF-9918", expiryDate: "2026-11-15", quantityBase: 38, unit: "KG", status: "AVAILABLE" },
-  { lotId: "LOT-2026-0805", itemId: "ITEM-1006", itemName: "Uji Ceremonial Matcha Powder", cafeId: "ZC-0003", supplierLot: "MAT-UJ-2026", expiryDate: "2027-01-31", quantityBase: 12, unit: "TIN", status: "AVAILABLE" },
-];
+const DEFAULT_LOTS = [];
 
 let lotsCafeFilter = "ALL";
 let lotsStatusFilter = "ALL";
@@ -1338,11 +1296,7 @@ async function loadLotsData(wrap) {
 }
 
 // ── 8. Inter-Café Transfers ──────────────────────────────────────────────────
-const DEFAULT_TRANSFERS = [
-  { transferId: "TRF-0091", sourceCafeId: "ZC-0001", destCafeId: "ZC-0002", itemId: "ITEM-1001", itemName: "Single Origin Arabica Beans", requestedQty: 10, unit: "KG", dispatchedQty: 10, status: "IN_TRANSIT", requestedAt: new Date(Date.now() - 7200000).toISOString() },
-  { transferId: "TRF-0090", sourceCafeId: "ZC-0002", destCafeId: "ZC-0001", itemId: "ITEM-1005", itemName: "Kraft 12oz Hot Cups", requestedQty: 5, unit: "SLV", dispatchedQty: 5, status: "COMPLETED", requestedAt: new Date(Date.now() - 86400000).toISOString() },
-  { transferId: "TRF-0089", sourceCafeId: "ZC-0001", destCafeId: "ZC-0003", itemId: "ITEM-1004", itemName: "Vanilla Bean Artisan Syrup", requestedQty: 4, unit: "BTL", dispatchedQty: null, status: "REQUESTED", requestedAt: new Date(Date.now() - 172800000).toISOString() },
-];
+const DEFAULT_TRANSFERS = [];
 
 let transferStatusFilter = "ALL";
 
@@ -1518,11 +1472,7 @@ async function loadTransfersData(wrap) {
 }
 
 // ── 9. Reservations Tab ──────────────────────────────────────────────────────
-const DEFAULT_RESERVATIONS = [
-  { reservationId: "RSV-0012", itemId: "ITEM-1001", itemName: "Single Origin Arabica Beans", cafeId: "ZC-0001", reservationType: "CATERING_ORDER", demandReferenceId: "DO-2026-0041", reservedQty: 8, unit: "KG", expiresAt: new Date(Date.now() + 86400000).toISOString(), status: "ACTIVE" },
-  { reservationId: "RSV-0011", itemId: "ITEM-1004", itemName: "Kraft 12oz Hot Cups", cafeId: "ZC-0001", reservationType: "INSTITUTIONAL_EVENT", demandReferenceId: "DO-2026-0039", reservedQty: 5, unit: "SLV", expiresAt: new Date(Date.now() + 172800000).toISOString(), status: "ACTIVE" },
-  { reservationId: "RSV-0010", itemId: "ITEM-1002", itemName: "Farm Fresh Whole Milk 1L", cafeId: "ZC-0002", reservationType: "CENTRAL_PRODUCTION", demandReferenceId: "CP-2026-0019", reservedQty: 10, unit: "LTR", expiresAt: new Date(Date.now() + 259200000).toISOString(), status: "ACTIVE" },
-];
+const DEFAULT_RESERVATIONS = [];
 
 async function renderReservationsTab(wrap) {
   wrap.innerHTML = `
@@ -1651,11 +1601,7 @@ async function loadReservationsData(wrap) {
 }
 
 // ── 10. Cycle Counts & Stocktake ─────────────────────────────────────────────
-const DEFAULT_COUNTS = [
-  { countId: "CNT-2026-0819", createdAt: new Date().toISOString(), cafeId: "ZC-0001", countType: "CYCLE_DAILY_BAR", itemsAudited: 14, varianceFound: 0, status: "POSTED" },
-  { countId: "CNT-2026-0818", createdAt: new Date(Date.now() - 86400000).toISOString(), cafeId: "ZC-0001", countType: "MONTHLY_FULL", itemsAudited: 52, varianceFound: 2, status: "POSTED" },
-  { countId: "CNT-2026-0817", createdAt: new Date(Date.now() - 172800000).toISOString(), cafeId: "ZC-0002", countType: "SPOT_HIGH_VALUE", itemsAudited: 6, varianceFound: 1, status: "PENDING_APPROVAL" },
-];
+const DEFAULT_COUNTS = [];
 
 async function renderCountsTab(wrap) {
   wrap.innerHTML = `
@@ -1785,11 +1731,7 @@ async function loadCountsData(wrap) {
 }
 
 // ── 11. Wastage & Adjustments ────────────────────────────────────────────────
-const DEFAULT_RECENT_WASTAGE = [
-  { writeoffId: "WST-2026-0419", loggedAt: new Date(Date.now() - 7200000).toISOString(), cafeId: "ZC-0001", itemId: "ITEM-1002", itemName: "Farm Fresh Whole Milk 1L", quantity: 2, baseUnit: "LTR", reasonCode: "SPILLED", notes: "Barista pitcher accident during morning rush", status: "DEDUCTED" },
-  { writeoffId: "WST-2026-0418", loggedAt: new Date(Date.now() - 28800000).toISOString(), cafeId: "ZC-0001", itemId: "ITEM-1008", itemName: "Salted Caramel Drizzle", quantity: 1, baseUnit: "BTL", reasonCode: "EXPIRED", notes: "Past open shelf-life threshold", status: "DEDUCTED" },
-  { writeoffId: "WST-2026-0417", loggedAt: new Date(Date.now() - 86400000).toISOString(), cafeId: "ZC-0002", itemId: "ITEM-1005", itemName: "Kraft 12oz Hot Cups", quantity: 5, baseUnit: "SLV", reasonCode: "DAMAGED_PACKAGING", notes: "Crushed carton during shelving", status: "DEDUCTED" },
-];
+const DEFAULT_RECENT_WASTAGE = [];
 
 function renderWastageTab(wrap) {
   wrap.innerHTML = `
@@ -2035,11 +1977,7 @@ async function renderConsumptionVarianceTab(wrap) {
   await loadVarianceData(wrap);
 }
 
-const DEFAULT_VARIANCE = [
-  { name: "Single Origin Arabica Beans", sku: "SKU-BEANS-01", baseUnit: "KG", theoreticalUsage: 42.5, actualUsage: 44.0, varianceQty: 1.5, variancePercent: 3.5, status: "NORMAL" },
-  { name: "Farm Fresh Whole Milk 1L", sku: "SKU-MILK-01", baseUnit: "LTR", theoreticalUsage: 120.0, actualUsage: 132.0, varianceQty: 12.0, variancePercent: 10.0, status: "ELEVATED" },
-  { name: "Vanilla Bean Artisan Syrup 750ml", sku: "SKU-SYRUP-01", baseUnit: "BTL", theoreticalUsage: 10.0, actualUsage: 10.2, varianceQty: 0.2, variancePercent: 2.0, status: "NORMAL" },
-];
+const DEFAULT_VARIANCE = [];
 
 async function loadVarianceData(wrap) {
   const container = wrap.querySelector("#variance-table-container");
@@ -2132,12 +2070,7 @@ async function renderValuationTab(wrap) {
   await loadValuationData(wrap);
 }
 
-const DEFAULT_VALUATION = [
-  { cafeId: "ZC-0001", sku: "SKU-BEANS-01", name: "Single Origin Arabica Beans", category: "Coffee Beans", onHand: 45, baseUnit: "KG", unitCostPaisa: 85000, totalValuePaisa: 3825000 },
-  { cafeId: "ZC-0001", sku: "SKU-MILK-01", name: "Farm Fresh Whole Milk 1L", category: "Dairy & Fresh", onHand: 12, baseUnit: "LTR", unitCostPaisa: 6500, totalValuePaisa: 78000 },
-  { cafeId: "ZC-0001", sku: "SKU-SYRUP-01", name: "Vanilla Bean Artisan Syrup 750ml", category: "Syrups", onHand: 14, baseUnit: "BTL", unitCostPaisa: 68000, totalValuePaisa: 952000 },
-  { cafeId: "ZC-0002", sku: "SKU-BEANS-01", name: "Single Origin Arabica Beans", category: "Coffee Beans", onHand: 38, baseUnit: "KG", unitCostPaisa: 85000, totalValuePaisa: 3230000 },
-];
+const DEFAULT_VALUATION = [];
 
 async function loadValuationData(wrap) {
   const container = wrap.querySelector("#valuation-table-container");

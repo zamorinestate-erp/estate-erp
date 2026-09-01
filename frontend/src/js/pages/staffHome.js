@@ -32,313 +32,58 @@ export function formatPaise(paise, privacy = false) {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   });
-  return `₹ ${inr}`;
+  return "₹ " + inr;
 }
 
-export const STAFF_DIRECTORY = [
-  {
-    employee: {
-      id: "EMP-0042",
-      badgeId: "EMP-SCR-001",
-      name: "Priya Sharma",
-      preferredName: "Priya",
-      avatarInitials: "PS",
-      designation: "Senior Barista",
-      cafeName: "Dawn Roast — Koramangala",
-    },
-    todayShift: {
-      startTime: "09:00 AM",
-      endTime: "05:00 PM",
-      dutyDesignation: "Counter & Till duty",
-      cafeName: "Dawn Roast, Koramangala",
-      attendanceState: "READY",
-    },
-    nextShift: {
-      day: "Tomorrow",
-      startTime: "09:00 AM",
-      endTime: "05:00 PM",
-      dutyDesignation: "Counter & Till duty",
-      date: "Scheduled",
-    },
-    attendanceSummary: {
-      presentDays: 21,
-      lateDays: 1,
-      overtimeHours: 4.5,
-    },
-    leaveSummary: {
-      casualLeaveBalance: 4.5,
-      totalAvailableDays: 22.5,
-    },
-    payslipSummary: {
-      periodName: "June 2026",
-      status: "Ready",
-      netPayPaise: 3850000,
-    },
-    loanSummary: {
-      hasActiveLoan: true,
-      outstandingPaise: 4250000,
-    },
-    actionRequired: [],
-    announcements: [
-      {
-        id: "ANN-01",
-        title: "New Seasonal Espresso Blend Rollout",
-        summary: "Wayanad single-origin roast arriving this Thursday. Mandatory tasting session at 8:30 AM.",
-        category: "ROASTERY",
-        priority: "NORMAL",
-        createdAt: "2026-08-20T10:00:00.000Z",
-      },
-    ],
-    weekSchedule: [
-      { day: "Mon", isToday: true, isOff: false, shiftHours: "9–5" },
-      { day: "Tue", isToday: false, isOff: false, shiftHours: "9–5" },
-      { day: "Wed", isToday: false, isOff: false, shiftHours: "9–5" },
-      { day: "Thu", isToday: false, isOff: false, shiftHours: "9–5" },
-      { day: "Fri", isToday: false, isOff: false, shiftHours: "1–9" },
-      { day: "Sat", isToday: false, isOff: false, shiftHours: "1–9" },
-      { day: "Sun", isToday: false, isOff: true, shiftHours: "Off" },
-    ],
+export const DEFAULT_STAFF_DATA = {
+  employee: {
+    id: "",
+    badgeId: "",
+    name: "Staff Member",
+    preferredName: "Staff",
+    avatarInitials: "ST",
+    designation: "Team Member",
+    cafeName: "Zamorin Cafe",
   },
-  {
-    employee: {
-      id: "ST-0042",
-      badgeId: "EMP-SCR-002",
-      name: "Rahul Sharma",
-      preferredName: "Rahul",
-      avatarInitials: "RS",
-      designation: "Shift Lead & Head Barista",
-      cafeName: "Dawn Roast — Koramangala",
-    },
-    todayShift: {
-      startTime: "07:30 AM",
-      endTime: "03:30 PM",
-      dutyDesignation: "Opening Lead & Espresso Bar",
-      cafeName: "Dawn Roast, Koramangala",
-      attendanceState: "CHECKED_IN",
-      checkInTime: "2026-08-31T02:00:00.000Z",
-      elapsedMinutes: 215,
-    },
-    nextShift: {
-      day: "Tomorrow",
-      startTime: "07:30 AM",
-      endTime: "03:30 PM",
-      dutyDesignation: "Opening Lead",
-      date: "Scheduled",
-    },
-    attendanceSummary: {
-      presentDays: 24,
-      lateDays: 0,
-      overtimeHours: 6.0,
-    },
-    leaveSummary: {
-      casualLeaveBalance: 6.0,
-      totalAvailableDays: 26.0,
-    },
-    payslipSummary: {
-      periodName: "June 2026",
-      status: "Ready",
-      netPayPaise: 4420000,
-    },
-    loanSummary: {
-      hasActiveLoan: false,
-      outstandingPaise: 0,
-    },
-    actionRequired: [],
-    announcements: [
-      {
-        id: "ANN-01",
-        title: "New Seasonal Espresso Blend Rollout",
-        summary: "Wayanad single-origin roast arriving this Thursday. Mandatory tasting session at 8:30 AM.",
-        category: "ROASTERY",
-        priority: "NORMAL",
-        createdAt: "2026-08-20T10:00:00.000Z",
-      },
-    ],
-    weekSchedule: [
-      { day: "Mon", isToday: true, isOff: false, shiftHours: "7:30–3:30" },
-      { day: "Tue", isToday: false, isOff: false, shiftHours: "7:30–3:30" },
-      { day: "Wed", isToday: false, isOff: false, shiftHours: "7:30–3:30" },
-      { day: "Thu", isToday: false, isOff: false, shiftHours: "7:30–3:30" },
-      { day: "Fri", isToday: false, isOff: false, shiftHours: "7:30–3:30" },
-      { day: "Sat", isToday: false, isOff: true, shiftHours: "Off" },
-      { day: "Sun", isToday: false, isOff: false, shiftHours: "7:30–3:30" },
-    ],
+  todayShift: {
+    startTime: "—",
+    endTime: "—",
+    dutyDesignation: "No Shift Scheduled",
+    cafeName: "—",
+    attendanceState: "NO_SHIFT",
   },
-  {
-    employee: {
-      id: "EMP-0043",
-      badgeId: "EMP-SCR-003",
-      name: "Ananya Nair",
-      preferredName: "Ananya",
-      avatarInitials: "AN",
-      designation: "Lead Roaster & Quality Specialist",
-      cafeName: "Wayanad Heritage Roastery",
-    },
-    todayShift: {
-      startTime: "08:00 AM",
-      endTime: "04:00 PM",
-      dutyDesignation: "Roastery QA & Green Bean Inspection",
-      cafeName: "Wayanad Heritage Roastery",
-      attendanceState: "READY",
-    },
-    nextShift: {
-      day: "Tomorrow",
-      startTime: "08:00 AM",
-      endTime: "04:00 PM",
-      dutyDesignation: "Roastery Production",
-      date: "Scheduled",
-    },
-    attendanceSummary: {
-      presentDays: 22,
-      lateDays: 0,
-      overtimeHours: 2.0,
-    },
-    leaveSummary: {
-      casualLeaveBalance: 5.0,
-      totalAvailableDays: 21.0,
-    },
-    payslipSummary: {
-      periodName: "June 2026",
-      status: "Ready",
-      netPayPaise: 4100000,
-    },
-    loanSummary: {
-      hasActiveLoan: true,
-      outstandingPaise: 2000000,
-    },
-    actionRequired: [],
-    announcements: [
-      {
-        id: "ANN-02",
-        title: "Roastery Preventive Maintenance",
-        summary: "Diedrich IR-12 roaster scheduled for seasonal deep cleaning this Saturday.",
-        category: "MAINTENANCE",
-        priority: "HIGH",
-        createdAt: "2026-08-25T09:00:00.000Z",
-      },
-    ],
-    weekSchedule: [
-      { day: "Mon", isToday: true, isOff: false, shiftHours: "8–4" },
-      { day: "Tue", isToday: false, isOff: false, shiftHours: "8–4" },
-      { day: "Wed", isToday: false, isOff: false, shiftHours: "8–4" },
-      { day: "Thu", isToday: false, isOff: false, shiftHours: "8–4" },
-      { day: "Fri", isToday: false, isOff: false, shiftHours: "8–4" },
-      { day: "Sat", isToday: false, isOff: false, shiftHours: "8–12" },
-      { day: "Sun", isToday: false, isOff: true, shiftHours: "Off" },
-    ],
+  nextShift: {
+    day: "None",
+    startTime: "—",
+    endTime: "—",
+    dutyDesignation: "No Upcoming Shift",
+    date: "—",
   },
-  {
-    employee: {
-      id: "EMP-0044",
-      badgeId: "EMP-SCR-004",
-      name: "Vikram Patel",
-      preferredName: "Vikram",
-      avatarInitials: "VP",
-      designation: "Commis Chef & Kitchen Associate",
-      cafeName: "Calicut Cyberpark Outpost",
-    },
-    todayShift: {
-      startTime: "11:00 AM",
-      endTime: "07:00 PM",
-      dutyDesignation: "Hot Kitchen Prep & Artisan Sandwiches",
-      cafeName: "Calicut Cyberpark Outpost",
-      attendanceState: "READY",
-    },
-    nextShift: {
-      day: "Tomorrow",
-      startTime: "11:00 AM",
-      endTime: "07:00 PM",
-      dutyDesignation: "Hot Kitchen Prep",
-      date: "Scheduled",
-    },
-    attendanceSummary: {
-      presentDays: 20,
-      lateDays: 2,
-      overtimeHours: 3.5,
-    },
-    leaveSummary: {
-      casualLeaveBalance: 3.5,
-      totalAvailableDays: 18.0,
-    },
-    payslipSummary: {
-      periodName: "June 2026",
-      status: "Ready",
-      netPayPaise: 3400000,
-    },
-    loanSummary: {
-      hasActiveLoan: false,
-      outstandingPaise: 0,
-    },
-    actionRequired: [],
-    announcements: [],
-    weekSchedule: [
-      { day: "Mon", isToday: true, isOff: false, shiftHours: "11–7" },
-      { day: "Tue", isToday: false, isOff: false, shiftHours: "11–7" },
-      { day: "Wed", isToday: false, isOff: false, shiftHours: "11–7" },
-      { day: "Thu", isToday: false, isOff: false, shiftHours: "11–7" },
-      { day: "Fri", isToday: false, isOff: false, shiftHours: "11–7" },
-      { day: "Sat", isToday: false, isOff: false, shiftHours: "11–7" },
-      { day: "Sun", isToday: false, isOff: true, shiftHours: "Off" },
-    ],
+  attendanceSummary: {
+    presentDays: 0,
+    lateDays: 0,
+    overtimeHours: 0,
   },
-  {
-    employee: {
-      id: "EMP-0045",
-      badgeId: "EMP-SCR-005",
-      name: "Sneha Iyer",
-      preferredName: "Sneha",
-      avatarInitials: "SI",
-      designation: "Floor Supervisor & Barista",
-      cafeName: "Kozhikode Beach Main",
-    },
-    todayShift: {
-      startTime: "01:00 PM",
-      endTime: "09:00 PM",
-      dutyDesignation: "Closing Supervisor & Floor Operations",
-      cafeName: "Kozhikode Beach Main",
-      attendanceState: "READY",
-    },
-    nextShift: {
-      day: "Tomorrow",
-      startTime: "01:00 PM",
-      endTime: "09:00 PM",
-      dutyDesignation: "Floor Supervisor",
-      date: "Scheduled",
-    },
-    attendanceSummary: {
-      presentDays: 23,
-      lateDays: 0,
-      overtimeHours: 5.0,
-    },
-    leaveSummary: {
-      casualLeaveBalance: 6.0,
-      totalAvailableDays: 24.0,
-    },
-    payslipSummary: {
-      periodName: "June 2026",
-      status: "Ready",
-      netPayPaise: 3950000,
-    },
-    loanSummary: {
-      hasActiveLoan: true,
-      outstandingPaise: 1500000,
-    },
-    actionRequired: [],
-    announcements: [],
-    weekSchedule: [
-      { day: "Mon", isToday: true, isOff: false, shiftHours: "1–9" },
-      { day: "Tue", isToday: false, isOff: false, shiftHours: "1–9" },
-      { day: "Wed", isToday: false, isOff: false, shiftHours: "1–9" },
-      { day: "Thu", isToday: false, isOff: false, shiftHours: "1–9" },
-      { day: "Fri", isToday: false, isOff: false, shiftHours: "1–9" },
-      { day: "Sat", isToday: false, isOff: false, shiftHours: "1–9" },
-      { day: "Sun", isToday: false, isOff: true, shiftHours: "Off" },
-    ],
+  leaveSummary: {
+    casualLeaveBalance: 0,
+    totalAvailableDays: 0,
   },
-];
+  payslipSummary: {
+    periodName: "Current",
+    status: "No Payslips",
+    netPayPaise: 0,
+  },
+  loanSummary: {
+    hasActiveLoan: false,
+    outstandingPaise: 0,
+  },
+  actionRequired: [],
+  announcements: [],
+  weekSchedule: [],
+};
 
-export let activeStaffEmployeeId = "EMP-0042";
-export const DEFAULT_STAFF_DATA = STAFF_DIRECTORY[0];
+export const STAFF_DIRECTORY = [];
+export let activeStaffEmployeeId = "";
 
 export function renderStaffHome() {
   const currentData = STAFF_DIRECTORY.find((s) => s.employee.id === activeStaffEmployeeId) || DEFAULT_STAFF_DATA;

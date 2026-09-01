@@ -10,46 +10,11 @@ import { navigate } from "../router.js";
 
 let activeSubpanel = "overview";
 let liveOverview = null;
-let liveEmployees = [
-  { userId: "AD-0003", name: "Ravi Kumar", preferredName: "Ravi", role: "CAFE_ADMIN", designation: "General Store Manager", department: "Management", primaryCafeId: "ZC-0001", employmentType: "Full Time", workerType: "PERMANENT", employmentStatus: "ACTIVE", joiningDate: "2024-01-15", email: "ravi@zamorin.cafe" },
-  { userId: "ST-0004", name: "Priya Nair", preferredName: "Priya", role: "STAFF", designation: "Senior Head Barista", department: "Barista", primaryCafeId: "ZC-0001", employmentType: "Full Time", workerType: "PERMANENT", employmentStatus: "ACTIVE", joiningDate: "2024-03-01", email: "priya@zamorin.cafe" },
-  { userId: "ST-0005", name: "Arjun Das", preferredName: "Arjun", role: "STAFF", designation: "Sous Chef", department: "Kitchen", primaryCafeId: "ZC-0002", employmentType: "Full Time", workerType: "PERMANENT", employmentStatus: "ACTIVE", joiningDate: "2024-04-10", email: "arjun@zamorin.cafe" },
-  { userId: "ST-0006", name: "Ananya Sen", preferredName: "Ananya", role: "STAFF", designation: "Floor Lead / Cashier", department: "Service", primaryCafeId: "ZC-0003", employmentType: "Full Time", workerType: "PERMANENT", employmentStatus: "PROBATION", joiningDate: "2026-06-15", email: "ananya@zamorin.cafe" },
-];
+let liveEmployees = [];
 let livePositions = [];
-let liveStaffingRequests = [
-  { requestId: "SR-2026-001", cafeId: "ZC-0001", department: "Barista", positionTitle: "Junior Barista", headcountRequired: 2, fteRequired: 2.0, desiredDate: "2026-09-01", reason: "EXPANSION", status: "APPROVED" },
-  { requestId: "SR-2026-002", cafeId: "ZC-0003", department: "Service", positionTitle: "Floor Lead", headcountRequired: 1, fteRequired: 1.0, desiredDate: "2026-09-15", reason: "REPLACEMENT", status: "SUBMITTED" },
-];
-let liveSkills = [
-  {
-    userId: "ST-0004",
-    employeeName: "Priya Nair",
-    designation: "Senior Head Barista",
-    cafeName: "Koramangala",
-    skills: [
-      { name: "Manual Brewing", proficiency: "Expert", status: "VERIFIED" },
-      { name: "Espresso Extraction", proficiency: "Expert", status: "VERIFIED" },
-      { name: "FoSTaC Safety", proficiency: "Certified", status: "VERIFIED" }
-    ]
-  },
-  {
-    userId: "ST-0005",
-    employeeName: "Arjun Das",
-    designation: "Sous Chef",
-    cafeName: "Indiranagar",
-    skills: [
-      { name: "Kitchen Prep", proficiency: "Expert", status: "VERIFIED" },
-      { name: "Inventory Receiving", proficiency: "Competent", status: "VERIFIED" },
-      { name: "FoSTaC Safety", proficiency: "Certified", status: "VERIFIED" }
-    ]
-  }
-];
-let liveDocuments = [
-  { docId: "DOC-2026-0081", title: "Appointment Letter", employeeId: "EMP-0001", employeeName: "Rahul Sharma", category: "APPOINTMENT_LETTER", template: "Template v2.4", date: "2026-08-20", status: "ISSUED" },
-  { docId: "DOC-2026-0080", title: "Probation Confirmation", employeeId: "ST-0004", employeeName: "Priya Nair", category: "CONFIRMATION_LETTER", template: "Template v1.8", date: "2026-08-15", status: "ISSUED" },
-  { docId: "DOC-2026-0079", title: "Transfer & Rotation Order", employeeId: "ST-0005", employeeName: "Arjun Das", category: "TRANSFER_LETTER", template: "Template v2.1", date: "2026-08-10", status: "ISSUED" }
-];
+let liveStaffingRequests = [];
+let liveSkills = [];
+let liveDocuments = [];
 let liveIntegrity = null;
 let isLoadingData = false;
 

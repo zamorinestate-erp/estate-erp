@@ -12,36 +12,7 @@
 
 let seq = 1000;
 
-export const NOTIFICATIONS = [
-  {
-    id: "NE-1001",
-    category: "Finance",
-    severity: "high",
-    title: "Cash variance awaiting approval",
-    message: "Cafe 07 — ₹850 over threshold, awaiting your approval",
-    recipientRoles: ["master"],
-    read: false,
-    delivered: true, // seeded as already-seen so it doesn't pop on first load
-    actionRequired: true,
-    popupEligible: true,
-    deepLink: "sales-cash",
-    createdAt: Date.now() - 3 * 3600000,
-  },
-  {
-    id: "NE-1002",
-    category: "Finance",
-    severity: "warning",
-    title: "Vendor payment due",
-    message: "Dawn Roast Suppliers — ₹42,000 due in 2 days",
-    recipientRoles: ["master", "owner"],
-    read: false,
-    delivered: true,
-    actionRequired: false,
-    popupEligible: false,
-    deepLink: "finance",
-    createdAt: Date.now() - 5 * 3600000,
-  },
-];
+export const NOTIFICATIONS = [];
 
 export function pushNotification(data) {
   seq += 1;
