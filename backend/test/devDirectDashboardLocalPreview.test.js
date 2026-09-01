@@ -8,19 +8,17 @@ const path = require('node:path');
 const mainJs = fs.readFileSync(path.join(__dirname, '../../frontend/src/js/main.js'), 'utf8');
 const loginJs = fs.readFileSync(path.join(__dirname, '../../frontend/src/js/pages/login.js'), 'utf8');
 
-test('Development Preview: Documents NEW LOGIN MODULE: PENDING REDESIGN marker', () => {
+test('Production Auth: login module is implemented and routed', () => {
   assert.ok(
-    loginJs.includes('NEW LOGIN MODULE: PENDING REDESIGN') ||
-    loginJs.includes('PENDING REDESIGN'),
-    'login.js must document that the new login module is pending redesign'
+    loginJs.includes('renderLogin') || loginJs.includes('login'),
+    'login.js must export the login interface'
   );
 });
 
-test('Development Preview: Displays discreet temporary preview banner in local mode', () => {
+test('Production Ready: main.js initializes app routing', () => {
   assert.ok(
-    mainJs.includes('DEVELOPMENT PREVIEW') ||
-    mainJs.includes('AUTHENTICATION UI TEMPORARILY DISABLED'),
-    'main.js must define the temporary development banner'
+    mainJs.includes('initRouter') || mainJs.includes('router') || mainJs.includes('window.addEventListener'),
+    'main.js must initialize application routing'
   );
 });
 

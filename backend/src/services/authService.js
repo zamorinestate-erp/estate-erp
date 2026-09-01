@@ -573,9 +573,8 @@ async function authenticatePassword({
     }
   }
 
-  const isProduction = process.env.NODE_ENV === 'production';
   const roleRequiresMfa =
-    (isProduction || process.env.REQUIRE_MFA === 'true') &&
+    process.env.DISABLE_MFA !== 'true' &&
     MFA_REQUIRED_ROLES.includes(user.role);
 
   return {

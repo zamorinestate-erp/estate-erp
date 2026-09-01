@@ -503,33 +503,87 @@ async function seedMasterUser({
   masterPassword,
 }) {
   const normEmail = masterEmail.trim().toLowerCase();
-  const passwordHash = await hashPassword(masterPassword);
   const designatedAt = new Date();
 
-  // 1. Check if primary master user already exists in organisation
-  let existingPrimary = await User.findOne({
+  // 1. Check existing designated Primary Master accounts
+  const existingPrimaryMasters = await User.find({
     organisationId,
-    $or: [{ isPrimaryMaster: true }, { email: normEmail }],
-  });
+    isPrimaryMaster: true,
+  }).sort({ createdAt: 1 });
 
-  if (existingPrimary) {
-    existingPrimary.name = masterName;
-    existingPrimary.email = normEmail;
-    existingPrimary.role = 'MASTER';
-    existingPrimary.isPrimaryMaster = true;
-    existingPrimary.accountStatus = 'ACTIVE';
-    existingPrimary.passwordHash = passwordHash;
-    existingPrimary.primaryMasterDesignatedAt = designatedAt;
-    existingPrimary.primaryMasterDesignatedBy = existingPrimary.userId;
-    existingPrimary.primaryMasterDesignationReason = PRIMARY_MASTER_DESIGNATION_REASON;
-    existingPrimary.failedLoginAttempts = 0;
-    existingPrimary.lockoutUntil = null;
-    await existingPrimary.save();
-    console.log(`Primary MASTER updated and secured: ${existingPrimary.userId} (${existingPrimary.email})`);
-    return existingPrimary;
+  if (existingPrimaryMasters.length > 0) {
+    if (existingPrimaryMasters.length > 1) {
+      throw new Error(
+        'Multiple Primary Master accounts exist and no Primary Master can be selected automatically.'
+      );
+    }
+    const primary = existingPrimaryMasters[0];
+    assertPrimaryMasterCandidate({ user: primary, organisationId });
+    return primary;
   }
 
-  // 2. Create fresh Primary Master account for pradeeshk331@gmail.com
+  // 2. Check existing non-primary MASTER accounts
+  const existingMasters = await User.find({
+    organisationId,
+    role: 'MASTER',
+  }).sort({ createdAt: 1 });
+
+  if (existingMasters.length === 1) {
+    const candidate = existingMasters[0];
+    assertPrimaryMasterCandidate({ user: candidate, organisationId });
+
+    if (User.collection?.updateOne) {
+      await User.collection.updateOne(
+        {
+          _id: candidate._id,
+          organisationId,
+        },
+        {
+          $set: {
+            isPrimaryMaster: true,
+            primaryMasterDesignatedAt: designatedAt,
+            primaryMasterDesignatedBy: candidate.userId,
+            primaryMasterDesignationReason: PRIMARY_MASTER_DESIGNATION_REASON,
+          },
+          $push: {
+            roleHistory: {
+              toRole: 'MASTER',
+              changedAt: designatedAt,
+              changedBy: candidate.userId,
+              reason: PRIMARY_MASTER_DESIGNATION_REASON,
+              correlationId: null,
+              sessionId: null,
+            },
+          },
+        }
+      );
+    }
+    if (User.findById) {
+      return await User.findById(candidate._id) || candidate;
+    }
+    return candidate;
+  }
+
+  if (existingMasters.length > 1) {
+    throw new Error(
+      'Multiple MASTER accounts exist and no Primary Master can be selected automatically.'
+    );
+  }
+
+  // 3. Ensure email is not already taken by another account
+  const existingUserWithEmail = await User.findOne({
+    organisationId,
+    email: normEmail,
+  });
+
+  if (existingUserWithEmail) {
+    throw new Error(
+      'MASTER email is already used by another account in the organisation.'
+    );
+  }
+
+  // 4. Create fresh Primary Master account
+  const passwordHash = await hashPassword(masterPassword);
   const userId =
     await SequenceCounter.generateId({
       organisationId,
@@ -568,7 +622,6 @@ async function seedMasterUser({
     updatedBy: userId,
   });
 
-  console.log(`Primary MASTER created and locked: ${masterUser.userId} (${masterUser.email})`);
   return masterUser;
 }
 

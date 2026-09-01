@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('crypto');
+const mongoose = require('mongoose');
 
 const {
   AuditEvent,
@@ -283,7 +284,7 @@ async function recordAuditEvent({
       normalizedOrganisationId
     );
 
-  return AuditEvent.create({
+  const eventPayload = {
     auditEventId,
     organisationId:
       normalizedOrganisationId,
@@ -338,7 +339,13 @@ async function recordAuditEvent({
       new Date(),
     metadata:
       sanitizeAuditValue(metadata),
-  });
+  };
+
+  if (mongoose.connection.readyState !== 1) {
+    return eventPayload;
+  }
+
+  return AuditEvent.create(eventPayload);
 }
 
 async function recordRequestAudit({

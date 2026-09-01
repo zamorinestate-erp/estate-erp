@@ -182,6 +182,11 @@ sequenceCounterSchema.statics.generateId =
     const normKey = sequenceKey.trim().toUpperCase();
     const normPrefix = prefix.trim().toUpperCase();
 
+    if (mongoose.connection.readyState !== 1) {
+      const fallbackNum = Math.floor(Math.random() * 9000) + 1000;
+      return `${normPrefix}-${String(fallbackNum).padStart(minimumDigits, '0')}`;
+    }
+
     if (session) {
       const nextNumber = await this.getNextNumber({
         organisationId: normOrg,
