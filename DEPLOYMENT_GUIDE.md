@@ -40,128 +40,63 @@ This automated validator inspects:
 
 ## 3. Deployment Options
 
-### Option A: Render Cloud (Automated Blueprint)
-The repository includes a production-ready `render.yaml` specification.
+### Option A: Recommended Cloud Stack (Vercel Frontend + Render Backend + MongoDB Atlas)
 
-1. Connect your Git repository to **[Render.com](https://render.com)**.
-2. Select **New Blueprint Instance** and choose your repository.
-3. In the Render environment variable prompt, supply your production values:
-   - `MONGODB_URI`: Your MongoDB Atlas cluster connection string.
-   - `ALLOWED_ORIGINS`: Your frontend URL(s) (e.g., `https://app.zamorincafe.com`).
-   - `JWT_ACCESS_SECRET`: 32+ character random string.
-   - `MFA_ENCRYPTION_KEY`: 64-character hex string.
-   - `INITIAL_MASTER_EMAIL`: Primary Master email address.
-   - `INITIAL_MASTER_PASSWORD`: Strong password for the initial master admin.
-4. Click **Apply Blueprint**.
-5. Render will automatically build backend dependencies, seed the database idempotently, start the server, and monitor health at `/api/v1/health`.
+#### 1. Database Provisioning on MongoDB Atlas
+1. Sign up/Log in at **[MongoDB Atlas](https://cloud.mongodb.com)**.
+2. Create a new Cluster (e.g. Free Tier M0 or Shared M10+ in your preferred AWS/GCP region like `ap-south-1` Mumbai or `eu-central-1`).
+3. Under **Security $\rightarrow$ Network Access**:
+   - Add IP Address `0.0.0.0/0` (Allow Access from Anywhere) — safe with strong DB credentials — or whitelist Render's static egress IP.
+4. Under **Security $\rightarrow$ Database Access**:
+   - Create a Database User with username (e.g. `zamorin_admin`) and password.
+   - Assign built-in role: `readWriteAnyDatabase` or `readWrite` on `zamorin_production`.
+5. Under **Database $\rightarrow$ Connect $\rightarrow$ Drivers (Node.js)**:
+   - Copy your connection string:
+     ```
+     mongodb+srv://zamorin_admin:<password>@cluster0.xxxxx.mongodb.net/zamorin_production?retryWrites=true&w=majority&appName=ZamorinCafeERP
+     ```
 
----
+#### 2. Backend Web Service Deployment on Render
+1. Log in to **[Render.com](https://render.com)**.
+2. Click **New + $\rightarrow$ Blueprint** and select your GitHub repository `zamorinestate-erp/estate-erp`.
+   - Render will detect `render.yaml` and configure the backend service automatically.
+   - Alternatively, choose **New Web Service**:
+     - **Root Directory**: `backend`
+     - **Build Command**: `npm ci --only=production`
+     - **Start Command**: `node src/scripts/startProd.js`
+     - **Health Check Path**: `/api/v1/health`
+3. Fill in the Environment Variables:
+   - `NODE_ENV`: `production`
+   - `PORT`: `4000` (Render binds to `$PORT` automatically)
+   - `TZ`: `Asia/Kolkata`
+   - `MONGODB_URI`: `<Your MongoDB Atlas Connection String>`
+   - `ALLOWED_ORIGINS`: `https://<YOUR-FRONTEND-NAME>.vercel.app` (and custom domain if available)
+   - `JWT_ACCESS_SECRET`: `<Generated 32+ character random string>`
+   - `MFA_ENCRYPTION_KEY`: `<Generated 64-character hex string>`
+   - `INITIAL_ORGANISATION_ID`: `ZAMORIN`
+   - `INITIAL_MASTER_EMAIL`: `admin@zamorincafe.com`
+   - `INITIAL_MASTER_PASSWORD`: `<Strong initial password>`
+   - `PRIVATE_STORAGE_DRIVER`: `local` (or `cloudinary`)
+4. Click **Apply / Create Web Service**.
+5. Once deployed, note your Render backend URL: `https://zamorin-cafe-erp-backend.onrender.com`.
 
-### Option B: Docker & Docker Compose (Containerized Cluster)
-The repository includes an auto-provisioning `docker-compose.yml` with a self-initializing MongoDB replica set (`rs0`).
-
-1. Create a `.env` file in the root workspace or copy `backend/.env.production.example`:
-   ```bash
-   cp backend/.env.production.example .env
+#### 3. Frontend SPA Deployment on Vercel
+1. Log in to **[Vercel](https://vercel.com/new)** and import your GitHub repository.
+2. Configure Project Settings:
+   - **Framework Preset**: `Other`
+   - **Root Directory**: `frontend` (or select `./` since root `vercel.json` is provided)
+   - **Build Command**: Leave empty or enter `echo "zero-build"`
+   - **Output Directory**: `.`
+3. In `frontend/vercel.json`, ensure the proxy destination matches your active Render service URL:
+   ```json
+   { "source": "/api/(.*)", "destination": "https://zamorin-cafe-erp-backend.onrender.com/api/$1" }
    ```
-2. Fill in your secrets and domain in `.env`.
-3. Build and launch the containerized stack:
-   ```bash
-   docker-compose up -d --build
-   ```
-4. Verify container health:
-   ```bash
-   docker ps
-   curl http://localhost:4000/api/v1/health
-   ```
-   - Frontend is live at `http://localhost:3000` (or your mapped public port).
-   - Backend API is live at `http://localhost:4000`.
+4. Click **Deploy**.
+5. Vercel automatically deploys the frontend with global CDN edge caching, SSL, and instant SPA rewrites.
 
----
-
-### Option C: Linux VPS / Bare-Metal Server (PM2 + Nginx)
-
-#### Step 1: Install Dependencies & Build
-```bash
-# Clone repository
-git clone <your-repo-url> /var/www/zamorin-cafe-erp
-cd /var/www/zamorin-cafe-erp
-
-# Install production dependencies
-cd backend
-npm ci --only=production
-
-# Configure production environment
-cp .env.production.example .env
-nano .env # Configure real secrets and MongoDB URI
-```
-
-#### Step 2: Start Backend with PM2 Process Manager
-```bash
-sudo npm install -g pm2
-pm2 start src/scripts/startProd.js --name "zamorin-backend"
-pm2 save
-pm2 startup
-```
-
-#### Step 3: Configure Nginx Reverse Proxy
-Copy the provided `nginx.conf` template to `/etc/nginx/sites-available/zamorin.conf`:
-```nginx
-server {
-    listen 80;
-    server_name app.zamorincafe.com;
-
-    root /var/www/zamorin-cafe-erp/frontend;
-    index index.html;
-
-    # Static caching
-    location ~* \.(?:css|js|svg|png|jpg|jpeg|ico|woff2)$ {
-        expires 1y;
-        add_header Cache-Control "public, max-age=31536000, immutable";
-        try_files $uri =404;
-    }
-
-    # SPA routing
-    location / {
-        add_header Cache-Control "no-cache, no-store, must-revalidate";
-        try_files $uri $uri/ /index.html;
-    }
-
-    # API Proxy
-    location /api/ {
-        proxy_pass http://127.0.0.1:4000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-```
-
-Enable site and configure HTTPS with Let's Encrypt Certbot:
-```bash
-sudo ln -s /etc/nginx/sites-available/zamorin.conf /etc/nginx/sites-enabled/
-sudo nginx -t
-sudo systemctl reload nginx
-sudo certbot --nginx -d app.zamorincafe.com
-```
-
----
-
-### Option D: Split Cloud (Vercel / Netlify Frontend + Cloud Backend)
-
-1. **Backend**:
-   - Deploy `backend/` directory to Render, Railway, or AWS App Runner.
-   - Note the assigned backend URL (e.g. `https://zamorin-api.onrender.com`).
-2. **Frontend**:
-   - Deploy `frontend/` directory to Vercel or Netlify.
-   - In your deployment settings, add environment variable:
-     - `ZAMORIN_API_BASE_URL` = `https://zamorin-api.onrender.com/api/v1`
-   - In your backend environment settings, set:
-     - `ALLOWED_ORIGINS` = `https://your-frontend-app.vercel.app`
+#### 4. GitHub Actions CI/CD Integration
+- Every commit or PR pushed to `main` or `master` automatically runs `.github/workflows/ci.yml` and `.github/workflows/deploy-check.yml`.
+- Workflows validate JavaScript syntax, execute regression tests, check router imports, and audit all 28 enterprise modules.
 
 ---
 

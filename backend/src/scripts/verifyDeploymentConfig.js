@@ -46,12 +46,12 @@ async function runPreFlightCheck() {
   }
 
   // 1. Environment & Mode Verification
-  console.log(`${BOLD}[1/4] Auditing Environment & Security Mode...${RESET}`);
+  console.log(`${BOLD}[1/5] Auditing Environment & Security Mode...${RESET}`);
   const nodeEnv = (process.env.NODE_ENV || 'development').toLowerCase();
   recordResult('NODE_ENV Configuration', ['development', 'test', 'production'].includes(nodeEnv), `Active mode: ${nodeEnv}`);
 
   // 2. Secret Invariant Sanity
-  console.log(`\n${BOLD}[2/4] Verifying Cryptographic Secrets & Token Keys...${RESET}`);
+  console.log(`\n${BOLD}[2/5] Verifying Cryptographic Secrets & Token Keys...${RESET}`);
   const jwtSecret = process.env.JWT_ACCESS_SECRET || '';
   const isJwtValid = jwtSecret.length >= 32 && !jwtSecret.includes('replace-with') && !jwtSecret.includes('placeholder');
   recordResult('JWT Access Secret Strength', isJwtValid, isJwtValid ? `Length: ${jwtSecret.length} chars` : 'Must be >= 32 random chars without placeholders');
@@ -61,28 +61,49 @@ async function runPreFlightCheck() {
   recordResult('MFA 64-Hex Encryption Key', isMfaValid, isMfaValid ? '64-hex key verified' : 'Must be exact 64-character hexadecimal key');
 
   // 3. CORS & Allowed Origins Validation
-  console.log(`\n${BOLD}[3/4] Validating CORS & Domain Bindings...${RESET}`);
+  console.log(`\n${BOLD}[3/5] Validating CORS & Domain Bindings...${RESET}`);
   const allowedOrigins = (process.env.ALLOWED_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean);
   const isCorsValid = allowedOrigins.length > 0 && !allowedOrigins.includes('*') && allowedOrigins.every((o) => o.startsWith('http://') || o.startsWith('https://'));
-  recordResult('CORS Allowed Origins Policy', isCorsValid, isCorsValid ? `${allowedOrigins.length} origin(s) mapped` : 'Must define explicit http(s) origins without wildcards');
+  recordResult('CORS Allowed Origins Policy', isCorsValid, isCorsValid ? `${allowedOrigins.length} origin(s) mapped: ${allowedOrigins.join(', ')}` : 'Must define explicit http(s) origins without wildcards');
 
-  // 4. Database Connection & Transaction Capability
-  console.log(`\n${BOLD}[4/4] Probing Database Connectivity & Transaction Support...${RESET}`);
+  // 4. Initial Master Credentials & Storage Config
+  console.log(`\n${BOLD}[4/5] Auditing Initial Master Credentials & Storage Driver...${RESET}`);
+  const masterEmail = process.env.INITIAL_MASTER_EMAIL || '';
+  const isMasterEmailValid = Boolean(masterEmail && masterEmail.includes('@') && !masterEmail.includes('placeholder'));
+  recordResult('Initial Master Admin Email', isMasterEmailValid, isMasterEmailValid ? `Configured: ${masterEmail}` : 'INITIAL_MASTER_EMAIL missing or placeholder');
+
+  const masterPassword = process.env.INITIAL_MASTER_PASSWORD || '';
+  const isMasterPasswordValid = masterPassword.length >= 8 && !masterPassword.includes('placeholder');
+  recordResult('Initial Master Admin Password Strength', isMasterPasswordValid, isMasterPasswordValid ? 'Master password configured (>= 8 chars)' : 'INITIAL_MASTER_PASSWORD must be >= 8 characters');
+
+  const storageDriver = (process.env.PRIVATE_STORAGE_DRIVER || (nodeEnv === 'production' ? 'cloudinary' : 'local')).toLowerCase();
+  const isStorageValid = ['local', 'cloudinary'].includes(storageDriver);
+  recordResult('Private Storage Driver Mode', isStorageValid, `Driver: ${storageDriver}`);
+
+  // 5. Database Connection & Transaction Capability
+  console.log(`\n${BOLD}[5/5] Probing Database Connectivity & Transaction Support...${RESET}`);
   const mongoUri = process.env.MONGODB_URI || '';
-  const isUriConfigured = Boolean(mongoUri && !mongoUri.includes('DB_USER') && !mongoUri.includes('DB_PASSWORD'));
+  const isUriConfigured = Boolean(mongoUri && !mongoUri.includes('DB_USER') && !mongoUri.includes('DB_PASSWORD') && !mongoUri.includes('CLUSTER.mongodb.net'));
 
   if (!isUriConfigured) {
     recordResult('MongoDB Connection URI', false, 'MONGODB_URI missing or contains template placeholders');
   } else {
     try {
-      await mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 5000 });
-      recordResult('MongoDB Cluster Connectivity', true, 'Connected successfully');
+      const dns = require('dns');
+      dns.setDefaultResultOrder('ipv4first');
+      const customDns = (process.env.DNS_SERVERS || '').split(',').map(s => s.trim()).filter(Boolean);
+      if (customDns.length > 0) {
+        dns.setServers(customDns);
+      }
+
+      await mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 8000 });
+      recordResult('MongoDB Cluster Connectivity', true, 'Connected successfully to cluster');
 
       // Check if cluster supports transactions (Replica Set)
       const isReplicaSet = Boolean(mongoose.connection.client?.topology?.description?.setName || mongoose.connection.client?.topology?.description?.type?.includes('ReplicaSet'));
       
       if (isReplicaSet) {
-        recordResult('MongoDB Multi-Document Transaction Support', true, 'Replica Set active');
+        recordResult('MongoDB Multi-Document Transaction Support', true, 'Replica Set active (ACID Transactions Supported)');
       } else {
         // Test a lightweight transaction probe
         let txSuccess = false;

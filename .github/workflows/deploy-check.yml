@@ -1,0 +1,40 @@
+name: Deployment Configuration & Invariant Check
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  deployment-audit:
+    name: Pre-Flight Deployment Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js v20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install Backend Dependencies
+        working-directory: ./backend
+        run: npm ci
+
+      - name: Verify Blueprint & Server Syntax
+        working-directory: ./backend
+        run: |
+          node --check src/server.js
+          node --check src/scripts/startProd.js
+          node --check src/scripts/verifyDeploymentConfig.js
+
+      - name: Validate Router & Module Integrity
+        run: |
+          node frontend/verifyRouterImports.mjs
+          node scripts/master_system_verification.mjs
