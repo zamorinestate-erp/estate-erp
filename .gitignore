@@ -23,6 +23,7 @@ logs/
 
 # Browser Automation & Testing Profiles
 .chrome*
+.tmp_chrome*
 .system_generated/
 scratch/
 
