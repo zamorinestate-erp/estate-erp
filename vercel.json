@@ -2,8 +2,7 @@
   "version": 2,
   "cleanUrls": true,
   "trailingSlash": false,
-  "public": false,
-  "routes": [
+   "routes": [
     {
       "src": "/api/(.*)",
       "dest": "https://zamorin-cafe-erp-backend.onrender.com/api/$1"
