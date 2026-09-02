@@ -816,42 +816,12 @@ export async function requestJson(
           body,
         });
       } catch (refreshErr) {
-        // In local development / preview environment, try auto-login before failing
-        const isLocalDev = typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" || window.location.port === "3000");
-        if (isLocalDev) {
-          try {
-            await performRequest("/auth/login", {
-              method: "POST",
-              body: JSON.stringify({
-                identifier: "pradeeshk331@gmail.com",
-                password: "PRADEESHK@94309",
-                device: { deviceId: "DEV-BROWSER-PREVIEW", deviceName: "Zamorin Dev Console", deviceType: "DESKTOP" }
-              })
-            });
-            response = await performRequest(path, {
-              method,
-              signal: isGet ? undefined : signal,
-              body,
-            });
-          } catch (autoLoginErr) {
-            if (!isGet) {
-              return { success: true, data: { status: "PROCESSED", devMock: true } };
-            }
-            throw new ApiClientError({
-              status: 401,
-              code: "AUTH_SESSION_INVALID",
-              message: "Authenticated session has expired.",
-              userMessage: "Your authenticated session could not be validated. Please sign in again.",
-            });
-          }
-        } else {
-          throw new ApiClientError({
-            status: 401,
-            code: "AUTH_SESSION_INVALID",
-            message: "Authenticated session has expired.",
-            userMessage: "Your authenticated session could not be validated. Please sign in again.",
-          });
-        }
+        throw new ApiClientError({
+          status: 401,
+          code: "AUTH_SESSION_INVALID",
+          message: "Authenticated session has expired.",
+          userMessage: "Your authenticated session could not be validated. Please sign in again.",
+        });
       }
     }
 

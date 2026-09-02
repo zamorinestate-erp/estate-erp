@@ -201,19 +201,20 @@ function createApp(environment) {
     validate: { trustProxy: false },
   });
 
-  app.get(
-    '/api/v1/health',
-    (request, response) =>
-      response.status(200).json({
-        success: true,
-        status: 'ok',
-        service: SERVICE_NAME,
-        timestamp:
-          new Date().toISOString(),
-        correlationId:
-          request.correlationId || null,
-      })
-  );
+  const healthHandler = (request, response) =>
+    response.status(200).json({
+      success: true,
+      status: 'ok',
+      service: SERVICE_NAME,
+      timestamp:
+        new Date().toISOString(),
+      correlationId:
+        request.correlationId || null,
+    });
+
+  app.get('/api/v1/health', healthHandler);
+  app.get('/api/health', healthHandler);
+  app.get('/health', healthHandler);
 
   app.get(
     '/api/v1/readiness',

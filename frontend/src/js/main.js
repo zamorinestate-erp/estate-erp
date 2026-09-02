@@ -350,35 +350,15 @@ async function boot() {
     ? (isRouteAllowed(canonicalRole, urlHash, isPrimary) ? urlHash : defaultRoute)
     : defaultRoute;
 
-  // Attempt to check if live server session exists or establish dev session
+  // Attempt to check if live server session exists
   let liveUser = null;
   try {
     const payload = await apiGet("/auth/me");
     if (payload?.data?.user) {
       liveUser = payload.data.user;
-    } else {
-      const loginRes = await apiPost("/auth/login", {
-        identifier: "pradeeshk331@gmail.com",
-        password: "PRADEESHK@94309",
-        device: { deviceId: "DEV-BROWSER-PREVIEW", deviceName: "Zamorin Dev Console", deviceType: "DESKTOP" }
-      }).catch(() => null);
-      if (loginRes?.data?.user) {
-        liveUser = loginRes.data.user;
-      }
     }
   } catch (err) {
-    try {
-      const loginRes = await apiPost("/auth/login", {
-        identifier: "pradeeshk331@gmail.com",
-        password: "PRADEESHK@94309",
-        device: { deviceId: "DEV-BROWSER-PREVIEW", deviceName: "Zamorin Dev Console", deviceType: "DESKTOP" }
-      }).catch(() => null);
-      if (loginRes?.data?.user) {
-        liveUser = loginRes.data.user;
-      }
-    } catch (loginErr) {
-      // Session not active, seamlessly use canonical devUser
-    }
+    // Unauthenticated or server offline, preview fallback active
   }
 
   const activeUser = liveUser || devUser;

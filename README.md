@@ -60,7 +60,7 @@ Deploy via Render Blueprint or standard Web Service:
 | `NODE_ENV` | Runtime environment | `production` |
 | `PORT` | Service port (Render provides automatically) | `4000` |
 | `TZ` | Timezone | `Asia/Kolkata` |
-| `MONGODB_URI` | MongoDB Atlas Connection String | `mongodb+srv://user:pass@cluster.mongodb.net/zamorin_production?...` |
+| `MONGODB_URI` | MongoDB Atlas Connection String | `mongodb+srv://<db_user>:<db_password>@cluster.mongodb.net/zamorin_production?...` |
 | `ALLOWED_ORIGINS` | Permitted Frontend URLs | `https://your-frontend.vercel.app,https://yourdomain.com` |
 | `JWT_ACCESS_SECRET` | Cryptographic secret for access tokens | Random string $\ge 32$ chars |
 | `MFA_ENCRYPTION_KEY` | Hex encryption key for MFA tokens | 64-character hex string |
