@@ -48,4 +48,10 @@ services:
       - key: MONGODB_SERVER_SELECTION_TIMEOUT_MS
         value: 15000
       - key: PRIVATE_STORAGE_DRIVER
-        value: local
+        value: cloudinary
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
