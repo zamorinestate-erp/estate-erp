@@ -1,159 +1,322 @@
 'use strict';
 
-const { GmailEmailProvider } = require('./GmailEmailProvider');
+const assert = require('node:assert/strict');
+const test = require('node:test');
 
-function isDevelopmentCodeLoggingEnabled() {
-  return (
-    process.env.NODE_ENV !== 'production' &&
-    String(process.env.PASSWORD_RESET_DEV_LOG_CODE || '')
-      .trim()
-      .toLowerCase() === 'true'
+const service = require('../src/services/passwordResetDeliveryService');
+
+function restore(name, value) {
+  if (value === undefined) {
+    delete process.env[name];
+  } else {
+    process.env[name] = value;
+  }
+}
+
+const GMAIL_ENV_NAMES = [
+  'GMAIL_API_ACCESS_TOKEN',
+  'GMAIL_REFRESH_TOKEN',
+  'GOOGLE_OAUTH_CLIENT_ID',
+  'GOOGLE_OAUTH_CLIENT_SECRET',
+];
+
+function saveGmailEnvironment() {
+  return Object.fromEntries(
+    GMAIL_ENV_NAMES.map((name) => [name, process.env[name]])
   );
 }
 
-function getGmailProvider() {
-  return new GmailEmailProvider();
+function clearGmailEnvironment() {
+  for (const name of GMAIL_ENV_NAMES) {
+    delete process.env[name];
+  }
 }
 
-function isPasswordResetDeliveryAvailable() {
-  if (isDevelopmentCodeLoggingEnabled()) {
-    return true;
+function restoreGmailEnvironment(saved) {
+  for (const name of GMAIL_ENV_NAMES) {
+    restore(name, saved[name]);
   }
-
-  return getGmailProvider().isConfigured();
 }
 
-function escapeHtml(value) {
-  return String(value)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
+test('development reset-code logging requires explicit opt-in', async () => {
+  const oldEnv = process.env.NODE_ENV;
+  const oldFlag = process.env.PASSWORD_RESET_DEV_LOG_CODE;
+  const oldInfo = console.info;
+  const savedGmail = saveGmailEnvironment();
 
-async function deliverPasswordResetCode({
-  recipientEmail,
-  code,
-  challengeId,
-}) {
-  if (!recipientEmail || !code || !challengeId) {
-    throw new Error(
-      'Password reset delivery requires recipient email, code and challenge ID.'
-    );
-  }
-
-  if (isDevelopmentCodeLoggingEnabled()) {
-    console.info(
-      '[PASSWORD_RESET_DEV] challenge=%s recipient=%s code=%s',
-      challengeId,
-      recipientEmail,
-      code
-    );
-
-    return {
-      delivered: true,
-      channel: 'DEVELOPMENT_LOG',
-      providerMessageId: null,
-    };
-  }
-
-  const provider = getGmailProvider();
-
-  if (!provider.isConfigured()) {
-    return {
-      delivered: false,
-      channel: null,
-      providerMessageId: null,
-      reason: 'PASSWORD_RESET_DELIVERY_NOT_CONFIGURED',
-    };
-  }
-
-  const safeCode = escapeHtml(code);
-
-  const subject = 'Zamorin Cafe ERP — Password Recovery Code';
-
-  const text = [
-    'Zamorin Cafe ERP',
-    '',
-    'A password recovery request was received for your account.',
-    '',
-    `Your recovery code is: ${code}`,
-    '',
-    'This code expires in 10 minutes.',
-    '',
-    'If you did not request a password reset, you can ignore this email.',
-    '',
-    'For your security, never share this recovery code with anyone.',
-  ].join('\n');
-
-  const html = `
-    <div style="font-family:Arial,sans-serif;line-height:1.6;color:#172033;max-width:620px;margin:0 auto;">
-      <h2 style="margin-bottom:8px;">Zamorin Cafe ERP</h2>
-      <p>A password recovery request was received for your account.</p>
-
-      <p>Your recovery code is:</p>
-
-      <div
-        style="
-          font-size:32px;
-          font-weight:700;
-          letter-spacing:8px;
-          padding:18px 22px;
-          background:#f4f1ea;
-          border:1px solid #d8c8a8;
-          border-radius:10px;
-          text-align:center;
-          margin:20px 0;
-        "
-      >
-        ${safeCode}
-      </div>
-
-      <p><strong>This code expires in 10 minutes.</strong></p>
-
-      <p>
-        If you did not request a password reset, you can safely ignore
-        this email.
-      </p>
-
-      <p>
-        For your security, never share this recovery code with anyone.
-      </p>
-    </div>
-  `;
+  const logs = [];
 
   try {
-    const result = await provider.sendEmail({
-      to: recipientEmail,
-      subject,
-      text,
-      html,
-      isDraft: false,
+    clearGmailEnvironment();
+
+    process.env.NODE_ENV = 'development';
+    process.env.PASSWORD_RESET_DEV_LOG_CODE = 'true';
+
+    console.info = (...args) => logs.push(args);
+
+    const result = await service.deliverPasswordResetCode({
+      recipientEmail: 'user@example.test',
+      code: '123456',
+      challengeId: 'PRC-20260809-0001',
     });
 
-    return {
-      delivered: Boolean(result?.delivered),
-      channel: 'GMAIL_API',
-      providerMessageId:
-        result?.providerMessageId || null,
-    };
-  } catch (error) {
-    return {
-      delivered: false,
-      channel: 'GMAIL_API',
-      providerMessageId: null,
-      reason: 'PASSWORD_RESET_DELIVERY_FAILED',
-      providerErrorCode:
-        typeof error?.code === 'string'
-          ? error.code
-          : 'GMAIL_DELIVERY_ERROR',
-    };
+    assert.equal(result.delivered, true);
+    assert.equal(result.channel, 'DEVELOPMENT_LOG');
+    assert.equal(logs.length, 1);
+  } finally {
+    console.info = oldInfo;
+    restore('NODE_ENV', oldEnv);
+    restore('PASSWORD_RESET_DEV_LOG_CODE', oldFlag);
+    restoreGmailEnvironment(savedGmail);
   }
-}
+});
 
-module.exports = {
-  isDevelopmentCodeLoggingEnabled,
-  isPasswordResetDeliveryAvailable,
-  deliverPasswordResetCode,
-};
+test('production never enables development reset-code logging', async () => {
+  const oldEnv = process.env.NODE_ENV;
+  const oldFlag = process.env.PASSWORD_RESET_DEV_LOG_CODE;
+  const oldInfo = console.info;
+  const savedGmail = saveGmailEnvironment();
+
+  const logs = [];
+
+  try {
+    clearGmailEnvironment();
+
+    process.env.NODE_ENV = 'production';
+    process.env.PASSWORD_RESET_DEV_LOG_CODE = 'true';
+
+    console.info = (...args) => logs.push(args);
+
+    assert.equal(
+      service.isDevelopmentCodeLoggingEnabled(),
+      false
+    );
+
+    const result = await service.deliverPasswordResetCode({
+      recipientEmail: 'user@example.test',
+      code: '123456',
+      challengeId: 'PRC-20260809-0001',
+    });
+
+    assert.equal(result.delivered, false);
+    assert.equal(
+      result.reason,
+      'PASSWORD_RESET_DELIVERY_NOT_CONFIGURED'
+    );
+    assert.equal(logs.length, 0);
+  } finally {
+    console.info = oldInfo;
+    restore('NODE_ENV', oldEnv);
+    restore('PASSWORD_RESET_DEV_LOG_CODE', oldFlag);
+    restoreGmailEnvironment(savedGmail);
+  }
+});
+
+test('production reset delivery uses configured Gmail API provider', async () => {
+  const oldEnv = process.env.NODE_ENV;
+  const oldFlag = process.env.PASSWORD_RESET_DEV_LOG_CODE;
+  const savedGmail = saveGmailEnvironment();
+  const oldFetch = global.fetch;
+
+  let capturedRequest = null;
+
+  try {
+    clearGmailEnvironment();
+
+    process.env.NODE_ENV = 'production';
+    process.env.PASSWORD_RESET_DEV_LOG_CODE = 'false';
+
+    process.env.GMAIL_API_ACCESS_TOKEN =
+      'unit-test-access-token';
+
+    global.fetch = async (url, options) => {
+      capturedRequest = {
+        url,
+        options,
+      };
+
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return {
+            id: 'gmail-test-message-001',
+          };
+        },
+        async text() {
+          return '';
+        },
+      };
+    };
+
+    assert.equal(
+      service.isPasswordResetDeliveryAvailable(),
+      true
+    );
+
+    const result = await service.deliverPasswordResetCode({
+      recipientEmail: 'user@example.test',
+      code: '654321',
+      challengeId: 'PRC-20260809-0002',
+    });
+
+    assert.equal(result.delivered, true);
+    assert.equal(result.channel, 'GMAIL_API');
+    assert.equal(
+      result.providerMessageId,
+      'gmail-test-message-001'
+    );
+
+    assert.ok(capturedRequest);
+
+    assert.equal(
+      capturedRequest.url,
+      'https://gmail.googleapis.com/gmail/v1/users/me/messages/send'
+    );
+
+    assert.equal(
+      capturedRequest.options.method,
+      'POST'
+    );
+
+    assert.equal(
+      capturedRequest.options.headers.Authorization,
+      'Bearer unit-test-access-token'
+    );
+
+    const requestBody =
+      JSON.parse(capturedRequest.options.body);
+
+    assert.equal(
+      typeof requestBody.raw,
+      'string'
+    );
+
+    assert.ok(requestBody.raw.length > 0);
+  } finally {
+    global.fetch = oldFetch;
+    restore('NODE_ENV', oldEnv);
+    restore('PASSWORD_RESET_DEV_LOG_CODE', oldFlag);
+    restoreGmailEnvironment(savedGmail);
+  }
+});
+
+test('production Gmail delivery failure is returned safely without leaking provider details', async () => {
+  const oldEnv = process.env.NODE_ENV;
+  const savedGmail = saveGmailEnvironment();
+  const oldFetch = global.fetch;
+
+  try {
+    clearGmailEnvironment();
+
+    process.env.NODE_ENV = 'production';
+    process.env.GMAIL_API_ACCESS_TOKEN =
+      'unit-test-access-token';
+
+    global.fetch = async () => ({
+      ok: false,
+      status: 401,
+
+      async text() {
+        return 'synthetic provider rejection';
+      },
+
+      async json() {
+        return {};
+      },
+    });
+
+    const result = await service.deliverPasswordResetCode({
+      recipientEmail: 'user@example.test',
+      code: '123456',
+      challengeId: 'PRC-20260809-0003',
+    });
+
+    assert.equal(result.delivered, false);
+    assert.equal(result.channel, 'GMAIL_API');
+
+    assert.equal(
+      result.reason,
+      'PASSWORD_RESET_DELIVERY_FAILED'
+    );
+
+    assert.equal(
+      result.providerErrorCode,
+      'GMAIL_HTTP_401'
+    );
+
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(
+        result,
+        'providerError'
+      ),
+      false
+    );
+  } finally {
+    global.fetch = oldFetch;
+    restore('NODE_ENV', oldEnv);
+    restoreGmailEnvironment(savedGmail);
+  }
+});
+
+test('delivery rejects incomplete reset data', async () => {
+  await assert.rejects(
+    () =>
+      service.deliverPasswordResetCode({
+        recipientEmail: '',
+        code: '123456',
+        challengeId: 'PRC-20260809-0001',
+      }),
+    /requires recipient email, code and challenge ID/
+  );
+});
+
+test('delivery availability follows safe environment rules', () => {
+  const oldEnv = process.env.NODE_ENV;
+  const oldFlag = process.env.PASSWORD_RESET_DEV_LOG_CODE;
+  const savedGmail = saveGmailEnvironment();
+
+  try {
+    clearGmailEnvironment();
+
+    process.env.NODE_ENV = 'development';
+    process.env.PASSWORD_RESET_DEV_LOG_CODE = 'false';
+
+    assert.equal(
+      service.isPasswordResetDeliveryAvailable(),
+      false
+    );
+
+    process.env.PASSWORD_RESET_DEV_LOG_CODE = 'true';
+
+    assert.equal(
+      service.isPasswordResetDeliveryAvailable(),
+      true
+    );
+
+    process.env.NODE_ENV = 'production';
+
+    assert.equal(
+      service.isPasswordResetDeliveryAvailable(),
+      false
+    );
+
+    process.env.GMAIL_REFRESH_TOKEN =
+      'synthetic-refresh-token';
+
+    process.env.GOOGLE_OAUTH_CLIENT_ID =
+      'synthetic-client-id';
+
+    process.env.GOOGLE_OAUTH_CLIENT_SECRET =
+      'synthetic-client-secret';
+
+    assert.equal(
+      service.isPasswordResetDeliveryAvailable(),
+      true
+    );
+  } finally {
+    restore('NODE_ENV', oldEnv);
+    restore('PASSWORD_RESET_DEV_LOG_CODE', oldFlag);
+    restoreGmailEnvironment(savedGmail);
+  }
+});
