@@ -15,10 +15,16 @@
 //  - Configurable threshold — not hardcoded across multiple components (§33)
 // =============================================================================
 
-'use strict';
+/** Role-based tailored inactivity thresholds */
+export const ROLE_INACTIVITY_THRESHOLDS = {
+  CAFE_ADMIN: 15 * 60 * 1000, // 15 minutes for counter POS / Cafe Operations
+  MASTER: 45 * 60 * 1000,     // 45 minutes for executive Master
+  OWNER: 45 * 60 * 1000,      // 45 minutes for Owner
+  STAFF: 8 * 60 * 60 * 1000,  // 8 hours for Staff shift mobile sessions
+};
 
-/** Default inactivity threshold in milliseconds (30 minutes) */
-const DEFAULT_INACTIVITY_MS = 30 * 60 * 1000;
+/** Default inactivity threshold in milliseconds (15 minutes for cafe ops) */
+const DEFAULT_INACTIVITY_MS = 15 * 60 * 1000;
 
 /** Warning threshold — show a warning 2 minutes before lock */
 const WARNING_BEFORE_LOCK_MS = 2 * 60 * 1000;
