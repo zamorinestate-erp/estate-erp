@@ -11,6 +11,7 @@ function isDevelopmentCodeLoggingEnabled() {
   );
 }
 
+// Create the provider on demand so production credentials are read from the current environment.
 function getGmailProvider() {
   return new GmailEmailProvider();
 }
