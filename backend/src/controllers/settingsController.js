@@ -20,6 +20,7 @@
 
 const { User } = require('../models/User');
 const { Session } = require('../models/Session');
+const { PasskeyCredential } = require('../models/PasskeyCredential');
 const { UserPreference, SUPPORTED_LOCALES, THEMES, FONT_SIZES, DENSITIES, NOTIFICATION_CATEGORIES, NOTIFICATION_CHANNELS, POLICY_REQUIRED_NOTIFICATIONS } = require('../models/UserPreference');
 const { ProfileChangeRequest } = require('../models/ProfileChangeRequest');
 const { AccessRequest } = require('../models/AccessRequest');
@@ -699,11 +700,13 @@ async function getSecurityOverview(req, res) {
         state: user.mfaEnabled ? 'CONFIGURED' : 'NOT_CONFIGURED',
         label: user.mfaEnabled ? 'Two-factor authentication enabled' : 'Two-factor authentication not enabled',
       },
-      // Passkeys â€” P2; deferred pending WebAuthn infrastructure
+      // Passkeys — WebAuthn FIDO2 Infrastructure
       passkeys: {
-        state: 'NOT_SUPPORTED',
-        label: 'Passkeys not yet available â€” coming soon.',
-        count: 0,
+        state: (await PasskeyCredential.countDocuments({ userId, status: 'ACTIVE' })) > 0 ? 'CONFIGURED' : 'SUPPORTED',
+        label: (await PasskeyCredential.countDocuments({ userId, status: 'ACTIVE' })) > 0
+          ? `${await PasskeyCredential.countDocuments({ userId, status: 'ACTIVE' })} passkey(s) registered`
+          : 'Passkeys supported — register device in settings.',
+        count: await PasskeyCredential.countDocuments({ userId, status: 'ACTIVE' }),
       },
       // Sessions
       sessions: {

@@ -5,15 +5,24 @@ const asyncHandler = require('../utils/asyncHandler');
 const { ApiError } = require('../utils/ApiError');
 
 class OperatorSessionController {
+  getDirectory = asyncHandler(async (req, res) => {
+    const organisationId = req.query.organisationId || req.auth?.organisationId || 'ZAMORIN';
+    const result = await operatorSessionService.getCafeOperationsDirectory({ organisationId });
+    return res.status(200).json(result);
+  });
+
   signIn = asyncHandler(async (req, res) => {
-    const { deviceId, operatorUserId, pin } = req.body;
+    const { deviceId, cafeId, operatorUserId, pin, cafePin, rememberAccess } = req.body;
     const organisationId = req.body.organisationId || req.auth?.organisationId || 'ZAMORIN';
 
     const result = await operatorSessionService.signInOperator({
       organisationId,
       deviceId: deviceId || req.headers['x-device-id'],
+      cafeId,
       operatorUserId,
       pin,
+      cafePin,
+      rememberAccess: Boolean(rememberAccess),
       clientIp: req.ip,
       userAgent: req.headers['user-agent'],
       correlationId: req.headers['x-correlation-id'],
@@ -151,6 +160,21 @@ class OperatorSessionController {
     const result = await operatorSessionService.setOperatorPin({
       organisationId,
       targetUserId: targetUserId || req.auth.userId,
+      actorUserId: req.auth.userId,
+      actorRole: req.auth.role,
+      newPin,
+    });
+
+    return res.status(200).json(result);
+  });
+
+  setCafePin = asyncHandler(async (req, res) => {
+    const { cafeId, newPin } = req.body;
+    const organisationId = req.auth?.organisationId || 'ZAMORIN';
+
+    const result = await operatorSessionService.setCafePin({
+      organisationId,
+      cafeId,
       actorUserId: req.auth.userId,
       actorRole: req.auth.role,
       newPin,

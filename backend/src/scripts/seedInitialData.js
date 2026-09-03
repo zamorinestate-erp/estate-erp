@@ -867,6 +867,11 @@ async function runSeed() {
       masterUserId: masterUser.userId,
     });
 
+    await seedCafeOperationsData({
+      organisationId,
+      masterUserId: masterUser.userId,
+    });
+
     console.log(
       'Initial backend data seeded successfully.'
     );
@@ -1422,9 +1427,67 @@ async function seedLoansData(orgOrObj, mUserId) {
 async function seedCafeOperationsData(orgOrObj, mUserId) {
   const organisationId = typeof orgOrObj === 'object' ? orgOrObj.organisationId : orgOrObj;
   const masterUserId = typeof orgOrObj === 'object' ? orgOrObj.masterUserId : mUserId;
+  const { Cafe } = require('../models/Cafe');
   const { DeviceRegistration } = require('../models/DeviceRegistration');
   const { User } = require('../models/User');
   const bcrypt = require('bcrypt');
+
+  // 0. Seed Active Cafes with 6-digit Operations PIN (default: 123456)
+  const defaultCafePinHash = await bcrypt.hash('123456', 10);
+
+  const cafe1 = await Cafe.findOne({ organisationId, cafeId: 'ZC-0001' });
+  if (!cafe1) {
+    await Cafe.create({
+      cafeId: 'ZC-0001',
+      organisationId,
+      name: 'Koramangala Main Branch',
+      displayName: 'Koramangala Main',
+      cafeType: 'STANDARD_CAFE',
+      status: 'ACTIVE',
+      address: {
+        building: 'Zamorin Estate Tower',
+        street: '80 Feet Road, 4th Block',
+        area: 'Koramangala',
+        city: 'Bengaluru',
+        state: 'Karnataka',
+        pinCode: '560034',
+      },
+      operationsPinHash: defaultCafePinHash,
+      operationsPinSetAt: new Date(),
+      createdBy: masterUserId,
+    });
+  } else if (!cafe1.operationsPinHash) {
+    cafe1.operationsPinHash = defaultCafePinHash;
+    cafe1.operationsPinSetAt = new Date();
+    await cafe1.save();
+  }
+
+  const cafe2 = await Cafe.findOne({ organisationId, cafeId: 'ZC-0002' });
+  if (!cafe2) {
+    await Cafe.create({
+      cafeId: 'ZC-0002',
+      organisationId,
+      name: 'Indiranagar Central Branch',
+      displayName: 'Indiranagar Central',
+      cafeType: 'STANDARD_CAFE',
+      status: 'ACTIVE',
+      address: {
+        building: 'Zamorin Coffee House',
+        street: '100 Feet Road, HAL 2nd Stage',
+        area: 'Indiranagar',
+        city: 'Bengaluru',
+        state: 'Karnataka',
+        pinCode: '560038',
+      },
+      operationsPinHash: defaultCafePinHash,
+      operationsPinSetAt: new Date(),
+      createdBy: masterUserId,
+    });
+  } else if (!cafe2.operationsPinHash) {
+    cafe2.operationsPinHash = defaultCafePinHash;
+    cafe2.operationsPinSetAt = new Date();
+    await cafe2.save();
+  }
 
   // 1. Seed Cafe Operations Devices
   const dev1 = await DeviceRegistration.findOne({ deviceId: 'ZC-DEV-0001' });

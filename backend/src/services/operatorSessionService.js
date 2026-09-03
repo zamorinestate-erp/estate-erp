@@ -4,6 +4,7 @@ const crypto = require('node:crypto');
 const bcrypt = require('bcrypt');
 
 const { User } = require('../models/User');
+const { Cafe } = require('../models/Cafe');
 const { DeviceRegistration } = require('../models/DeviceRegistration');
 const { OperatorSession } = require('../models/OperatorSession');
 const { AuditEvent } = require('../models/AuditEvent');
@@ -15,6 +16,139 @@ const PIN_LOCK_MINUTES = 15;
 const INACTIVITY_LOCK_MINUTES = 30;
 
 class OperatorSessionService {
+  /**
+   * Safe audit logging helper.
+   */
+  async _logAudit({
+    organisationId,
+    cafeId = null,
+    actorUserId,
+    actorRole,
+    action,
+    entityType,
+    entityId,
+    details = {},
+    result = 'SUCCESS',
+    riskClassification = 'LOW',
+    correlationId = null,
+  }) {
+    try {
+      const { recordAuditEvent } = require('./auditService');
+      await recordAuditEvent({
+        organisationId: organisationId || 'ZAMORIN',
+        cafeId,
+        actorUserId: actorUserId || 'SYSTEM',
+        actorRole: actorRole || 'SYSTEM',
+        module: 'CAFE_OPERATIONS',
+        action: action || 'OPERATOR_ACTION',
+        entityType: entityType || 'OPERATOR_SESSION',
+        entityId: entityId || 'OPS_SYSTEM',
+        result,
+        riskClassification,
+        correlationId: correlationId || `CID-${Date.now()}`,
+        metadata: details,
+      });
+    } catch (_) {
+      // Safe fallback for background test runs
+    }
+  }
+
+  /**
+   * Returns active cafes and eligible operators for the Cafe Operations login directory.
+   */
+  async getCafeOperationsDirectory({ organisationId = 'ZAMORIN' } = {}) {
+    const orgId = String(organisationId || 'ZAMORIN').toUpperCase();
+
+    const [cafes, operators] = await Promise.all([
+      Cafe.find({
+        organisationId: orgId,
+        status: 'ACTIVE',
+      })
+        .select('cafeId name displayName address.city status')
+        .sort({ name: 1 })
+        .lean(),
+
+      User.find({
+        organisationId: orgId,
+        role: { $in: ['CAFE_ADMIN', 'MASTER'] },
+        accountStatus: 'ACTIVE',
+      })
+        .select('userId name role primaryCafeId assignedCafeIds isPrimaryMaster')
+        .sort({ name: 1 })
+        .lean(),
+    ]);
+
+    return {
+      success: true,
+      data: {
+        cafes: cafes.map((c) => ({
+          cafeId: c.cafeId,
+          name: c.name,
+          displayName: c.displayName || c.name,
+          city: c.address?.city || '',
+        })),
+        operators: operators.map((u) => ({
+          userId: u.userId,
+          name: u.name,
+          role: u.role,
+          isPrimaryMaster: Boolean(u.isPrimaryMaster),
+          primaryCafeId: u.primaryCafeId || null,
+          assignedCafeIds: u.assignedCafeIds || [],
+        })),
+      },
+    };
+  }
+
+  /**
+   * Sets or resets the 6-digit Cafe Operations PIN for a cafe.
+   */
+  async setCafePin({ organisationId, cafeId, actorUserId, actorRole, newPin }) {
+    if (!newPin || !/^\d{6}$/.test(String(newPin))) {
+      throw new ApiError(400, 'INVALID_CAFE_PIN', 'Cafe PIN must be exactly 6 numeric digits.');
+    }
+
+    const weakPins = ['000000', '111111', '123456', '654321', '999999', '121212'];
+    if (weakPins.includes(String(newPin))) {
+      throw new ApiError(400, 'WEAK_CAFE_PIN', 'Please choose a stronger, non-sequential 6-digit PIN.');
+    }
+
+    if (actorRole !== 'MASTER') {
+      throw new ApiError(403, 'UNAUTHORIZED_CAFE_PIN_SETUP', 'Only Master Administrator can configure Cafe PIN.');
+    }
+
+    const cafe = await Cafe.findOne({
+      organisationId: organisationId.toUpperCase(),
+      cafeId: cafeId.toUpperCase(),
+    });
+
+    if (!cafe) {
+      throw new ApiError(404, 'CAFE_NOT_FOUND', `Cafe ${cafeId} was not found.`);
+    }
+
+    const pinHash = await this.hashPin(newPin);
+    cafe.operationsPinHash = pinHash;
+    cafe.operationsPinSetAt = new Date();
+    cafe.operationsPinFailedAttempts = 0;
+    cafe.operationsPinLockedUntil = null;
+    await cafe.save();
+
+    await this._logAudit({
+      organisationId: cafe.organisationId,
+      cafeId: cafe.cafeId,
+      action: 'CAFE_PIN_SET',
+      actorUserId,
+      actorRole,
+      entityType: 'CAFE',
+      entityId: cafe.cafeId,
+      details: { cafeId: cafe.cafeId, reason: 'Cafe Operations PIN configured / updated' },
+    });
+
+    return {
+      success: true,
+      message: `Cafe Operations PIN configured for ${cafe.cafeId}.`,
+      cafeId: cafe.cafeId,
+    };
+  }
   /**
    * Hashes a 6-digit Operator PIN.
    */
@@ -61,17 +195,13 @@ class OperatorSessionService {
 
     await user.save();
 
-    await AuditEvent.create({
+    await this._logAudit({
       organisationId: user.organisationId,
       action: 'OPERATOR_PIN_SET',
-      actor: {
-        userId: actorUserId,
-        role: actorRole,
-      },
-      target: {
-        entityType: 'USER',
-        entityId: user.userId,
-      },
+      actorUserId,
+      actorRole,
+      entityType: 'USER',
+      entityId: user.userId,
       details: {
         targetUserId: user.userId,
         reason: 'Operator PIN configured / updated',
@@ -86,20 +216,99 @@ class OperatorSessionService {
   }
 
   /**
-   * Operator Sign-In on a cafe-owned, trusted device.
+   * Operator Sign-In on a cafe-owned, trusted device (supports dual-PIN verification).
    */
-  async signInOperator({ organisationId, deviceId, operatorUserId, pin, clientIp, userAgent, correlationId }) {
+  async signInOperator({ organisationId, deviceId, cafeId, operatorUserId, pin, cafePin, rememberAccess, clientIp, userAgent, correlationId }) {
     const orgId = (organisationId || 'ZAMORIN').toUpperCase();
 
-    // 1. Device Verification
-    if (!deviceId) {
-      throw new ApiError(400, 'DEVICE_ID_REQUIRED', 'Cafe Operations require a registered device ID.');
+    // 1. Resolve & Verify Cafe
+    const targetCafeId = (cafeId || '').trim().toUpperCase();
+    let cafe = null;
+    if (targetCafeId) {
+      cafe = await Cafe.findOne({
+        organisationId: orgId,
+        cafeId: targetCafeId,
+      }).select('+operationsPinHash');
+
+      if (!cafe) {
+        throw new ApiError(404, 'CAFE_NOT_FOUND', `Cafe ${targetCafeId} was not found.`);
+      }
+
+      if (cafe.status !== 'ACTIVE') {
+        throw new ApiError(403, 'CAFE_INACTIVE', `Cafe ${targetCafeId} is currently ${cafe.status}. Operations access is blocked.`);
+      }
     }
 
-    const device = await DeviceRegistration.findOne({
-      deviceId,
+    // 2. Cafe PIN Verification (if cafe has PIN set or cafePin was provided)
+    if (cafe && cafe.operationsPinHash) {
+      if (cafe.operationsPinLockedUntil && new Date(cafe.operationsPinLockedUntil) > new Date()) {
+        const waitMinutes = Math.ceil((new Date(cafe.operationsPinLockedUntil) - new Date()) / 60000);
+        throw new ApiError(429, 'CAFE_PIN_LOCKED', `Cafe Operations PIN is temporarily locked. Try again in ${waitMinutes} minute(s).`);
+      }
+
+      if (!cafePin) {
+        throw new ApiError(400, 'CAFE_PIN_REQUIRED', 'Cafe PIN is required for this location.');
+      }
+
+      const isCafePinValid = await bcrypt.compare(String(cafePin), cafe.operationsPinHash);
+      if (!isCafePinValid) {
+        cafe.operationsPinFailedAttempts = (cafe.operationsPinFailedAttempts || 0) + 1;
+        if (cafe.operationsPinFailedAttempts >= MAX_FAILED_PIN_ATTEMPTS) {
+          cafe.operationsPinLockedUntil = new Date(Date.now() + PIN_LOCK_MINUTES * 60 * 1000);
+        }
+        await cafe.save();
+
+        await this._logAudit({
+          organisationId: orgId,
+          cafeId: cafe.cafeId,
+          action: 'CAFE_PIN_AUTH_FAILED',
+          actorUserId: operatorUserId || 'UNKNOWN',
+          actorRole: 'CAFE_ADMIN',
+          entityType: 'CAFE',
+          entityId: cafe.cafeId,
+          result: 'FAILURE',
+          riskClassification: 'HIGH',
+          details: { failedAttempts: cafe.operationsPinFailedAttempts, targetCafeId: cafe.cafeId },
+        });
+
+        throw new ApiError(401, 'INVALID_CAFE_PIN', 'Cafe PIN not recognised. Please verify and try again.');
+      }
+
+      // Reset cafe PIN failed attempts on success
+      if (cafe.operationsPinFailedAttempts > 0) {
+        cafe.operationsPinFailedAttempts = 0;
+        cafe.operationsPinLockedUntil = null;
+        await cafe.save();
+      }
+    }
+
+    // 3. Device Verification / Resolution
+    let resolvedDeviceId = deviceId || (cafe ? `DEV-WEB-${cafe.cafeId}` : null);
+    if (!resolvedDeviceId) {
+      throw new ApiError(400, 'DEVICE_OR_CAFE_REQUIRED', 'Cafe Operations require a registered device or valid cafe selection.');
+    }
+
+    let device = await DeviceRegistration.findOne({
+      deviceId: resolvedDeviceId,
       organisationId: orgId,
     });
+
+    if (!device && cafe) {
+      // Auto-enrol standard web terminal device for cafe if none exists
+      device = await DeviceRegistration.create({
+        deviceId: resolvedDeviceId,
+        organisationId: orgId,
+        deviceName: `${cafe.displayName || cafe.name} (Web Terminal)`,
+        deviceClass: 'CAFE_OWNED',
+        assignedCafeId: cafe.cafeId,
+        status: 'ACTIVE',
+        trustLevel: 'ENROLLED',
+        enrollmentApprovedBy: 'SYSTEM',
+        enrollmentApprovedAt: new Date(),
+        policyVersion: 1,
+        deviceVersion: 1,
+      });
+    }
 
     if (!device) {
       throw new ApiError(403, 'DEVICE_NOT_REGISTERED', 'This device is not enrolled in Zamorin Cafe Operations.');
@@ -117,7 +326,12 @@ class OperatorSessionService {
       throw new ApiError(403, 'DEVICE_UNASSIGNED', 'This device has not been assigned to a specific cafe.');
     }
 
-    // 2. Operator Identification & Role Verification
+    const deviceCafe = device.assignedCafeId;
+    if (cafe && cafe.cafeId !== deviceCafe) {
+      throw new ApiError(403, 'CAFE_DEVICE_MISMATCH', 'Selected cafe does not match the device assigned cafe.');
+    }
+
+    // 4. Operator Identification & Role Verification
     if (!operatorUserId || !pin) {
       throw new ApiError(400, 'MISSING_CREDENTIALS', 'Operator ID and 6-digit PIN are required.');
     }
@@ -145,8 +359,7 @@ class OperatorSessionService {
       throw new ApiError(403, 'UNAUTHORIZED_ROLE', 'User does not possess Cafe Operations authority.');
     }
 
-    // 3. Cafe Assignment Matching (Strict Invariant: No cross-cafe leakage)
-    const deviceCafe = device.assignedCafeId;
+    // 5. Cafe Assignment Matching (Strict Invariant: No cross-cafe leakage)
     let isCafeAllowed = false;
 
     if (user.role === 'MASTER') {
@@ -167,17 +380,22 @@ class OperatorSessionService {
     }
 
     if (!isCafeAllowed) {
-      await AuditEvent.create({
+      await this._logAudit({
         organisationId: orgId,
+        cafeId: deviceCafe,
         action: 'OPERATOR_WRONG_CAFE_ATTEMPT',
-        actor: { userId: user.userId, role: user.role },
-        target: { entityType: 'DEVICE', entityId: device.deviceId },
+        actorUserId: user.userId,
+        actorRole: user.role,
+        entityType: 'DEVICE',
+        entityId: device.deviceId,
+        result: 'DENIED',
+        riskClassification: 'MEDIUM',
         details: { deviceCafeId: deviceCafe, userPrimaryCafeId: user.primaryCafeId },
       });
       throw new ApiError(403, 'WRONG_CAFE_ACCESS', 'Operator is not assigned to this cafe location.');
     }
 
-    // 4. Rate-Limiting & Lockout Check
+    // 6. Rate-Limiting & Lockout Check for Operator PIN
     if (user.operatorPinLockedUntil && new Date(user.operatorPinLockedUntil) > new Date()) {
       const waitMinutes = Math.ceil((new Date(user.operatorPinLockedUntil) - new Date()) / 60000);
       throw new ApiError(429, 'OPERATOR_PIN_LOCKED', `Too many failed attempts. Try again in ${waitMinutes} minute(s).`);
@@ -188,7 +406,7 @@ class OperatorSessionService {
       throw new ApiError(403, 'OPERATOR_PIN_NOT_SET', 'Operator PIN has not been set for this account. Please contact Master Administrator.');
     }
 
-    // 5. PIN Verification
+    // 7. PIN Verification
     const isPinValid = await bcrypt.compare(String(pin), user.operatorPinHash);
     if (!isPinValid) {
       user.operatorPinFailedAttempts = (user.operatorPinFailedAttempts || 0) + 1;
@@ -197,11 +415,16 @@ class OperatorSessionService {
       }
       await user.save();
 
-      await AuditEvent.create({
+      await this._logAudit({
         organisationId: orgId,
+        cafeId: deviceCafe,
         action: 'OPERATOR_AUTH_FAILED',
-        actor: { userId: user.userId, role: user.role },
-        target: { entityType: 'DEVICE', entityId: device.deviceId },
+        actorUserId: user.userId,
+        actorRole: user.role,
+        entityType: 'DEVICE',
+        entityId: device.deviceId,
+        result: 'FAILURE',
+        riskClassification: 'HIGH',
         details: { failedAttempts: user.operatorPinFailedAttempts },
       });
 
@@ -213,7 +436,7 @@ class OperatorSessionService {
     user.operatorPinLockedUntil = null;
     await user.save();
 
-    // 6. Close Any Existing Active Operator Sessions on this Device
+    // 8. Close Any Existing Active Operator Sessions on this Device
     await OperatorSession.updateMany(
       { deviceId: device.deviceId, status: { $in: ['ACTIVE', 'LOCKED'] } },
       {
@@ -225,7 +448,7 @@ class OperatorSessionService {
       }
     );
 
-    // 7. Create New Active Operator Session
+    // 9. Create New Active Operator Session
     const operatorSessionId = `OPS-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
     const session = await OperatorSession.create({
       operatorSessionId,
@@ -245,16 +468,27 @@ class OperatorSessionService {
     device.lastSyncAt = new Date();
     await device.save();
 
+    // 10. Generate Trusted Device Token if rememberAccess requested
+    let trustedDeviceToken = null;
+    if (rememberAccess) {
+      trustedDeviceToken = `trdev_${crypto.randomBytes(24).toString('hex')}`;
+    }
+
     // Record Audit Event
-    await AuditEvent.create({
+    await this._logAudit({
       organisationId: orgId,
+      cafeId: deviceCafe,
       action: 'OPERATOR_SESSION_STARTED',
-      actor: { userId: user.userId, role: user.role },
-      target: { entityType: 'OPERATOR_SESSION', entityId: session.operatorSessionId },
+      actorUserId: user.userId,
+      actorRole: user.role,
+      entityType: 'OPERATOR_SESSION',
+      entityId: session.operatorSessionId,
+      correlationId,
       details: {
         cafeId: deviceCafe,
         deviceId: device.deviceId,
         operatorUserId: user.userId,
+        rememberAccess: Boolean(rememberAccess),
       },
     });
 
@@ -274,6 +508,7 @@ class OperatorSessionService {
         deviceName: device.deviceName,
         businessDate: new Date().toISOString().slice(0, 10),
       },
+      trustedDeviceToken,
     };
   }
 

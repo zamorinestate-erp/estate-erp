@@ -8,6 +8,9 @@ const { authorize } = require('../middleware/authorize');
 const { attachDeviceContext } = require('../middleware/deviceContext');
 const operatorSessionController = require('../controllers/operatorSessionController');
 
+// 0. Public Cafe & Operator Directory for login dropdowns
+router.get('/directory', operatorSessionController.getDirectory);
+
 // 1. Operator Sign-In on Cafe Device (Public/Device endpoint, validates PIN)
 router.post('/signin', attachDeviceContext, operatorSessionController.signIn);
 
@@ -42,6 +45,14 @@ router.post(
   '/pin/set',
   authenticate,
   operatorSessionController.setPin
+);
+
+// 8b. Set / Reset Cafe Operations PIN
+router.post(
+  '/cafe-pin/set',
+  authenticate,
+  authorize('CAFE:MANAGE', { allowedRoles: ['MASTER'] }),
+  operatorSessionController.setCafePin
 );
 
 // 9. Acknowledge Handover Note

@@ -38,4 +38,6 @@ class ApiError extends Error {
   }
 }
 
-module.exports = { ApiError };
+ApiError.ApiError = ApiError;
+module.exports = ApiError;
+module.exports.ApiError = ApiError;

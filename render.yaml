@@ -55,3 +55,9 @@ services:
         sync: false
       - key: CLOUDINARY_API_SECRET
         sync: false
+      - key: WEBAUTHN_RP_NAME
+        value: Zamorin Cafe ERP
+      - key: WEBAUTHN_RP_ID
+        value: zamorin-cafe-erp.vercel.app
+      - key: WEBAUTHN_ORIGIN
+        value: https://zamorin-cafe-erp.vercel.app

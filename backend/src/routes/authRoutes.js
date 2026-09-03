@@ -27,6 +27,7 @@ const {
   authenticate,
   requireMfa,
 } = require('../middleware/authenticate');
+const passkeyController = require('../controllers/passkeyController');
 
 const router = express.Router();
 
@@ -58,11 +59,33 @@ const passwordResetRateLimiter = rateLimit({
   },
 });
 
+const passkeyRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: {
+      code: 'TOO_MANY_REQUESTS',
+      message: 'Too many passkey requests. Please try again later.',
+    },
+  },
+});
+
 router.post('/login', login);
 router.post('/password/forgot', passwordResetRateLimiter, requestPasswordReset);
 router.post('/password/reset/verify', passwordResetRateLimiter, verifyPasswordResetCode);
 router.post('/password/reset', passwordResetRateLimiter, resetPassword);
 router.post('/refresh', refreshSession);
+
+// Passkeys / WebAuthn Endpoints
+router.post('/passkeys/register/options', authenticate, passkeyRateLimiter, passkeyController.getRegistrationOptions);
+router.post('/passkeys/register/verify', authenticate, passkeyRateLimiter, passkeyController.verifyRegistration);
+router.post('/passkeys/authenticate/options', passkeyRateLimiter, passkeyController.getAuthenticationOptions);
+router.post('/passkeys/authenticate/verify', passkeyRateLimiter, passkeyController.verifyAuthentication);
+router.get('/passkeys', authenticate, passkeyController.listUserPasskeys);
+router.delete('/passkeys/:credentialId', authenticate, passkeyController.revokeUserPasskey);
 
 // Unauthenticated MFA setup, confirmation, and verification routes
 router.post('/mfa/setup', mfaRateLimiter, mfaSetup);

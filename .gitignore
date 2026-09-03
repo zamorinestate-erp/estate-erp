@@ -27,9 +27,6 @@ logs/
 .system_generated/
 scratch/
 
-# OS and Editor files
-.DS_Store
-Thumbs.db
-.vscode/
-.idea/
+LOGIN-PAGE-2.0-main/
+
 

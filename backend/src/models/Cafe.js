@@ -622,6 +622,28 @@ const cafeSchema = new mongoose.Schema(
       default: [],
     },
 
+    operationsPinHash: {
+      type: String,
+      select: false,
+      default: null,
+    },
+
+    operationsPinSetAt: {
+      type: Date,
+      default: null,
+    },
+
+    operationsPinFailedAttempts: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+
+    operationsPinLockedUntil: {
+      type: Date,
+      default: null,
+    },
+
     approvalThresholds: {
       expenseSubmissionWarningAmount: {
         type: Number,

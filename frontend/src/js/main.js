@@ -39,6 +39,19 @@ import {
   renderPasswordResetFinal,
   wirePasswordResetFinal,
 } from "./pages/login.js";
+import {
+  renderLoginPage2,
+  wireLoginPage2,
+  renderPasswordResetRequest2,
+  wirePasswordResetRequest2,
+  renderPasswordResetVerify2,
+  wirePasswordResetVerify2,
+  renderPasswordResetFinal2,
+  wirePasswordResetFinal2,
+  renderMfaChallenge2,
+  wireMfaChallenge2,
+  showGlassAlert,
+} from "./pages/login2.js";
 import "./responsiveAuditor.js";
 
 // =============================================================================
@@ -313,9 +326,21 @@ export async function handlePasswordResetFinal({
   return result;
 }
 
+<<<<<<< HEAD
 // =============================================================================
 // ROLE NORMALISATION
 // =============================================================================
+=======
+export function isLegacyLoginRequested() {
+  if (typeof window === "undefined") return false;
+  return new URLSearchParams(window.location.search).get("legacyLogin") === "true";
+}
+
+export function mountAuthScreen(screen = "login", params = {}) {
+  if (typeof document === "undefined") return;
+  const appEl = document.getElementById("app");
+  if (!appEl) return;
+>>>>>>> 01af0fc (feat(auth): integrate LOGIN-PAGE-2.0 presentation layer and standards-compliant WebAuthn passkey backend)
 
 function resolveAuthenticatedRole(user) {
   const rawRole = String(user?.role || "").toUpperCase();
@@ -378,6 +403,7 @@ export function mountAuthScreen(screen = "login", params = {}) {
   appEl.className = "auth-screen";
   delete appEl.dataset.shellRole;
 
+<<<<<<< HEAD
   // ---------------------------------------------------------------------------
   // LOGIN
   // ---------------------------------------------------------------------------
@@ -403,6 +429,44 @@ export function mountAuthScreen(screen = "login", params = {}) {
               deviceName: "Browser Client",
               deviceType: "DESKTOP",
             },
+=======
+  const useLegacy = isLegacyLoginRequested();
+
+  if (screen === "login") {
+    if (useLegacy) {
+      appEl.innerHTML = renderLogin(params);
+      wireLogin(appEl, {
+        onSubmit: async ({ organisationId, email, password }) => {
+          await handleCompleteLoginFlow({ organisationId, email, password });
+        },
+        onForgotPassword: ({ organisationId, email }) => {
+          mountAuthScreen("forgot", { organisationId, email });
+        }
+      });
+    } else {
+      appEl.innerHTML = renderLoginPage2(params);
+      wireLoginPage2(appEl, {
+        onSubmit: async ({ organisationId, email, password }) => {
+          await handleCompleteLoginFlow({ organisationId, email, password });
+        },
+        onForgotPassword: ({ organisationId, email }) => {
+          mountAuthScreen("forgot", { organisationId, email });
+        },
+        onCafeOps: () => {
+          window.location.href = "/cafe-operations/cafe-operations.html";
+        }
+      });
+    }
+  } else if (screen === "mfa") {
+    appEl.innerHTML = renderMfaChallenge2(params);
+    wireMfaChallenge2(appEl, {
+      onSubmit: async ({ code }) => {
+        try {
+          const res = await apiPost("/auth/mfa/verify", {
+            code,
+            tempToken: params.tempToken,
+            challengeId: params.challengeId
+>>>>>>> 01af0fc (feat(auth): integrate LOGIN-PAGE-2.0 presentation layer and standards-compliant WebAuthn passkey backend)
           });
 
           const accessToken =
@@ -416,6 +480,7 @@ export function mountAuthScreen(screen = "login", params = {}) {
           const user = res?.data?.user;
 
           if (user) {
+<<<<<<< HEAD
             const {
               role,
               isPrimaryMaster,
@@ -448,10 +513,16 @@ export function mountAuthScreen(screen = "login", params = {}) {
 
           // If login succeeded but the backend response did not include the
           // user object, boot() will validate the session through /auth/me.
+=======
+            handleAuthenticatedUserSession(user);
+            return;
+          }
+>>>>>>> 01af0fc (feat(auth): integrate LOGIN-PAGE-2.0 presentation layer and standards-compliant WebAuthn passkey backend)
           window.location.hash = "#dashboard";
 
           await boot();
         } catch (err) {
+<<<<<<< HEAD
           const userMsg =
             err?.userMessage ||
             err?.message ||
@@ -605,6 +676,170 @@ function renderDevPreviewBanner(
       "zamorin-dev-preview-banner"
     );
 
+=======
+          throw new Error(err.userMessage || err.message || "Invalid MFA code. Please try again.");
+        }
+      },
+      onBack: () => mountAuthScreen("login")
+    });
+  } else if (screen === "forgot") {
+    if (useLegacy) {
+      appEl.innerHTML = renderPasswordResetRequest(params);
+      wirePasswordResetRequest(appEl, {
+        onSubmit: async ({ organisationId, email }) => {
+          const res = await handlePasswordResetRequest({ organisationId, email });
+          mountAuthScreen("verify", { email, challengeId: res?.data?.challengeId });
+        },
+        onBack: () => mountAuthScreen("login")
+      });
+    } else {
+      appEl.innerHTML = renderPasswordResetRequest2(params);
+      wirePasswordResetRequest2(appEl, {
+        onSubmit: async ({ organisationId, email }) => {
+          const res = await handlePasswordResetRequest({ organisationId, email });
+          mountAuthScreen("verify", { email, challengeId: res?.data?.challengeId });
+        },
+        onBack: () => mountAuthScreen("login")
+      });
+    }
+  } else if (screen === "verify") {
+    if (useLegacy) {
+      appEl.innerHTML = renderPasswordResetVerify(params);
+      wirePasswordResetVerify(appEl, {
+        onSubmit: async ({ code }) => {
+          const res = await handlePasswordResetVerify({
+            challengeId: params.challengeId,
+            code
+          });
+          mountAuthScreen("reset", {
+            resetToken: res.resetToken,
+            challengeId: res.challengeId
+          });
+        },
+        onBack: () => mountAuthScreen("forgot")
+      });
+    } else {
+      appEl.innerHTML = renderPasswordResetVerify2(params);
+      wirePasswordResetVerify2(appEl, {
+        onSubmit: async ({ code }) => {
+          const res = await handlePasswordResetVerify({
+            challengeId: params.challengeId,
+            code
+          });
+          mountAuthScreen("reset", {
+            resetToken: res.resetToken,
+            challengeId: res.challengeId
+          });
+        },
+        onBack: () => mountAuthScreen("forgot")
+      });
+    }
+  } else if (screen === "reset") {
+    if (useLegacy) {
+      appEl.innerHTML = renderPasswordResetFinal(params);
+      wirePasswordResetFinal(appEl, {
+        onSubmit: async ({ newPassword }) => {
+          await handlePasswordResetFinal({
+            challengeId: params.challengeId,
+            resetToken: params.resetToken,
+            newPassword
+          });
+          mountAuthScreen("login", { notice: "Password updated successfully. Please sign in with your new password." });
+        },
+        onCancel: () => mountAuthScreen("login")
+      });
+    } else {
+      appEl.innerHTML = renderPasswordResetFinal2(params);
+      wirePasswordResetFinal2(appEl, {
+        onSubmit: async ({ newPassword }) => {
+          await handlePasswordResetFinal({
+            challengeId: params.challengeId,
+            resetToken: params.resetToken,
+            newPassword
+          });
+          mountAuthScreen("login", { notice: "Password updated successfully. Please sign in with your new password." });
+        },
+        onCancel: () => mountAuthScreen("login")
+      });
+    }
+  }
+}
+
+async function handleCompleteLoginFlow({ organisationId, email, password }) {
+  try {
+    const res = await apiPost("/auth/login", {
+      organisationId,
+      email,
+      password,
+      identifier: email,
+      device: {
+        deviceId: getOrCreateDeviceId(),
+        deviceName: "Browser Client",
+        deviceType: "DESKTOP"
+      }
+    });
+
+    // Check if MFA is required
+    if (res?.data?.mfaRequired || res?.status === 202 || (res?.data?.challengeId && !res?.data?.accessToken)) {
+      mountAuthScreen("mfa", {
+        email,
+        challengeId: res?.data?.challengeId,
+        tempToken: res?.data?.tempToken || res?.data?.token
+      });
+      return;
+    }
+
+    const accessToken = res?.data?.accessToken || res?.data?.token;
+    if (accessToken) {
+      setAccessToken(accessToken);
+    }
+    const user = res?.data?.user;
+    if (user) {
+      handleAuthenticatedUserSession(user);
+      return;
+    }
+    window.location.hash = "#dashboard";
+    boot();
+  } catch (err) {
+    const userMsg = err.userMessage || err.message || "Invalid credentials. Please check your Organisation ID, email, and password.";
+    throw new Error(userMsg);
+  }
+}
+
+function handleAuthenticatedUserSession(user) {
+  const rawRole = String(user.role || "").toUpperCase();
+  let mappedRole = "master";
+  let isPrimary = false;
+
+  if (rawRole === "MASTER") {
+    isPrimary = Boolean(user.isPrimaryMaster);
+    mappedRole = isPrimary ? "master" : "master_normal";
+  } else if (rawRole === "OWNER") {
+    mappedRole = "owner";
+  } else if (rawRole === "CAFE_ADMIN" || rawRole === "ADMIN") {
+    mappedRole = "cafe_admin";
+  } else if (rawRole === "STAFF" || rawRole === "EMPLOYEE") {
+    mappedRole = "staff";
+  }
+
+  const landingRoute = (mappedRole === "staff") ? "staff-home" : "dashboard";
+
+  setState({
+    auth: { authenticated: true, user, loading: false },
+    user,
+    role: (mappedRole === "master_normal") ? "master" : mappedRole,
+    isPrimaryMaster: isPrimary,
+    route: landingRoute,
+  });
+
+  window.location.hash = `#${landingRoute}`;
+  boot();
+}
+
+function renderDevPreviewBanner(activeRole = "master") {
+  if (typeof document === "undefined") return;
+  let banner = document.getElementById("zamorin-dev-preview-banner");
+>>>>>>> 01af0fc (feat(auth): integrate LOGIN-PAGE-2.0 presentation layer and standards-compliant WebAuthn passkey backend)
   if (!banner) {
     banner =
       document.createElement("div");
@@ -951,6 +1186,14 @@ async function boot() {
     mountAuthScreen("login");
     return;
   }
+  if (urlHash === "forgot") {
+    mountAuthScreen("forgot");
+    return;
+  }
+  if (urlHash === "mfa") {
+    mountAuthScreen("mfa");
+    return;
+  }
 
   // ===========================================================================
   // PRODUCTION / REMOTE SECURITY GATE
@@ -1152,28 +1395,18 @@ async function boot() {
 // =============================================================================
 
 if (typeof window !== "undefined") {
-  window.addEventListener(
-    "hashchange",
-    () => {
-      const rawHash =
-        window.location.hash.replace(
-          /^#/,
-          ""
-        );
-
-      if (rawHash === "login") {
-        mountAuthScreen("login");
-        return;
-      }
-
-      if (
-        rawHash &&
-        state.route !== rawHash
-      ) {
-        navigate(rawHash);
-      }
+  window.addEventListener("hashchange", () => {
+    const rawHash = window.location.hash.replace(/^#/, "");
+    if (rawHash === "login") {
+      mountAuthScreen("login");
+    } else if (rawHash === "forgot") {
+      mountAuthScreen("forgot");
+    } else if (rawHash === "mfa") {
+      mountAuthScreen("mfa");
+    } else if (rawHash && state.route !== rawHash) {
+      navigate(rawHash);
     }
-  );
+  });
 }
 
 // =============================================================================
