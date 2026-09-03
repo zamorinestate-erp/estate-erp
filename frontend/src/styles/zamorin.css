@@ -2403,13 +2403,13 @@ tr:last-child td { border-bottom: 0; }
 /* ============================================================
    DEV PREVIEW BANNER — always readable regardless of theme
    ============================================================ */
-.zamorin-dev-preview-banner {
-  background: #101a30 !important;
-  color: #e2bb87 !important;
-  border-bottom: 1px solid #1e2f50 !important;
-}
-.zamorin-dev-preview-banner a {
-  color: #e2bb87 !important;
+.zamorin-dev-preview-banner,
+#zamorin-dev-preview-banner {
+  display: none !important;
+  visibility: hidden !important;
+  height: 0 !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
 }
 
 /* =========================================================================
