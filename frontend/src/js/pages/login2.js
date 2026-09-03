@@ -271,9 +271,6 @@ export function renderLoginPage2({ organisationId = "ZAMORIN", email = "", notic
             </svg>
           </button>
         </div>
-
-        <!-- Direct Cafe Operations link -->
-        <a href="#cafe-ops" id="l2-cafe-ops-link" class="special-cafe-link">⚡ Access Cafe Operations Terminal</a>
       </div>
     </div>
   `;
@@ -285,7 +282,6 @@ export function wireLoginPage2(container, { onSubmit, onForgotPassword, onCafeOp
   const togglePwdBtn = container.querySelector("#l2-toggle-pwd");
   const pwdInput = container.querySelector("#l2-password");
   const forgotBtn = container.querySelector("#l2-forgot-pwd-btn");
-  const cafeOpsLink = container.querySelector("#l2-cafe-ops-link");
 
   // Modals
   const termsModal = container.querySelector("#l2-terms-modal");

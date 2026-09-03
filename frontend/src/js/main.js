@@ -22,6 +22,7 @@ import { renderShell, navigate } from "./router.js";
 import {
   apiGet,
   apiPost,
+  getAccessToken,
   getOrCreateDeviceId,
   setStepUpAuthenticationHandler,
   setAccessToken,
@@ -892,7 +893,7 @@ function applyAuthenticatedUser(
 }
 
 // =============================================================================
-// APPLICATION BOOT
+// APPLICATION BOOT (FAST-PATH ZERO-LATENCY)
 // =============================================================================
 
 async function boot() {
@@ -908,31 +909,21 @@ async function boot() {
     state.settings.fontSize || "normal"
   );
 
+  // Permanently ensure no dev preview banner exists
+  document.getElementById("zamorin-dev-preview-banner")?.remove();
+
   const urlHash =
-    typeof window !== "undefined" &&
-    window.location.hash
-      ? window.location.hash.replace(
-          /^#/,
-          ""
-        )
+    typeof window !== "undefined" && window.location.hash
+      ? window.location.hash.replace(/^#/, "")
       : "";
 
   const params =
     typeof window !== "undefined"
-      ? new URLSearchParams(
-          window.location.search
-        )
+      ? new URLSearchParams(window.location.search)
       : null;
 
-  const isExplicitLoginRequested =
-    urlHash === "login" ||
-    params?.get("auth") === "login";
-
-  // ===========================================================================
-  // EXPLICIT LOGIN REQUEST
-  // ===========================================================================
-
-  if (isExplicitLoginRequested) {
+  // Direct Auth Screen Routing (0ms instant mount)
+  if (urlHash === "login" || params?.get("auth") === "login") {
     mountAuthScreen("login");
     return;
   }
@@ -945,199 +936,39 @@ async function boot() {
     return;
   }
 
-  // ===========================================================================
-  // PRODUCTION / REMOTE SECURITY GATE
-  // ===========================================================================
-  //
-  // This branch executes on every non-localhost origin.
-  //
-  // There is intentionally NO development-user fallback here.
-  //
-  // A user must possess a valid backend-authenticated session.
-  // ===========================================================================
+  // Active Authenticated Session Check
+  const token = getAccessToken();
 
-  if (!isDirectDashboardAllowed()) {
-    let liveUser = null;
-
+  if (token) {
     try {
-      const payload =
-        await apiGet("/auth/me");
-
+      const payload = await apiGet("/auth/me");
       if (payload?.data?.user) {
-        liveUser =
-          payload.data.user;
+        applyAuthenticatedUser(payload.data.user, urlHash);
+        renderShell();
+        registerServiceWorker().catch(() => {});
+        return;
       }
     } catch (err) {
-      liveUser = null;
-    }
-
-    // -------------------------------------------------------------------------
-    // NO AUTHENTICATED PRODUCTION SESSION
-    // -------------------------------------------------------------------------
-
-    if (!liveUser) {
       clearAllAuthTokens();
-
-      setState({
-        auth: {
-          authenticated: false,
-          loading: false,
-          user: null,
-          authentication: null,
-          error: null,
-        },
-
-        user: null,
-        isPrimaryMaster: false,
-      });
-
-      document
-        .getElementById(
-          "zamorin-dev-preview-banner"
-        )
-        ?.remove();
-
-      mountAuthScreen("login");
-
-      return;
     }
-
-    // -------------------------------------------------------------------------
-    // VALID PRODUCTION SESSION
-    // -------------------------------------------------------------------------
-
-    applyAuthenticatedUser(
-      liveUser,
-      urlHash
-    );
-
-    // Production must never render the
-    // development persona-switch banner.
-    document
-      .getElementById(
-        "zamorin-dev-preview-banner"
-      )
-      ?.remove();
-
-    renderShell();
-
-    registerServiceWorker().catch(
-      () => {
-        // PWA support must never prevent
-        // the application from loading.
-      }
-    );
-
-    return;
   }
 
-  // ===========================================================================
-  // LOCAL DEVELOPMENT / DEV PREVIEW MODE ONLY
-  // ===========================================================================
+  // Unauthenticated: Mount login screen immediately with ZERO latency!
+  clearAllAuthTokens();
+  setState({
+    auth: {
+      authenticated: false,
+      loading: false,
+      user: null,
+      authentication: null,
+      error: null,
+    },
+    user: null,
+    isPrimaryMaster: false,
+  });
 
-  const devKey =
-    getRequestedDevRole();
-
-  const devUser =
-    DEV_PREVIEW_USERS[devKey] ||
-    DEV_PREVIEW_USERS.master;
-
-  const canonicalRole =
-    devKey === "master_normal"
-      ? "master"
-      : devKey;
-
-  const roleNavigation =
-    NAVIGATION[canonicalRole] ||
-    NAVIGATION.master;
-
-  const defaultRoute =
-    roleNavigation?.items?.[0]?.route ||
-    (
-      canonicalRole === "staff"
-        ? "staff-home"
-        : "dashboard"
-    );
-
-  const isPrimary =
-    Boolean(
-      devUser?.isPrimaryMaster
-    );
-
-  const initialRoute =
-    urlHash
-      ? (
-          isRouteAllowed(
-            canonicalRole,
-            urlHash,
-            isPrimary
-          )
-            ? urlHash
-            : defaultRoute
-        )
-      : defaultRoute;
-
-  // ---------------------------------------------------------------------------
-  // Attempt to synchronize local preview with a legitimate live session.
-  // ---------------------------------------------------------------------------
-
-  let liveUser = null;
-
-  try {
-    const payload =
-      await apiGet("/auth/me");
-
-    if (payload?.data?.user) {
-      liveUser =
-        payload.data.user;
-    }
-  } catch (err) {
-    // Expected during unauthenticated local development.
-    // DEV preview fallback is permitted here because this branch
-    // can execute only on an approved local development origin.
-  }
-
-  // ---------------------------------------------------------------------------
-  // LOCAL DEVELOPMENT USER SELECTION
-  // ---------------------------------------------------------------------------
-
-  if (liveUser) {
-    applyAuthenticatedUser(
-      liveUser,
-      urlHash
-    );
-  } else {
-    setState({
-      auth: {
-        authenticated: true,
-        loading: false,
-        user: devUser,
-        authentication: null,
-        error: null,
-      },
-
-      user: devUser,
-      isPrimaryMaster:
-        isPrimary,
-      role:
-        canonicalRole,
-      route:
-        initialRoute,
-    });
-  }
-
-  renderShell();
-
-  renderDevPreviewBanner(
-    devKey
-  );
-
-  registerServiceWorker().catch(
-    () => {
-      // PWA support must never prevent
-      // the application from loading.
-    }
-  );
+  mountAuthScreen("login");
+  registerServiceWorker().catch(() => {});
 }
 
 // =============================================================================
@@ -1164,16 +995,8 @@ if (typeof window !== "undefined") {
 // =============================================================================
 
 if (typeof document !== "undefined") {
-  if (
-    document.readyState === "loading"
-  ) {
-    document.addEventListener(
-      "DOMContentLoaded",
-      boot,
-      {
-        once: true,
-      }
-    );
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", boot, { once: true });
   } else {
     boot();
   }
