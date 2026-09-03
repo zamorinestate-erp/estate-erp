@@ -52,7 +52,7 @@ import {
   renderMfaChallenge2,
   wireMfaChallenge2,
   showGlassAlert,
-} from "./pages/login2.js?v=3.3.5";
+} from "./pages/login2.js?v=3.3.6";
 import "./responsiveAuditor.js";
 
 // =============================================================================

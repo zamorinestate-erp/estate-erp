@@ -476,14 +476,6 @@ export function wireLoginPage2(container, { onSubmit, onForgotPassword, onCafeOp
     });
   }
 
-  // Cafe Ops link
-  if (cafeOpsLink && typeof onCafeOps === "function") {
-    cafeOpsLink.addEventListener("click", (e) => {
-      e.preventDefault();
-      onCafeOps();
-    });
-  }
-
   // Form Submit
   if (form && typeof onSubmit === "function") {
     form.addEventListener("submit", async (e) => {
