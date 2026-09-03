@@ -192,8 +192,13 @@ const listEmployees = asyncHandler(async (req, res) => {
 
 // ─── 3. EMPLOYEE 360 PROFILE ─────────────────────────────────────────────────
 const getEmployee360 = asyncHandler(async (req, res) => {
-  const { organisationId, isPrimaryMaster } = req.auth;
+  const { organisationId, isPrimaryMaster, role, userId: authUserId } = req.auth;
   const { userId } = req.params;
+
+  // Strict isolation: STAFF / EMPLOYEE cannot view another employee's profile
+  if ((role === 'STAFF' || role === 'EMPLOYEE') && userId && userId !== authUserId) {
+    throw new ApiError(403, 'FORBIDDEN', 'Access denied. Staff members may only view their own employee profile.');
+  }
 
   const user = await User.findOne({ organisationId, userId }).lean();
   if (!user) {

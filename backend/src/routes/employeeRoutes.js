@@ -174,11 +174,11 @@ router.post(
   submitSelfProfileAttestation
 );
 
-// 8. Individual Employee Profile
+// 8. Individual Employee Profile (Administrative Access Only; Staff use /me)
 router.get(
   '/:userId',
   authorize('EMPLOYEE:READ', {
-    allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN', 'STAFF'],
+    allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'],
     targetUserIdResolver: (req) => req.params?.userId,
   }),
   getEmployee360
@@ -187,7 +187,7 @@ router.get(
 router.get(
   '/:userId/360',
   authorize('EMPLOYEE:READ', {
-    allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN', 'STAFF'],
+    allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'],
     targetUserIdResolver: (req) => req.params?.userId,
   }),
   getEmployee360
