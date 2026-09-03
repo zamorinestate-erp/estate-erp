@@ -326,21 +326,10 @@ export async function handlePasswordResetFinal({
   return result;
 }
 
-<<<<<<< HEAD
-// =============================================================================
-// ROLE NORMALISATION
-// =============================================================================
-=======
 export function isLegacyLoginRequested() {
   if (typeof window === "undefined") return false;
   return new URLSearchParams(window.location.search).get("legacyLogin") === "true";
 }
-
-export function mountAuthScreen(screen = "login", params = {}) {
-  if (typeof document === "undefined") return;
-  const appEl = document.getElementById("app");
-  if (!appEl) return;
->>>>>>> 01af0fc (feat(auth): integrate LOGIN-PAGE-2.0 presentation layer and standards-compliant WebAuthn passkey backend)
 
 function resolveAuthenticatedRole(user) {
   const rawRole = String(user?.role || "").toUpperCase();
@@ -385,51 +374,17 @@ function resolveAuthenticatedRole(user) {
 // =============================================================================
 
 export function mountAuthScreen(screen = "login", params = {}) {
-  if (typeof document === "undefined") {
-    return;
-  }
+  if (typeof document === "undefined") return;
 
   const appEl = document.getElementById("app");
-
-  if (!appEl) {
-    return;
-  }
+  if (!appEl) return;
 
   // Authentication screens must never display the development banner.
-  document
-    .getElementById("zamorin-dev-preview-banner")
-    ?.remove();
+  document.getElementById("zamorin-dev-preview-banner")?.remove();
 
   appEl.className = "auth-screen";
   delete appEl.dataset.shellRole;
 
-<<<<<<< HEAD
-  // ---------------------------------------------------------------------------
-  // LOGIN
-  // ---------------------------------------------------------------------------
-
-  if (screen === "login") {
-    appEl.innerHTML = renderLogin(params);
-
-    wireLogin(appEl, {
-      onSubmit: async ({
-        organisationId,
-        email,
-        password,
-      }) => {
-        try {
-          const res = await apiPost("/auth/login", {
-            organisationId,
-            email,
-            password,
-            identifier: email,
-
-            device: {
-              deviceId: getOrCreateDeviceId(),
-              deviceName: "Browser Client",
-              deviceType: "DESKTOP",
-            },
-=======
   const useLegacy = isLegacyLoginRequested();
 
   if (screen === "login") {
@@ -466,217 +421,20 @@ export function mountAuthScreen(screen = "login", params = {}) {
             code,
             tempToken: params.tempToken,
             challengeId: params.challengeId
->>>>>>> 01af0fc (feat(auth): integrate LOGIN-PAGE-2.0 presentation layer and standards-compliant WebAuthn passkey backend)
           });
 
-          const accessToken =
-            res?.data?.accessToken ||
-            res?.data?.token;
-
+          const accessToken = res?.data?.accessToken || res?.data?.token;
           if (accessToken) {
             setAccessToken(accessToken);
           }
-
           const user = res?.data?.user;
-
           if (user) {
-<<<<<<< HEAD
-            const {
-              role,
-              isPrimaryMaster,
-            } = resolveAuthenticatedRole(user);
-
-            const landingRoute =
-              role === "staff"
-                ? "staff-home"
-                : "dashboard";
-
-            setState({
-              auth: {
-                authenticated: true,
-                user,
-                loading: false,
-              },
-
-              user,
-              role,
-              isPrimaryMaster,
-              route: landingRoute,
-            });
-
-            window.location.hash = `#${landingRoute}`;
-
-            await boot();
-
-            return;
-          }
-
-          // If login succeeded but the backend response did not include the
-          // user object, boot() will validate the session through /auth/me.
-=======
             handleAuthenticatedUserSession(user);
             return;
           }
->>>>>>> 01af0fc (feat(auth): integrate LOGIN-PAGE-2.0 presentation layer and standards-compliant WebAuthn passkey backend)
           window.location.hash = "#dashboard";
-
           await boot();
         } catch (err) {
-<<<<<<< HEAD
-          const userMsg =
-            err?.userMessage ||
-            err?.message ||
-            "Invalid credentials. Please check your Organisation ID, email, and password.";
-
-          throw new Error(userMsg);
-        }
-      },
-
-      onForgotPassword: ({
-        organisationId,
-        email,
-      }) => {
-        mountAuthScreen("forgot", {
-          organisationId,
-          email,
-        });
-      },
-    });
-
-    return;
-  }
-
-  // ---------------------------------------------------------------------------
-  // PASSWORD RESET REQUEST
-  // ---------------------------------------------------------------------------
-
-  if (screen === "forgot") {
-    appEl.innerHTML =
-      renderPasswordResetRequest(params);
-
-    wirePasswordResetRequest(appEl, {
-      onSubmit: async ({
-        organisationId,
-        email,
-      }) => {
-        const res =
-          await handlePasswordResetRequest({
-            organisationId,
-            email,
-          });
-
-        mountAuthScreen("verify", {
-          organisationId,
-          email,
-          challengeId: res?.data?.challengeId,
-        });
-      },
-
-      onBack: () =>
-        mountAuthScreen("login"),
-    });
-
-    return;
-  }
-
-  // ---------------------------------------------------------------------------
-  // PASSWORD RESET VERIFICATION
-  // ---------------------------------------------------------------------------
-
-  if (screen === "verify") {
-    appEl.innerHTML =
-      renderPasswordResetVerify(params);
-
-    wirePasswordResetVerify(appEl, {
-      onSubmit: async ({ code }) => {
-        const res =
-          await handlePasswordResetVerify({
-            organisationId:
-              params.organisationId,
-            email: params.email,
-            code,
-          });
-
-        mountAuthScreen("reset", {
-          organisationId:
-            params.organisationId,
-          email: params.email,
-          resetToken: res.resetToken,
-          challengeId: res.challengeId,
-        });
-      },
-
-      onBack: () =>
-        mountAuthScreen("forgot", {
-          organisationId:
-            params.organisationId,
-          email: params.email,
-        }),
-    });
-
-    return;
-  }
-
-  // ---------------------------------------------------------------------------
-  // PASSWORD RESET FINAL
-  // ---------------------------------------------------------------------------
-
-  if (screen === "reset") {
-    appEl.innerHTML =
-      renderPasswordResetFinal(params);
-
-    wirePasswordResetFinal(appEl, {
-      onSubmit: async ({
-        newPassword,
-      }) => {
-        await handlePasswordResetFinal({
-          organisationId:
-            params.organisationId,
-          challengeId:
-            params.challengeId,
-          resetToken:
-            params.resetToken,
-          newPassword,
-        });
-
-        mountAuthScreen("login", {
-          notice:
-            "Password updated successfully. Please sign in with your new password.",
-        });
-      },
-
-      onCancel: () =>
-        mountAuthScreen("login"),
-    });
-  }
-}
-
-// =============================================================================
-// DEVELOPMENT PREVIEW BANNER
-// =============================================================================
-
-function renderDevPreviewBanner(
-  activeRole = "master"
-) {
-  if (typeof document === "undefined") {
-    return;
-  }
-
-  // Absolute production guard.
-  if (!isDirectDashboardAllowed()) {
-    document
-      .getElementById("zamorin-dev-preview-banner")
-      ?.remove();
-
-    return;
-  }
-
-  let banner =
-    document.getElementById(
-      "zamorin-dev-preview-banner"
-    );
-
-=======
           throw new Error(err.userMessage || err.message || "Invalid MFA code. Please try again.");
         }
       },
@@ -807,28 +565,14 @@ async function handleCompleteLoginFlow({ organisationId, email, password }) {
 }
 
 function handleAuthenticatedUserSession(user) {
-  const rawRole = String(user.role || "").toUpperCase();
-  let mappedRole = "master";
-  let isPrimary = false;
-
-  if (rawRole === "MASTER") {
-    isPrimary = Boolean(user.isPrimaryMaster);
-    mappedRole = isPrimary ? "master" : "master_normal";
-  } else if (rawRole === "OWNER") {
-    mappedRole = "owner";
-  } else if (rawRole === "CAFE_ADMIN" || rawRole === "ADMIN") {
-    mappedRole = "cafe_admin";
-  } else if (rawRole === "STAFF" || rawRole === "EMPLOYEE") {
-    mappedRole = "staff";
-  }
-
-  const landingRoute = (mappedRole === "staff") ? "staff-home" : "dashboard";
+  const { role, isPrimaryMaster } = resolveAuthenticatedRole(user);
+  const landingRoute = (role === "staff") ? "staff-home" : "dashboard";
 
   setState({
     auth: { authenticated: true, user, loading: false },
     user,
-    role: (mappedRole === "master_normal") ? "master" : mappedRole,
-    isPrimaryMaster: isPrimary,
+    role,
+    isPrimaryMaster,
     route: landingRoute,
   });
 
@@ -838,8 +582,14 @@ function handleAuthenticatedUserSession(user) {
 
 function renderDevPreviewBanner(activeRole = "master") {
   if (typeof document === "undefined") return;
+
+  // Absolute production guard.
+  if (!isDirectDashboardAllowed()) {
+    document.getElementById("zamorin-dev-preview-banner")?.remove();
+    return;
+  }
+
   let banner = document.getElementById("zamorin-dev-preview-banner");
->>>>>>> 01af0fc (feat(auth): integrate LOGIN-PAGE-2.0 presentation layer and standards-compliant WebAuthn passkey backend)
   if (!banner) {
     banner =
       document.createElement("div");
