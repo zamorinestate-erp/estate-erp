@@ -78,17 +78,45 @@
   color: var(--l2-text-muted);
 }
 
+/* Guarantee ZERO page scrolling when login screen is active */
+html,
+body {
+  height: 100vh;
+  height: 100dvh;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
+#app.auth-screen {
+  min-height: 100vh !important;
+  min-height: 100dvh !important;
+  height: 100vh !important;
+  height: 100dvh !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  overflow: hidden !important;
+  box-sizing: border-box !important;
+}
+
 /* Glass Wrapper */
 .l2-glass-wrapper {
   position: relative;
   z-index: 10;
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100vh;
+  max-height: 100dvh;
   width: 100%;
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 24px 16px;
+  padding: 10px 16px;
   box-sizing: border-box;
+  overflow: hidden;
 }
 
 /* Glass Card */
@@ -99,15 +127,17 @@
   border: 1px solid var(--l2-glass-border);
   border-radius: 12px;
   box-shadow: var(--l2-glass-shadow);
-  padding: 28px 28px;
+  padding: 20px 22px;
   width: 100%;
-  max-width: 420px;
+  max-width: 380px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 9px;
   box-sizing: border-box;
   color: var(--l2-text-main);
   animation: l2FadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  max-height: 96vh;
+  max-height: 96dvh;
 }
 
 @keyframes l2FadeUp {
@@ -127,48 +157,48 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
 }
 
 .l2-brand-logo {
-  width: 110px;
+  width: 90px;
   height: auto;
   filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.4));
 }
 
 .login-header h2 {
-  font-size: 24px;
+  font-size: 21px;
   font-weight: 700;
   color: #fff;
   text-align: center;
   margin: 0;
-  line-height: 1.2;
+  line-height: 1.15;
 }
 
 .login-subtitle {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--l2-text-muted);
   text-align: center;
-  margin: 3px 0 0 0;
-  line-height: 1.4;
+  margin: 2px 0 0 0;
+  line-height: 1.35;
 }
 
 /* Inputs */
 .light-input-group {
   position: relative;
   width: 100%;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 
 .light-input-group input {
   width: 100%;
-  height: 48px;
-  padding: 0 44px;
+  height: 42px;
+  padding: 0 40px;
   background: var(--l2-input-bg);
   border: 1px solid var(--l2-glass-border);
-  border-radius: 10px;
+  border-radius: 9px;
   color: #fff;
-  font-size: 15px;
+  font-size: 14px;
   font-family: inherit;
   outline: none;
   transition: var(--l2-transition);
@@ -198,11 +228,11 @@
 }
 
 .light-input-icon.left {
-  left: 14px;
+  left: 12px;
 }
 
 .light-input-icon.right {
-  right: 14px;
+  right: 12px;
   pointer-events: auto;
   background: none;
   border: none;
@@ -219,24 +249,24 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 13px;
+  font-size: 12px;
   color: var(--l2-text-muted);
-  margin-bottom: 8px;
-  margin-top: 2px;
+  margin-bottom: 5px;
+  margin-top: 1px;
 }
 
 .toggle-switch-group {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   cursor: pointer;
   user-select: none;
 }
 
 .toggle-switch {
   position: relative;
-  width: 36px;
-  height: 20px;
+  width: 34px;
+  height: 18px;
 }
 
 .toggle-switch input {
@@ -257,8 +287,8 @@
 .light-slider:before {
   position: absolute;
   content: "";
-  height: 14px;
-  width: 14px;
+  height: 12px;
+  width: 12px;
   left: 2px;
   bottom: 2px;
   background-color: white;
@@ -277,7 +307,7 @@
 }
 
 .light-toggle-label {
-  font-size: 12.5px;
+  font-size: 12px;
   color: var(--l2-text-muted);
 }
 
@@ -286,9 +316,9 @@
   border: 1px solid rgba(255, 255, 255, 0.35);
   border-radius: 20px;
   color: #fff;
-  padding: 5px 12px;
+  padding: 4px 10px;
   text-decoration: none;
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 500;
   transition: var(--l2-transition);
   cursor: pointer;
@@ -306,8 +336,8 @@
 .tc-trigger-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 8px;
+  gap: 8px;
+  margin-bottom: 5px;
 }
 
 .tc-trigger-btn {
@@ -315,9 +345,9 @@
   border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 20px;
   color: #fff;
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 500;
-  padding: 6px 14px;
+  padding: 4px 12px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -337,22 +367,22 @@
   background: rgba(34, 197, 94, 0.25);
   border: 1px solid rgba(34, 197, 94, 0.6);
   color: #86efac;
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 600;
-  padding: 3px 10px;
+  padding: 2px 8px;
   border-radius: 12px;
 }
 
 /* Main Action Button */
 .light-btn {
   width: 100%;
-  height: 48px;
-  padding: 0 16px;
+  height: 42px;
+  padding: 0 14px;
   background: linear-gradient(135deg, #d4a359 0%, #b8860b 100%);
   border: 1px solid rgba(255, 255, 255, 0.4);
-  border-radius: 10px;
+  border-radius: 9px;
   color: #0b0f19;
-  font-size: 15px;
+  font-size: 14.5px;
   font-weight: 700;
   letter-spacing: 0.3px;
   cursor: pointer;
@@ -383,9 +413,9 @@
   display: flex;
   align-items: center;
   text-align: center;
-  margin: 4px 0;
+  margin: 2px 0;
   color: rgba(255, 255, 255, 0.5);
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .light-divider::before,
@@ -396,22 +426,22 @@
 }
 
 .light-divider span {
-  padding: 0 10px;
+  padding: 0 8px;
 }
 
 /* Social Login Row */
 .social-login-row {
   display: flex;
   justify-content: center;
-  gap: 12px;
+  gap: 10px;
 }
 
 .light-social-btn {
   background: rgba(255, 255, 255, 0.12);
   border: 1px solid rgba(255, 255, 255, 0.3);
-  border-radius: 10px;
-  width: 44px;
-  height: 44px;
+  border-radius: 9px;
+  width: 38px;
+  height: 38px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -427,8 +457,8 @@
 }
 
 .light-social-btn svg {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
 }
 
 /* Notice & Error Banners */

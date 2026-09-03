@@ -2120,13 +2120,15 @@
 .auth-screen,
 #app.auth-screen {
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
   background: radial-gradient(120% 120% at 50% 0%, var(--paper-start, #faf9f6) 0%, var(--paper-end, #efeae0) 100%);
-  padding: 24px 16px !important;
+  padding: 0 !important;
   margin: 0;
   box-sizing: border-box;
+  overflow: hidden !important;
 }
 
 [data-theme="noir"] .auth-screen,

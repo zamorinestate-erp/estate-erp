@@ -100,27 +100,27 @@ function renderBackgroundAndModalsHtml() {
         <p style="font-size: 13px; color: var(--l2-text-muted); margin-bottom: 12px;">Authenticate securely using your device hardware sensor.</p>
         <div class="biometric-options">
           <button type="button" class="light-bio-option" data-bio-type="faceId">
-            <svg class="bio-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M4 8V6a2 2 0 0 1 2-2h2"/>
-              <path d="M4 16v2a2 2 0 0 0 2 2h2"/>
-              <path d="M16 4h2a2 2 0 0 1 2 2v2"/>
-              <path d="M16 20h2a2 2 0 0 0 2-2v-2"/>
-              <path d="M9 10h.01"/>
-              <path d="M15 10h.01"/>
-              <path d="M9.5 15.05a3.5 3.5 0 0 0 5 0"/>
+            <svg class="bio-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M5 3H3v2"/>
+              <path d="M19 3h2v2"/>
+              <path d="M5 21H3v-2"/>
+              <path d="M19 21h2v-2"/>
+              <path d="M9 9h.01"/>
+              <path d="M15 9h.01"/>
+              <path d="M10 13c.5.5 1.5.5 2 0"/>
+              <path d="M8 17c1.5 1 4.5 1 6 0"/>
             </svg>
             <span style="font-size: 13px; font-weight: 600;">Face ID</span>
           </button>
           <button type="button" class="light-bio-option" data-bio-type="fingerprint">
-            <svg class="bio-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <svg class="bio-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2 12C2 6.5 6.5 2 12 2a10 10 0 0 1 8 4"/>
+              <path d="M5 19.5C5.5 18 6 15 6 12c0-.7.12-1.37.34-2"/>
+              <path d="M17.29 21.02c.12-.6.43-2.3.5-3.02 0-3.3-2.7-6-6-6s-6 2.7-6 6c0 1.02-.1 2.51-.26 4"/>
               <path d="M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4"/>
-              <path d="M14 13.12c0 2.38 0 6.38-1 8.88"/>
-              <path d="M17.29 21.02c.12-.6.43-2.3.5-3.02"/>
-              <path d="M2 12a10 10 0 0 1 18-6"/>
-              <path d="M2 16h.01"/>
-              <path d="M21.8 16c.2-2 .13-4-.03-5"/>
-              <path d="M5 19.5C5.5 18 6 15 6 12a6 6 0 0 1 .34-2"/>
               <path d="M8.65 22c.21-.66.45-1.32.57-2"/>
+              <path d="M14 13.12c0 2.38 0 6.38-1 8.88"/>
+              <path d="M21.8 16c.2-2 .13-4-.03-5A10 10 0 0 0 12 2"/>
               <path d="M9 6.8a6 6 0 0 1 9 5.2v2"/>
             </svg>
             <span style="font-size: 13px; font-weight: 600;">Fingerprint</span>
@@ -191,7 +191,7 @@ export function renderLoginPage2({ organisationId = "ZAMORIN", email = "", notic
           <!-- Organisation ID -->
           <div class="light-input-group">
             <div class="light-input-icon left">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
                 <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
               </svg>
@@ -202,8 +202,9 @@ export function renderLoginPage2({ organisationId = "ZAMORIN", email = "", notic
           <!-- Email -->
           <div class="light-input-group">
             <div class="light-input-icon left">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="4" width="20" height="16" rx="2"></rect>
+                <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path>
               </svg>
             </div>
             <input type="email" id="l2-email" placeholder="Corporate Email ID" value="${rememberedEmail}" required autocomplete="username" />
@@ -212,13 +213,14 @@ export function renderLoginPage2({ organisationId = "ZAMORIN", email = "", notic
           <!-- Password -->
           <div class="light-input-group">
             <div class="light-input-icon left">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1s3.1 1.39 3.1 3.1v2z"/>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
               </svg>
             </div>
             <input type="password" id="l2-password" placeholder="Password" required autocomplete="current-password" />
             <button type="button" class="light-input-icon right" id="l2-toggle-pwd" aria-label="Toggle password">
-              <svg id="l2-eye-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <svg id="l2-eye-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
                 <circle cx="12" cy="12" r="3"></circle>
               </svg>
@@ -260,14 +262,16 @@ export function renderLoginPage2({ organisationId = "ZAMORIN", email = "", notic
           <button type="button" class="light-social-btn" id="l2-social-github" aria-label="GitHub sign-in">
             <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
           </button>
-          <button type="button" class="light-social-btn" id="l2-social-biometrics" aria-label="Biometrics & passkeys">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <button type="button" class="light-social-btn" id="l2-social-biometrics" aria-label="Biometrics & passkeys" title="Face ID / Fingerprint / Passkeys">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2 12C2 6.5 6.5 2 12 2a10 10 0 0 1 8 4"/>
+              <path d="M5 19.5C5.5 18 6 15 6 12c0-.7.12-1.37.34-2"/>
+              <path d="M17.29 21.02c.12-.6.43-2.3.5-3.02 0-3.3-2.7-6-6-6s-6 2.7-6 6c0 1.02-.1 2.51-.26 4"/>
               <path d="M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4"/>
+              <path d="M8.65 22c.21-.66.45-1.32.57-2"/>
               <path d="M14 13.12c0 2.38 0 6.38-1 8.88"/>
-              <path d="M17.29 21.02c.12-.6.43-2.3.5-3.02"/>
-              <path d="M2 12a10 10 0 0 1 18-6"/>
-              <path d="M2 16h.01"/>
-              <path d="M21.8 16c.2-2 .13-4-.03-5"/>
+              <path d="M21.8 16c.2-2 .13-4-.03-5A10 10 0 0 0 12 2"/>
+              <path d="M9 6.8a6 6 0 0 1 9 5.2v2"/>
             </svg>
           </button>
         </div>
