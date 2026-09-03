@@ -460,6 +460,7 @@ function renderDirectorySubpanel() {
                 </td>
                 <td style="padding:12px 14px; text-align:right; white-space:nowrap;">
                   <button class="btn btn-ghost open-employee-360-btn" data-user-id="${emp.userId}" style="font-size:12px; padding:4px 8px;">View 360</button>
+                  <button class="btn btn-ghost view-emp-attendance-btn" data-user-id="${emp.userId}" style="font-size:12px; padding:4px 8px; color:var(--brand-gold, #c89d5c);">Attendance</button>
                   <button class="btn btn-ghost open-transfer-modal-btn" data-user-id="${emp.userId}" style="font-size:12px; padding:4px 8px;">Transfer</button>
                   <button class="btn btn-ghost open-offboard-modal-btn" data-user-id="${emp.userId}" style="font-size:12px; padding:4px 8px; color:#dc2626;">Offboard</button>
                 </td>
@@ -958,6 +959,13 @@ function attachDirectoryRowListeners() {
     btn.addEventListener("click", () => {
       const userId = btn.getAttribute("data-user-id");
       openEmployee360Drawer(userId);
+    });
+  });
+
+  // View Employee Attendance
+  document.querySelectorAll(".view-emp-attendance-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      navigate("attendance/calendar360");
     });
   });
 
@@ -1714,12 +1722,21 @@ function openEmployee360Drawer(userId) {
           </div>
         </div>
 
-        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:10px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-top:10px;">
+          <button class="btn btn-secondary" id="e360-view-attendance-btn" type="button" style="display:flex; align-items:center; gap:6px;">
+            <span>⏱️</span>
+            <span>View Attendance &amp; Timesheets</span>
+          </button>
           <button class="btn btn-ghost" onclick="document.getElementById('modal-root').innerHTML=''">Close Profile</button>
         </div>
       </div>
     </div>
   `);
+
+  document.getElementById("e360-view-attendance-btn")?.addEventListener("click", () => {
+    document.getElementById("modal-root").innerHTML = "";
+    navigate("attendance/calendar360");
+  });
 
   apiGet(`/employees/${userId}`).then(res => {
     const prof = res?.data?.profile;

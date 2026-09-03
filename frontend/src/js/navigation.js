@@ -97,6 +97,7 @@ export const NAVIGATION = {
       { id: 'sales-cash',   label: 'Sales & Cash Book',       icon: 'finance',      route: 'sales-cash',      group: 'FINANCE' },
       { id: 'performance',  label: 'Café Performance',        icon: 'performance',  route: 'performance',     group: 'INSIGHTS' },
       { id: 'employees',    label: 'Employees',               icon: 'employees',    route: 'employees',       group: 'PEOPLE' },
+      { id: 'attendance',   label: 'Attendance & Shifts',     icon: 'attendance',   route: 'attendance',      group: 'PEOPLE' },
       { id: 'finance',      label: 'Finance Summary',         icon: 'finance',      route: 'finance',         group: 'FINANCE' },
       { id: 'passbook',     label: 'Passbook & Treasury',     icon: 'passbook',     route: 'passbook',        group: 'FINANCE' },
       { id: 'ledger',       label: 'Personal Ledger & Owner Account', icon: 'ledger', route: 'ledger',       group: 'FINANCE' },
