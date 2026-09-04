@@ -8,12 +8,26 @@
 "use strict";
 
 export const BACKGROUND_IMAGES = [
-  "/src/assets/login-backgrounds/bg-1.webp",
-  "/src/assets/login-backgrounds/bg-2.webp",
-  "/src/assets/login-backgrounds/bg-3.webp",
-  "/src/assets/login-backgrounds/bg-4.webp",
-  "/src/assets/login-backgrounds/bg-5.webp",
-  "/src/assets/login-backgrounds/bg-6.webp",
+  "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?auto=format&fit=crop&w=3840&q=80",
+  "https://images.unsplash.com/photo-1433086966358-54859d0ed716?auto=format&fit=crop&w=3840&q=80",
+  "https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=3840&q=80",
+  "https://images.unsplash.com/photo-1472214103451-9374bd1c798e?auto=format&fit=crop&w=3840&q=80",
+  "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=3840&q=80",
+  "https://images.unsplash.com/photo-1470770841072-f978db4cd05f?auto=format&fit=crop&w=3840&q=80",
+  "https://images.unsplash.com/photo-1501785888041-af3ef285b470?auto=format&fit=crop&w=3840&q=80",
+  "https://images.unsplash.com/photo-1418065460487-3e41a6c84dc5?auto=format&fit=crop&w=3840&q=80",
+  "https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?auto=format&fit=crop&w=3840&q=80",
+  "https://images.unsplash.com/photo-1518495973542-4542c06a5843?auto=format&fit=crop&w=3840&q=80",
+  "https://images.unsplash.com/photo-1443632864897-14973fa006cf?auto=format&fit=crop&w=3840&q=80",
+  "https://images.unsplash.com/photo-1624174822050-1e7a6e979f72?auto=format&fit=crop&w=3840&q=80",
+  "https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=3840&q=80",
+  "https://images.unsplash.com/photo-1475924156734-496f6cac6ec1?auto=format&fit=crop&w=3840&q=80",
+  "https://images.unsplash.com/photo-1496181133206-80ce9b88a853?auto=format&fit=crop&w=3840&q=80",
+  "https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=3840&q=80",
+  "https://images.unsplash.com/photo-1444723121867-7a241cacace9?auto=format&fit=crop&w=3840&q=80",
+  "https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=3840&q=80",
+  "https://images.unsplash.com/photo-1426604966848-d7adac402bff?auto=format&fit=crop&w=3840&q=80",
+  "https://images.unsplash.com/photo-1397360668706-fbbc9d08efce?auto=format&fit=crop&w=3840&q=80"
 ];
 
 let selectedBackground = null;
