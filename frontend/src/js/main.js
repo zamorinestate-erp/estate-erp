@@ -52,7 +52,7 @@ import {
   renderMfaChallenge2,
   wireMfaChallenge2,
   showGlassAlert,
-} from "./pages/login2.js?v=3.3.6";
+} from "./pages/login2.js?v=3.3.7";
 import "./responsiveAuditor.js";
 
 // =============================================================================
@@ -374,6 +374,28 @@ function resolveAuthenticatedRole(user) {
 // AUTHENTICATION SCREEN
 // =============================================================================
 
+// =============================================================================
+// BACKEND HEALTH WARM-UP (NON-BLOCKING & ASYNCHRONOUS)
+// =============================================================================
+let warmupTriggered = false;
+
+export function triggerBackendWarmup() {
+  if (warmupTriggered) return;
+  warmupTriggered = true;
+
+  try {
+    const apiBase = window.ZAMORIN_API_BASE_URL || "/api/v1";
+    // Non-blocking fetch with ZERO credentials to wake up Render backend during cold starts
+    fetch(`${apiBase}/health`, {
+      method: "GET",
+      cache: "no-store",
+      credentials: "omit",
+    }).catch(() => {
+      // Non-blocking: warm-up failure does not affect the UI or user typing
+    });
+  } catch {}
+}
+
 export function mountAuthScreen(screen = "login", params = {}) {
   if (typeof document === "undefined") return;
 
@@ -389,6 +411,9 @@ export function mountAuthScreen(screen = "login", params = {}) {
   const useLegacy = isLegacyLoginRequested();
 
   if (screen === "login") {
+    // Non-blocking wake-up call to backend
+    triggerBackendWarmup();
+
     if (useLegacy) {
       appEl.innerHTML = renderLogin(params);
       wireLogin(appEl, {
@@ -526,24 +551,28 @@ export function mountAuthScreen(screen = "login", params = {}) {
 
 async function handleCompleteLoginFlow({ organisationId, email, password }) {
   try {
-    const res = await apiPost("/auth/login", {
-      organisationId,
-      email,
-      password,
-      identifier: email,
-      device: {
-        deviceId: getOrCreateDeviceId(),
-        deviceName: "Browser Client",
-        deviceType: "DESKTOP"
-      }
-    });
+    const res = await apiPost(
+      "/auth/login",
+      {
+        organisationId,
+        email,
+        password,
+        identifier: email,
+        device: {
+          deviceId: getOrCreateDeviceId(),
+          deviceName: "Browser Client",
+          deviceType: "DESKTOP",
+        },
+      },
+      { timeoutMs: 60000 }
+    );
 
     // Check if MFA is required
     if (res?.data?.mfaRequired || res?.status === 202 || (res?.data?.challengeId && !res?.data?.accessToken)) {
       mountAuthScreen("mfa", {
         email,
         challengeId: res?.data?.challengeId,
-        tempToken: res?.data?.tempToken || res?.data?.token
+        tempToken: res?.data?.tempToken || res?.data?.token,
       });
       return;
     }
@@ -560,8 +589,7 @@ async function handleCompleteLoginFlow({ organisationId, email, password }) {
     window.location.hash = "#dashboard";
     boot();
   } catch (err) {
-    const userMsg = err.userMessage || err.message || "Invalid credentials. Please check your Organisation ID, email, and password.";
-    throw new Error(userMsg);
+    throw err;
   }
 }
 

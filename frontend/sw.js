@@ -2,7 +2,7 @@
 // ZAMORIN CAFÉ ERP — SERVICE WORKER (PWA & OFFLINE KIOSK ENGINE)
 // =============================================================================
 
-const CACHE_VERSION = 'zamorin-pwa-v2.3.4';
+const CACHE_VERSION = 'zamorin-pwa-v2.3.5';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const SHELL_CACHE = `${CACHE_VERSION}-shell`;
 
@@ -16,6 +16,7 @@ const PRECACHE_SHELL = [
   './src/styles/zamorin.css',
   './src/styles/login2.css',
   './src/assets/zamorin-app-icon-1024.png',
+  './src/assets/login-backgrounds/bg-1.webp',
 ];
 
 // Install: Pre-cache core shell resources
@@ -68,11 +69,14 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 3. Stale-While-Revalidate for local static assets (CSS, JS, PNG, SVG)
+  // 3. Stale-While-Revalidate for local static assets (CSS, JS, WebP, PNG, SVG)
   if (
     url.origin === self.location.origin &&
     (url.pathname.endsWith('.css') ||
       url.pathname.endsWith('.js') ||
+      url.pathname.endsWith('.webp') ||
+      url.pathname.endsWith('.avif') ||
+      url.pathname.endsWith('.jpg') ||
       url.pathname.endsWith('.png') ||
       url.pathname.endsWith('.svg') ||
       url.pathname.endsWith('.json'))

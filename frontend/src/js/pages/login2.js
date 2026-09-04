@@ -7,35 +7,32 @@
 
 "use strict";
 
-const BACKGROUND_IMAGES = [
-  "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?auto=format&fit=crop&w=3840&q=80",
-  "https://images.unsplash.com/photo-1433086966358-54859d0ed716?auto=format&fit=crop&w=3840&q=80",
-  "https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=3840&q=80",
-  "https://images.unsplash.com/photo-1472214103451-9374bd1c798e?auto=format&fit=crop&w=3840&q=80",
-  "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=3840&q=80",
-  "https://images.unsplash.com/photo-1470770841072-f978db4cd05f?auto=format&fit=crop&w=3840&q=80",
-  "https://images.unsplash.com/photo-1501785888041-af3ef285b470?auto=format&fit=crop&w=3840&q=80",
-  "https://images.unsplash.com/photo-1418065460487-3e41a6c84dc5?auto=format&fit=crop&w=3840&q=80",
-  "https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?auto=format&fit=crop&w=3840&q=80",
-  "https://images.unsplash.com/photo-1518495973542-4542c06a5843?auto=format&fit=crop&w=3840&q=80",
-  "https://images.unsplash.com/photo-1443632864897-14973fa006cf?auto=format&fit=crop&w=3840&q=80",
-  "https://images.unsplash.com/photo-1624174822050-1e7a6e979f72?auto=format&fit=crop&w=3840&q=80",
-  "https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=3840&q=80",
-  "https://images.unsplash.com/photo-1475924156734-496f6cac6ec1?auto=format&fit=crop&w=3840&q=80",
-  "https://images.unsplash.com/photo-1496181133206-80ce9b88a853?auto=format&fit=crop&w=3840&q=80",
-  "https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=3840&q=80",
-  "https://images.unsplash.com/photo-1444723121867-7a241cacace9?auto=format&fit=crop&w=3840&q=80",
-  "https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=3840&q=80",
-  "https://images.unsplash.com/photo-1426604966848-d7adac402bff?auto=format&fit=crop&w=3840&q=80",
-  "https://images.unsplash.com/photo-1397360668706-fbbc9d08efce?auto=format&fit=crop&w=3840&q=80"
+export const BACKGROUND_IMAGES = [
+  "/src/assets/login-backgrounds/bg-1.webp",
+  "/src/assets/login-backgrounds/bg-2.webp",
+  "/src/assets/login-backgrounds/bg-3.webp",
+  "/src/assets/login-backgrounds/bg-4.webp",
+  "/src/assets/login-backgrounds/bg-5.webp",
+  "/src/assets/login-backgrounds/bg-6.webp",
 ];
 
 let selectedBackground = null;
 
-function getFixedPageBackground() {
+export function getFixedPageBackground() {
   if (!selectedBackground) {
+    try {
+      const stored = sessionStorage.getItem("zamorin_login_bg");
+      if (stored && BACKGROUND_IMAGES.includes(stored)) {
+        selectedBackground = stored;
+        return selectedBackground;
+      }
+    } catch {}
+
     const idx = Math.floor(Math.random() * BACKGROUND_IMAGES.length);
     selectedBackground = BACKGROUND_IMAGES[idx];
+    try {
+      sessionStorage.setItem("zamorin_login_bg", selectedBackground);
+    } catch {}
   }
   return selectedBackground;
 }
@@ -478,8 +475,12 @@ export function wireLoginPage2(container, { onSubmit, onForgotPassword, onCafeOp
 
   // Form Submit
   if (form && typeof onSubmit === "function") {
+    let isSubmitting = false;
+
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
+      if (isSubmitting) return;
+
       if (errorEl) errorEl.style.display = "none";
 
       const organisationId = container.querySelector("#l2-org-id")?.value?.trim() || "";
@@ -505,21 +506,45 @@ export function wireLoginPage2(container, { onSubmit, onForgotPassword, onCafeOp
       } catch {}
 
       const submitBtn = container.querySelector("#l2-submit-btn");
+      isSubmitting = true;
+      let progressTimer = null;
+
       if (submitBtn) {
         submitBtn.disabled = true;
-        submitBtn.textContent = "Authenticating...";
+        submitBtn.textContent = "Connecting securely...";
+        progressTimer = setTimeout(() => {
+          if (isSubmitting && submitBtn) {
+            submitBtn.textContent = "Authenticating...";
+          }
+        }, 2200);
       }
 
       try {
         await onSubmit({ organisationId, email, password, rememberDevice });
       } catch (err) {
+        if (progressTimer) clearTimeout(progressTimer);
+        isSubmitting = false;
         if (submitBtn) {
           submitBtn.disabled = false;
           submitBtn.textContent = "Sign In";
         }
         if (errorEl) {
-          errorEl.textContent = err.message || "Invalid credentials. Please try again.";
+          const rawMsg = err.userMessage || err.message || "";
+          if (err.isTimeoutError || err.code === "REQUEST_TIMEOUT" || rawMsg.includes("took too long")) {
+            errorEl.textContent = "The server is taking longer than expected to respond. Please check your connection and try again.";
+          } else if (err.isNetworkError || err.code === "NETWORK_UNAVAILABLE" || rawMsg.includes("could not be reached")) {
+            errorEl.textContent = "The server could not be reached. Please check your network connection.";
+          } else if (err.isServerError || (err.status >= 500 && err.status <= 599)) {
+            errorEl.textContent = "The server encountered a temporary error. Please try again in a moment.";
+          } else {
+            errorEl.textContent = rawMsg || "Invalid credentials. Please check your Organisation ID, email, and password.";
+          }
           errorEl.style.display = "block";
+        }
+      } finally {
+        if (!errorEl || errorEl.style.display === "none") {
+          if (progressTimer) clearTimeout(progressTimer);
+          isSubmitting = false;
         }
       }
     });

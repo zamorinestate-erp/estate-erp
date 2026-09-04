@@ -21,7 +21,9 @@
   inset: 0;
   background-size: cover;
   background-position: center;
-  transition: opacity 1.2s ease-in-out;
+  background-repeat: no-repeat;
+  background-color: #0b1120;
+  transition: opacity 0.4s ease-in-out;
   z-index: 0;
   pointer-events: none;
 }

@@ -375,6 +375,9 @@ export function getOrCreateDeviceId() {
   return deviceId;
 }
 
+export const AUTH_REQUEST_TIMEOUT_MS = 60000;
+export const DEFAULT_REQUEST_TIMEOUT_MS = 30000;
+
 export class ApiClientError extends Error {
   constructor({
     status,
@@ -391,6 +394,37 @@ export class ApiClientError extends Error {
     this.correlationId = correlationId;
     this.data = data;
     this.userMessage = userMessage || mapErrorToUserMessage(code, status, message);
+  }
+
+  get isAuthError() {
+    return (
+      this.status === 401 ||
+      this.status === 403 ||
+      this.code === "INVALID_CREDENTIALS" ||
+      this.code === "AUTHENTICATION_REQUIRED" ||
+      this.code === "AUTH_TOKEN_EXPIRED" ||
+      this.code === "USER_UNAVAILABLE"
+    );
+  }
+
+  get isNetworkError() {
+    return this.status === 0 && (this.code === "NETWORK_UNAVAILABLE" || this.code === "FETCH_ERROR");
+  }
+
+  get isTimeoutError() {
+    return this.status === 0 && (this.code === "REQUEST_TIMEOUT" || this.code === "TIMEOUT");
+  }
+
+  get isServerError() {
+    return this.status >= 500 && this.status <= 599;
+  }
+
+  get errorCategory() {
+    if (this.isAuthError) return "AUTH_ERROR";
+    if (this.isTimeoutError) return "TIMEOUT";
+    if (this.isNetworkError) return "NETWORK_ERROR";
+    if (this.isServerError) return "SERVER_ERROR";
+    return "CLIENT_ERROR";
   }
 }
 
@@ -555,21 +589,32 @@ export async function performRequest(
     signal,
     body,
     headers = {},
-    timeoutMs = 30000,
+    timeoutMs,
   } = {}
 ) {
   const normalizedPath = normalizeApiPath(path);
+
+  // Route-aware timeout: Auth, Recovery & Operator sign-in routes get 60s for Render cold starts
+  const isAuthRoute =
+    normalizedPath.startsWith("/auth/") ||
+    normalizedPath.startsWith("/cafe-operations/operator/sign-in");
+  const effectiveTimeoutMs =
+    typeof timeoutMs === "number" && timeoutMs > 0
+      ? timeoutMs
+      : isAuthRoute
+      ? AUTH_REQUEST_TIMEOUT_MS
+      : DEFAULT_REQUEST_TIMEOUT_MS;
 
   // Setup internal timeout controller
   const timeoutCtrl = new AbortController();
   let timeoutId = null;
   let didTimeout = false;
 
-  if (timeoutMs > 0) {
+  if (effectiveTimeoutMs > 0) {
     timeoutId = setTimeout(() => {
       didTimeout = true;
       timeoutCtrl.abort();
-    }, timeoutMs);
+    }, effectiveTimeoutMs);
   }
 
   // Combine user signal and timeout signal
@@ -643,7 +688,7 @@ export async function performRequest(
       throw new ApiClientError({
         status: 0,
         code: "REQUEST_TIMEOUT",
-        message: `The request timed out on the client after ${timeoutMs}ms.`,
+        message: `The request timed out on the client after ${effectiveTimeoutMs}ms.`,
         userMessage: "The server took too long to respond. Please check your connection and try again.",
       });
     }
@@ -735,11 +780,13 @@ export async function requestJson(
   {
     signal,
     body,
+    headers = {},
     scope = RequestScope.ROUTE_OWNED,
     allowStepUpRetry = true,
     allowRefreshRetry = true,
     bypassCache = false,
     cachePolicy = null,
+    timeoutMs,
   } = {}
 ) {
   const normalized = normalizeApiPath(path);
@@ -755,7 +802,7 @@ export async function requestJson(
       // SWR background refresh
       if (policy === CachePolicy.SWR || now - cached.timestamp > cached.ttl / 2) {
         queueMicrotask(() => {
-          performRequest(path, { method: "GET" }).then(async (res) => {
+          performRequest(path, { method: "GET", headers, timeoutMs }).then(async (res) => {
             if (res.ok) {
               const freshPayload = await readResponsePayload(res);
               setCacheEntry(cacheKey, freshPayload, getPolicyTTL(policy));
@@ -800,6 +847,8 @@ export async function requestJson(
       method,
       signal: isGet ? undefined : signal, // Shared GET fetch is not aborted by single consumer
       body,
+      headers,
+      timeoutMs,
     });
 
     if (
