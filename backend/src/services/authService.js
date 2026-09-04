@@ -573,20 +573,21 @@ async function authenticatePassword({
     }
   }
 
-  const isProductionOrTest =
-    process.env.NODE_ENV === 'production' ||
-    process.env.NODE_ENV === 'test';
+  const isMfaDisabled = process.env.DISABLE_MFA === 'true';
   const roleRequiresMfa =
-    (isProductionOrTest || process.env.REQUIRE_MFA === 'true') &&
-    process.env.DISABLE_MFA !== 'true' &&
+    !isMfaDisabled &&
+    process.env.REQUIRE_MFA === 'true' &&
     MFA_REQUIRED_ROLES.includes(user.role);
+
+  const mfaRequiredForUser =
+    !isMfaDisabled &&
+    (Boolean(user.mfaEnabled) || roleRequiresMfa);
 
   return {
     user,
-    requiresMfa:
-      user.mfaEnabled || roleRequiresMfa,
+    requiresMfa: mfaRequiredForUser,
     mfaSetupRequired:
-      roleRequiresMfa && !user.mfaEnabled,
+      !isMfaDisabled && roleRequiresMfa && !user.mfaEnabled,
     mustChangePassword:
       user.mustChangePassword,
   };
@@ -611,10 +612,14 @@ async function createSession({
     );
   }
 
-  const isProductionSession = process.env.NODE_ENV === 'production';
-  const roleRequiresMfaSession = (isProductionSession || process.env.REQUIRE_MFA === 'true') && MFA_REQUIRED_ROLES.includes(user.role);
+  const isMfaDisabled = process.env.DISABLE_MFA === 'true';
+  const roleRequiresMfaSession =
+    !isMfaDisabled &&
+    process.env.REQUIRE_MFA === 'true' &&
+    MFA_REQUIRED_ROLES.includes(user.role);
 
   if (
+    !isMfaDisabled &&
     (user.mfaEnabled || roleRequiresMfaSession) &&
     !mfaVerified
   ) {

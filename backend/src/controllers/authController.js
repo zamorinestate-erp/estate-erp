@@ -519,7 +519,7 @@ const login = asyncHandler(
         user,
         device: loginInput.device,
         network: loginInput.network,
-        mfaVerified: isTrustedDevice ? true : false,
+        mfaVerified: isTrustedDevice || !baseRequiresMfa ? true : false,
         createdBy: user.userId,
       });
 
@@ -527,6 +527,31 @@ const login = asyncHandler(
       response,
       sessionData
     );
+
+    if (loginInput.rememberDevice && !isTrustedDevice) {
+      try {
+        const trustRegistration =
+          await deviceTrustService.registerTrustedDevice({
+            user,
+            organisationId: user.organisationId,
+            userId: user.userId,
+            device: loginInput.device,
+            ipAddress: request.ip,
+            userAgent: request.get('user-agent'),
+            correlationId: request.correlationId,
+          });
+
+        if (trustRegistration?.rawToken) {
+          setTrustedDeviceCookie(
+            response,
+            trustRegistration.rawToken,
+            trustRegistration.trustedDevice.expiresAt
+          );
+        }
+      } catch {
+        // Non-blocking trust registration
+      }
+    }
 
     return response.status(200).json({
       success: true,
