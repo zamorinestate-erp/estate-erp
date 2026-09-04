@@ -842,35 +842,48 @@ async function runSeed() {
       masterEmail,
     });
 
-    await seedDepartmentOrdersData({
-      organisationId,
-      masterUserId: masterUser.userId,
-    });
+    const isMinimalSeed = process.env.SEED_MINIMAL === 'true' || process.env.SEED_DEMO_DATA === 'false';
 
-    await seedWorkforceData({
-      organisationId,
-      masterUserId: masterUser.userId,
-    });
+    if (!isMinimalSeed) {
+      await seedDepartmentOrdersData({
+        organisationId,
+        masterUserId: masterUser.userId,
+      });
 
-    await seedExpensePolicyData({
-      organisationId,
-      masterUserId: masterUser.userId,
-    });
+      await seedWorkforceData({
+        organisationId,
+        masterUserId: masterUser.userId,
+      });
 
-    await seedFinanceData({
-      organisationId,
-      masterUserId: masterUser.userId,
-    });
+      await seedExpensePolicyData({
+        organisationId,
+        masterUserId: masterUser.userId,
+      });
 
-    await seedInventoryData({
-      organisationId,
-      masterUserId: masterUser.userId,
-    });
+      await seedFinanceData({
+        organisationId,
+        masterUserId: masterUser.userId,
+      });
 
-    await seedCafeOperationsData({
-      organisationId,
-      masterUserId: masterUser.userId,
-    });
+      await seedInventoryData({
+        organisationId,
+        masterUserId: masterUser.userId,
+      });
+
+      await seedCafeOperationsData({
+        organisationId,
+        masterUserId: masterUser.userId,
+      });
+    } else {
+      await seedExpensePolicyData({
+        organisationId,
+        masterUserId: masterUser.userId,
+      });
+      await seedCafeOperationsData({
+        organisationId,
+        masterUserId: masterUser.userId,
+      });
+    }
 
     console.log(
       'Initial backend data seeded successfully.'

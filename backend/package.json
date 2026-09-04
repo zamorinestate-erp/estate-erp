@@ -8,6 +8,7 @@
     "start": "node src/server.js",
     "dev": "node src/scripts/startDev.js",
     "seed": "node src/scripts/seedInitialData.js",
+    "purge": "node src/scripts/purgeDummyData.js",
     "check": "node src/scripts/checkAllJavaScript.js",
     "check:server": "node --check src/server.js",
     "check:deploy": "node src/scripts/verifyDeploymentConfig.js"
