@@ -203,7 +203,7 @@ function hashRecoveryCode(code) {
   return crypto.createHash('sha256').update(normalized).digest('hex');
 }
 
-function generateMfaToken({ user, purpose, expiresIn = '10m' }) {
+function generateMfaToken({ user, purpose, rememberDevice = false, expiresIn = '10m' }) {
   const secret = process.env.JWT_ACCESS_SECRET;
   if (!secret || secret.length < 32) {
     throw new Error('JWT_ACCESS_SECRET must contain at least 32 characters.');
@@ -215,6 +215,7 @@ function generateMfaToken({ user, purpose, expiresIn = '10m' }) {
       org: user.organisationId,
       role: user.role,
       type: purpose,
+      rem: Boolean(rememberDevice),
     },
     secret,
     {

@@ -39,10 +39,15 @@ const {
 } = require('../utils/ApiError');
 
 const auditService = require('../services/auditService');
+const deviceTrustService = require('../services/deviceTrustService');
+const { TrustedDevice } = require('../models/TrustedDevice');
 
 const {
   ACCESS_TOKEN_COOKIE,
 } = require('../middleware/authenticate');
+
+const TRUSTED_DEVICE_COOKIE =
+  deviceTrustService.TRUSTED_DEVICE_COOKIE || 'zamorin_trusted_device';
 
 const REFRESH_TOKEN_COOKIE =
   'zamorin_refresh_token';
@@ -230,6 +235,36 @@ function clearAuthenticationCookies(
   );
 }
 
+function setTrustedDeviceCookie(
+  response,
+  rawToken,
+  expiresAt
+) {
+  const cookieOptions =
+    getCookieOptions();
+
+  response.cookie(
+    TRUSTED_DEVICE_COOKIE,
+    rawToken,
+    {
+      ...cookieOptions,
+      expires: new Date(expiresAt),
+    }
+  );
+}
+
+function clearTrustedDeviceCookie(
+  response
+) {
+  const cookieOptions =
+    getCookieOptions();
+
+  response.clearCookie(
+    TRUSTED_DEVICE_COOKIE,
+    cookieOptions
+  );
+}
+
 function getLoginInput(request) {
   let body = request.body || {};
   if (typeof body === 'string') {
@@ -244,6 +279,7 @@ function getLoginInput(request) {
   const organisationId = String(body.organisationId || body.orgId || body.organisation || '').trim();
   const email = String(body.email || body.identifier || '').trim();
   const password = typeof body.password === 'string' ? body.password : '';
+  const rememberDevice = Boolean(body.rememberDevice || body.rememberMe || body.remember);
 
   if (!organisationId || !email || !password) {
     throw new ApiError(
@@ -271,6 +307,8 @@ function getLoginInput(request) {
     email: email.trim(),
 
     password,
+
+    rememberDevice,
 
     device,
 
@@ -386,10 +424,37 @@ const login = asyncHandler(
 
     const {
       user,
-      requiresMfa,
+      requiresMfa: baseRequiresMfa,
       mfaSetupRequired,
       mustChangePassword,
     } = authenticationResult;
+
+    let requiresMfa = baseRequiresMfa;
+    let isTrustedDevice = false;
+
+    // Real Trusted-Device Evaluation: If MFA is required and already set up, check presented trusted device credential
+    if (requiresMfa && !mfaSetupRequired) {
+      const presentedToken =
+        request.cookies?.[TRUSTED_DEVICE_COOKIE] ||
+        request.get('x-trusted-device-token') ||
+        request.body?.trustedDeviceToken;
+
+      if (presentedToken) {
+        const trustCheck = await deviceTrustService.verifyTrustedDevice({
+          rawToken: presentedToken,
+          organisationId: user.organisationId,
+          userId: user.userId,
+          user,
+          ipAddress: request.ip,
+          correlationId: request.correlationId,
+        });
+
+        if (trustCheck.valid) {
+          requiresMfa = false;
+          isTrustedDevice = true;
+        }
+      }
+    }
 
     const mfaToken = requiresMfa
       ? generateMfaToken({
@@ -397,6 +462,7 @@ const login = asyncHandler(
           purpose: mfaSetupRequired
             ? "mfa_setup"
             : "mfa_challenge",
+          rememberDevice: loginInput.rememberDevice,
         })
       : null;
 
@@ -437,6 +503,7 @@ const login = asyncHandler(
           requiresMfa: true,
           mfaRequired: true,
           mfaSetupRequired,
+          rememberDevice: loginInput.rememberDevice,
           autoCode,
           mfaSetupToken: mfaSetupRequired ? mfaToken : undefined,
           mfaChallengeToken: !mfaSetupRequired ? mfaToken : undefined,
@@ -452,7 +519,7 @@ const login = asyncHandler(
         user,
         device: loginInput.device,
         network: loginInput.network,
-        mfaVerified: false,
+        mfaVerified: isTrustedDevice ? true : false,
         createdBy: user.userId,
       });
 
@@ -463,7 +530,7 @@ const login = asyncHandler(
 
     return response.status(200).json({
       success: true,
-      message: 'Login successful.',
+      message: isTrustedDevice ? 'Login successful (trusted device).' : 'Login successful.',
 
       data: {
         user: user.toJSON(),
@@ -472,6 +539,7 @@ const login = asyncHandler(
         accessTokenExpiresAt: sessionData.accessTokenExpiresAt,
         refreshTokenExpiresAt: sessionData.refreshTokenExpiresAt,
         mustChangePassword,
+        trustedDevice: isTrustedDevice,
       },
 
       correlationId:
@@ -547,6 +615,7 @@ const resetPassword = asyncHandler(
     user.updatedBy = 'SYSTEM';
     await user.save();
     const revokedSessionCount = await revokeAllUserSessions({ organisationId, userId: user.userId, revokedBy: 'SYSTEM', reason: 'PASSWORD_RESET', details: 'Sessions revoked after password reset.' });
+    await deviceTrustService.revokeAllUserTrustedDevices({ organisationId, userId: user.userId, revokedBy: 'SYSTEM', reason: 'PASSWORD_RESET', correlationId: request.correlationId });
     await PasswordResetChallenge.updateMany({ organisationId, userId: user.userId, challengeId: { $ne: challengeId }, status: { $in: ['PENDING','VERIFIED'] } }, { $set: { status: 'EXPIRED', invalidatedAt: now } });
     try { await auditService.recordAuditEvent({ organisationId, actorUserId: 'SYSTEM', actorRole: 'SYSTEM', module: 'AUTHENTICATION', action: 'PASSWORD_RESET', entityType: 'USER', entityId: user.userId, reason: 'Password reset completed through verified recovery flow.', result: 'SUCCESS', riskClassification: 'HIGH', correlationId: request.correlationId || null, requestMethod: request.method, requestPath: request.originalUrl || request.url, ipAddress: request.ip || null, userAgent: request.get?.('user-agent') || null, metadata: { revokedSessionCount } }); } catch (_error) {}
     return response.status(200).json({ success: true, message: 'Password reset successfully. Please sign in.', data: { requiresLogin: true, revokedSessionCount }, correlationId: request.correlationId || null });
@@ -697,6 +766,31 @@ const mfaConfirm = asyncHandler(
     const device = buildDeviceMetadata(request);
     const network = buildNetworkMetadata(request);
 
+    const shouldRememberDevice = Boolean(
+      request.body?.rememberDevice ||
+      request.body?.remember ||
+      payload.rem
+    );
+
+    let registeredTrustedDevice = null;
+    if (shouldRememberDevice) {
+      registeredTrustedDevice = await deviceTrustService.registerTrustedDevice({
+        organisationId: user.organisationId,
+        userId: user.userId,
+        user,
+        deviceMetadata: device,
+        ipAddress: request.ip,
+        userAgent: request.get('user-agent'),
+        correlationId: request.correlationId,
+      });
+
+      setTrustedDeviceCookie(
+        response,
+        registeredTrustedDevice.rawToken,
+        registeredTrustedDevice.expiresAt
+      );
+    }
+
     const sessionData = await createSession({
       user,
       device,
@@ -720,6 +814,7 @@ const mfaConfirm = asyncHandler(
         accessTokenExpiresAt: sessionData.accessTokenExpiresAt,
         refreshTokenExpiresAt: sessionData.refreshTokenExpiresAt,
         recoveryCodes: plainRecoveryCodes,
+        trustedDevice: Boolean(registeredTrustedDevice),
       },
       correlationId:
         request.correlationId || null,
@@ -819,6 +914,31 @@ const mfaVerify = asyncHandler(
     const device = buildDeviceMetadata(request);
     const network = buildNetworkMetadata(request);
 
+    const shouldRememberDevice = Boolean(
+      request.body?.rememberDevice ||
+      request.body?.remember ||
+      payload.rem
+    );
+
+    let registeredTrustedDevice = null;
+    if (shouldRememberDevice) {
+      registeredTrustedDevice = await deviceTrustService.registerTrustedDevice({
+        organisationId: user.organisationId,
+        userId: user.userId,
+        user,
+        deviceMetadata: device,
+        ipAddress: request.ip,
+        userAgent: request.get('user-agent'),
+        correlationId: request.correlationId,
+      });
+
+      setTrustedDeviceCookie(
+        response,
+        registeredTrustedDevice.rawToken,
+        registeredTrustedDevice.expiresAt
+      );
+    }
+
     const sessionData = await createSession({
       user,
       device,
@@ -841,6 +961,7 @@ const mfaVerify = asyncHandler(
         accessToken: sessionData.accessToken,
         accessTokenExpiresAt: sessionData.accessTokenExpiresAt,
         refreshTokenExpiresAt: sessionData.refreshTokenExpiresAt,
+        trustedDevice: Boolean(registeredTrustedDevice),
       },
       correlationId:
         request.correlationId || null,
@@ -1069,7 +1190,16 @@ const changePassword = asyncHandler(
           'Password changed by the authenticated user.',
       });
 
+    await deviceTrustService.revokeAllUserTrustedDevices({
+      organisationId: request.auth.organisationId,
+      userId: request.auth.userId,
+      revokedBy: request.auth.userId,
+      reason: 'PASSWORD_CHANGED',
+      correlationId: request.correlationId,
+    });
+
     clearAuthenticationCookies(response);
+    clearTrustedDeviceCookie(response);
 
     try {
       await auditService.recordRequestAudit({
@@ -1436,6 +1566,116 @@ const revokeSessionById = asyncHandler(
   }
 );
 
+const listTrustedDevices = asyncHandler(
+  async (request, response) => {
+    const user = request.user || request.auth;
+    const currentToken =
+      request.cookies?.[TRUSTED_DEVICE_COOKIE] ||
+      request.get('x-trusted-device-token');
+
+    const devices = await deviceTrustService.listUserTrustedDevices({
+      organisationId: user.organisationId,
+      userId: user.userId,
+      currentRawToken: currentToken,
+    });
+
+    return response.status(200).json({
+      success: true,
+      message: 'Trusted devices retrieved successfully.',
+      data: {
+        devices,
+      },
+      correlationId: request.correlationId || null,
+    });
+  }
+);
+
+const revokeTrustedDevice = asyncHandler(
+  async (request, response) => {
+    const user = request.user || request.auth;
+    const deviceTrustId = request.params?.deviceTrustId || request.body?.deviceTrustId;
+
+    if (!deviceTrustId) {
+      throw new ApiError(400, 'DEVICE_TRUST_ID_REQUIRED', 'Device trust ID is required.');
+    }
+
+    const revoked = await deviceTrustService.revokeTrustedDevice({
+      organisationId: user.organisationId,
+      userId: user.userId,
+      deviceTrustId,
+      revokedBy: user.userId,
+      reason: request.body?.reason || 'USER_MANUAL_REVOCATION',
+      actorRole: user.role,
+      correlationId: request.correlationId,
+    });
+
+    const currentToken =
+      request.cookies?.[TRUSTED_DEVICE_COOKIE] ||
+      request.get('x-trusted-device-token');
+
+    if (currentToken) {
+      try {
+        if (deviceTrustService.hashTrustedDeviceToken(currentToken) === revoked.tokenHash) {
+          clearTrustedDeviceCookie(response);
+        }
+      } catch {}
+    }
+
+    return response.status(200).json({
+      success: true,
+      message: 'Trusted device revoked successfully.',
+      data: {
+        device: revoked,
+      },
+      correlationId: request.correlationId || null,
+    });
+  }
+);
+
+const revokeAllTrustedDevices = asyncHandler(
+  async (request, response) => {
+    const user = request.user || request.auth;
+    const exceptCurrent = Boolean(request.body?.exceptCurrent);
+    let exceptDeviceTrustId = null;
+
+    if (exceptCurrent) {
+      const currentToken =
+        request.cookies?.[TRUSTED_DEVICE_COOKIE] ||
+        request.get('x-trusted-device-token');
+      if (currentToken) {
+        try {
+          const hash = deviceTrustService.hashTrustedDeviceToken(currentToken);
+          const currentDev = await TrustedDevice.findOne({ tokenHash: hash });
+          if (currentDev) {
+            exceptDeviceTrustId = currentDev.deviceTrustId;
+          }
+        } catch {}
+      }
+    } else {
+      clearTrustedDeviceCookie(response);
+    }
+
+    const result = await deviceTrustService.revokeAllUserTrustedDevices({
+      organisationId: user.organisationId,
+      userId: user.userId,
+      revokedBy: user.userId,
+      reason: request.body?.reason || 'USER_REVOKED_ALL',
+      exceptDeviceTrustId,
+      actorRole: user.role,
+      correlationId: request.correlationId,
+    });
+
+    return response.status(200).json({
+      success: true,
+      message: 'All trusted devices revoked successfully.',
+      data: {
+        revokedCount: result.modifiedCount || 0,
+      },
+      correlationId: request.correlationId || null,
+    });
+  }
+);
+
 module.exports = {
   login,
   requestPasswordReset,
@@ -1455,4 +1695,8 @@ module.exports = {
   getCurrentUser,
   revokeSessionById,
   clearAuthenticationCookies,
+  listTrustedDevices,
+  revokeTrustedDevice,
+  revokeAllTrustedDevices,
 };
+

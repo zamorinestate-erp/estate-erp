@@ -21,6 +21,9 @@ const {
   getSessions,
   getCurrentUser,
   revokeSessionById,
+  listTrustedDevices,
+  revokeTrustedDevice,
+  revokeAllTrustedDevices,
 } = require('../controllers/authController');
 
 const {
@@ -87,6 +90,11 @@ router.post('/passkeys/authenticate/verify', passkeyRateLimiter, passkeyControll
 router.get('/passkeys', authenticate, passkeyController.listUserPasskeys);
 router.delete('/passkeys/:credentialId', authenticate, passkeyController.revokeUserPasskey);
 
+// Trusted Device Management Endpoints
+router.get('/trusted-devices', authenticate, listTrustedDevices);
+router.delete('/trusted-devices/:deviceTrustId', authenticate, revokeTrustedDevice);
+router.delete('/trusted-devices', authenticate, revokeAllTrustedDevices);
+
 // Unauthenticated MFA setup, confirmation, and verification routes
 router.post('/mfa/setup', mfaRateLimiter, mfaSetup);
 router.post('/mfa/confirm', mfaRateLimiter, mfaConfirm);
@@ -151,3 +159,4 @@ router.delete(
 );
 
 module.exports = router;
+

@@ -3,8 +3,76 @@
 const crypto = require('node:crypto');
 const { DeviceRegistration } = require('../models/DeviceRegistration');
 const { DeviceSecurityEvent } = require('../models/DeviceSecurityEvent');
+const { TrustedDevice } = require('../models/TrustedDevice');
 const { defaultEventBus } = require('./distributedEventBus');
 const { defaultPresenceService } = require('./devicePresenceService');
+const auditService = require('./auditService');
+
+const TRUSTED_DEVICE_COOKIE = 'zamorin_trusted_device';
+
+const TRUSTED_DEVICE_EXPIRY_DAYS = {
+  MASTER: 7,
+  PRIMARY_MASTER: 7,
+  OWNER: 14,
+  CAFE_ADMIN: 14,
+  STAFF: 30,
+};
+
+function getTrustedDeviceExpiryDays(user) {
+  if (!user) return 7;
+  if (user.isPrimaryMaster) return 7;
+  const role = String(user.role || '').toUpperCase();
+  return TRUSTED_DEVICE_EXPIRY_DAYS[role] || 7;
+}
+
+function hashToken(token) {
+  if (!token || typeof token !== 'string') {
+    throw new Error('A valid token is required for hashing.');
+  }
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+function generateTrustedDeviceToken() {
+  return `td_${crypto.randomBytes(48).toString('base64url')}`;
+}
+
+function deriveDeviceLabel(deviceMetadata = {}, userAgent = '') {
+  const browser = deviceMetadata.browser || '';
+  const os = deviceMetadata.operatingSystem || '';
+  if (browser && os) {
+    return `${browser} on ${os}`;
+  }
+  if (deviceMetadata.deviceName && deviceMetadata.deviceName !== 'Unknown device') {
+    return deviceMetadata.deviceName;
+  }
+  if (userAgent) {
+    if (userAgent.includes('Chrome')) {
+      if (userAgent.includes('Windows')) return 'Chrome on Windows';
+      if (userAgent.includes('Macintosh')) return 'Chrome on macOS';
+      if (userAgent.includes('Linux')) return 'Chrome on Linux';
+      if (userAgent.includes('Android')) return 'Chrome on Android';
+      return 'Chrome Browser';
+    }
+    if (userAgent.includes('Firefox')) return 'Firefox Browser';
+    if (userAgent.includes('Safari') && !userAgent.includes('Chrome')) return 'Safari Browser';
+    if (userAgent.includes('Edge')) return 'Edge Browser';
+  }
+  return 'Browser Device';
+}
+
+function maskIpAddress(value) {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const ipAddress = value.split(',')[0].trim();
+  if (ipAddress.includes(':')) {
+    const segments = ipAddress.split(':').filter(Boolean);
+    return segments.length > 0 ? `${segments.slice(0, 4).join(':')}::` : null;
+  }
+  const octets = ipAddress.split('.');
+  if (octets.length === 4) {
+    return `${octets[0]}.${octets[1]}.x.x`;
+  }
+  return null;
+}
 
 class DeviceTrustService {
   /**
@@ -460,6 +528,355 @@ class DeviceTrustService {
 
     return devices;
   }
+
+  get TRUSTED_DEVICE_COOKIE() {
+    return TRUSTED_DEVICE_COOKIE;
+  }
+
+  getTrustedDeviceExpiryDays(user) {
+    return getTrustedDeviceExpiryDays(user);
+  }
+
+  hashTrustedDeviceToken(token) {
+    return hashToken(token);
+  }
+
+  /**
+   * Registers a new browser trusted device for an authenticated user after MFA / strong auth.
+   */
+  async registerTrustedDevice({
+    organisationId,
+    userId,
+    user,
+    deviceMetadata = {},
+    ipAddress = null,
+    userAgent = '',
+    correlationId = null,
+  }) {
+    if (!organisationId || !userId) {
+      throw new Error('ORGANISATION_AND_USER_REQUIRED');
+    }
+
+    const expiryDays = getTrustedDeviceExpiryDays(user);
+    const expiresAt = new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000);
+    const rawToken = generateTrustedDeviceToken();
+    const tokenHash = hashToken(rawToken);
+    const deviceTrustId = `TD-${crypto.randomUUID().toUpperCase()}`;
+
+    const deviceLabel = deriveDeviceLabel(deviceMetadata, userAgent);
+    const sessionVersionSnapshot = typeof user?.sessionVersion === 'number' ? user.sessionVersion : 0;
+    const roleSnapshot = user?.role ? user.role.toUpperCase() : 'STAFF';
+
+    const trustedDevice = await TrustedDevice.create({
+      deviceTrustId,
+      organisationId: organisationId.toUpperCase(),
+      userId: userId.toUpperCase(),
+      tokenHash,
+      status: 'ACTIVE',
+      roleSnapshot,
+      sessionVersionSnapshot,
+      deviceLabel,
+      deviceType: deviceMetadata.deviceType || 'DESKTOP',
+      browser: deviceMetadata.browser || '',
+      operatingSystem: deviceMetadata.operatingSystem || '',
+      userAgent: userAgent ? userAgent.slice(0, 500) : '',
+      lastIpMasked: maskIpAddress(ipAddress),
+      expiresAt,
+      lastUsedAt: new Date(),
+    });
+
+    try {
+      await auditService.recordAuditEvent({
+        organisationId: organisationId.toUpperCase(),
+        actorUserId: userId.toUpperCase(),
+        actorRole: roleSnapshot,
+        module: 'AUTHENTICATION',
+        action: 'TRUSTED_DEVICE_REGISTERED',
+        entityType: 'TRUSTED_DEVICE',
+        entityId: deviceTrustId,
+        reason: 'New trusted device registered after successful multi-factor authentication.',
+        result: 'SUCCESS',
+        riskClassification: 'LOW',
+        correlationId,
+        metadata: {
+          deviceTrustId,
+          deviceLabel,
+          expiresAt,
+          expiryDays,
+        },
+      });
+    } catch (_auditErr) {}
+
+    return {
+      rawToken,
+      trustedDevice,
+      expiresAt,
+    };
+  }
+
+  /**
+   * Authoritatively verifies a presented trusted-device credential for password login.
+   */
+  async verifyTrustedDevice({
+    rawToken,
+    organisationId,
+    userId,
+    user,
+    ipAddress = null,
+    correlationId = null,
+  }) {
+    if (!rawToken || typeof rawToken !== 'string') {
+      return { valid: false, reason: 'NO_TOKEN' };
+    }
+
+    let tokenHash;
+    try {
+      tokenHash = hashToken(rawToken);
+    } catch {
+      return { valid: false, reason: 'INVALID_TOKEN_FORMAT' };
+    }
+
+    const trustedDevice = await TrustedDevice.findOne({
+      tokenHash,
+      status: 'ACTIVE',
+    });
+
+    if (!trustedDevice) {
+      return { valid: false, reason: 'TOKEN_NOT_FOUND' };
+    }
+
+    const normOrg = String(organisationId || '').trim().toUpperCase();
+    const normUser = String(userId || '').trim().toUpperCase();
+
+    // Verify cryptographic binding to organisation and user
+    if (trustedDevice.organisationId !== normOrg || trustedDevice.userId !== normUser) {
+      try {
+        await auditService.recordAuditEvent({
+          organisationId: normOrg || trustedDevice.organisationId,
+          actorUserId: normUser || 'UNKNOWN',
+          actorRole: 'SYSTEM',
+          module: 'AUTHENTICATION',
+          action: 'INVALID_TRUSTED_DEVICE_ATTEMPT',
+          entityType: 'TRUSTED_DEVICE',
+          entityId: trustedDevice.deviceTrustId,
+          reason: 'Trusted device credential presented with mismatched user or organisation binding.',
+          result: 'DENIED',
+          riskClassification: 'HIGH',
+          correlationId,
+        });
+      } catch (_err) {}
+
+      return { valid: false, reason: 'USER_ORG_MISMATCH' };
+    }
+
+    // Check expiry
+    const now = new Date();
+    if (trustedDevice.expiresAt < now) {
+      trustedDevice.status = 'EXPIRED';
+      await trustedDevice.save();
+
+      try {
+        await auditService.recordAuditEvent({
+          organisationId: trustedDevice.organisationId,
+          actorUserId: trustedDevice.userId,
+          actorRole: trustedDevice.roleSnapshot,
+          module: 'AUTHENTICATION',
+          action: 'TRUSTED_DEVICE_EXPIRED',
+          entityType: 'TRUSTED_DEVICE',
+          entityId: trustedDevice.deviceTrustId,
+          reason: 'Trusted device credential presented after expiration.',
+          result: 'DENIED',
+          riskClassification: 'LOW',
+          correlationId,
+        });
+      } catch (_err) {}
+
+      return { valid: false, reason: 'EXPIRED' };
+    }
+
+    // Check user account status
+    if (user && user.accountStatus !== 'ACTIVE') {
+      return { valid: false, reason: 'ACCOUNT_INACTIVE' };
+    }
+
+    // Check session/security version invalidation
+    if (user && typeof user.sessionVersion === 'number' && user.sessionVersion !== trustedDevice.sessionVersionSnapshot) {
+      return { valid: false, reason: 'SECURITY_VERSION_CHANGED' };
+    }
+
+    // Check role material change
+    if (user && user.role && user.role.toUpperCase() !== trustedDevice.roleSnapshot) {
+      return { valid: false, reason: 'ROLE_CHANGED' };
+    }
+
+    // Trust is valid! Update last used and IP
+    trustedDevice.lastUsedAt = now;
+    if (ipAddress) {
+      trustedDevice.lastIpMasked = maskIpAddress(ipAddress);
+    }
+    await trustedDevice.save();
+
+    try {
+      await auditService.recordAuditEvent({
+        organisationId: trustedDevice.organisationId,
+        actorUserId: trustedDevice.userId,
+        actorRole: trustedDevice.roleSnapshot,
+        module: 'AUTHENTICATION',
+        action: 'TRUSTED_DEVICE_USED',
+        entityType: 'TRUSTED_DEVICE',
+        entityId: trustedDevice.deviceTrustId,
+        reason: 'Valid trusted device credential presented to satisfy routine multi-factor requirement.',
+        result: 'SUCCESS',
+        riskClassification: 'LOW',
+        correlationId,
+      });
+    } catch (_err) {}
+
+    return {
+      valid: true,
+      trustedDevice,
+    };
+  }
+
+  /**
+   * Revokes a specific trusted device by deviceTrustId.
+   */
+  async revokeTrustedDevice({
+    organisationId,
+    userId,
+    deviceTrustId,
+    revokedBy,
+    reason = 'USER_REVOKED',
+    actorRole = 'STAFF',
+    correlationId = null,
+  }) {
+    const filter = {
+      organisationId: organisationId.toUpperCase(),
+      deviceTrustId: deviceTrustId.toUpperCase(),
+    };
+
+    if (actorRole !== 'MASTER') {
+      filter.userId = userId.toUpperCase();
+    }
+
+    const device = await TrustedDevice.findOne(filter);
+    if (!device) {
+      throw new Error('TRUSTED_DEVICE_NOT_FOUND');
+    }
+
+    device.status = 'REVOKED';
+    device.revokedAt = new Date();
+    device.revokedBy = (revokedBy || userId).toUpperCase();
+    device.revocationReason = reason;
+    await device.save();
+
+    try {
+      await auditService.recordAuditEvent({
+        organisationId: device.organisationId,
+        actorUserId: (revokedBy || userId).toUpperCase(),
+        actorRole,
+        module: 'AUTHENTICATION',
+        action: 'TRUSTED_DEVICE_REVOKED',
+        entityType: 'TRUSTED_DEVICE',
+        entityId: device.deviceTrustId,
+        reason: `Trusted device revoked: ${reason}`,
+        result: 'SUCCESS',
+        riskClassification: 'MEDIUM',
+        correlationId,
+        metadata: {
+          deviceTrustId: device.deviceTrustId,
+          targetUserId: device.userId,
+        },
+      });
+    } catch (_err) {}
+
+    return device;
+  }
+
+  /**
+   * Revokes all trusted devices for a user (e.g. on password reset, or user request).
+   */
+  async revokeAllUserTrustedDevices({
+    organisationId,
+    userId,
+    revokedBy,
+    reason = 'ALL_REVOKED',
+    exceptDeviceTrustId = null,
+    actorRole = 'SYSTEM',
+    correlationId = null,
+  }) {
+    const filter = {
+      organisationId: organisationId.toUpperCase(),
+      userId: userId.toUpperCase(),
+      status: 'ACTIVE',
+    };
+
+    if (exceptDeviceTrustId) {
+      filter.deviceTrustId = { $ne: exceptDeviceTrustId.toUpperCase() };
+    }
+
+    const now = new Date();
+    const result = await TrustedDevice.updateMany(filter, {
+      $set: {
+        status: 'REVOKED',
+        revokedAt: now,
+        revokedBy: (revokedBy || userId).toUpperCase(),
+        revocationReason: reason,
+      },
+    });
+
+    try {
+      await auditService.recordAuditEvent({
+        organisationId: organisationId.toUpperCase(),
+        actorUserId: (revokedBy || userId).toUpperCase(),
+        actorRole,
+        module: 'AUTHENTICATION',
+        action: 'ALL_TRUSTED_DEVICES_REVOKED',
+        entityType: 'USER',
+        entityId: userId.toUpperCase(),
+        reason: `All trusted devices revoked: ${reason}`,
+        result: 'SUCCESS',
+        riskClassification: 'MEDIUM',
+        correlationId,
+        metadata: {
+          revokedCount: result.modifiedCount || 0,
+        },
+      });
+    } catch (_err) {}
+
+    return result;
+  }
+
+  /**
+   * Lists trusted devices for an authenticated user.
+   */
+  async listUserTrustedDevices({
+    organisationId,
+    userId,
+    currentRawToken = null,
+  }) {
+    let currentTokenHash = null;
+    if (currentRawToken) {
+      try {
+        currentTokenHash = hashToken(currentRawToken);
+      } catch {}
+    }
+
+    const devices = await TrustedDevice.find({
+      organisationId: organisationId.toUpperCase(),
+      userId: userId.toUpperCase(),
+      status: 'ACTIVE',
+    })
+      .select('-tokenHash')
+      .sort({ lastUsedAt: -1 })
+      .lean();
+
+    return devices.map((d) => ({
+      ...d,
+      isCurrentDevice: currentTokenHash ? d.tokenHash === currentTokenHash : false,
+    }));
+  }
 }
 
 module.exports = new DeviceTrustService();
+

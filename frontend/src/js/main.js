@@ -419,8 +419,8 @@ export function mountAuthScreen(screen = "login", params = {}) {
     if (useLegacy) {
       appEl.innerHTML = renderLogin(params);
       wireLogin(appEl, {
-        onSubmit: async ({ organisationId, email, password }) => {
-          await handleCompleteLoginFlow({ organisationId, email, password });
+        onSubmit: async ({ organisationId, email, password, rememberDevice }) => {
+          await handleCompleteLoginFlow({ organisationId, email, password, rememberDevice });
         },
         onForgotPassword: ({ organisationId, email }) => {
           mountAuthScreen("forgot", { organisationId, email });
@@ -429,8 +429,8 @@ export function mountAuthScreen(screen = "login", params = {}) {
     } else {
       appEl.innerHTML = renderLoginPage2(params);
       wireLoginPage2(appEl, {
-        onSubmit: async ({ organisationId, email, password }) => {
-          await handleCompleteLoginFlow({ organisationId, email, password });
+        onSubmit: async ({ organisationId, email, password, rememberDevice }) => {
+          await handleCompleteLoginFlow({ organisationId, email, password, rememberDevice });
         },
         onForgotPassword: ({ organisationId, email }) => {
           mountAuthScreen("forgot", { organisationId, email });
@@ -446,9 +446,10 @@ export function mountAuthScreen(screen = "login", params = {}) {
         const isSetup = Boolean(params.mfaSetupRequired);
         const endpoint = isSetup ? "/auth/mfa/confirm" : "/auth/mfa/verify";
         const challengeToken = params.mfaChallengeToken || params.tempToken || "";
+        const rememberDevice = Boolean(params.rememberDevice);
         const payload = isSetup
-          ? { mfaSetupToken: challengeToken, code }
-          : { mfaChallengeToken: challengeToken, code };
+          ? { mfaSetupToken: challengeToken, code, rememberDevice }
+          : { mfaChallengeToken: challengeToken, code, rememberDevice };
 
         const res = await apiPost(endpoint, payload, { timeoutMs: 60000 });
 
@@ -575,7 +576,7 @@ export function mountAuthScreen(screen = "login", params = {}) {
   }
 }
 
-async function handleCompleteLoginFlow({ organisationId, email, password }) {
+async function handleCompleteLoginFlow({ organisationId, email, password, rememberDevice = false }) {
   try {
     const res = await apiPost(
       "/auth/login",
@@ -583,6 +584,7 @@ async function handleCompleteLoginFlow({ organisationId, email, password }) {
         organisationId,
         email,
         password,
+        rememberDevice: Boolean(rememberDevice),
         identifier: email,
         device: {
           deviceId: getOrCreateDeviceId(),
@@ -613,6 +615,7 @@ async function handleCompleteLoginFlow({ organisationId, email, password }) {
         tempToken: mfaChallengeToken,
         mfaChallengeToken,
         mfaSetupRequired: isSetup,
+        rememberDevice: Boolean(rememberDevice || res?.data?.rememberDevice),
       });
       return { mfaRequired: true };
     }
@@ -649,6 +652,7 @@ async function handleCompleteLoginFlow({ organisationId, email, password }) {
         tempToken: mfaChallengeToken,
         mfaChallengeToken,
         mfaSetupRequired: isSetup,
+        rememberDevice: Boolean(rememberDevice || err?.data?.rememberDevice),
       });
       return { mfaRequired: true };
     }

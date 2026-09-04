@@ -10,11 +10,13 @@ const { User } = require('../src/models/User');
 const { Session } = require('../src/models/Session');
 const { Cafe } = require('../src/models/Cafe');
 const { PasswordResetChallenge } = require('../src/models/PasswordResetChallenge');
+const { TrustedDevice } = require('../src/models/TrustedDevice');
 const authService = require('../src/services/authService');
 const passwordResetService = require('../src/services/passwordResetService');
 const operatorSessionService = require('../src/services/operatorSessionService');
 const operatorAuthorizationService = require('../src/cafe-operations/services/operatorAuthorizationService');
 const mfaService = require('../src/services/mfaService');
+const deviceTrustService = require('../src/services/deviceTrustService');
 
 test('24-POINT PRODUCTION-EQUIVALENCE VALIDATION SUITE', async (t) => {
   let mongoServer;
@@ -431,12 +433,37 @@ test('24-POINT PRODUCTION-EQUIVALENCE VALIDATION SUITE', async (t) => {
     assert.deepEqual(verified.payload.cafes, ['ZC-0001']);
   });
 
-  // TEST 18 — REMEMBER THIS DEVICE
+  // TEST 18 — REMEMBER THIS DEVICE (REAL TRUSTED-DEVICE BACKEND VALIDATION)
   await t.test('TEST 18: Remember device persistence status audit', async () => {
-    // Client-side convenience persists only { email, organisationId } in localStorage
-    // Passwords, tokens, PINs, and MFA secrets are NOT stored
-    // Full cryptographic hardware enrollment is managed via Cafe Operations / deviceTrustService
-    assert.ok(true, 'PARTIAL: Client email/org memory verified safe; deviceTrust isolated to Cafe Ops');
+    // 1. Client-side convenience persists only { email, organisationId } in localStorage (ZERO secrets/passwords stored)
+    // 2. Real backend trusted-device enrollment generates high-entropy opaque token and stores SHA-256 hash
+    const adminUser = await User.findOne({ userId: 'AD-0001' });
+    const regResult = await deviceTrustService.registerTrustedDevice({
+      organisationId: TEST_ORG,
+      userId: 'AD-0001',
+      user: adminUser,
+      deviceMetadata: { browser: 'Chrome', operatingSystem: 'Windows 11' },
+      ipAddress: '192.168.1.100',
+    });
+
+    assert.ok(regResult.rawToken.startsWith('td_'), 'Opaque trusted device token generated');
+    assert.ok(regResult.expiresAt instanceof Date, 'Role-based expiry assigned');
+
+    // 3. Verify server-side hash storage
+    const tokenHash = deviceTrustService.hashTrustedDeviceToken(regResult.rawToken);
+    const inDb = await TrustedDevice.findOne({ tokenHash, status: 'ACTIVE' });
+    assert.ok(inDb, 'Trusted device stored as SHA-256 hash');
+    assert.equal(inDb.userId, 'AD-0001');
+
+    // 4. Verify authoritative trust verification
+    const verification = await deviceTrustService.verifyTrustedDevice({
+      rawToken: regResult.rawToken,
+      organisationId: TEST_ORG,
+      userId: 'AD-0001',
+      user: adminUser,
+      ipAddress: '192.168.1.100',
+    });
+    assert.equal(verification.valid, true, 'Trusted device credential verified successfully');
   });
 
   // TEST 19 — CAFE OPERATIONS AUTHORIZATION
