@@ -176,3 +176,44 @@ test('POST /auth/mfa/verify sets HttpOnly cookies and omits refreshToken from re
   const setCookie = response.headers['set-cookie'] || [];
   assert.ok(setCookie.some((c) => c.includes('zamorin_refresh_token=') && c.includes('HttpOnly')));
 });
+
+test('Frontend Auth Token Security: Tokens are strictly in-memory and NEVER persisted to localStorage or sessionStorage', async () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const apiClientPath = path.resolve(__dirname, '../../frontend/src/js/apiClient.js');
+  const content = fs.readFileSync(apiClientPath, 'utf8');
+
+  // Verify setAccessToken does not call localStorage.setItem or sessionStorage.setItem with tokens
+  assert.ok(
+    !content.includes('localStorage?.setItem(ACCESS_TOKEN_STORAGE_KEY'),
+    'apiClient.js must NOT write access tokens to localStorage'
+  );
+  assert.ok(
+    !content.includes('sessionStorage?.setItem(ACCESS_TOKEN_STORAGE_KEY'),
+    'apiClient.js must NOT write access tokens to sessionStorage'
+  );
+  assert.ok(
+    !content.includes('localStorage?.setItem(SESSION_ID_STORAGE_KEY'),
+    'apiClient.js must NOT write session IDs to localStorage'
+  );
+  assert.ok(
+    !content.includes('sessionStorage?.setItem(SESSION_ID_STORAGE_KEY'),
+    'apiClient.js must NOT write session IDs to sessionStorage'
+  );
+
+  // Verify getAccessToken reads strictly from inMemoryAccessToken
+  assert.ok(
+    !content.includes('localStorage?.getItem(ACCESS_TOKEN_STORAGE_KEY'),
+    'getAccessToken must NOT read from localStorage'
+  );
+  assert.ok(
+    !content.includes('sessionStorage?.getItem(ACCESS_TOKEN_STORAGE_KEY'),
+    'getAccessToken must NOT read from sessionStorage'
+  );
+
+  // Verify /auth/me is NOT cached
+  assert.ok(
+    content.includes('{ prefix: "/auth/me", policy: CachePolicy.SENSITIVE_NO_CACHE }'),
+    '/auth/me MUST have policy CachePolicy.SENSITIVE_NO_CACHE'
+  );
+});

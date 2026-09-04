@@ -41,7 +41,7 @@ import {
   wirePasswordResetFinal,
   renderMfaChallenge,
   wireMfaChallenge,
-} from "./pages/login.js?v=3.4.3";
+} from "./pages/login.js?v=3.4.4";
 import {
   renderLoginPage2,
   wireLoginPage2,
@@ -54,7 +54,7 @@ import {
   renderMfaChallenge2,
   wireMfaChallenge2,
   showGlassAlert,
-} from "./pages/login2.js?v=3.4.3";
+} from "./pages/login2.js?v=3.4.4";
 import "./responsiveAuditor.js";
 
 // =============================================================================
@@ -860,21 +860,17 @@ async function boot() {
     return;
   }
 
-  // Active Authenticated Session Check
-  const token = getAccessToken();
-
-  if (token) {
-    try {
-      const payload = await apiGet("/auth/me");
-      if (payload?.data?.user) {
-        applyAuthenticatedUser(payload.data.user, urlHash);
-        renderShell();
-        registerServiceWorker().catch(() => {});
-        return;
-      }
-    } catch (err) {
-      clearAllAuthTokens();
+  // Active Authenticated Session Check (Authoritative Backend Session Validation via HttpOnly Cookies & In-Memory Bearer)
+  try {
+    const payload = await apiGet("/auth/me");
+    if (payload?.data?.user) {
+      applyAuthenticatedUser(payload.data.user, urlHash);
+      renderShell();
+      registerServiceWorker().catch(() => {});
+      return;
     }
+  } catch (_err) {
+    clearAllAuthTokens();
   }
 
   // Unauthenticated: Mount login screen immediately with ZERO latency!

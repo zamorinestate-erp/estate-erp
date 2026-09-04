@@ -28,6 +28,9 @@ export const API_BASE_URL = normalizeApiBaseUrl(
 const DEVICE_ID_STORAGE_KEY = "zamorin-device-id";
 const ACCESS_TOKEN_STORAGE_KEY = "zamorin-access-token";
 const SESSION_ID_STORAGE_KEY = "zamorin-session-id";
+const REFRESH_TOKEN_STORAGE_KEY = "zamorin-refresh-token";
+
+// Pure In-Memory Token Storage (Defense-in-depth: Tokens NEVER persist in localStorage)
 let inMemoryAccessToken = null;
 let inMemorySessionId = null;
 
@@ -35,31 +38,20 @@ export function getAccessToken() {
   if (inMemoryAccessToken && typeof inMemoryAccessToken === "string" && inMemoryAccessToken.trim() && inMemoryAccessToken !== "undefined" && inMemoryAccessToken !== "null") {
     return inMemoryAccessToken.trim();
   }
-  try {
-    const sessionToken = globalThis.sessionStorage?.getItem(ACCESS_TOKEN_STORAGE_KEY);
-    if (sessionToken && typeof sessionToken === "string" && sessionToken.trim() && sessionToken !== "undefined" && sessionToken !== "null") {
-      inMemoryAccessToken = sessionToken.trim();
-      return inMemoryAccessToken;
-    }
-    const localToken = globalThis.localStorage?.getItem(ACCESS_TOKEN_STORAGE_KEY);
-    if (localToken && typeof localToken === "string" && localToken.trim() && localToken !== "undefined" && localToken !== "null") {
-      inMemoryAccessToken = localToken.trim();
-      return inMemoryAccessToken;
-    }
-  } catch {}
   return null;
 }
 
 export function setAccessToken(token) {
   if (typeof token === "string" && token.trim() && token !== "undefined" && token !== "null") {
     inMemoryAccessToken = token.trim();
-    try {
-      globalThis.sessionStorage?.setItem(ACCESS_TOKEN_STORAGE_KEY, inMemoryAccessToken);
-      globalThis.localStorage?.setItem(ACCESS_TOKEN_STORAGE_KEY, inMemoryAccessToken);
-    } catch {}
   } else {
-    clearAccessToken();
+    inMemoryAccessToken = null;
   }
+  // Defensive Cleanup: Ensure no tokens remain in JavaScript-readable storage
+  try {
+    globalThis.sessionStorage?.removeItem(ACCESS_TOKEN_STORAGE_KEY);
+    globalThis.localStorage?.removeItem(ACCESS_TOKEN_STORAGE_KEY);
+  } catch {}
 }
 
 export function clearAccessToken() {
@@ -71,22 +63,22 @@ export function clearAccessToken() {
 }
 
 export function getRefreshToken() {
-  // Security Policy: Refresh tokens are stored strictly in HttpOnly cookies and never accessed or held in JavaScript.
+  // Security Policy: Refresh tokens are transported via HttpOnly cookies; client-side JS persistence is strictly forbidden.
   return null;
 }
 
 export function setRefreshToken(_token) {
-  // Security Policy: Refresh tokens are transported via HttpOnly cookies; client-side JS persistence is forbidden.
+  // Security Policy: Refresh tokens are transported via HttpOnly cookies; client-side JS persistence is strictly forbidden.
   try {
-    globalThis.localStorage?.removeItem("zamorin-refresh-token");
-    globalThis.sessionStorage?.removeItem("zamorin-refresh-token");
+    globalThis.localStorage?.removeItem(REFRESH_TOKEN_STORAGE_KEY);
+    globalThis.sessionStorage?.removeItem(REFRESH_TOKEN_STORAGE_KEY);
   } catch {}
 }
 
 export function clearRefreshToken() {
   try {
-    globalThis.localStorage?.removeItem("zamorin-refresh-token");
-    globalThis.sessionStorage?.removeItem("zamorin-refresh-token");
+    globalThis.localStorage?.removeItem(REFRESH_TOKEN_STORAGE_KEY);
+    globalThis.sessionStorage?.removeItem(REFRESH_TOKEN_STORAGE_KEY);
   } catch {}
 }
 
@@ -94,31 +86,20 @@ export function getSessionId() {
   if (inMemorySessionId && typeof inMemorySessionId === "string" && inMemorySessionId.trim() && inMemorySessionId !== "undefined" && inMemorySessionId !== "null") {
     return inMemorySessionId.trim();
   }
-  try {
-    const sessionSid = globalThis.sessionStorage?.getItem(SESSION_ID_STORAGE_KEY);
-    if (sessionSid && typeof sessionSid === "string" && sessionSid.trim() && sessionSid !== "undefined" && sessionSid !== "null") {
-      inMemorySessionId = sessionSid.trim();
-      return inMemorySessionId;
-    }
-    const localSid = globalThis.localStorage?.getItem(SESSION_ID_STORAGE_KEY);
-    if (localSid && typeof localSid === "string" && localSid.trim() && localSid !== "undefined" && localSid !== "null") {
-      inMemorySessionId = localSid.trim();
-      return inMemorySessionId;
-    }
-  } catch {}
   return null;
 }
 
 export function setSessionId(id) {
   if (typeof id === "string" && id.trim() && id !== "undefined" && id !== "null") {
     inMemorySessionId = id.trim();
-    try {
-      globalThis.sessionStorage?.setItem(SESSION_ID_STORAGE_KEY, inMemorySessionId);
-      globalThis.localStorage?.setItem(SESSION_ID_STORAGE_KEY, inMemorySessionId);
-    } catch {}
   } else {
-    clearSessionId();
+    inMemorySessionId = null;
   }
+  // Defensive Cleanup: Ensure session IDs do not linger in JavaScript-readable storage
+  try {
+    globalThis.sessionStorage?.removeItem(SESSION_ID_STORAGE_KEY);
+    globalThis.localStorage?.removeItem(SESSION_ID_STORAGE_KEY);
+  } catch {}
 }
 
 export function clearSessionId() {
@@ -130,9 +111,16 @@ export function clearSessionId() {
 }
 
 export function clearAllAuthTokens() {
-  clearAccessToken();
-  clearRefreshToken();
-  clearSessionId();
+  inMemoryAccessToken = null;
+  inMemorySessionId = null;
+  try {
+    globalThis.localStorage?.removeItem(ACCESS_TOKEN_STORAGE_KEY);
+    globalThis.sessionStorage?.removeItem(ACCESS_TOKEN_STORAGE_KEY);
+    globalThis.localStorage?.removeItem(SESSION_ID_STORAGE_KEY);
+    globalThis.sessionStorage?.removeItem(SESSION_ID_STORAGE_KEY);
+    globalThis.localStorage?.removeItem(REFRESH_TOKEN_STORAGE_KEY);
+    globalThis.sessionStorage?.removeItem(REFRESH_TOKEN_STORAGE_KEY);
+  } catch {}
 }
 
 let stepUpAuthenticationHandler = null;
@@ -799,7 +787,6 @@ export async function refreshAuthenticatedSession() {
 }
 
 const NON_REFRESHABLE_AUTH_PATHS = new Set([
-  "/auth/me",
   "/auth/login",
   "/auth/refresh",
   "/auth/mfa/setup",
