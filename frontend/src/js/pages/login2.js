@@ -856,7 +856,7 @@ export function wirePasswordResetFinal2(container, { onSubmit, onCancel } = {}) 
 // -----------------------------------------------------------------------------
 // 5. MFA / TOTP CHALLENGE SCREEN
 // -----------------------------------------------------------------------------
-export function renderMfaChallenge2({ email = "", challengeId = "", tempToken = "" } = {}) {
+export function renderMfaChallenge2({ email = "", challengeId = "", tempToken = "", mfaChallengeToken = "" } = {}) {
   return `
     ${renderBackgroundAndModalsHtml()}
     <div class="l2-glass-wrapper">
@@ -867,7 +867,7 @@ export function renderMfaChallenge2({ email = "", challengeId = "", tempToken = 
 
         <div class="login-header">
           <h2>Two-Factor Authentication</h2>
-          <p class="login-subtitle">Enter the 6-digit TOTP Verification Code from your Authenticator app.</p>
+          <p class="login-subtitle">Enter the 6-digit verification code from your Authenticator app${email ? ` for <strong>${email}</strong>` : ""}.</p>
         </div>
 
         <div id="l2-mfa-error" class="l2-error-banner" style="display:none;"></div>
@@ -877,7 +877,19 @@ export function renderMfaChallenge2({ email = "", challengeId = "", tempToken = 
             <div class="light-input-icon left">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
             </div>
-            <input type="text" id="l2-mfa-code" placeholder="6-digit TOTP Code" maxlength="8" required inputmode="numeric" style="letter-spacing: 4px; text-align: center; font-size: 18px; font-weight: 700;" />
+            <input
+              type="text"
+              id="l2-mfa-code"
+              name="mfaCode"
+              placeholder="6-digit Code"
+              maxlength="6"
+              pattern="[0-9]{6}"
+              required
+              inputmode="numeric"
+              autocomplete="one-time-code"
+              autofocus
+              style="letter-spacing: 6px; text-align: center; font-size: 20px; font-weight: 700;"
+            />
           </div>
 
           <button type="submit" id="l2-mfa-submit" class="light-btn">Verify &amp; Sign In</button>
@@ -894,26 +906,40 @@ export function wireMfaChallenge2(container, { onSubmit, onBack } = {}) {
   const form = container.querySelector("#l2-mfa-form");
   const backBtn = container.querySelector("#l2-mfa-back");
   const errorEl = container.querySelector("#l2-mfa-error");
+  const codeInput = container.querySelector("#l2-mfa-code");
+
+  if (codeInput) {
+    setTimeout(() => {
+      try {
+        codeInput.focus();
+      } catch {}
+    }, 50);
+  }
 
   if (backBtn && typeof onBack === "function") {
     backBtn.addEventListener("click", () => onBack());
   }
 
+  let isSubmittingMfa = false;
+
   if (form && typeof onSubmit === "function") {
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
+      if (isSubmittingMfa) return;
       if (errorEl) errorEl.style.display = "none";
 
-      const code = container.querySelector("#l2-mfa-code")?.value?.trim() || "";
+      const code = codeInput?.value?.trim() || "";
       if (!code) {
         if (errorEl) {
-          errorEl.textContent = "Please enter your TOTP Verification Code.";
+          errorEl.textContent = "Please enter your 6-digit TOTP Verification Code.";
           errorEl.style.display = "block";
         }
+        codeInput?.focus();
         return;
       }
 
       const submitBtn = container.querySelector("#l2-mfa-submit");
+      isSubmittingMfa = true;
       if (submitBtn) {
         submitBtn.disabled = true;
         submitBtn.textContent = "Verifying...";
@@ -922,15 +948,25 @@ export function wireMfaChallenge2(container, { onSubmit, onBack } = {}) {
       try {
         await onSubmit({ code });
       } catch (err) {
+        isSubmittingMfa = false;
         if (submitBtn) {
           submitBtn.disabled = false;
           submitBtn.textContent = "Verify & Sign In";
         }
         if (errorEl) {
-          errorEl.textContent = err.message || "Invalid TOTP code. Please try again.";
+          errorEl.textContent = err.userMessage || err.message || "Invalid or expired MFA code. Please try again.";
           errorEl.style.display = "block";
+        }
+        if (codeInput) {
+          codeInput.select();
+          codeInput.focus();
+        }
+      } finally {
+        if (!errorEl || errorEl.style.display === "none") {
+          isSubmittingMfa = false;
         }
       }
     });
   }
 }
+

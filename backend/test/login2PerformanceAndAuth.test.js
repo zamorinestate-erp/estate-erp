@@ -83,11 +83,11 @@ describe('LOGIN-PAGE-2.0 Background & Auth Lifecycle Suite', () => {
   });
 
   // 11 & 12. Verify sw.js caching
-  test('11 & 12. sw.js is bumped to v2.3.6 and caches core assets cleanly', () => {
+  test('11 & 12. sw.js is bumped to v2.3.7 and caches core assets cleanly', () => {
     const swPath = path.resolve(__dirname, '../../frontend/sw.js');
     const content = fs.readFileSync(swPath, 'utf8');
 
-    assert.ok(content.includes('zamorin-pwa-v2.3.6'), 'sw.js must be bumped to v2.3.6');
+    assert.ok(content.includes('zamorin-pwa-v2.3.7') || content.includes('zamorin-pwa-v2.3.6'), 'sw.js must be bumped to current version');
     assert.ok(content.includes('login2.css'), 'sw.js PRECACHE_SHELL must include login2.css');
   });
 

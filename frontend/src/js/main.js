@@ -39,6 +39,8 @@ import {
   wirePasswordResetVerify,
   renderPasswordResetFinal,
   wirePasswordResetFinal,
+  renderMfaChallenge,
+  wireMfaChallenge,
 } from "./pages/login.js";
 import {
   renderLoginPage2,
@@ -52,7 +54,7 @@ import {
   renderMfaChallenge2,
   wireMfaChallenge2,
   showGlassAlert,
-} from "./pages/login2.js?v=3.3.8";
+} from "./pages/login2.js?v=3.3.9";
 import "./responsiveAuditor.js";
 
 // =============================================================================
@@ -439,33 +441,57 @@ export function mountAuthScreen(screen = "login", params = {}) {
       });
     }
   } else if (screen === "mfa") {
-    appEl.innerHTML = renderMfaChallenge2(params);
-    wireMfaChallenge2(appEl, {
-      onSubmit: async ({ code }) => {
-        try {
-          const res = await apiPost("/auth/mfa/verify", {
-            code,
-            tempToken: params.tempToken,
-            challengeId: params.challengeId
-          });
+    const handleMfaSubmit = async ({ code }) => {
+      try {
+        const isSetup = Boolean(params.mfaSetupRequired);
+        const endpoint = isSetup ? "/auth/mfa/confirm" : "/auth/mfa/verify";
+        const challengeToken = params.mfaChallengeToken || params.tempToken || "";
+        const payload = isSetup
+          ? { mfaSetupToken: challengeToken, code }
+          : { mfaChallengeToken: challengeToken, code };
 
-          const accessToken = res?.data?.accessToken || res?.data?.token;
-          if (accessToken) {
-            setAccessToken(accessToken);
-          }
-          const user = res?.data?.user;
-          if (user) {
-            handleAuthenticatedUserSession(user);
-            return;
-          }
-          window.location.hash = "#dashboard";
-          await boot();
-        } catch (err) {
-          throw new Error(err.userMessage || err.message || "Invalid MFA code. Please try again.");
+        const res = await apiPost(endpoint, payload, { timeoutMs: 60000 });
+
+        const accessToken = res?.data?.accessToken || res?.data?.token;
+        if (accessToken) {
+          setAccessToken(accessToken);
         }
-      },
-      onBack: () => mountAuthScreen("login")
-    });
+        const user = res?.data?.user;
+        if (user) {
+          handleAuthenticatedUserSession(user);
+          return;
+        }
+        window.location.hash = "#dashboard";
+        await boot();
+      } catch (err) {
+        if (
+          err?.code === "MFA_TOKEN_EXPIRED" ||
+          err?.code === "INVALID_OR_EXPIRED_SESSION" ||
+          err?.code === "AUTH_TOKEN_EXPIRED" ||
+          (err?.message && (err.message.includes("expired") || err.message.includes("Expired")) && (err.message.includes("token") || err.message.includes("challenge")))
+        ) {
+          mountAuthScreen("login", {
+            notice: "Your verification session has expired. Please sign in again.",
+          });
+          return;
+        }
+        throw new Error(err.userMessage || err.message || "Invalid or expired MFA verification code.");
+      }
+    };
+
+    if (useLegacy) {
+      appEl.innerHTML = renderMfaChallenge(params);
+      wireMfaChallenge(appEl, {
+        onSubmit: handleMfaSubmit,
+        onBack: () => mountAuthScreen("login"),
+      });
+    } else {
+      appEl.innerHTML = renderMfaChallenge2(params);
+      wireMfaChallenge2(appEl, {
+        onSubmit: handleMfaSubmit,
+        onBack: () => mountAuthScreen("login"),
+      });
+    }
   } else if (screen === "forgot") {
     if (useLegacy) {
       appEl.innerHTML = renderPasswordResetRequest(params);
@@ -567,14 +593,28 @@ async function handleCompleteLoginFlow({ organisationId, email, password }) {
       { timeoutMs: 60000 }
     );
 
-    // Check if MFA is required
-    if (res?.data?.mfaRequired || res?.status === 202 || (res?.data?.challengeId && !res?.data?.accessToken)) {
+    // Check if MFA is required (200/202 responses with challenge tokens)
+    const isMfa = Boolean(
+      res?.data?.mfaRequired ||
+      res?.data?.requiresMfa ||
+      res?.data?.mfaChallengeToken ||
+      res?.data?.mfaSetupToken ||
+      res?.status === 202 ||
+      (res?.data?.challengeId && !res?.data?.accessToken)
+    );
+
+    if (isMfa) {
+      const mfaChallengeToken = res?.data?.mfaChallengeToken || res?.data?.mfaSetupToken || res?.data?.tempToken || res?.data?.token || "";
+      const isSetup = Boolean(res?.data?.mfaSetupRequired || res?.data?.mfaSetupToken);
       mountAuthScreen("mfa", {
+        organisationId,
         email,
-        challengeId: res?.data?.challengeId,
-        tempToken: res?.data?.tempToken || res?.data?.token,
+        challengeId: res?.data?.challengeId || res?.data?.userId || "",
+        tempToken: mfaChallengeToken,
+        mfaChallengeToken,
+        mfaSetupRequired: isSetup,
       });
-      return;
+      return { mfaRequired: true };
     }
 
     const accessToken = res?.data?.accessToken || res?.data?.token;
@@ -584,11 +624,35 @@ async function handleCompleteLoginFlow({ organisationId, email, password }) {
     const user = res?.data?.user;
     if (user) {
       handleAuthenticatedUserSession(user);
-      return;
+      return { success: true, user };
     }
     window.location.hash = "#dashboard";
     boot();
+    return { success: true };
   } catch (err) {
+    // Intercept MFA continuation responses (403 with MFA_REQUIRED / MFA_SETUP_REQUIRED)
+    // MFA_REQUIRED is a continuation state, NOT an authentication failure or failed attempt.
+    if (
+      err?.code === "MFA_REQUIRED" ||
+      err?.code === "MFA_SETUP_REQUIRED" ||
+      err?.data?.mfaChallengeToken ||
+      err?.data?.mfaSetupToken ||
+      err?.data?.requiresMfa ||
+      err?.data?.mfaRequired
+    ) {
+      const mfaChallengeToken = err?.data?.mfaChallengeToken || err?.data?.mfaSetupToken || err?.data?.tempToken || "";
+      const isSetup = err?.code === "MFA_SETUP_REQUIRED" || Boolean(err?.data?.mfaSetupRequired);
+      mountAuthScreen("mfa", {
+        organisationId,
+        email,
+        challengeId: err?.data?.challengeId || err?.data?.userId || "",
+        tempToken: mfaChallengeToken,
+        mfaChallengeToken,
+        mfaSetupRequired: isSetup,
+      });
+      return { mfaRequired: true };
+    }
+
     throw err;
   }
 }

@@ -434,6 +434,8 @@ const login = asyncHandler(
         data: {
           userId: user.userId,
           role: user.role,
+          requiresMfa: true,
+          mfaRequired: true,
           mfaSetupRequired,
           autoCode,
           mfaSetupToken: mfaSetupRequired ? mfaToken : undefined,
@@ -618,6 +620,8 @@ const mfaConfirm = asyncHandler(
   async (request, response) => {
     const mfaSetupToken =
       request.body?.mfaSetupToken ||
+      request.body?.tempToken ||
+      request.body?.token ||
       request.get('x-mfa-setup-token');
 
     const code =
@@ -727,6 +731,8 @@ const mfaVerify = asyncHandler(
   async (request, response) => {
     const mfaChallengeToken =
       request.body?.mfaChallengeToken ||
+      request.body?.tempToken ||
+      request.body?.token ||
       request.get('x-mfa-challenge-token');
 
     const code =

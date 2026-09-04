@@ -459,3 +459,124 @@ export function wireLogin(container, { onSubmit, onForgotPassword } = {}) {
     });
   }
 }
+
+/**
+ * 5. MFA / TOTP Verification Challenge (Legacy Screen)
+ */
+export function renderMfaChallenge({ email = "", challengeId = "", tempToken = "", mfaChallengeToken = "" } = {}) {
+  return `
+    <div class="auth-card-container">
+      <div class="auth-card">
+        <div class="auth-brand-header">
+          <img src="/src/assets/zamorin-logo-stacked.svg" alt="Zamorin Café" style="width: 140px; height: auto; margin: 0 auto 10px; display: block;" />
+          <p class="auth-brand-subtitle">Enterprise Resource Planning</p>
+        </div>
+
+        <div class="auth-form-header">
+          <h2>Two-Factor Authentication</h2>
+          <p>Enter the 6-digit verification code from your Authenticator app${email ? ` for <strong>${email}</strong>` : ""}.</p>
+        </div>
+
+        <form id="zamorin-mfa-form" class="auth-form">
+          <div class="auth-field-group">
+            <label for="mfa-verify-code">6-Digit Verification Code</label>
+            <input
+              type="text"
+              id="mfa-verify-code"
+              name="mfaCode"
+              class="auth-input auth-code-input"
+              pattern="[0-9]{6}"
+              maxlength="6"
+              placeholder="123456"
+              required
+              inputmode="numeric"
+              autocomplete="one-time-code"
+              autofocus
+              style="letter-spacing: 6px; text-align: center; font-size: 20px; font-weight: 700;"
+            />
+          </div>
+
+          <div id="mfa-verify-error" class="auth-error-banner" style="display:none;"></div>
+
+          <div class="auth-action-group">
+            <button type="submit" id="mfa-verify-submit" class="btn btn-primary btn-block">
+              Verify &amp; Sign In
+            </button>
+            <button type="button" id="mfa-verify-back" class="btn btn-secondary btn-block">
+              Back to Sign In
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+}
+
+export function wireMfaChallenge(container, { onSubmit, onBack } = {}) {
+  const form = container.querySelector("#zamorin-mfa-form");
+  const backBtn = container.querySelector("#mfa-verify-back");
+  const errorEl = container.querySelector("#mfa-verify-error");
+  const codeInput = container.querySelector("#mfa-verify-code");
+
+  if (codeInput) {
+    setTimeout(() => {
+      try {
+        codeInput.focus();
+      } catch {}
+    }, 50);
+  }
+
+  if (backBtn && typeof onBack === "function") {
+    backBtn.addEventListener("click", () => onBack());
+  }
+
+  let isSubmittingMfa = false;
+
+  if (form && typeof onSubmit === "function") {
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (isSubmittingMfa) return;
+      if (errorEl) errorEl.style.display = "none";
+
+      const code = codeInput?.value?.trim() || "";
+      if (!code) {
+        if (errorEl) {
+          errorEl.textContent = "Please enter your 6-digit verification code.";
+          errorEl.style.display = "block";
+        }
+        codeInput?.focus();
+        return;
+      }
+
+      const submitBtn = container.querySelector("#mfa-verify-submit");
+      isSubmittingMfa = true;
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Verifying...";
+      }
+
+      try {
+        await onSubmit({ code });
+      } catch (err) {
+        isSubmittingMfa = false;
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = "Verify & Sign In";
+        }
+        if (errorEl) {
+          errorEl.textContent = err.userMessage || err.message || "Invalid or expired verification code.";
+          errorEl.style.display = "block";
+        }
+        if (codeInput) {
+          codeInput.select();
+          codeInput.focus();
+        }
+      } finally {
+        if (!errorEl || errorEl.style.display === "none") {
+          isSubmittingMfa = false;
+        }
+      }
+    });
+  }
+}
+
