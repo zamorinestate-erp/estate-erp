@@ -65,6 +65,7 @@ describe('REAL TRUSTED-DEVICE / REMEMBER-THIS-DEVICE 31-POINT TEST SUITE', () =>
   let masterSecretBase32, adminSecretBase32;
 
   test.before(async () => {
+    process.env.REQUIRE_MFA = 'true';
     mongoServer = await MongoMemoryServer.create();
     await mongoose.connect(mongoServer.getUri());
 

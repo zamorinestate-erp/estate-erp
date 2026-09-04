@@ -42,6 +42,7 @@ describe('LOGIN-PAGE-2.0 Automatic MFA Orchestration 15-Point Suite', () => {
   process.env.MFA_ENCRYPTION_KEY = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
 
   test.before(async () => {
+    process.env.REQUIRE_MFA = 'true';
     mongoServer = await MongoMemoryServer.create();
     await mongoose.connect(mongoServer.getUri());
 

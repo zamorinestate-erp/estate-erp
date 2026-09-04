@@ -573,7 +573,7 @@ async function authenticatePassword({
     }
   }
 
-  const isMfaDisabled = process.env.DISABLE_MFA === 'true';
+  const isMfaDisabled = process.env.DISABLE_MFA === 'true' || process.env.REQUIRE_MFA !== 'true';
   const roleRequiresMfa =
     !isMfaDisabled &&
     process.env.REQUIRE_MFA === 'true' &&
@@ -612,7 +612,7 @@ async function createSession({
     );
   }
 
-  const isMfaDisabled = process.env.DISABLE_MFA === 'true';
+  const isMfaDisabled = process.env.DISABLE_MFA === 'true' || process.env.REQUIRE_MFA !== 'true';
   const roleRequiresMfaSession =
     !isMfaDisabled &&
     process.env.REQUIRE_MFA === 'true' &&
