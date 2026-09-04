@@ -41,7 +41,7 @@ import {
   wirePasswordResetFinal,
   renderMfaChallenge,
   wireMfaChallenge,
-} from "./pages/login.js";
+} from "./pages/login.js?v=3.3.9";
 import {
   renderLoginPage2,
   wireLoginPage2,
