@@ -166,3 +166,183 @@ test('GET /api/v1/auth/me returns safe user identity and session metadata for au
   assert.equal(authData.role, 'MASTER');
   assert.equal(authData.sessionId, 'SS-20260807-0001');
 });
+
+test('GET /api/v1/auth/me returns 200 with OWNER role preserved', async (t) => {
+  const user = makeUser({ userId: 'OU-0001', role: 'OWNER', isPrimaryMaster: false });
+  const session = makeSession({ userId: 'OU-0001', roleSnapshot: 'OWNER' });
+
+  t.mock.method(authService, 'verifyAccessToken', async () => ({
+    payload: {
+      sub: 'OU-0001',
+      org: 'ORG-TEST',
+      role: 'OWNER',
+      sv: 0,
+      usv: 0,
+      pv: 0,
+      sid: 'SS-20260807-0002',
+    },
+    session,
+  }));
+
+  t.mock.method(Session, 'findOne', async () => session);
+  t.mock.method(User, 'findOne', () => makeQueryMock(user));
+
+  const app = createApp({ allowedOrigins: ['*'], production: false });
+  const server = await new Promise((resolve) => {
+    const s = app.listen(0, () => resolve(s));
+  });
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+
+  const { status, body } = await request(server, '/api/v1/auth/me', {
+    token: 'owner-token',
+  });
+
+  assert.equal(status, 200);
+  assert.equal(body.data?.user?.role, 'OWNER');
+  assert.equal(body.data?.authentication?.role, 'OWNER');
+});
+
+test('GET /api/v1/auth/me returns 200 with CAFE_ADMIN cafe scope preserved', async (t) => {
+  const user = makeUser({
+    userId: 'AU-0001',
+    role: 'CAFE_ADMIN',
+    primaryCafeId: 'ZC-0001',
+    assignedCafeIds: ['ZC-0001', 'ZC-0002'],
+    isPrimaryMaster: false,
+  });
+  const session = makeSession({
+    userId: 'AU-0001',
+    roleSnapshot: 'CAFE_ADMIN',
+    assignedCafeIdsSnapshot: ['ZC-0001', 'ZC-0002'],
+  });
+
+  t.mock.method(authService, 'verifyAccessToken', async () => ({
+    payload: {
+      sub: 'AU-0001',
+      org: 'ORG-TEST',
+      role: 'CAFE_ADMIN',
+      sv: 0,
+      usv: 0,
+      pv: 0,
+      sid: 'SS-20260807-0003',
+    },
+    session,
+  }));
+
+  t.mock.method(Session, 'findOne', async () => session);
+  t.mock.method(User, 'findOne', () => makeQueryMock(user));
+
+  const app = createApp({ allowedOrigins: ['*'], production: false });
+  const server = await new Promise((resolve) => {
+    const s = app.listen(0, () => resolve(s));
+  });
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+
+  const { status, body } = await request(server, '/api/v1/auth/me', {
+    token: 'admin-token',
+  });
+
+  assert.equal(status, 200);
+  assert.equal(body.data?.user?.role, 'CAFE_ADMIN');
+  assert.equal(body.data?.user?.primaryCafeId, 'ZC-0001');
+  assert.deepEqual(body.data?.user?.assignedCafeIds, ['ZC-0001', 'ZC-0002']);
+  assert.deepEqual(body.data?.authentication?.assignedCafeIds, ['ZC-0001', 'ZC-0002']);
+});
+
+test('GET /api/v1/auth/me returns 200 with STAFF role preserved', async (t) => {
+  const user = makeUser({
+    userId: 'SU-0001',
+    role: 'STAFF',
+    primaryCafeId: 'ZC-0001',
+    assignedCafeIds: ['ZC-0001'],
+    isPrimaryMaster: false,
+  });
+  const session = makeSession({
+    userId: 'SU-0001',
+    roleSnapshot: 'STAFF',
+    assignedCafeIdsSnapshot: ['ZC-0001'],
+  });
+
+  t.mock.method(authService, 'verifyAccessToken', async () => ({
+    payload: {
+      sub: 'SU-0001',
+      org: 'ORG-TEST',
+      role: 'STAFF',
+      sv: 0,
+      usv: 0,
+      pv: 0,
+      sid: 'SS-20260807-0004',
+    },
+    session,
+  }));
+
+  t.mock.method(Session, 'findOne', async () => session);
+  t.mock.method(User, 'findOne', () => makeQueryMock(user));
+
+  const app = createApp({ allowedOrigins: ['*'], production: false });
+  const server = await new Promise((resolve) => {
+    const s = app.listen(0, () => resolve(s));
+  });
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+
+  const { status, body } = await request(server, '/api/v1/auth/me', {
+    token: 'staff-token',
+  });
+
+  assert.equal(status, 200);
+  assert.equal(body.data?.user?.role, 'STAFF');
+  assert.equal(body.data?.authentication?.role, 'STAFF');
+});
+
+test('GET /api/v1/auth/me returns 401 when sessionVersion mismatches user security state', async (t) => {
+  const user = makeUser({ sessionVersion: 2 });
+  const session = makeSession();
+
+  t.mock.method(authService, 'verifyAccessToken', async () => ({
+    payload: {
+      sub: 'MU-0001',
+      org: 'ORG-TEST',
+      role: 'MASTER',
+      sv: 0,
+      usv: 1, // Stale version in token
+      pv: 0,
+      sid: 'SS-20260807-0001',
+    },
+    session,
+  }));
+
+  t.mock.method(Session, 'findOne', async () => session);
+  t.mock.method(User, 'findOne', () => makeQueryMock(user));
+
+  const app = createApp({ allowedOrigins: ['*'], production: false });
+  const server = await new Promise((resolve) => {
+    const s = app.listen(0, () => resolve(s));
+  });
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+
+  const { status, body } = await request(server, '/api/v1/auth/me', {
+    token: 'stale-token',
+  });
+
+  assert.equal(status, 401);
+  assert.equal(body.error?.code, 'SECURITY_VERSION_CHANGED');
+});
+
+test('GET /api/v1/auth/me returns 401 when session is revoked', async (t) => {
+  t.mock.method(authService, 'verifyAccessToken', async () => {
+    throw new Error('AUTH_SESSION_REVOKED');
+  });
+
+  const app = createApp({ allowedOrigins: ['*'], production: false });
+  const server = await new Promise((resolve) => {
+    const s = app.listen(0, () => resolve(s));
+  });
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+
+  const { status, body } = await request(server, '/api/v1/auth/me', {
+    token: 'revoked-token',
+  });
+
+  assert.equal(status, 401);
+  assert.equal(body.error?.code, 'AUTH_SESSION_REVOKED');
+});

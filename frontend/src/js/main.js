@@ -41,7 +41,7 @@ import {
   wirePasswordResetFinal,
   renderMfaChallenge,
   wireMfaChallenge,
-} from "./pages/login.js?v=3.3.9";
+} from "./pages/login.js?v=3.4.3";
 import {
   renderLoginPage2,
   wireLoginPage2,
@@ -54,7 +54,7 @@ import {
   renderMfaChallenge2,
   wireMfaChallenge2,
   showGlassAlert,
-} from "./pages/login2.js?v=3.3.9";
+} from "./pages/login2.js?v=3.4.3";
 import "./responsiveAuditor.js";
 
 // =============================================================================

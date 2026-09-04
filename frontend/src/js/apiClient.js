@@ -27,6 +27,7 @@ export const API_BASE_URL = normalizeApiBaseUrl(
 
 const DEVICE_ID_STORAGE_KEY = "zamorin-device-id";
 const ACCESS_TOKEN_STORAGE_KEY = "zamorin-access-token";
+const SESSION_ID_STORAGE_KEY = "zamorin-session-id";
 let inMemoryAccessToken = null;
 let inMemorySessionId = null;
 
@@ -34,12 +35,28 @@ export function getAccessToken() {
   if (inMemoryAccessToken && typeof inMemoryAccessToken === "string" && inMemoryAccessToken.trim() && inMemoryAccessToken !== "undefined" && inMemoryAccessToken !== "null") {
     return inMemoryAccessToken.trim();
   }
+  try {
+    const sessionToken = globalThis.sessionStorage?.getItem(ACCESS_TOKEN_STORAGE_KEY);
+    if (sessionToken && typeof sessionToken === "string" && sessionToken.trim() && sessionToken !== "undefined" && sessionToken !== "null") {
+      inMemoryAccessToken = sessionToken.trim();
+      return inMemoryAccessToken;
+    }
+    const localToken = globalThis.localStorage?.getItem(ACCESS_TOKEN_STORAGE_KEY);
+    if (localToken && typeof localToken === "string" && localToken.trim() && localToken !== "undefined" && localToken !== "null") {
+      inMemoryAccessToken = localToken.trim();
+      return inMemoryAccessToken;
+    }
+  } catch {}
   return null;
 }
 
 export function setAccessToken(token) {
   if (typeof token === "string" && token.trim() && token !== "undefined" && token !== "null") {
     inMemoryAccessToken = token.trim();
+    try {
+      globalThis.sessionStorage?.setItem(ACCESS_TOKEN_STORAGE_KEY, inMemoryAccessToken);
+      globalThis.localStorage?.setItem(ACCESS_TOKEN_STORAGE_KEY, inMemoryAccessToken);
+    } catch {}
   } else {
     clearAccessToken();
   }
@@ -48,7 +65,8 @@ export function setAccessToken(token) {
 export function clearAccessToken() {
   inMemoryAccessToken = null;
   try {
-    globalThis.localStorage?.removeItem("zamorin-access-token");
+    globalThis.sessionStorage?.removeItem(ACCESS_TOKEN_STORAGE_KEY);
+    globalThis.localStorage?.removeItem(ACCESS_TOKEN_STORAGE_KEY);
   } catch {}
 }
 
@@ -76,12 +94,28 @@ export function getSessionId() {
   if (inMemorySessionId && typeof inMemorySessionId === "string" && inMemorySessionId.trim() && inMemorySessionId !== "undefined" && inMemorySessionId !== "null") {
     return inMemorySessionId.trim();
   }
+  try {
+    const sessionSid = globalThis.sessionStorage?.getItem(SESSION_ID_STORAGE_KEY);
+    if (sessionSid && typeof sessionSid === "string" && sessionSid.trim() && sessionSid !== "undefined" && sessionSid !== "null") {
+      inMemorySessionId = sessionSid.trim();
+      return inMemorySessionId;
+    }
+    const localSid = globalThis.localStorage?.getItem(SESSION_ID_STORAGE_KEY);
+    if (localSid && typeof localSid === "string" && localSid.trim() && localSid !== "undefined" && localSid !== "null") {
+      inMemorySessionId = localSid.trim();
+      return inMemorySessionId;
+    }
+  } catch {}
   return null;
 }
 
 export function setSessionId(id) {
   if (typeof id === "string" && id.trim() && id !== "undefined" && id !== "null") {
     inMemorySessionId = id.trim();
+    try {
+      globalThis.sessionStorage?.setItem(SESSION_ID_STORAGE_KEY, inMemorySessionId);
+      globalThis.localStorage?.setItem(SESSION_ID_STORAGE_KEY, inMemorySessionId);
+    } catch {}
   } else {
     clearSessionId();
   }
@@ -90,7 +124,8 @@ export function setSessionId(id) {
 export function clearSessionId() {
   inMemorySessionId = null;
   try {
-    globalThis.localStorage?.removeItem("zamorin-session-id");
+    globalThis.sessionStorage?.removeItem(SESSION_ID_STORAGE_KEY);
+    globalThis.localStorage?.removeItem(SESSION_ID_STORAGE_KEY);
   } catch {}
 }
 
@@ -138,7 +173,7 @@ const DEFAULT_POLICY_MAP = [
   { prefix: "/auth/refresh", policy: CachePolicy.SENSITIVE_NO_CACHE },
   { prefix: "/auth/step-up", policy: CachePolicy.SENSITIVE_NO_CACHE },
   { prefix: "/auth/login", policy: CachePolicy.SENSITIVE_NO_CACHE },
-  { prefix: "/auth/me", policy: CachePolicy.SESSION_STATIC },
+  { prefix: "/auth/me", policy: CachePolicy.SENSITIVE_NO_CACHE },
   { prefix: "/cafes", policy: CachePolicy.SESSION_STATIC },
   { prefix: "/reports/catalogue", policy: CachePolicy.SESSION_STATIC },
   { prefix: "/settings/system", policy: CachePolicy.SESSION_STATIC },
