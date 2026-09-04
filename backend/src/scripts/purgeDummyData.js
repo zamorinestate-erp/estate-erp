@@ -298,7 +298,9 @@ async function purgeDatabase() {
   let totalPurged = 0;
   for (const item of purgeModels) {
     try {
-      const res = await item.model.deleteMany({});
+      const res = item.model.collection?.deleteMany 
+        ? await item.model.collection.deleteMany({}) 
+        : await item.model.deleteMany({});
       if (res.deletedCount > 0) {
         console.log(`  ✔ Purged ${res.deletedCount.toString().padStart(4, ' ')} records from ${item.name}`);
         totalPurged += res.deletedCount;
@@ -309,29 +311,46 @@ async function purgeDatabase() {
   }
 
   console.log(`\n2. Cleaning workforce user accounts (preserving Primary Master only)...`);
-  const userDeleteResult = await User.deleteMany({
-    isPrimaryMaster: { $ne: true },
-  });
+  const userDeleteResult = User.collection?.deleteMany
+    ? await User.collection.deleteMany({ isPrimaryMaster: { $ne: true } })
+    : await User.deleteMany({ isPrimaryMaster: { $ne: true } });
   console.log(`  ✔ Removed ${userDeleteResult.deletedCount} non-master/dummy employee accounts.`);
 
   // Clean Primary Master state
   const masterEmail = (process.env.INITIAL_MASTER_EMAIL || 'pradeeshk331@gmail.com').trim().toLowerCase();
-  const masterUpdate = await User.updateMany(
-    { isPrimaryMaster: true },
-    {
-      $set: {
-        mfaEnabled: false,
-        mfaMethod: 'NONE',
-        mfaSecretEncrypted: null,
-        pendingMfaSecretEncrypted: null,
-        recoveryCodeHashes: [],
-        assignedCafeIds: [],
-        primaryCafeId: null,
-        failedLoginAttempts: 0,
-        lockedUntil: null,
-      },
-    }
-  );
+  const masterUpdate = User.collection?.updateMany
+    ? await User.collection.updateMany(
+        { isPrimaryMaster: true },
+        {
+          $set: {
+            mfaEnabled: false,
+            mfaMethod: 'NONE',
+            mfaSecretEncrypted: null,
+            pendingMfaSecretEncrypted: null,
+            recoveryCodeHashes: [],
+            assignedCafeIds: [],
+            primaryCafeId: null,
+            failedLoginAttempts: 0,
+            lockedUntil: null,
+          },
+        }
+      )
+    : await User.updateMany(
+        { isPrimaryMaster: true },
+        {
+          $set: {
+            mfaEnabled: false,
+            mfaMethod: 'NONE',
+            mfaSecretEncrypted: null,
+            pendingMfaSecretEncrypted: null,
+            recoveryCodeHashes: [],
+            assignedCafeIds: [],
+            primaryCafeId: null,
+            failedLoginAttempts: 0,
+            lockedUntil: null,
+          },
+        }
+      );
   console.log(`  ✔ Sanitized Primary Master profile for ${masterEmail} (2FA disabled, ready for frictionless sign-in).`);
 
   console.log('\n3. Resetting sequence number generators...');
