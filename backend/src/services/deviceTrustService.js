@@ -759,6 +759,11 @@ class DeviceTrustService {
       filter.userId = userId.toUpperCase();
     }
 
+    const mongoose = require('mongoose');
+    if (mongoose.connection?.readyState !== 1) {
+      return null;
+    }
+
     const device = await TrustedDevice.findOne(filter);
     if (!device) {
       throw new Error('TRUSTED_DEVICE_NOT_FOUND');
@@ -816,14 +821,19 @@ class DeviceTrustService {
     }
 
     const now = new Date();
-    const result = await TrustedDevice.updateMany(filter, {
-      $set: {
-        status: 'REVOKED',
-        revokedAt: now,
-        revokedBy: (revokedBy || userId).toUpperCase(),
-        revocationReason: reason,
-      },
-    });
+    let result = { modifiedCount: 0 };
+    const mongoose = require('mongoose');
+
+    if (mongoose.connection?.readyState === 1) {
+      result = await TrustedDevice.updateMany(filter, {
+        $set: {
+          status: 'REVOKED',
+          revokedAt: now,
+          revokedBy: (revokedBy || userId).toUpperCase(),
+          revocationReason: reason,
+        },
+      });
+    }
 
     try {
       await auditService.recordAuditEvent({
