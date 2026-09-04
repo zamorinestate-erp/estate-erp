@@ -80,9 +80,9 @@
   color: var(--l2-text-muted);
 }
 
-/* Guarantee ZERO page scrolling when login screen is active */
-html,
-body {
+/* Guarantee ZERO page scrolling ONLY when login screen is active */
+html:has(#app.auth-screen),
+body:has(#app.auth-screen) {
   height: 100vh;
   height: 100dvh;
   margin: 0 !important;
