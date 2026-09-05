@@ -165,7 +165,7 @@ async function run() {
         if (!btn) return { found: false, body: document.body.innerText.slice(0, 100) };
         btn.click();
         const content = document.querySelector("#pl-tab-content-area")?.innerText || "";
-        const isPrimary = btn.classList.contains("btn-primary");
+        const isPrimary = btn.classList.contains("btn-primary") || btn.classList.contains("active");
         return {
           found: true,
           isPrimary,

@@ -16,6 +16,36 @@ let activeCategoryFilter = "ALL";
 let searchQuery = "";
 let showLowStockOnly = false;
 
+let cachedCafes = [];
+
+async function loadCafesList() {
+  if (cachedCafes && cachedCafes.length > 0) return cachedCafes;
+  try {
+    const res = await apiGet("/cafes");
+    cachedCafes = res?.data || res?.cafes || (Array.isArray(res) ? res : []);
+  } catch (err) {
+    cachedCafes = [];
+  }
+  return cachedCafes;
+}
+
+function getCafeOptionsHtml(selectedId, includeAll = false, allLabel = "All Cafés") {
+  let html = includeAll ? `<option value="ALL" ${selectedId === "ALL" ? "selected" : ""}>${allLabel}</option>` : "";
+  if (!cachedCafes || !cachedCafes.length) {
+    const fallbackId = state.user?.primaryCafeId || state.user?.assignedCafeIds?.[0];
+    if (fallbackId) {
+      html += `<option value="${fallbackId}" ${selectedId === fallbackId ? "selected" : ""}>${state.user?.primaryCafeName || fallbackId}</option>`;
+    }
+    return html;
+  }
+  for (const c of cachedCafes) {
+    const cid = c.cafeId || c.id || c._id;
+    const name = c.name || c.cafeName || cid;
+    html += `<option value="${cid}" ${selectedId === cid ? "selected" : ""}>${name} (${cid})</option>`;
+  }
+  return html;
+}
+
 export function setInventoryActiveTab(tab) {
   activeTab = tab || "overview";
 }
@@ -104,15 +134,15 @@ async function loadInventoryOverview(wrap) {
       renderOverviewTab(wrap);
     }
   } catch (err) {
-    console.warn("Inventory API offline, using dev preview overview:", err.message);
+    console.warn("Inventory API offline, using empty overview:", err.message);
     liveOverview = {
       kpis: {
-        totalValuationPaisa: 148500000,
-        totalActiveSkus: 52,
-        lowStockCount: 4,
+        totalValuationPaisa: 0,
+        totalActiveSkus: 0,
+        lowStockCount: 0,
         criticalStockCount: 0,
-        pendingCountsApproval: 2,
-        inTransitQuantity: 18,
+        pendingCountsApproval: 0,
+        inTransitQuantity: 0,
         activeRecallsCount: 0
       },
       heatmap: []
@@ -147,12 +177,12 @@ function renderCurrentWorkspace(wrap) {
 
 function renderOverviewContentHtml() {
   const kpis = liveOverview?.kpis || {
-    totalValuationPaisa: 148500000,
-    totalActiveSkus: 52,
-    lowStockCount: 4,
+    totalValuationPaisa: 0,
+    totalActiveSkus: 0,
+    lowStockCount: 0,
     criticalStockCount: 0,
-    pendingCountsApproval: 2,
-    inTransitQuantity: 18,
+    pendingCountsApproval: 0,
+    inTransitQuantity: 0,
     activeRecallsCount: 0,
   };
   const isCafeAdmin = state.user?.role === "CAFE_ADMIN";
@@ -250,13 +280,8 @@ function renderOverviewContentHtml() {
             <span class="badge badge-accent" style="font-size:10.5px;">LEDGER LIVE</span>
           </div>
           <div style="display:flex; flex-direction:column; gap:8px; font-size:12px;">
-            <div style="display:flex; justify-content:space-between; color:var(--ink);">
-              <span>Goods Receipt Note GRN-2026-088</span>
-              <span style="color:var(--muted);">Main Outlet (ZC-0001)</span>
-            </div>
-            <div style="display:flex; justify-content:space-between; color:var(--ink);">
-              <span>Inter-Café Dispatch TR-0042</span>
-              <span style="color:var(--muted);">Branch Outlet (ZC-0002)</span>
+            <div style="color:var(--muted); font-size:12px; padding:8px 0; text-align:center;">
+              No recent inventory transactions logged.
             </div>
           </div>
           <div style="margin-top:12px;">
@@ -290,8 +315,10 @@ function renderOverviewTab(wrap) {
 
 // ── 2. Stock Levels by Café ──────────────────────────────────────────────────
 async function renderStockLevelsTab(wrap) {
+  await loadCafesList();
   const isMaster = state.user?.role === "MASTER";
-  const cafeId = selectedCafeFilter === "ALL" ? "ZC-0001" : selectedCafeFilter;
+  const defaultCafe = cachedCafes[0]?.cafeId || state.user?.primaryCafeId || "";
+  const cafeId = selectedCafeFilter === "ALL" ? defaultCafe : selectedCafeFilter;
   const kpis = liveOverview?.kpis || {};
 
   wrap.innerHTML = `
@@ -315,12 +342,12 @@ async function renderStockLevelsTab(wrap) {
       <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px;">
         <div class="kpi-card glass" style="padding:14px;">
           <div class="kpi-label" style="font-size:11px; color:var(--muted); font-weight:600; text-transform:uppercase;">Active SKUs</div>
-          <div class="kpi-value" style="font-size:20px; font-weight:800; color:var(--ink); margin:4px 0;">${kpis.totalActiveSkus || 52}</div>
+          <div class="kpi-value" style="font-size:20px; font-weight:800; color:var(--ink); margin:4px 0;">${kpis.totalActiveSkus || 0}</div>
           <div style="font-size:11.5px; color:var(--muted);">Global catalogue items</div>
         </div>
         <div class="kpi-card glass" style="padding:14px;">
           <div class="kpi-label" style="font-size:11px; color:var(--muted); font-weight:600; text-transform:uppercase;">Low Stock</div>
-          <div class="kpi-value" style="font-size:20px; font-weight:800; color:var(--color-accent-gold-bright); margin:4px 0;">${kpis.lowStockCount || 4}</div>
+          <div class="kpi-value" style="font-size:20px; font-weight:800; color:var(--color-accent-gold-bright); margin:4px 0;">${kpis.lowStockCount || 0}</div>
           <div style="font-size:11.5px; color:var(--muted);">Below PAR threshold</div>
         </div>
         <div class="kpi-card glass" style="padding:14px;">
@@ -330,7 +357,7 @@ async function renderStockLevelsTab(wrap) {
         </div>
         <div class="kpi-card glass" style="padding:14px;">
           <div class="kpi-label" style="font-size:11px; color:var(--muted); font-weight:600; text-transform:uppercase;">Portfolio Stock Value</div>
-          <div class="kpi-value" style="font-size:20px; font-weight:800; color:var(--color-accent-mint-bright); margin:4px 0;">${fmtInr(kpis.totalValuationPaisa || 148500000)}</div>
+          <div class="kpi-value" style="font-size:20px; font-weight:800; color:var(--color-accent-mint-bright); margin:4px 0;">${fmtInr(kpis.totalValuationPaisa || 0)}</div>
           <div style="font-size:11.5px; color:var(--muted);">Weighted average cost</div>
         </div>
       </div>
@@ -340,12 +367,11 @@ async function renderStockLevelsTab(wrap) {
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:10px;">
           <div>
             <h3 style="font-size:15.5px; font-weight:700; margin:0; color:var(--ink);">Café Physical Stock Ledger &amp; Levels</h3>
-            <p style="font-size:12.5px; color:var(--muted); margin:2px 0 0;">Café: <strong>${cafeId}</strong> • Real-time ledger balances. Click row for Item 360.</p>
+            <p style="font-size:12.5px; color:var(--muted); margin:2px 0 0;">Café: <strong>${cafeId || 'None Selected'}</strong> • Real-time ledger balances. Click row for Item 360.</p>
           </div>
           <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
             <select id="sel-cafe-stock" class="form-input" style="width:170px; padding:5px 8px; font-size:12.5px;">
-              <option value="ZC-0001" ${cafeId === "ZC-0001" ? "selected" : ""}>Main Outlet (ZC-0001)</option>
-              <option value="ZC-0002" ${cafeId === "ZC-0002" ? "selected" : ""}>Branch Outlet (ZC-0002)</option>
+              ${getCafeOptionsHtml(cafeId, false)}
             </select>
             <select id="sel-cat-filter" class="form-input" style="width:160px; padding:5px 8px; font-size:12.5px;">
               <option value="ALL">All Categories</option>
@@ -479,56 +505,56 @@ async function loadStockLevelsData(wrap, cafeId) {
   tableWrap.querySelector("#btn-sync-live-stock")?.addEventListener("click", () => loadStockLevelsData(wrap, cafeId));
 
   // Render Heatmap in Stock Levels
-  const heatmap = liveOverview?.heatmap || [
-    { itemId: "ITEM-1001", sku: "SKU-BEANS-01", name: "Single Origin Arabica Beans", baseUnit: "KG", cafes: [{ cafeId: "ZC-0001", onHand: 45, min: 20 }, { cafeId: "ZC-0002", onHand: 38, min: 20 }] },
-    { itemId: "ITEM-1002", sku: "SKU-MILK-01", name: "Farm Fresh Whole Milk 1L", baseUnit: "LTR", cafes: [{ cafeId: "ZC-0001", onHand: 60, min: 30 }, { cafeId: "ZC-0002", onHand: 12, min: 25 }] },
-    { itemId: "ITEM-1003", sku: "SKU-SYRUP-01", name: "Vanilla Bean Artisan Syrup 750ml", baseUnit: "BTL", cafes: [{ cafeId: "ZC-0001", onHand: 14, min: 5 }, { cafeId: "ZC-0002", onHand: 8, min: 5 }] },
-    { itemId: "ITEM-1004", sku: "SKU-CUP-01", name: "Kraft 12oz Hot Cups (50pk)", baseUnit: "SLV", cafes: [{ cafeId: "ZC-0001", onHand: 25, min: 10 }, { cafeId: "ZC-0002", onHand: 2, min: 10 }] },
-  ];
+  const heatmap = liveOverview?.heatmap || [];
 
   if (heatmapWrap) {
-    heatmapWrap.innerHTML = `
-      <div style="overflow-x:auto;">
-        <table class="glass-table" style="width:100%; border-collapse:collapse; font-size:13px;">
-          <thead>
-            <tr style="text-align:left; border-bottom:1px solid var(--border-color, var(--line));">
-              <th style="padding:10px 12px;">SKU &amp; Item Name</th>
-              <th style="padding:10px 12px;">UOM</th>
-              <th style="padding:10px 12px; text-align:center;">Main Outlet (ZC-0001)</th>
-              <th style="padding:10px 12px; text-align:center;">Branch Outlet (ZC-0002)</th>
-              <th style="padding:10px 12px; text-align:center;">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${heatmap.map((h) => {
-              const c1 = h.cafes?.[0];
-              const c2 = h.cafes?.[1];
-              const isLow = ((c1?.onHand || 0) <= (c1?.min || 0) || (c2?.onHand || 0) <= (c2?.min || 0));
-              return `
-                <tr class="clickable-row btn-drill-item360" data-id="${h.itemId}" style="cursor:pointer; border-bottom:1px solid var(--line);">
-                  <td style="padding:10px 12px;">
-                    <strong style="color:var(--ink);">${h.name}</strong><br>
-                    <span style="font-size:11.5px; font-family:var(--font-mono); color:var(--bronze-600);">${h.sku}</span>
-                  </td>
-                  <td style="padding:10px 12px; text-transform:uppercase; font-size:12px; font-weight:600;">${h.baseUnit}</td>
-                  <td style="padding:10px 12px; text-align:center; font-weight:700; font-family:var(--font-mono); color:${(c1?.onHand || 0) <= (c1?.min || 0) ? "var(--danger)" : "#059669"};">
-                    ${c1?.onHand || 0} ${h.baseUnit}
-                  </td>
-                  <td style="padding:10px 12px; text-align:center; font-weight:700; font-family:var(--font-mono); color:${(c2?.onHand || 0) <= (c2?.min || 0) ? "var(--danger)" : "#059669"};">
-                    ${c2?.onHand || 0} ${h.baseUnit}
-                  </td>
-                  <td style="padding:10px 12px; text-align:center;">
-                    <span class="badge-tag ${isLow ? "badge-warning" : "badge-success"}" style="font-weight:700;">
-                      ${isLow ? "● LOW STOCK" : "● OPTIMAL"}
-                    </span>
-                  </td>
-                </tr>
-              `;
-            }).join("")}
-          </tbody>
-        </table>
-      </div>
-    `;
+    if (!heatmap.length) {
+      heatmapWrap.innerHTML = `
+        <div style="padding:24px; text-align:center; color:var(--muted); font-size:13px;">
+          No stock level matrix items found for the current portfolio.
+        </div>
+      `;
+    } else {
+      const cafeCols = heatmap[0]?.cafes || [];
+      heatmapWrap.innerHTML = `
+        <div style="overflow-x:auto;">
+          <table class="glass-table" style="width:100%; border-collapse:collapse; font-size:13px;">
+            <thead>
+              <tr style="text-align:left; border-bottom:1px solid var(--border-color, var(--line));">
+                <th style="padding:10px 12px;">SKU &amp; Item Name</th>
+                <th style="padding:10px 12px;">UOM</th>
+                ${cafeCols.map(c => `<th style="padding:10px 12px; text-align:center;">${c.cafeName || c.cafeId}</th>`).join("")}
+                <th style="padding:10px 12px; text-align:center;">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${heatmap.map((h) => {
+                const anyLow = (h.cafes || []).some(c => (c.onHand || 0) <= (c.min || 0));
+                return `
+                  <tr class="clickable-row btn-drill-item360" data-id="${h.itemId}" style="cursor:pointer; border-bottom:1px solid var(--line);">
+                    <td style="padding:10px 12px;">
+                      <strong style="color:var(--ink);">${h.name}</strong><br>
+                      <span style="font-size:11.5px; font-family:var(--font-mono); color:var(--bronze-600);">${h.sku}</span>
+                    </td>
+                    <td style="padding:10px 12px; text-transform:uppercase; font-size:12px; font-weight:600;">${h.baseUnit}</td>
+                    ${(h.cafes || []).map(c => `
+                      <td style="padding:10px 12px; text-align:center; font-weight:700; font-family:var(--font-mono); color:${(c.onHand || 0) <= (c.min || 0) ? "var(--danger)" : "#059669"};">
+                        ${c.onHand || 0} ${h.baseUnit}
+                      </td>
+                    `).join("")}
+                    <td style="padding:10px 12px; text-align:center;">
+                      <span class="badge-tag ${anyLow ? "badge-warning" : "badge-success"}" style="font-weight:700;">
+                        ${anyLow ? "● LOW STOCK" : "● OPTIMAL"}
+                      </span>
+                    </td>
+                  </tr>
+                `;
+              }).join("")}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
   }
 
   wireItem360Clicks(wrap);
@@ -729,7 +755,8 @@ async function loadReplenishmentData(wrap) {
 // ── 5. Receipts & Put-Away ───────────────────────────────────────────────────
 const DEFAULT_RECENT_RECEIPTS = [];
 
-function renderReceiptsTab(wrap) {
+async function renderReceiptsTab(wrap) {
+  await loadCafesList();
   wrap.innerHTML = `
     <div style="display:flex; flex-direction:column; gap:16px;">
       ${renderChildHeader({
@@ -745,13 +772,13 @@ function renderReceiptsTab(wrap) {
       <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px;">
         <div class="card" style="padding:14px 16px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
           <div style="font-size:11.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px;">Today's Received Qty</div>
-          <div style="font-size:22px; font-weight:800; color:var(--ink); font-family:var(--font-heading); margin-top:4px;">112 <span style="font-size:13px; font-weight:600; color:var(--muted);">Units</span></div>
-          <div style="font-size:11.5px; color:#059669; font-weight:600; margin-top:2px;">● 4 Purchase Orders Cleared</div>
+          <div style="font-size:22px; font-weight:800; color:var(--ink); font-family:var(--font-heading); margin-top:4px;">0 <span style="font-size:13px; font-weight:600; color:var(--muted);">Units</span></div>
+          <div style="font-size:11.5px; color:#059669; font-weight:600; margin-top:2px;">● 0 Purchase Orders Cleared</div>
         </div>
 
         <div class="card" style="padding:14px 16px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
           <div style="font-size:11.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px;">Storage Bin Utilization</div>
-          <div style="font-size:22px; font-weight:800; color:var(--ink); font-family:var(--font-heading); margin-top:4px;">84.2% <span style="font-size:13px; font-weight:600; color:var(--muted);">Capacity</span></div>
+          <div style="font-size:22px; font-weight:800; color:var(--ink); font-family:var(--font-heading); margin-top:4px;">0.0% <span style="font-size:13px; font-weight:600; color:var(--muted);">Capacity</span></div>
           <div style="font-size:11.5px; color:var(--bronze-600); font-weight:600; margin-top:2px;">Main Store • Cold Store • Bar Counter</div>
         </div>
 
@@ -772,42 +799,28 @@ function renderReceiptsTab(wrap) {
             <p style="font-size:12.5px; color:var(--muted); margin:4px 0 0;">Intake delivery from Purchase Orders with batch lot tagging and shelf-life verification.</p>
           </div>
 
-          <!-- QUICK FILL SELECTORS -->
-          <div style="margin-bottom:14px;">
-            <label style="font-size:11.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px; display:block; margin-bottom:6px;">Quick Fill SKU Presets</label>
-            <div style="display:flex; flex-wrap:wrap; gap:6px;">
-              <button type="button" class="badge-tag badge-neutral btn-quick-sku" data-sku="ITEM-1001" data-lot="LOT-COF-${new Date().getMonth()+1}" style="cursor:pointer; border:1px solid var(--line);">☕ Arabica Beans</button>
-              <button type="button" class="badge-tag badge-neutral btn-quick-sku" data-sku="ITEM-1002" data-lot="LOT-MILK-${new Date().getDate()}" style="cursor:pointer; border:1px solid var(--line);">🥛 Whole Milk</button>
-              <button type="button" class="badge-tag badge-neutral btn-quick-sku" data-sku="ITEM-1003" data-lot="LOT-OAT-${new Date().getMonth()+1}" style="cursor:pointer; border:1px solid var(--line);">🌾 Oat Milk</button>
-              <button type="button" class="badge-tag badge-neutral btn-quick-sku" data-sku="ITEM-1004" data-lot="LOT-SYR-08" style="cursor:pointer; border:1px solid var(--line);">🍯 Vanilla Syrup</button>
-              <button type="button" class="badge-tag badge-neutral btn-quick-sku" data-sku="ITEM-1005" data-lot="LOT-CUP-26" style="cursor:pointer; border:1px solid var(--line);">🥤 Kraft Cups</button>
-            </div>
-          </div>
-
           <form id="form-receive-goods" style="display:flex; flex-direction:column; gap:14px;">
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
               <div>
                 <label class="form-label" style="font-size:12px; font-weight:700; color:var(--ink);">Café Destination</label>
                 <select name="cafeId" class="form-input" style="width:100%;" required>
-                  <option value="ZC-0001">Main Outlet (ZC-0001)</option>
-                  <option value="ZC-0002">Branch Outlet (ZC-0002)</option>
-                  <option value="ZC-0003">Whitefield (ZC-0003)</option>
+                  ${getCafeOptionsHtml(state.user?.primaryCafeId, false)}
                 </select>
               </div>
               <div>
                 <label class="form-label" style="font-size:12px; font-weight:700; color:var(--ink);">Item SKU / Code</label>
-                <input type="text" id="inp-receipt-item" name="itemId" class="form-input" placeholder="e.g. ITEM-1001" required value="ITEM-1001" style="width:100%; font-family:var(--font-mono); font-weight:600;">
+                <input type="text" id="inp-receipt-item" name="itemId" class="form-input" placeholder="e.g. ITEM-1001" required style="width:100%; font-family:var(--font-mono); font-weight:600;">
               </div>
             </div>
 
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
               <div>
                 <label class="form-label" style="font-size:12px; font-weight:700; color:var(--ink);">Received Quantity</label>
-                <input type="number" name="quantity" class="form-input" placeholder="Qty" required value="20" min="0.1" step="any" style="width:100%; font-family:var(--font-mono); font-weight:700;">
+                <input type="number" name="quantity" class="form-input" placeholder="Qty" required min="0.1" step="any" style="width:100%; font-family:var(--font-mono); font-weight:700;">
               </div>
               <div>
                 <label class="form-label" style="font-size:12px; font-weight:700; color:var(--ink);">Supplier Lot Number</label>
-                <input type="text" id="inp-receipt-lot" name="supplierLot" class="form-input" placeholder="e.g. LOT-BT-991" required value="LOT-BT-991" style="width:100%; font-family:var(--font-mono);">
+                <input type="text" id="inp-receipt-lot" name="supplierLot" class="form-input" placeholder="e.g. LOT-BT-991" required style="width:100%; font-family:var(--font-mono);">
               </div>
             </div>
 
@@ -856,7 +869,13 @@ function renderReceiptsTab(wrap) {
                 </tr>
               </thead>
               <tbody id="tbody-recent-receipts">
-                ${DEFAULT_RECENT_RECEIPTS.map((r) => `
+                ${DEFAULT_RECENT_RECEIPTS.length === 0 ? `
+                  <tr>
+                    <td colspan="5" style="padding:24px; text-align:center; color:var(--muted); font-size:12.5px;">
+                      No recent goods receipts recorded.
+                    </td>
+                  </tr>
+                ` : DEFAULT_RECENT_RECEIPTS.map((r) => `
                   <tr style="border-bottom:1px solid var(--line);">
                     <td style="padding:10px 12px;">
                       <strong style="font-family:var(--font-mono); color:var(--bronze-600);">${r.grnId}</strong><br>
@@ -957,6 +976,7 @@ let movementTypeFilter = "ALL";
 let movementSearchQuery = "";
 
 async function renderMovementsTab(wrap) {
+  await loadCafesList();
   wrap.innerHTML = `
     <div style="display:flex; flex-direction:column; gap:16px;">
       ${renderChildHeader({
@@ -978,14 +998,14 @@ async function renderMovementsTab(wrap) {
       <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px;">
         <div class="card" style="padding:14px 16px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
           <div style="font-size:11.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px;">Today's Transactions</div>
-          <div style="font-size:22px; font-weight:800; color:var(--ink); font-family:var(--font-heading); margin-top:4px;">38 <span style="font-size:13px; font-weight:600; color:var(--muted);">Events</span></div>
-          <div style="font-size:11.5px; color:#059669; font-weight:600; margin-top:2px;">● +28 Inbound • -10 Outbound</div>
+          <div style="font-size:22px; font-weight:800; color:var(--ink); font-family:var(--font-heading); margin-top:4px;">0 <span style="font-size:13px; font-weight:600; color:var(--muted);">Events</span></div>
+          <div style="font-size:11.5px; color:#059669; font-weight:600; margin-top:2px;">● 0 Inbound • 0 Outbound</div>
         </div>
 
         <div class="card" style="padding:14px 16px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
           <div style="font-size:11.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px;">Net Inflow Movement</div>
-          <div style="font-size:22px; font-weight:800; color:#059669; font-family:var(--font-heading); margin-top:4px;">+24.5 <span style="font-size:13px; font-weight:600; color:var(--muted);">Units</span></div>
-          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">Healthy stock replenishment inflow</div>
+          <div style="font-size:22px; font-weight:800; color:#059669; font-family:var(--font-heading); margin-top:4px;">0 <span style="font-size:13px; font-weight:600; color:var(--muted);">Units</span></div>
+          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">Net stock movement balance</div>
         </div>
 
         <div class="card" style="padding:14px 16px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
@@ -1006,10 +1026,7 @@ async function renderMovementsTab(wrap) {
           <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
             <!-- Café Filter -->
             <select id="sel-mov-cafe" class="form-input" style="padding:5px 8px; font-size:12.5px;">
-              <option value="ALL" ${movementCafeFilter === "ALL" ? "selected" : ""}>All Cafés</option>
-              <option value="ZC-0001" ${movementCafeFilter === "ZC-0001" ? "selected" : ""}>Main Outlet (ZC-0001)</option>
-              <option value="ZC-0002" ${movementCafeFilter === "ZC-0002" ? "selected" : ""}>Branch Outlet (ZC-0002)</option>
-              <option value="ZC-0003" ${movementCafeFilter === "ZC-0003" ? "selected" : ""}>Whitefield (ZC-0003)</option>
+              ${getCafeOptionsHtml(movementCafeFilter, true, "All Cafés")}
             </select>
 
             <!-- Type Filter -->
@@ -1158,6 +1175,7 @@ let lotsCafeFilter = "ALL";
 let lotsStatusFilter = "ALL";
 
 async function renderLotsExpiryTab(wrap) {
+  await loadCafesList();
   wrap.innerHTML = `
     <div style="display:flex; flex-direction:column; gap:16px;">
       ${renderChildHeader({
@@ -1173,14 +1191,14 @@ async function renderLotsExpiryTab(wrap) {
       <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px;">
         <div class="card" style="padding:14px 16px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
           <div style="font-size:11.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px;">Active Monitored Lots</div>
-          <div style="font-size:22px; font-weight:800; color:var(--ink); font-family:var(--font-heading); margin-top:4px;">18 <span style="font-size:13px; font-weight:600; color:var(--muted);">Batch Lots</span></div>
+          <div style="font-size:22px; font-weight:800; color:var(--ink); font-family:var(--font-heading); margin-top:4px;">0 <span style="font-size:13px; font-weight:600; color:var(--muted);">Batch Lots</span></div>
           <div style="font-size:11.5px; color:#059669; font-weight:600; margin-top:2px;">● Full Supplier Traceability</div>
         </div>
 
         <div class="card" style="padding:14px 16px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
           <div style="font-size:11.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px;">Near Expiry Alert (&lt; 7 Days)</div>
-          <div style="font-size:22px; font-weight:800; color:var(--danger); font-family:var(--font-heading); margin-top:4px;">1 <span style="font-size:13px; font-weight:600; color:var(--muted);">Batch Lot</span></div>
-          <div style="font-size:11.5px; color:var(--danger); font-weight:600; margin-top:2px;">Whole Milk (LOT-2026-0814) Exp: Aug 28</div>
+          <div style="font-size:22px; font-weight:800; color:var(--ink); font-family:var(--font-heading); margin-top:4px;">0 <span style="font-size:13px; font-weight:600; color:var(--muted);">Batch Lots</span></div>
+          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">Zero near-expiry exposure risks</div>
         </div>
 
         <div class="card" style="padding:14px 16px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
@@ -1199,10 +1217,7 @@ async function renderLotsExpiryTab(wrap) {
 
           <div style="display:flex; gap:8px; align-items:center;">
             <select id="sel-lots-cafe" class="form-input" style="padding:5px 8px; font-size:12.5px;">
-              <option value="ALL" ${lotsCafeFilter === "ALL" ? "selected" : ""}>All Locations</option>
-              <option value="ZC-0001" ${lotsCafeFilter === "ZC-0001" ? "selected" : ""}>Main Outlet (ZC-0001)</option>
-              <option value="ZC-0002" ${lotsCafeFilter === "ZC-0002" ? "selected" : ""}>Branch Outlet (ZC-0002)</option>
-              <option value="ZC-0003" ${lotsCafeFilter === "ZC-0003" ? "selected" : ""}>Whitefield (ZC-0003)</option>
+              ${getCafeOptionsHtml(lotsCafeFilter, true, "All Locations")}
             </select>
 
             <select id="sel-lots-status" class="form-input" style="padding:5px 8px; font-size:12.5px;">
@@ -1322,14 +1337,14 @@ async function renderTransfersTab(wrap) {
       <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px;">
         <div class="card" style="padding:14px 16px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
           <div style="font-size:11.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px;">Active In-Transit Stock</div>
-          <div style="font-size:22px; font-weight:800; color:#059669; font-family:var(--font-heading); margin-top:4px;">10 <span style="font-size:13px; font-weight:600; color:var(--muted);">Units In-Transit</span></div>
-          <div style="font-size:11.5px; color:var(--bronze-600); font-weight:600; margin-top:2px;">TRF-0091 en-route ZC-0001 → ZC-0002</div>
+          <div style="font-size:22px; font-weight:800; color:var(--ink); font-family:var(--font-heading); margin-top:4px;">0 <span style="font-size:13px; font-weight:600; color:var(--muted);">Units In-Transit</span></div>
+          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">No active transit transfers</div>
         </div>
 
         <div class="card" style="padding:14px 16px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
           <div style="font-size:11.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px;">Pending Dispatch Requests</div>
-          <div style="font-size:22px; font-weight:800; color:var(--bronze-600); font-family:var(--font-heading); margin-top:4px;">1 <span style="font-size:13px; font-weight:600; color:var(--muted);">Order</span></div>
-          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">Awaiting central dispatch pickup</div>
+          <div style="font-size:22px; font-weight:800; color:var(--ink); font-family:var(--font-heading); margin-top:4px;">0 <span style="font-size:13px; font-weight:600; color:var(--muted);">Orders</span></div>
+          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">No dispatch orders pending</div>
         </div>
 
         <div class="card" style="padding:14px 16px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
@@ -1625,20 +1640,20 @@ async function renderCountsTab(wrap) {
       <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px;">
         <div class="card" style="padding:14px 16px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
           <div style="font-size:11.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px;">Counts Pending Approval</div>
-          <div style="font-size:22px; font-weight:800; color:var(--bronze-600); font-family:var(--font-heading); margin-top:4px;">1 <span style="font-size:13px; font-weight:600; color:var(--muted);">Batch</span></div>
-          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">CNT-2026-0817 (ZC-0002 High-Value)</div>
+          <div style="font-size:22px; font-weight:800; color:var(--ink); font-family:var(--font-heading); margin-top:4px;">0 <span style="font-size:13px; font-weight:600; color:var(--muted);">Batches</span></div>
+          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">No unreviewed stocktake batches</div>
         </div>
 
         <div class="card" style="padding:14px 16px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
-          <div style="font-size:11.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px;">Items Audited (August)</div>
-          <div style="font-size:22px; font-weight:800; color:var(--ink); font-family:var(--font-heading); margin-top:4px;">72 <span style="font-size:13px; font-weight:600; color:var(--muted);">SKUs</span></div>
-          <div style="font-size:11.5px; color:#059669; font-weight:600; margin-top:2px;">100% SKU coverage target met</div>
+          <div style="font-size:11.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px;">Items Audited (Current Period)</div>
+          <div style="font-size:22px; font-weight:800; color:var(--ink); font-family:var(--font-heading); margin-top:4px;">0 <span style="font-size:13px; font-weight:600; color:var(--muted);">SKUs</span></div>
+          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">Awaiting cycle count execution</div>
         </div>
 
         <div class="card" style="padding:14px 16px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
           <div style="font-size:11.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px;">Average Variance Rate</div>
-          <div style="font-size:22px; font-weight:800; color:#059669; font-family:var(--font-heading); margin-top:4px;">0.4% <span style="font-size:13px; font-weight:600; color:var(--muted);">Shrinkage</span></div>
-          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">Well within 1.5% statutory tolerance</div>
+          <div style="font-size:22px; font-weight:800; color:#059669; font-family:var(--font-heading); margin-top:4px;">0.0% <span style="font-size:13px; font-weight:600; color:var(--muted);">Shrinkage</span></div>
+          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">Well within statutory tolerance</div>
         </div>
       </div>
 
@@ -1733,7 +1748,8 @@ async function loadCountsData(wrap) {
 // ── 11. Wastage & Adjustments ────────────────────────────────────────────────
 const DEFAULT_RECENT_WASTAGE = [];
 
-function renderWastageTab(wrap) {
+async function renderWastageTab(wrap) {
+  await loadCafesList();
   wrap.innerHTML = `
     <div style="display:flex; flex-direction:column; gap:16px;">
       ${renderChildHeader({
@@ -1749,14 +1765,14 @@ function renderWastageTab(wrap) {
       <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px;">
         <div class="card" style="padding:14px 16px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
           <div style="font-size:11.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px;">Current Spoilage Rate</div>
-          <div style="font-size:22px; font-weight:800; color:#059669; font-family:var(--font-heading); margin-top:4px;">0.84% <span style="font-size:13px; font-weight:600; color:var(--muted);">of Sales</span></div>
-          <div style="font-size:11.5px; color:#059669; font-weight:600; margin-top:2px;">● Optimal (Target &lt; 1.5%)</div>
+          <div style="font-size:22px; font-weight:800; color:var(--ink); font-family:var(--font-heading); margin-top:4px;">0.00% <span style="font-size:13px; font-weight:600; color:var(--muted);">of Sales</span></div>
+          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">● Target &lt; 1.5%</div>
         </div>
 
         <div class="card" style="padding:14px 16px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
           <div style="font-size:11.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px;">Primary Reason Code</div>
-          <div style="font-size:20px; font-weight:800; color:var(--ink); font-family:var(--font-heading); margin-top:4px;">Spillage / Accident</div>
-          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">64% of recorded incidents</div>
+          <div style="font-size:20px; font-weight:800; color:var(--ink); font-family:var(--font-heading); margin-top:4px;">None Logged</div>
+          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">0 recorded incidents</div>
         </div>
 
         <div class="card" style="padding:14px 16px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-xs);">
@@ -1792,21 +1808,19 @@ function renderWastageTab(wrap) {
               <div>
                 <label class="form-label" style="font-size:12px; font-weight:700; color:var(--ink);">Café Location</label>
                 <select name="cafeId" class="form-input" style="width:100%;" required>
-                  <option value="ZC-0001">Main Outlet (ZC-0001)</option>
-                  <option value="ZC-0002">Branch Outlet (ZC-0002)</option>
-                  <option value="ZC-0003">Whitefield (ZC-0003)</option>
+                  ${getCafeOptionsHtml(state.user?.primaryCafeId, false)}
                 </select>
               </div>
               <div>
                 <label class="form-label" style="font-size:12px; font-weight:700; color:var(--ink);">Item SKU / Code</label>
-                <input type="text" name="itemId" class="form-input" placeholder="e.g. ITEM-1001" required value="ITEM-1001" style="width:100%; font-family:var(--font-mono); font-weight:600;">
+                <input type="text" name="itemId" class="form-input" placeholder="e.g. ITEM-1001" required style="width:100%; font-family:var(--font-mono); font-weight:600;">
               </div>
             </div>
 
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
               <div>
                 <label class="form-label" style="font-size:12px; font-weight:700; color:var(--ink);">Wasted Quantity</label>
-                <input type="number" name="quantity" class="form-input" placeholder="Qty" required value="2" min="0.1" step="any" style="width:100%; font-family:var(--font-mono); font-weight:700;">
+                <input type="number" name="quantity" class="form-input" placeholder="Qty" required min="0.1" step="any" style="width:100%; font-family:var(--font-mono); font-weight:700;">
               </div>
               <div>
                 <label class="form-label" style="font-size:12px; font-weight:700; color:var(--ink);">Reason Code</label>
@@ -2501,6 +2515,8 @@ function openAddGlobalItemModal(wrap) {
 }
 
 function openRecordMovementModal(wrap, defaultCafeId) {
+  loadCafesList();
+  const effectiveCafe = defaultCafeId || cachedCafes[0]?.cafeId || state.user?.primaryCafeId || "";
   const modalHtml = `
     <div style="padding:6px;">
       <h3 style="font-size:18px; font-weight:800; margin:0 0 16px; color:var(--ink);">Record Stock Movement</h3>
@@ -2509,13 +2525,12 @@ function openRecordMovementModal(wrap, defaultCafeId) {
           <div>
             <label class="form-label" style="font-size:12px; font-weight:600;">Café</label>
             <select name="cafeId" class="form-input" required>
-              <option value="ZC-0001" ${defaultCafeId === "ZC-0001" ? "selected" : ""}>Main Outlet (ZC-0001)</option>
-              <option value="ZC-0002" ${defaultCafeId === "ZC-0002" ? "selected" : ""}>Branch Outlet (ZC-0002)</option>
+              ${getCafeOptionsHtml(effectiveCafe, false)}
             </select>
           </div>
           <div>
             <label class="form-label" style="font-size:12px; font-weight:600;">Item SKU / Code</label>
-            <input type="text" name="itemId" class="form-input" placeholder="e.g. ITEM-1001" required value="ITEM-1001">
+            <input type="text" name="itemId" class="form-input" placeholder="e.g. ITEM-1001" required>
           </div>
         </div>
 
@@ -2531,7 +2546,7 @@ function openRecordMovementModal(wrap, defaultCafeId) {
           </div>
           <div>
             <label class="form-label" style="font-size:12px; font-weight:600;">Quantity Change (+/-)</label>
-            <input type="number" name="quantity" class="form-input" placeholder="e.g. 5 or -2" required value="5" step="0.1">
+            <input type="number" name="quantity" class="form-input" placeholder="e.g. 5 or -2" required step="0.1">
           </div>
         </div>
 
@@ -2574,6 +2589,8 @@ function openRecordMovementModal(wrap, defaultCafeId) {
 }
 
 function openInternalLocationMoveModal(wrap, defaultCafeId) {
+  loadCafesList();
+  const effectiveCafe = defaultCafeId || cachedCafes[0]?.cafeId || state.user?.primaryCafeId || "";
   const modalHtml = `
     <div style="padding:6px;">
       <h3 style="font-size:18px; font-weight:800; margin:0 0 16px; color:var(--ink);">Internal Storage Move / PAR Replenish</h3>
@@ -2582,13 +2599,12 @@ function openInternalLocationMoveModal(wrap, defaultCafeId) {
           <div>
             <label class="form-label" style="font-size:12px; font-weight:600;">Café</label>
             <select name="cafeId" class="form-input" required>
-              <option value="ZC-0001" ${defaultCafeId === "ZC-0001" ? "selected" : ""}>Main Outlet (ZC-0001)</option>
-              <option value="ZC-0002" ${defaultCafeId === "ZC-0002" ? "selected" : ""}>Branch Outlet (ZC-0002)</option>
+              ${getCafeOptionsHtml(effectiveCafe, false)}
             </select>
           </div>
           <div>
             <label class="form-label" style="font-size:12px; font-weight:600;">Item SKU / Code</label>
-            <input type="text" name="itemId" class="form-input" placeholder="e.g. ITEM-1001" required value="ITEM-1001">
+            <input type="text" name="itemId" class="form-input" placeholder="e.g. ITEM-1001" required>
           </div>
         </div>
 
@@ -2660,6 +2676,8 @@ function openInternalLocationMoveModal(wrap, defaultCafeId) {
 }
 
 function openCreateReservationModal(wrap) {
+  loadCafesList();
+  const effectiveCafe = cachedCafes[0]?.cafeId || state.user?.primaryCafeId || "";
   const modalHtml = `
     <div style="padding:6px;">
       <h3 style="font-size:18px; font-weight:800; margin:0 0 16px; color:var(--ink);">Reserve Inventory Demand</h3>
@@ -2668,20 +2686,19 @@ function openCreateReservationModal(wrap) {
           <div>
             <label class="form-label" style="font-size:12px; font-weight:600;">Café</label>
             <select name="cafeId" class="form-input" required>
-              <option value="ZC-0001">Main Outlet (ZC-0001)</option>
-              <option value="ZC-0002">Branch Outlet (ZC-0002)</option>
+              ${getCafeOptionsHtml(effectiveCafe, false)}
             </select>
           </div>
           <div>
             <label class="form-label" style="font-size:12px; font-weight:600;">Item SKU / Code</label>
-            <input type="text" name="itemId" class="form-input" placeholder="e.g. ITEM-1001" required value="ITEM-1001">
+            <input type="text" name="itemId" class="form-input" placeholder="e.g. ITEM-1001" required>
           </div>
         </div>
 
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
           <div>
             <label class="form-label" style="font-size:12px; font-weight:600;">Reserved Quantity</label>
-            <input type="number" name="reservedQty" class="form-input" placeholder="Qty" required value="10" min="1">
+            <input type="number" name="reservedQty" class="form-input" placeholder="Qty" required min="1">
           </div>
           <div>
             <label class="form-label" style="font-size:12px; font-weight:600;">Demand Type</label>
@@ -2733,6 +2750,7 @@ function openCreateReservationModal(wrap) {
 }
 
 function openNewTransferModal(wrap) {
+  loadCafesList();
   const modalHtml = `
     <div style="padding:6px;">
       <h3 style="font-size:18px; font-weight:800; margin:0 0 16px; color:var(--ink);">Request Inter-Café Stock Transfer</h3>
@@ -2741,15 +2759,13 @@ function openNewTransferModal(wrap) {
           <div>
             <label class="form-label" style="font-size:12px; font-weight:600;">Source Café (Origin)</label>
             <select name="sourceCafeId" class="form-input" required>
-              <option value="ZC-0001">Main Outlet (ZC-0001)</option>
-              <option value="ZC-0002">Branch Outlet (ZC-0002)</option>
+              ${getCafeOptionsHtml("", false)}
             </select>
           </div>
           <div>
             <label class="form-label" style="font-size:12px; font-weight:600;">Destination Café</label>
             <select name="destCafeId" class="form-input" required>
-              <option value="ZC-0002">Branch Outlet (ZC-0002)</option>
-              <option value="ZC-0001">Main Outlet (ZC-0001)</option>
+              ${getCafeOptionsHtml("", false)}
             </select>
           </div>
         </div>
@@ -2757,11 +2773,11 @@ function openNewTransferModal(wrap) {
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
           <div>
             <label class="form-label" style="font-size:12px; font-weight:600;">Item SKU / Code</label>
-            <input type="text" name="itemId" class="form-input" placeholder="e.g. ITEM-1001" required value="ITEM-1001">
+            <input type="text" name="itemId" class="form-input" placeholder="e.g. ITEM-1001" required>
           </div>
           <div>
             <label class="form-label" style="font-size:12px; font-weight:600;">Transfer Quantity</label>
-            <input type="number" name="requestedQty" class="form-input" placeholder="Qty" required value="10" min="1">
+            <input type="number" name="requestedQty" class="form-input" placeholder="Qty" required min="1">
           </div>
         </div>
 
@@ -2804,6 +2820,8 @@ function openNewTransferModal(wrap) {
 }
 
 function openSubmitCountModal(wrap) {
+  loadCafesList();
+  const effectiveCafe = cachedCafes[0]?.cafeId || state.user?.primaryCafeId || "";
   const modalHtml = `
     <div style="padding:6px;">
       <h3 style="font-size:18px; font-weight:800; margin:0 0 16px; color:var(--ink);">Record Physical Cycle Count</h3>
@@ -2812,8 +2830,7 @@ function openSubmitCountModal(wrap) {
           <div>
             <label class="form-label" style="font-size:12px; font-weight:600;">Café</label>
             <select name="cafeId" class="form-input" required>
-              <option value="ZC-0001">Main Outlet (ZC-0001)</option>
-              <option value="ZC-0002">Branch Outlet (ZC-0002)</option>
+              ${getCafeOptionsHtml(effectiveCafe, false)}
             </select>
           </div>
           <div>
@@ -2829,9 +2846,9 @@ function openSubmitCountModal(wrap) {
         <div style="border-top:1px solid var(--border-color); padding-top:10px; margin-bottom:12px;">
           <div style="font-size:12px; font-weight:700; margin-bottom:6px;">Audited Item</div>
           <div style="display:grid; grid-template-columns:2fr 1fr 1fr; gap:8px;">
-            <input type="text" name="itemId" class="form-input" placeholder="Item Code" value="ITEM-1001" required>
-            <input type="number" name="systemQty" class="form-input" placeholder="System" value="45" required>
-            <input type="number" name="countedQty" class="form-input" placeholder="Counted" value="43" required>
+            <input type="text" name="itemId" class="form-input" placeholder="Item Code" required>
+            <input type="number" name="systemQty" class="form-input" placeholder="System" required>
+            <input type="number" name="countedQty" class="form-input" placeholder="Counted" required>
           </div>
         </div>
 

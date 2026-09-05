@@ -11,11 +11,22 @@
 import { state } from "../../state.js";
 import { showToast } from "../../components.js";
 import { icon } from "../../icons.js";
-import { apiGet, apiPost } from "../../apiClient.js";
+import { apiGet, apiPost, apiUpload } from "../../apiClient.js";
+import {
+  openCamera,
+  stopCamera,
+  captureFrameAsBlob,
+  scanQrFromVideo,
+  getCurrentPosition,
+  friendlyCameraError,
+  friendlyGeoError,
+} from "../../utils/cameraGeo.js";
+import { openAttendanceEvidenceViewer } from "./attendanceEvidenceViewer.js";
+import { CANONICAL_ZAMORIN_COMPANY_LOGO_SVG } from "../../utils/qrCodeGen.js";
 
 let activeTab = "TODAY"; // 'TODAY' | 'CALENDAR' | 'TIMECARD' | 'CORRECTIONS' | 'ATTESTATION'
 let clockTimer = null;
-let currentMonth = "2026-08";
+let currentMonth = new Date().toISOString().slice(0, 7);
 let serverTimeOffset = 0;
 let cachedToday = null;
 let cachedShift = null;
@@ -125,6 +136,7 @@ function renderTodayTab() {
 
   const status = today ? today.status : "NOT_STARTED";
   const isCheckedIn = status === "CHECKED_IN";
+  const isOnBreak = status === "ON_BREAK";
   const isCheckedOut = status === "CHECKED_OUT";
 
   let statusBadge = `<span class="badge badge-subtle" style="font-size:11px;">NOT STARTED</span>`;
@@ -132,6 +144,9 @@ function renderTodayTab() {
   if (isCheckedIn) {
     statusBadge = `<span class="badge badge-mint" style="font-size:11px; font-weight:700;">CHECKED IN</span>`;
     statusText = `Checked in at ${formatTimeStr(today.checkInAt)}. Shift in progress.`;
+  } else if (isOnBreak) {
+    statusBadge = `<span class="badge" style="font-size:11px; font-weight:700; background:rgba(245,158,11,0.15); color:#d97706; padding:3px 8px; border-radius:10px;">ON BREAK</span>`;
+    statusText = `Currently on break. Shift paused.`;
   } else if (isCheckedOut) {
     statusBadge = `<span class="badge badge-gold" style="font-size:11px; font-weight:700;">ATTENDANCE COMPLETED</span>`;
     statusText = `Shift completed. Checked out at ${formatTimeStr(today.checkOutAt)}.`;
@@ -172,15 +187,29 @@ function renderTodayTab() {
         </div>
 
         <!-- Punch CTA -->
-        <div style="margin-top:10px;">
-          ${!isCheckedIn && !isCheckedOut
+        <div style="margin-top:10px; display:flex; flex-direction:column; gap:10px;">
+          ${!isCheckedIn && !isOnBreak && !isCheckedOut
             ? `<button class="btn btn-primary btn-block" id="btn-trigger-checkin" style="padding:12px; font-size:15px; font-weight:800;">
                 ${icon("check", 16)} Check In (Secure Geo-Selfie)
                </button>`
             : isCheckedIn
-            ? `<button class="btn btn-coral btn-block" id="btn-trigger-checkout" style="padding:12px; font-size:15px; font-weight:800; background:var(--color-accent-coral);">
-                ${icon("check", 16)} Check Out of Shift
-               </button>`
+            ? `<div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                <button class="btn btn-secondary btn-block" id="btn-trigger-break-start" style="padding:12px; font-size:14px; font-weight:700;">
+                  ☕ Start Break
+                </button>
+                <button class="btn btn-coral btn-block" id="btn-trigger-checkout" style="padding:12px; font-size:14px; font-weight:800; background:var(--color-accent-coral);">
+                  ${icon("check", 16)} Check Out
+                </button>
+              </div>`
+            : isOnBreak
+            ? `<div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                <button class="btn btn-primary btn-block" id="btn-trigger-break-end" style="padding:12px; font-size:14px; font-weight:700;">
+                  ▶ End Break
+                </button>
+                <button class="btn btn-coral btn-block" id="btn-trigger-checkout" style="padding:12px; font-size:14px; font-weight:800; background:var(--color-accent-coral);">
+                  ${icon("check", 16)} Check Out
+                </button>
+              </div>`
             : `<div class="pill pill-mint flex items-center justify-center gap-xs" style="padding:10px; font-size:13px; font-weight:700;">
                 ✓ Today's Attendance Verified &amp; Recorded
                </div>`
@@ -293,13 +322,11 @@ function renderTodayTab() {
 }
 
 function renderRecentHistoryRows() {
-  const list = cachedHistory.length > 0 ? cachedHistory.slice(0, 4) : [
-    { businessDate: "2026-08-18", checkInAt: "2026-08-18T09:02:00.000Z", checkOutAt: "2026-08-18T17:34:00.000Z", totalWorkedMinutes: 482, status: "CHECKED_OUT", isLate: false },
-    { businessDate: "2026-08-17", checkInAt: "2026-08-17T09:18:00.000Z", checkOutAt: "2026-08-17T17:30:00.000Z", totalWorkedMinutes: 462, status: "CHECKED_OUT", isLate: true },
-    { businessDate: "2026-08-16", checkInAt: "2026-08-16T09:00:00.000Z", checkOutAt: "2026-08-16T17:30:00.000Z", totalWorkedMinutes: 480, status: "CHECKED_OUT", isLate: false },
-    { businessDate: "2026-08-15", checkInAt: null, checkOutAt: null, totalWorkedMinutes: 0, status: "HOLIDAY", isLate: false },
-  ];
+  if (cachedHistory.length === 0) {
+    return '<div style="padding:16px; text-align:center; color:var(--text-muted); font-size:13px;">No recent attendance history available.</div>';
+  }
 
+  const list = cachedHistory.slice(0, 4);
   return list.map((r) => `
     <div class="flex items-center justify-between flex-wrap gap-sm" style="padding:10px 14px; background:var(--bg-surface-2); border-radius:var(--radius-sm); border:1px solid var(--border-subtle);">
       <div>
@@ -309,7 +336,7 @@ function renderRecentHistoryRows() {
         </div>
       </div>
       <div class="flex items-center gap-xs">
-        ${r.isLate ? `<span class="badge badge-coral" style="font-size:10.5px;">Late (18m)</span>` : ""}
+        ${r.isLate ? `<span class="badge badge-coral" style="font-size:10.5px;">Late</span>` : ""}
         <span class="badge ${r.status === "CHECKED_OUT" ? "badge-mint" : r.status === "HOLIDAY" ? "badge-gold" : "badge-subtle"}" style="font-size:10.5px;">
           ${(r.status || "COMPLETED").replace(/_/g, " ")}
         </span>
@@ -317,6 +344,7 @@ function renderRecentHistoryRows() {
     </div>
   `).join("");
 }
+
 
 // ── 2. CALENDAR TAB ──────────────────────────────────────────────────────────
 function renderCalendarTab() {
@@ -500,30 +528,41 @@ function renderTimecardTab() {
 }
 
 function renderTimecardRows() {
-  const days = [
-    { date: "18 Aug 2026", shift: "09:00 – 17:30", in: "09:02 AM", out: "05:34 PM", worked: "8h 02m", ot: "—", status: "Present", isLate: false, id: "AT-20260818-001" },
-    { date: "17 Aug 2026", shift: "09:00 – 17:30", in: "09:18 AM", out: "05:30 PM", worked: "7h 42m", ot: "—", status: "Late (18m)", isLate: true, id: "AT-20260817-001" },
-    { date: "16 Aug 2026", shift: "09:00 – 17:30", in: "09:00 AM", out: "07:00 PM", worked: "9h 30m", ot: "1.5h (Approved)", status: "Present + OT", isLate: false, id: "AT-20260816-001" },
-    { date: "15 Aug 2026", shift: "Independence Day", in: "—", out: "—", worked: "—", ot: "—", status: "Holiday", isLate: false, id: "AT-20260815-001" },
-  ];
+  if (cachedHistory.length === 0) {
+    return `<tr><td colspan="8" style="padding:24px; text-align:center; color:var(--text-muted); font-size:13px;">No timecard records found. History will appear once attendance data is synced.</td></tr>`;
+  }
 
-  return days.map((d) => `
+  return cachedHistory.map((r) => {
+    const dateLabel = r.businessDate
+      ? new Date(r.businessDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+      : "—";
+    const shiftLabel = r.shiftLabel || r.shift || (r.checkInAt ? `${formatTimeStr(r.checkInAt)} – ${r.checkOutAt ? formatTimeStr(r.checkOutAt) : "Open"}` : "—");
+    const checkIn = r.checkInAt ? formatTimeStr(r.checkInAt) : "—";
+    const checkOut = r.checkOutAt ? formatTimeStr(r.checkOutAt) : "—";
+    const worked = r.totalWorkedMinutes > 0 ? `${Math.floor(r.totalWorkedMinutes / 60)}h ${r.totalWorkedMinutes % 60}m` : "—";
+    const ot = r.overtimeMinutes > 0 ? `${(r.overtimeMinutes / 60).toFixed(1)}h` : "—";
+    const statusLabel = (r.status || "PRESENT").replace(/_/g, " ");
+    const isLate = r.isLate || false;
+    const attId = r.id || r.attendanceId || r.businessDate || "";
+
+    return `
     <tr style="border-bottom:1px solid var(--border-subtle);">
-      <td style="padding:10px 8px; font-weight:700; color:var(--text-primary);">${d.date}</td>
-      <td style="padding:10px 8px; color:var(--text-secondary);">${d.shift}</td>
-      <td style="padding:10px 8px; color:var(--color-accent-mint); font-weight:600;">${d.in}</td>
-      <td style="padding:10px 8px; color:var(--brand-gold); font-weight:600;">${d.out}</td>
-      <td style="padding:10px 8px; font-weight:700; color:var(--text-primary);">${d.worked}</td>
-      <td style="padding:10px 8px; color:var(--text-secondary);">${d.ot}</td>
-      <td style="padding:10px 8px;"><span class="badge ${d.isLate ? "badge-coral" : "badge-subtle"}" style="font-size:10.5px;">${d.status}</span></td>
+      <td style="padding:10px 8px; font-weight:700; color:var(--text-primary);">${dateLabel}</td>
+      <td style="padding:10px 8px; color:var(--text-secondary);">${shiftLabel}</td>
+      <td style="padding:10px 8px; color:var(--color-accent-mint); font-weight:600;">${checkIn}</td>
+      <td style="padding:10px 8px; color:var(--brand-gold); font-weight:600;">${checkOut}</td>
+      <td style="padding:10px 8px; font-weight:700; color:var(--text-primary);">${worked}</td>
+      <td style="padding:10px 8px; color:var(--text-secondary);">${ot}</td>
+      <td style="padding:10px 8px;"><span class="badge ${isLate ? "badge-coral" : "badge-subtle"}" style="font-size:10.5px;">${statusLabel}</span></td>
       <td style="padding:10px 8px; text-align:right;">
-        <button class="btn btn-xs btn-ghost btn-view-day-drilldown" data-att-id="${d.id}" data-date="${d.date}">
+        <button class="btn btn-xs btn-ghost btn-view-day-drilldown" data-att-id="${attId}" data-date="${dateLabel}">
           Details →
         </button>
       </td>
-    </tr>
-  `).join("");
+    </tr>`;
+  }).join("");
 }
+
 
 // ── 4. CORRECTIONS & ISSUES TAB ──────────────────────────────────────────────
 function renderCorrectionsTab() {
@@ -618,6 +657,16 @@ function renderCorrectionsTab() {
 
 // ── 5. ATTESTATION & STATEMENT TAB ───────────────────────────────────────────
 function renderAttestationTab() {
+  const [y, m] = currentMonth.split("-").map(Number);
+  const curDate = new Date(y, m - 1, 1);
+  const monthFull = curDate.toLocaleString("en-IN", { month: "long", year: "numeric" });
+  const monthShort = curDate.toLocaleString("en-IN", { month: "short", year: "numeric" });
+
+  const totalHours = cachedSummary?.totalHoursWorked || "0.0";
+  const daysPresent = cachedSummary?.daysPresent ?? cachedHistory.filter(r => r.status === 'CHECKED_IN' || r.status === 'CHECKED_OUT').length;
+  const otHours = cachedSummary?.totalOvertimeHours || "0.0";
+  const daysLate = cachedSummary?.daysLate ?? cachedHistory.filter(r => r.isLate).length;
+
   return `
     <div style="margin-bottom:24px;">
       <!-- Attestation Box -->
@@ -626,7 +675,7 @@ function renderAttestationTab() {
           📋 Monthly Timecard Review &amp; Attestation
         </div>
         <div style="font-size:13px; color:var(--text-secondary); margin-bottom:16px; line-height:1.5;">
-          Please review your logged hours, approved overtime, and absences for <strong>August 2026</strong> before payroll processing.
+          Please review your logged hours, approved overtime, and absences for <strong>${monthFull}</strong> before payroll processing.
         </div>
 
         <div class="flex items-center gap-sm flex-wrap">
@@ -647,8 +696,8 @@ function renderAttestationTab() {
             <div style="font-size:12px; color:var(--text-muted);">Official Monthly Attendance Statement</div>
           </div>
           <div style="text-align:right;">
-            <div style="font-size:13px; font-weight:700; color:var(--brand-gold);">Period: Aug 2026</div>
-            <div style="font-size:11px; color:var(--text-muted);">Ref: EMP-AT-202608</div>
+            <div style="font-size:13px; font-weight:700; color:var(--brand-gold);">Period: ${monthShort}</div>
+            <div style="font-size:11px; color:var(--text-muted);">Ref: EMP-AT-${currentMonth.replace(/-/g, "")}</div>
           </div>
         </div>
 
@@ -656,19 +705,19 @@ function renderAttestationTab() {
         <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:12px; margin-bottom:20px; text-align:center;">
           <div style="padding:10px; background:var(--bg-surface-2); border-radius:var(--radius-sm);">
             <div style="font-size:11px; color:var(--text-muted);">Total Hours</div>
-            <div style="font-size:16px; font-weight:700; color:var(--text-primary);">148.5h</div>
+            <div style="font-size:16px; font-weight:700; color:var(--text-primary);">${totalHours}h</div>
           </div>
           <div style="padding:10px; background:var(--bg-surface-2); border-radius:var(--radius-sm);">
             <div style="font-size:11px; color:var(--text-muted);">Days Present</div>
-            <div style="font-size:16px; font-weight:700; color:var(--color-accent-mint);">17</div>
+            <div style="font-size:16px; font-weight:700; color:var(--color-accent-mint);">${daysPresent}</div>
           </div>
           <div style="padding:10px; background:var(--bg-surface-2); border-radius:var(--radius-sm);">
             <div style="font-size:11px; color:var(--text-muted);">Overtime</div>
-            <div style="font-size:16px; font-weight:700; color:var(--brand-gold);">2.5h</div>
+            <div style="font-size:16px; font-weight:700; color:var(--brand-gold);">${otHours}h</div>
           </div>
           <div style="padding:10px; background:var(--bg-surface-2); border-radius:var(--radius-sm);">
             <div style="font-size:11px; color:var(--text-muted);">Lateness</div>
-            <div style="font-size:16px; font-weight:700; color:var(--color-accent-coral);">2 Days</div>
+            <div style="font-size:16px; font-weight:700; color:var(--color-accent-coral);">${daysLate} Days</div>
           </div>
         </div>
 
@@ -718,7 +767,7 @@ export function wireStaffAttendance(root) {
       const [timeRes, todayRes, historyRes] = await Promise.all([
         apiGet("/attendance/server-time").catch(() => null),
         apiGet("/attendance/today").catch(() => null),
-        apiGet("/attendance/history?month=2026-08").catch(() => null),
+        apiGet(`/attendance/history?month=${currentMonth}`).catch(() => null),
       ]);
 
       if (timeRes?.data?.utc) {
@@ -760,6 +809,36 @@ export function wireStaffAttendance(root) {
       });
     });
 
+    // Break Start trigger
+    container.querySelector("#btn-trigger-break-start")?.addEventListener("click", async () => {
+      try {
+        const res = await apiPost("/attendance/break/start", {});
+        if (res?.data?.attendance) {
+          cachedToday = res.data.attendance;
+        }
+        showToast("Break started. Enjoy your break! ☕", "mint");
+        refreshTabContent();
+        loadInitialData();
+      } catch (err) {
+        showToast(err?.message || "Failed to start break", "coral");
+      }
+    });
+
+    // Break End trigger
+    container.querySelector("#btn-trigger-break-end")?.addEventListener("click", async () => {
+      try {
+        const res = await apiPost("/attendance/break/end", {});
+        if (res?.data?.attendance) {
+          cachedToday = res.data.attendance;
+        }
+        showToast("Break ended. Shift resumed! ✓", "mint");
+        refreshTabContent();
+        loadInitialData();
+      } catch (err) {
+        showToast(err?.message || "Failed to end break", "coral");
+      }
+    });
+
     // Check Out trigger -> Verification flow modal
     container.querySelector("#btn-trigger-checkout")?.addEventListener("click", () => {
       openVerificationModal("CHECK_OUT", () => {
@@ -796,10 +875,10 @@ export function wireStaffAttendance(root) {
     // Attestation confirm
     container.querySelector("#btn-confirm-attestation")?.addEventListener("click", async () => {
       try {
-        await apiPost("/attendance/attestation", { month: "2026-08", decision: "CONFIRM_REVIEWED" });
+        await apiPost("/attendance/attestation", { month: currentMonth, decision: "CONFIRM_REVIEWED" });
         showToast("Monthly attendance review confirmed successfully ✓", "mint");
-      } catch {
-        showToast("Monthly attendance review confirmed successfully ✓", "mint");
+      } catch (err) {
+        showToast(err?.message || "Failed to confirm attendance review", "coral");
       }
     });
 
@@ -807,7 +886,12 @@ export function wireStaffAttendance(root) {
     container.querySelectorAll(".btn-view-day-drilldown, .calendar-day-cell").forEach((el) => {
       el.addEventListener("click", () => {
         const date = el.dataset.date || "18 Aug 2026";
-        openDayDrilldownModal(date);
+        const attId = el.dataset.attId;
+        const matched = cachedHistory.find((r) =>
+          (attId && (r.id === attId || r.attendanceId === attId || r._id === attId)) ||
+          (r.businessDate && r.businessDate === date)
+        );
+        openDayDrilldownModal(date, matched);
       });
     });
 
@@ -817,17 +901,32 @@ export function wireStaffAttendance(root) {
     });
 
     // Calendar month pagination
-    container.querySelector("#btn-cal-prev")?.addEventListener("click", () => {
+    container.querySelector("#btn-cal-prev")?.addEventListener("click", async () => {
       const [y, m] = currentMonth.split("-").map(Number);
       const prev = new Date(y, m - 2, 1);
       currentMonth = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, "0")}`;
+      try {
+        const historyRes = await apiGet(`/attendance/history?month=${currentMonth}`);
+        if (historyRes?.data) {
+          cachedHistory = historyRes.data.records || [];
+          cachedSummary = historyRes.data.summary;
+        }
+      } catch {}
       refreshTabContent();
       showToast(`Viewing calendar for ${prev.toLocaleString("en-IN", { month: "short", year: "numeric" })}`);
     });
-    container.querySelector("#btn-cal-next")?.addEventListener("click", () => {
+
+    container.querySelector("#btn-cal-next")?.addEventListener("click", async () => {
       const [y, m] = currentMonth.split("-").map(Number);
       const next = new Date(y, m, 1);
       currentMonth = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, "0")}`;
+      try {
+        const historyRes = await apiGet(`/attendance/history?month=${currentMonth}`);
+        if (historyRes?.data) {
+          cachedHistory = historyRes.data.records || [];
+          cachedSummary = historyRes.data.summary;
+        }
+      } catch {}
       refreshTabContent();
       showToast(`Viewing calendar for ${next.toLocaleString("en-IN", { month: "short", year: "numeric" })}`);
     });
@@ -875,105 +974,436 @@ export function wireStaffAttendance(root) {
   loadInitialData();
 }
 
-// ── VERIFICATION FLOW MODAL (GPS + ROTATING QR + LIVE SELFIE) ────────────────
-function openVerificationModal(flowType, onDoneCallback) {
+// ── VERIFICATION FLOW MODAL (ROTATING QR + GPS + LIVE SELFIE) ────────────────
+export function openVerificationModal(flowType, onDoneCallback) {
   let existing = document.getElementById("attendance-verification-modal");
-  if (existing) existing.remove();
+  if (existing) {
+    if (typeof existing._cleanup === "function") existing._cleanup();
+    existing.remove();
+  }
 
+  let activeStream = null;
+  let qrScannerCancel = null;
+  let scannedQrToken = null;
+  let verifiedCafe = null;
+  let geoCoords = null;
+  let selfieBlob = null;
+  let isRetakeMode = false;
+
+  const isCheckIn = flowType === "CHECK_IN";
   const modal = document.createElement("div");
   modal.id = "attendance-verification-modal";
   modal.className = "modal-backdrop flex items-center justify-center";
-  modal.style.cssText = "position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:1050; padding:16px;";
+  modal.style.cssText = "position:fixed; inset:0; background:rgba(0,0,0,0.82); z-index:1050; padding:16px; backdrop-filter:blur(4px);";
+
+  const cleanup = () => {
+    if (qrScannerCancel) {
+      try { qrScannerCancel(); } catch (_) {}
+      qrScannerCancel = null;
+    }
+    if (activeStream) {
+      stopCamera(activeStream);
+      activeStream = null;
+    }
+  };
+  modal._cleanup = cleanup;
+
+  const close = () => {
+    cleanup();
+    modal.remove();
+  };
 
   modal.innerHTML = `
-    <div class="card" style="width:100%; max-width:480px; padding:24px; background:var(--bg-surface-1); border-radius:var(--radius-lg); box-shadow:var(--shadow-lg);">
-      <div class="flex items-center justify-between" style="margin-bottom:16px;">
-        <div style="font-size:16px; font-weight:800; color:var(--text-primary);">
-          ${flowType === "CHECK_IN" ? "Secure Check-In Verification" : "Secure Check-Out Verification"}
+    <div class="card" style="width:100%; max-width:500px; padding:22px; background:var(--bg-surface-1, #18181b); border-radius:var(--radius-lg, 12px); box-shadow:var(--shadow-lg); border:1px solid var(--border-subtle, #27272a); color:var(--text-primary, #f4f4f5);">
+      <div class="flex items-center justify-between" style="margin-bottom:14px;">
+        <div style="font-size:16px; font-weight:800; color:var(--text-primary, #f4f4f5); display:flex; align-items:center; gap:8px;">
+          <span>${isCheckIn ? "⏱️ Secure Shift Check-In" : "⏱️ Secure Shift Check-Out"}</span>
         </div>
-        <button class="btn btn-xs btn-ghost" id="vmodal-close-btn" style="font-size:16px;">✕</button>
+        <button class="btn btn-xs btn-ghost" id="vmodal-close-btn" style="font-size:16px; cursor:pointer;" type="button">✕</button>
       </div>
 
-      <!-- Steps Indicator -->
-      <div style="display:flex; flex-direction:column; gap:12px; margin-bottom:20px;">
-        <div class="flex items-center justify-between" style="padding:10px 14px; background:var(--bg-surface-2); border-radius:var(--radius-sm);" id="vstep-1">
-          <span style="font-size:13px; color:var(--text-primary);">1. GPS Geofence Check</span>
-          <span class="badge badge-mint" style="font-size:10.5px;">✓ VERIFIED</span>
+      <!-- Verification Steps Track -->
+      <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:16px;">
+        <div class="flex items-center justify-between" style="padding:8px 12px; background:var(--bg-surface-2, #27272a); border-radius:var(--radius-sm, 6px);" id="vstep-1-indicator">
+          <span style="font-size:12px; font-weight:600;">1. Rotating Café QR Code</span>
+          <span class="badge badge-gold" id="vstep-1-badge" style="font-size:10px;">SCANNING</span>
         </div>
-        <div class="flex items-center justify-between" style="padding:10px 14px; background:var(--bg-surface-2); border-radius:var(--radius-sm);" id="vstep-2">
-          <span style="font-size:13px; color:var(--text-primary);">2. Rotating Café QR Code</span>
-          <span class="badge badge-mint" style="font-size:10.5px;">✓ VERIFIED (45s Token)</span>
+        <div class="flex items-center justify-between" style="padding:8px 12px; background:var(--bg-surface-2, #27272a); border-radius:var(--radius-sm, 6px); opacity:0.6;" id="vstep-2-indicator">
+          <span style="font-size:12px; font-weight:600;">2. GPS Geofence Check</span>
+          <span class="badge badge-subtle" id="vstep-2-badge" style="font-size:10px;">PENDING</span>
         </div>
-        <div class="flex items-center justify-between" style="padding:10px 14px; background:rgba(200,157,92,0.1); border:1px solid var(--brand-gold); border-radius:var(--radius-sm);" id="vstep-3">
-          <span style="font-size:13px; font-weight:700; color:var(--brand-gold);">3. Live Front Camera Selfie</span>
-          <span class="badge badge-gold" style="font-size:10.5px;">READY TO CAPTURE</span>
+        <div class="flex items-center justify-between" style="padding:8px 12px; background:var(--bg-surface-2, #27272a); border-radius:var(--radius-sm, 6px); opacity:0.6;" id="vstep-3-indicator">
+          <span style="font-size:12px; font-weight:600;">3. Live Front-Camera Selfie</span>
+          <span class="badge badge-subtle" id="vstep-3-badge" style="font-size:10px;">PENDING</span>
         </div>
       </div>
 
-      <!-- Live Selfie Camera Preview Area -->
-      <div style="width:100%; height:220px; background:#121212; border-radius:var(--radius-md); border:2px dashed var(--border-subtle); display:flex; flex-direction:column; align-items:center; justify-content:center; margin-bottom:18px; position:relative; overflow:hidden;">
-        <div style="font-size:40px; margin-bottom:8px;">📷</div>
-        <div style="font-size:13px; font-weight:700; color:var(--text-primary);">Face In Frame &amp; Well Lit</div>
-        <div style="font-size:11.5px; color:var(--text-muted); margin-top:2px;">Live capture for attendance verification</div>
+      <!-- Live Video / Capture Preview Viewport -->
+      <div style="position:relative; width:100%; height:260px; background:#000000; border-radius:var(--radius-md, 8px); overflow:hidden; margin-bottom:14px; display:flex; align-items:center; justify-content:center; border:1px solid var(--border-subtle, #3f3f46);">
+        <video id="vmodal-video" playsinline muted autoplay style="width:100%; height:100%; object-fit:cover; display:block;"></video>
+        <img id="vmodal-preview" style="width:100%; height:100%; object-fit:cover; display:none;" alt="Captured Selfie" />
+
+        <!-- Scanner Reticle (Step 1) -->
+        <div id="vmodal-scanner-reticle" style="position:absolute; inset:20px; border:2px dashed rgba(200,157,92,0.85); border-radius:12px; pointer-events:none; display:flex; flex-direction:column; justify-content:space-between; align-items:center; padding:12px;">
+          <div style="background:rgba(0,0,0,0.7); color:#ffffff; font-size:11px; padding:3px 10px; border-radius:20px; font-weight:600;">
+            Point camera at Café Attendance QR
+          </div>
+          <div style="width:75%; height:2px; background:var(--brand-gold, #c89d5c); box-shadow:0 0 10px var(--brand-gold, #c89d5c);"></div>
+          <div style="font-size:10.5px; color:rgba(255,255,255,0.75);">Auto-detecting challenge...</div>
+        </div>
+
+        <!-- Face Guide Oval (Step 3) -->
+        <div id="vmodal-face-guide" style="position:absolute; width:150px; height:190px; border:2px dashed rgba(52,211,153,0.85); border-radius:50%; pointer-events:none; display:none; box-shadow:0 0 12px rgba(52,211,153,0.3);"></div>
+
+        <!-- Spinner / Notice Overlay -->
+        <div id="vmodal-loading-overlay" style="position:absolute; inset:0; background:rgba(0,0,0,0.75); display:none; flex-direction:column; align-items:center; justify-content:center; gap:8px;">
+          <div class="za-spinner" style="width:30px; height:30px; border:3px solid rgba(255,255,255,0.2); border-top-color:var(--brand-gold, #c89d5c); border-radius:50%; animation:spin 0.8s linear infinite;"></div>
+          <span id="vmodal-loading-text" style="font-size:12.5px; color:#ffffff; font-weight:600;">Validating challenge...</span>
+        </div>
       </div>
 
-      <!-- Submit Verification Button -->
-      <button class="btn btn-primary btn-block" id="btn-submit-punch-verification" style="padding:12px; font-weight:800; font-size:14px;">
-        📸 Capture &amp; Complete ${flowType === "CHECK_IN" ? "Check In" : "Check Out"}
-      </button>
+      <!-- Verified Café Banner with Company Logo (Step 1 Success) -->
+      <div id="vmodal-verified-cafe-banner" style="display:none; align-items:center; gap:12px; padding:10px 14px; background:var(--bg-surface-2, #18181b); border:1px solid var(--border-subtle, #27272a); border-radius:var(--radius-sm, 6px); margin-bottom:14px;"></div>
+
+      <!-- Error / Notice Banner -->
+      <div id="vmodal-status-banner" style="display:none; padding:10px 14px; border-radius:var(--radius-sm, 6px); font-size:12px; margin-bottom:14px;"></div>
+
+      <!-- Step 1 Fallback: Manual QR Token Input (Dev / Camera Disabled fallback) -->
+      <div id="vmodal-manual-qr-wrap" style="margin-bottom:14px; font-size:11.5px;">
+        <details style="cursor:pointer; color:var(--text-muted, #a1a1aa);">
+          <summary style="font-weight:600;">Manual Token Entry (Dev / Fallback)</summary>
+          <div style="display:flex; gap:8px; margin-top:8px;">
+            <input type="text" id="vmodal-manual-token-input" class="input" placeholder="Paste Attendance QR challenge token..." style="flex:1; font-size:12px; padding:6px 10px;" />
+            <button class="btn btn-sm btn-secondary" id="btn-submit-manual-qr" type="button" style="font-size:11px;">Verify Token</button>
+          </div>
+        </details>
+      </div>
+
+      <!-- Action Controls -->
+      <div id="vmodal-actions" style="display:flex; gap:10px;">
+        <button class="btn btn-secondary" id="btn-vmodal-cancel" type="button" style="flex:1; padding:10px; font-weight:600;">
+          Cancel
+        </button>
+        <button class="btn btn-primary" id="btn-vmodal-action" type="button" style="flex:2; padding:10px; font-weight:800; font-size:13.5px;" disabled>
+          Scanning QR...
+        </button>
+      </div>
     </div>
   `;
 
   document.body.appendChild(modal);
 
-  const close = () => modal.remove();
-  modal.querySelector("#vmodal-close-btn")?.addEventListener("click", close);
+  const videoEl = modal.querySelector("#vmodal-video");
+  const previewEl = modal.querySelector("#vmodal-preview");
+  const scannerReticle = modal.querySelector("#vmodal-scanner-reticle");
+  const faceGuide = modal.querySelector("#vmodal-face-guide");
+  const loadingOverlay = modal.querySelector("#vmodal-loading-overlay");
+  const loadingText = modal.querySelector("#vmodal-loading-text");
+  const statusBanner = modal.querySelector("#vmodal-status-banner");
+  const manualWrap = modal.querySelector("#vmodal-manual-qr-wrap");
+  const manualInput = modal.querySelector("#vmodal-manual-token-input");
+  const btnManualVerify = modal.querySelector("#btn-submit-manual-qr");
+  const btnCancel = modal.querySelector("#btn-vmodal-cancel");
+  const btnAction = modal.querySelector("#btn-vmodal-action");
 
-  modal.querySelector("#btn-submit-punch-verification")?.addEventListener("click", async () => {
-    const btn = modal.querySelector("#btn-submit-punch-verification");
-    btn.disabled = true;
-    btn.innerText = "Submitting authoritative punch...";
+  const step1Ind = modal.querySelector("#vstep-1-indicator");
+  const step1Badge = modal.querySelector("#vstep-1-badge");
+  const step2Ind = modal.querySelector("#vstep-2-indicator");
+  const step2Badge = modal.querySelector("#vstep-2-badge");
+  const step3Ind = modal.querySelector("#vstep-3-indicator");
+  const step3Badge = modal.querySelector("#vstep-3-badge");
+
+  modal.querySelector("#vmodal-close-btn")?.addEventListener("click", close);
+  btnCancel.addEventListener("click", () => {
+    if (isRetakeMode) {
+      // Re-enter live selfie capture
+      isRetakeMode = false;
+      previewEl.style.display = "none";
+      videoEl.style.display = "block";
+      faceGuide.style.display = "block";
+      btnCancel.textContent = "Cancel";
+      btnAction.disabled = false;
+      btnAction.textContent = "📸 Capture Live Selfie";
+      statusBanner.style.display = "none";
+      return;
+    }
+    close();
+  });
+
+  const showLoading = (text) => {
+    loadingText.textContent = text;
+    loadingOverlay.style.display = "flex";
+  };
+
+  const hideLoading = () => {
+    loadingOverlay.style.display = "none";
+  };
+
+  const showError = (msg) => {
+    statusBanner.style.display = "block";
+    statusBanner.style.background = "rgba(239, 122, 133, 0.12)";
+    statusBanner.style.border = "1px solid rgba(239, 122, 133, 0.35)";
+    statusBanner.style.color = "var(--color-accent-coral, #ef7a85)";
+    statusBanner.textContent = msg;
+  };
+
+  const clearError = () => {
+    statusBanner.style.display = "none";
+    statusBanner.textContent = "";
+  };
+
+  // ── STEP 1: SCAN ATTENDANCE QR ─────────────────────────────────────────────
+  async function startQrScanner() {
+    clearError();
+    scannerReticle.style.display = "flex";
+    faceGuide.style.display = "none";
+    videoEl.style.display = "block";
+    previewEl.style.display = "none";
+    btnAction.disabled = true;
+    btnAction.textContent = "Scanning QR...";
 
     try {
-      const endpoint = flowType === "CHECK_IN" ? "/attendance/check-in" : "/attendance/check-out";
-      await apiPost(endpoint, {
-        cafeId: "ZC-0001",
-        latitude: 12.9352,
-        longitude: 77.6245,
-        accuracyMeters: 8,
-        qrToken: `QR-ZAMORIN-${Date.now()}`,
-        deviceFingerprint: "DEV-FINGERPRINT-KORAMANGALA",
-      }).catch(() => null);
-    } catch {}
-
-    if (flowType === "CHECK_IN") {
-      cachedToday = {
-        checkInTime: new Date().toISOString(),
-        status: "PRESENT",
-        isCheckedIn: true
-      };
-    } else {
-      cachedToday = {
-        ...(cachedToday || {}),
-        checkOutTime: new Date().toISOString(),
-        status: "COMPLETED",
-        isCheckedOut: true
-      };
+      activeStream = await openCamera(videoEl, "environment");
+    } catch (err) {
+      showError(err?.message || "Could not open camera. Please use manual token entry below.");
+      btnAction.textContent = "Camera Unavailable";
+      return;
     }
 
-    close();
-    openPunchReceiptModal(flowType);
-    if (onDoneCallback) onDoneCallback();
+    const { promise, cancel } = scanQrFromVideo(videoEl, { intervalMs: 200 });
+    qrScannerCancel = cancel;
+
+    try {
+      const code = await promise;
+      await handleQrScanned(code);
+    } catch (scanErr) {
+      if (scanErr && scanErr.code !== "QR_LIB_MISSING") {
+        showError(scanErr.message || "QR scanning failed. Try manual entry.");
+      }
+    }
+  }
+
+  btnManualVerify?.addEventListener("click", () => {
+    const val = manualInput.value.trim();
+    if (!val) {
+      showError("Please enter a valid Attendance QR token.");
+      return;
+    }
+    handleQrScanned(val);
   });
+
+  async function handleQrScanned(token) {
+    if (qrScannerCancel) {
+      qrScannerCancel();
+      qrScannerCancel = null;
+    }
+    clearError();
+    showLoading("Verifying Attendance QR challenge with server...");
+
+    try {
+      const res = await apiPost("/attendance/qr/verify", { qrToken: token });
+      hideLoading();
+
+      if (!res?.data?.verified) {
+        throw new Error(res?.data?.message || "Invalid Attendance QR token.");
+      }
+
+      scannedQrToken = token;
+      verifiedCafe = res.data;
+
+      // Mark Step 1 complete with verified café identity & Company Logo
+      step1Badge.className = "badge badge-mint";
+      step1Badge.textContent = `✓ ${res.data.cafeName || res.data.cafeId}`;
+
+      const verifiedBanner = modal.querySelector("#vmodal-verified-cafe-banner");
+      if (verifiedBanner) {
+        verifiedBanner.style.display = "flex";
+        verifiedBanner.innerHTML = `
+          <div style="width:34px; height:34px; flex-shrink:0; display:flex; align-items:center; justify-content:center;">
+            ${CANONICAL_ZAMORIN_COMPANY_LOGO_SVG}
+          </div>
+          <div>
+            <div style="font-size:11px; font-weight:800; color:var(--color-accent-mint, #2E7D32); text-transform:uppercase; letter-spacing:0.5px;">✓ Café Verified</div>
+            <div style="font-size:13.5px; font-weight:700; color:var(--text-primary);">${res.data.cafeName || res.data.cafeId}</div>
+          </div>
+        `;
+      }
+
+      // Transition to Step 2
+      await runGeofenceVerification();
+    } catch (err) {
+      hideLoading();
+      showError(err?.message || "Failed to verify Attendance QR challenge. Please try scanning again.");
+      step1Badge.className = "badge badge-coral";
+      step1Badge.textContent = "INVALID QR";
+      // Allow retry
+      setTimeout(() => startQrScanner(), 2000);
+    }
+  }
+
+  // ── STEP 2: REAL GPS & GEOFENCE VERIFICATION ─────────────────────────────────
+  async function runGeofenceVerification() {
+    clearError();
+    step2Ind.style.opacity = "1";
+    step2Badge.className = "badge badge-gold";
+    step2Badge.textContent = "LOCATING...";
+    showLoading("Acquiring high-accuracy GPS coordinates...");
+
+    try {
+      const pos = await getCurrentPosition({ highAccuracy: true, timeoutMs: 15000 });
+      showLoading("Verifying café geofence boundary...");
+
+      const geoRes = await apiPost("/attendance/geofence/verify", {
+        cafeId: verifiedCafe.cafeId,
+        latitude: pos.latitude,
+        longitude: pos.longitude,
+        accuracyMeters: pos.accuracyMeters,
+      });
+      hideLoading();
+
+      if (!geoRes?.data?.verified) {
+        throw new Error(geoRes?.data?.message || "Outside allowed café geofence radius.");
+      }
+
+      geoCoords = pos;
+      step2Badge.className = "badge badge-mint";
+      const dist = Math.round(geoRes.data.distanceMeters || 0);
+      step2Badge.textContent = `✓ In Radius (${dist}m, ±${Math.round(pos.accuracyMeters)}m)`;
+
+      // Transition to Step 3
+      await startSelfieCapture();
+    } catch (err) {
+      hideLoading();
+      step2Badge.className = "badge badge-coral";
+      step2Badge.textContent = "GEO FAILED";
+      showError(err?.message || "Geofence verification failed. Ensure location services are enabled.");
+      btnAction.disabled = false;
+      btnAction.textContent = "Retry GPS Location";
+      btnAction.onclick = () => runGeofenceVerification();
+    }
+  }
+
+  // ── STEP 3: LIVE FRONT-CAMERA SELFIE ─────────────────────────────────────────
+  async function startSelfieCapture() {
+    clearError();
+    step3Ind.style.opacity = "1";
+    step3Badge.className = "badge badge-gold";
+    step3Badge.textContent = "READY TO CAPTURE";
+
+    // Switch camera to front 'user' camera
+    if (activeStream) {
+      stopCamera(activeStream);
+      activeStream = null;
+    }
+
+    scannerReticle.style.display = "none";
+    if (manualWrap) manualWrap.style.display = "none";
+    faceGuide.style.display = "block";
+    videoEl.style.display = "block";
+    previewEl.style.display = "none";
+
+    try {
+      activeStream = await openCamera(videoEl, "user");
+    } catch (err) {
+      showError(err?.message || "Could not access front camera for live selfie.");
+      btnAction.disabled = true;
+      btnAction.textContent = "Camera Error";
+      return;
+    }
+
+    btnAction.disabled = false;
+    btnAction.textContent = "📸 Capture Live Selfie";
+    btnAction.onclick = async () => {
+      try {
+        selfieBlob = await captureFrameAsBlob(videoEl, { quality: 0.85, maxWidth: 960 });
+        previewEl.src = URL.createObjectURL(selfieBlob);
+        videoEl.style.display = "none";
+        faceGuide.style.display = "none";
+        previewEl.style.display = "block";
+
+        step3Badge.className = "badge badge-mint";
+        step3Badge.textContent = "✓ SELFIE CAPTURED";
+
+        isRetakeMode = true;
+        btnCancel.textContent = "↺ Retake Photo";
+        btnAction.disabled = false;
+        btnAction.textContent = `✓ Complete ${isCheckIn ? "Check-In" : "Check-Out"}`;
+        btnAction.onclick = () => submitAuthoritativePunch();
+      } catch (capErr) {
+        showError(capErr?.message || "Failed to capture photo frame. Please try again.");
+      }
+    };
+  }
+
+  // ── STEP 4: UPLOAD EVIDENCE & COMMIT AUTHORITATIVE PUNCH ─────────────────────
+  async function submitAuthoritativePunch() {
+    clearError();
+    btnAction.disabled = true;
+    btnCancel.disabled = true;
+    showLoading("Uploading encrypted selfie evidence...");
+
+    try {
+      const formData = new FormData();
+      formData.append("selfie", selfieBlob, `attendance_${flowType.toLowerCase()}_${Date.now()}.jpg`);
+      formData.append("punchType", flowType);
+      if (verifiedCafe?.challengeId) {
+        formData.append("qrChallengeId", verifiedCafe.challengeId);
+      }
+
+      const uploadRes = await apiUpload("/attendance/evidence/upload", formData);
+      if (!uploadRes?.data?.fileId) {
+        throw new Error(uploadRes?.message || "Evidence upload failed.");
+      }
+
+      showLoading("Recording authoritative punch with server clock (IST)...");
+      const endpoint = isCheckIn ? "/attendance/check-in" : "/attendance/check-out";
+      const punchRes = await apiPost(endpoint, {
+        cafeId: verifiedCafe.cafeId,
+        qrToken: scannedQrToken,
+        latitude: geoCoords.latitude,
+        longitude: geoCoords.longitude,
+        accuracyMeters: geoCoords.accuracyMeters,
+        selfieFileId: uploadRes.data.fileId,
+        deviceFingerprint: "BROWSER-STAFF-DEVICE",
+      });
+
+      const attendance = punchRes?.data?.attendance;
+      if (attendance) {
+        cachedToday = attendance;
+      }
+
+      close();
+      openPunchReceiptModal(flowType, attendance);
+      if (typeof onDoneCallback === "function") {
+        onDoneCallback(punchRes?.data);
+      }
+      showToast(isCheckIn ? "🟢 Check-In Recorded & Sealed!" : "✓ Shift Complete — Check-Out Recorded!", "mint");
+    } catch (err) {
+      hideLoading();
+      btnAction.disabled = false;
+      btnCancel.disabled = false;
+      btnAction.textContent = `Retry ${isCheckIn ? "Check-In" : "Check-Out"}`;
+      showError(err?.message || "Punch submission failed. Please try again.");
+      showToast(err?.message || "Punch submission failed.", "coral");
+    }
+  }
+
+  // Start sequence at Step 1
+  startQrScanner();
 }
 
+export { openVerificationModal as openPunchVerificationModal };
+
 // ── PUNCH SUCCESS RECEIPT MODAL ──────────────────────────────────────────────
-function openPunchReceiptModal(flowType) {
+function openPunchReceiptModal(flowType, attendance) {
   let existing = document.getElementById("punch-receipt-modal");
   if (existing) existing.remove();
 
-  const now = new Date();
-  const timeStr = now.toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true });
+  const punchDate = flowType === "CHECK_IN"
+    ? (attendance?.checkInAt ? new Date(attendance.checkInAt) : new Date())
+    : (attendance?.checkOutAt ? new Date(attendance.checkOutAt) : new Date());
+  const timeStr = punchDate.toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true });
+  const attRef = attendance?.attendanceId || `AT-${punchDate.toISOString().slice(0, 10).replace(/-/g, "")}`;
 
   const modal = document.createElement("div");
   modal.id = "punch-receipt-modal";
@@ -982,7 +1412,11 @@ function openPunchReceiptModal(flowType) {
 
   modal.innerHTML = `
     <div class="card" style="width:100%; max-width:440px; padding:26px; background:var(--bg-surface-1); border-radius:var(--radius-lg); box-shadow:var(--shadow-lg); text-align:center;">
-      <div style="font-size:42px; margin-bottom:12px;">✅</div>
+      <div style="display:flex; justify-content:center; align-items:center; margin-bottom:14px;">
+        <div style="width:48px; height:48px; display:inline-block;">
+          ${CANONICAL_ZAMORIN_COMPANY_LOGO_SVG}
+        </div>
+      </div>
       <div style="font-size:18px; font-weight:800; color:var(--text-primary); margin-bottom:4px;">
         ${flowType === "CHECK_IN" ? "Check-In Recorded Successfully" : "Check-Out Recorded Successfully"}
       </div>
@@ -992,8 +1426,8 @@ function openPunchReceiptModal(flowType) {
 
       <div style="padding:14px; background:var(--bg-surface-2); border-radius:var(--radius-md); text-align:left; font-size:12.5px; display:flex; flex-direction:column; gap:8px; margin-bottom:20px;">
         <div class="flex justify-between"><span>Punch Time:</span><strong style="color:var(--color-accent-mint);">${timeStr} IST</strong></div>
-        <div class="flex justify-between"><span>Assigned Café:</span><strong>${state.user?.primaryCafeName || state.user?.primaryCafeId || "Primary Outlet"}</strong></div>
-        <div class="flex justify-between"><span>Attendance Ref:</span><strong style="font-family:monospace;">AT-${now.toISOString().slice(0, 10).replace(/-/g, "")}-001</strong></div>
+        <div class="flex justify-between"><span>Assigned Café:</span><strong>${attendance?.cafeId || state.user?.primaryCafeName || state.user?.primaryCafeId || "Primary Outlet"}</strong></div>
+        <div class="flex justify-between"><span>Attendance Ref:</span><strong style="font-family:monospace;">${attRef}</strong></div>
         <div class="flex justify-between"><span>Verification:</span><strong style="color:var(--color-accent-mint);">Geo-Selfie + QR Verified</strong></div>
       </div>
 
@@ -1008,9 +1442,12 @@ function openPunchReceiptModal(flowType) {
 }
 
 // ── CORRECTION REQUEST MODAL (WITH SUPPORTING ATTACHMENT) ─────────────────────
-function openCorrectionModal(onDoneCallback) {
+function openCorrectionModal(onDoneCallback, prefill = {}) {
   let existing = document.getElementById("attendance-correction-modal");
   if (existing) existing.remove();
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const defaultDate = prefill?.businessDate || (prefill?.checkInAt ? String(prefill.checkInAt).slice(0, 10) : todayStr);
 
   const modal = document.createElement("div");
   modal.id = "attendance-correction-modal";
@@ -1035,7 +1472,7 @@ function openCorrectionModal(onDoneCallback) {
           <label style="font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:4px; display:block;">
             Attendance Shift Date *
           </label>
-          <input type="date" id="corr-date-input" class="input" style="width:100%;" value="2026-08-18" />
+          <input type="date" id="corr-date-input" class="input" style="width:100%;" value="${defaultDate}" />
         </div>
 
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
@@ -1087,38 +1524,47 @@ function openCorrectionModal(onDoneCallback) {
   modal.querySelector("#cmodal-submit-btn")?.addEventListener("click", async () => {
     const reason = modal.querySelector("#corr-reason-input").value.trim();
     if (!reason) {
-      showToast("Please provide a mandatory reason for correction.");
+      showToast("Please provide a mandatory reason for correction.", "coral");
       return;
     }
 
-    const reqDate = modal.querySelector("#corr-date-input")?.value || "2026-08-18";
+    const reqDate = modal.querySelector("#corr-date-input")?.value || defaultDate;
     const reqIn = modal.querySelector("#corr-in-input")?.value || "09:00";
     const reqOut = modal.querySelector("#corr-out-input")?.value || "17:30";
 
-    const newCorr = {
-      id: `CR-2026-${Date.now().toString().slice(-4)}`,
-      attendanceId: `AT-${reqDate.replace(/-/g, "")}-001`,
-      shiftDate: reqDate,
-      requestedCheckIn: `${reqDate}T${reqIn}:00.000Z`,
-      requestedCheckOut: `${reqDate}T${reqOut}:00.000Z`,
-      reason,
-      status: "PENDING_APPROVAL",
-      createdAt: new Date().toISOString()
-    };
-    cachedCorrections.unshift(newCorr);
+    const submitBtn = modal.querySelector("#cmodal-submit-btn");
+    submitBtn.disabled = true;
+    submitBtn.innerText = "Submitting...";
 
     try {
-      await apiPost("/attendance/corrections", {
-        attendanceId: newCorr.attendanceId,
-        requestedCheckIn: newCorr.requestedCheckIn,
-        requestedCheckOut: newCorr.requestedCheckOut,
+      const payload = {
+        businessDate: reqDate,
+        requestedCheckIn: `${reqDate}T${reqIn}:00.000Z`,
+        requestedCheckOut: `${reqDate}T${reqOut}:00.000Z`,
         reason,
-      }).catch(() => null);
-    } catch {}
+      };
+      if (prefill?.attendanceId) {
+        payload.attendanceId = prefill.attendanceId;
+      }
 
-    close();
-    showToast("Correction request submitted for administrative review ✓", "mint");
-    if (onDoneCallback) onDoneCallback();
+      const res = await apiPost("/attendance/corrections", payload);
+      const newCorr = res?.data?.correctionRequest || {
+        requestId: `ACR-${Date.now()}`,
+        businessDate: reqDate,
+        reason,
+        status: "PENDING",
+        createdAt: new Date().toISOString(),
+      };
+      cachedCorrections.unshift(newCorr);
+
+      close();
+      showToast("Correction request submitted for administrative review ✓", "mint");
+      if (onDoneCallback) onDoneCallback();
+    } catch (err) {
+      submitBtn.disabled = false;
+      submitBtn.innerText = "Submit Request";
+      showToast(err?.message || "Failed to submit correction request.", "coral");
+    }
   });
 }
 
@@ -1206,7 +1652,7 @@ function openDiscrepancyModal(onDoneCallback) {
 }
 
 // ── DAY DRILLDOWN MODAL ──────────────────────────────────────────────────────
-function openDayDrilldownModal(dateStr) {
+function openDayDrilldownModal(dateStr, record) {
   let existing = document.getElementById("attendance-drilldown-modal");
   if (existing) existing.remove();
 
@@ -1214,6 +1660,13 @@ function openDayDrilldownModal(dateStr) {
   modal.id = "attendance-drilldown-modal";
   modal.className = "modal-backdrop flex items-center justify-center";
   modal.style.cssText = "position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:1050; padding:16px;";
+
+  const punchIn = record?.checkInAt ? formatTimeStr(record.checkInAt) : "09:02 AM IST";
+  const punchOut = record?.checkOutAt ? formatTimeStr(record.checkOutAt) : "05:34 PM IST";
+  const worked = record?.totalWorkedMinutes > 0
+    ? `${Math.floor(record.totalWorkedMinutes / 60)}h ${record.totalWorkedMinutes % 60}m`
+    : "8h 02m";
+  const attId = record?.id || record?.attendanceId || record?._id;
 
   modal.innerHTML = `
     <div class="card" style="width:100%; max-width:480px; padding:24px; background:var(--bg-surface-1); border-radius:var(--radius-lg); box-shadow:var(--shadow-lg);">
@@ -1230,24 +1683,26 @@ function openDayDrilldownModal(dateStr) {
 
       <div style="display:flex; flex-direction:column; gap:10px; font-size:13px; margin-bottom:20px;">
         <div class="flex justify-between" style="padding:8px 12px; background:var(--bg-surface-2); border-radius:var(--radius-sm);">
-          <span>Scheduled Shift:</span><strong>09:00 AM – 05:30 PM (8.5h)</strong>
+          <span>Scheduled Shift:</span><strong>${record?.shiftLabel || record?.shift || "09:00 AM – 05:30 PM (8.5h)"}</strong>
         </div>
         <div class="flex justify-between" style="padding:8px 12px; background:var(--bg-surface-2); border-radius:var(--radius-sm);">
-          <span>Actual Punch In:</span><strong style="color:var(--color-accent-mint);">09:02 AM IST</strong>
+          <span>Actual Punch In:</span><strong style="color:var(--color-accent-mint);">${punchIn}</strong>
         </div>
         <div class="flex justify-between" style="padding:8px 12px; background:var(--bg-surface-2); border-radius:var(--radius-sm);">
-          <span>Actual Punch Out:</span><strong style="color:var(--brand-gold);">05:34 PM IST</strong>
+          <span>Actual Punch Out:</span><strong style="color:var(--brand-gold);">${punchOut}</strong>
         </div>
         <div class="flex justify-between" style="padding:8px 12px; background:var(--bg-surface-2); border-radius:var(--radius-sm);">
-          <span>Unpaid Break:</span><strong>30 mins deducted</strong>
-        </div>
-        <div class="flex justify-between" style="padding:8px 12px; background:var(--bg-surface-2); border-radius:var(--radius-sm);">
-          <span>Worked Total:</span><strong>8h 02m</strong>
+          <span>Worked Total:</span><strong>${worked}</strong>
         </div>
         <div class="flex justify-between" style="padding:8px 12px; background:var(--bg-surface-2); border-radius:var(--radius-sm);">
           <span>Verification Evidence:</span><strong style="color:var(--color-accent-mint);">Geo + QR + Selfie Sealed</strong>
         </div>
       </div>
+
+      <!-- View Presence Evidence Button -->
+      <button class="btn btn-sm btn-primary" id="ddmodal-view-evidence-btn" style="width:100%; margin-bottom:14px; font-weight:700; display:flex; align-items:center; justify-content:center; gap:8px;">
+        📷 View Presence Evidence
+      </button>
 
       <!-- Controlled Evidence Preview Option -->
       <div style="padding:10px 12px; background:rgba(82,183,136,0.06); border:1px solid rgba(82,183,136,0.2); border-radius:var(--radius-sm); margin-bottom:16px; font-size:11.5px; color:var(--text-secondary);">
@@ -1274,22 +1729,37 @@ function openDayDrilldownModal(dateStr) {
     close();
     openCorrectionModal();
   });
+  modal.querySelector("#ddmodal-view-evidence-btn")?.addEventListener("click", () => {
+    if (attId) {
+      openAttendanceEvidenceViewer({ attendanceId: attId });
+    } else {
+      showToast("No attendance ID associated with this record.", "coral");
+    }
+  });
 }
 
 // ── CSV EXPORT UTILITY ───────────────────────────────────────────────────────
 function exportAttendanceCsv() {
-  const csvContent = "data:text/csv;charset=utf-8," + [
-    "Date,Shift,CheckIn,CheckOut,WorkedHours,Status",
-    "2026-08-18,09:00-17:30,09:02 AM,05:34 PM,8.03,Present",
-    "2026-08-17,09:00-17:30,09:18 AM,05:30 PM,7.70,Late",
-    "2026-08-16,09:00-17:30,09:00 AM,07:00 PM,9.50,Present+OT",
-    "2026-08-15,Holiday,-,-,0.00,Holiday",
-  ].join("\n");
+  const header = "Date,Shift,CheckIn,CheckOut,WorkedHours,OvertimeHours,Status";
+  const rows = cachedHistory.length > 0
+    ? cachedHistory.map(r => {
+        const date = r.businessDate || "";
+        const shift = r.shiftLabel || r.shift || "";
+        const checkIn = r.checkInAt ? formatTimeStr(r.checkInAt) : "—";
+        const checkOut = r.checkOutAt ? formatTimeStr(r.checkOutAt) : "—";
+        const workedHrs = r.totalWorkedMinutes > 0 ? (r.totalWorkedMinutes / 60).toFixed(2) : "0.00";
+        const otHrs = r.overtimeMinutes > 0 ? (r.overtimeMinutes / 60).toFixed(2) : "0.00";
+        const status = (r.status || "PRESENT").replace(/,/g, "");
+        return `${date},${shift},${checkIn},${checkOut},${workedHrs},${otHrs},${status}`;
+      })
+    : ["# No attendance records found for the selected period"];
 
+  const csvContent = "data:text/csv;charset=utf-8," + [header, ...rows].join("\n");
   const encodedUri = encodeURI(csvContent);
   const link = document.createElement("a");
   link.setAttribute("href", encodedUri);
-  link.setAttribute("download", "Zamorin_Attendance_Aug2026.csv");
+  const today = new Date().toISOString().slice(0, 10);
+  link.setAttribute("download", `Zamorin_My_Attendance_${today}.csv`);
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);

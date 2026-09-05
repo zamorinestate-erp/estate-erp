@@ -33,6 +33,8 @@ const REFRESH_TOKEN_STORAGE_KEY = "zamorin-refresh-token";
 // Pure In-Memory Token Storage (Defense-in-depth: Tokens NEVER persist in localStorage)
 let inMemoryAccessToken = null;
 let inMemorySessionId = null;
+let inMemoryCafeOpsDeviceToken = null;
+let inMemoryCafeOpsSessionToken = null;
 
 export function getAccessToken() {
   if (inMemoryAccessToken && typeof inMemoryAccessToken === "string" && inMemoryAccessToken.trim() && inMemoryAccessToken !== "undefined" && inMemoryAccessToken !== "null") {
@@ -59,6 +61,81 @@ export function clearAccessToken() {
   try {
     globalThis.sessionStorage?.removeItem(ACCESS_TOKEN_STORAGE_KEY);
     globalThis.localStorage?.removeItem(ACCESS_TOKEN_STORAGE_KEY);
+  } catch {}
+}
+
+const CAFE_OPS_DEVICE_TOKEN_KEY = "zamorin-cafeops-device-token";
+const CAFE_OPS_SESSION_TOKEN_KEY = "zamorin-cafeops-session-token";
+
+export function getCafeOpsDeviceToken() {
+  if (inMemoryCafeOpsDeviceToken && typeof inMemoryCafeOpsDeviceToken === "string" && inMemoryCafeOpsDeviceToken.trim()) {
+    return inMemoryCafeOpsDeviceToken.trim();
+  }
+  try {
+    const stored = globalThis.localStorage?.getItem(CAFE_OPS_DEVICE_TOKEN_KEY) || globalThis.sessionStorage?.getItem(CAFE_OPS_DEVICE_TOKEN_KEY);
+    if (stored && typeof stored === "string" && stored.trim()) {
+      inMemoryCafeOpsDeviceToken = stored.trim();
+      return inMemoryCafeOpsDeviceToken;
+    }
+  } catch {}
+  return null;
+}
+
+export function setCafeOpsDeviceToken(token) {
+  if (typeof token === "string" && token.trim() && token !== "undefined" && token !== "null") {
+    inMemoryCafeOpsDeviceToken = token.trim();
+    try {
+      globalThis.localStorage?.setItem(CAFE_OPS_DEVICE_TOKEN_KEY, inMemoryCafeOpsDeviceToken);
+    } catch {}
+  } else {
+    inMemoryCafeOpsDeviceToken = null;
+    try {
+      globalThis.localStorage?.removeItem(CAFE_OPS_DEVICE_TOKEN_KEY);
+      globalThis.sessionStorage?.removeItem(CAFE_OPS_DEVICE_TOKEN_KEY);
+    } catch {}
+  }
+}
+
+export function clearCafeOpsDeviceToken() {
+  inMemoryCafeOpsDeviceToken = null;
+  try {
+    globalThis.localStorage?.removeItem(CAFE_OPS_DEVICE_TOKEN_KEY);
+    globalThis.sessionStorage?.removeItem(CAFE_OPS_DEVICE_TOKEN_KEY);
+  } catch {}
+}
+
+export function getCafeOpsSessionToken() {
+  if (inMemoryCafeOpsSessionToken && typeof inMemoryCafeOpsSessionToken === "string" && inMemoryCafeOpsSessionToken.trim()) {
+    return inMemoryCafeOpsSessionToken.trim();
+  }
+  try {
+    const stored = globalThis.sessionStorage?.getItem(CAFE_OPS_SESSION_TOKEN_KEY);
+    if (stored && typeof stored === "string" && stored.trim()) {
+      inMemoryCafeOpsSessionToken = stored.trim();
+      return inMemoryCafeOpsSessionToken;
+    }
+  } catch {}
+  return null;
+}
+
+export function setCafeOpsSessionToken(token) {
+  if (typeof token === "string" && token.trim() && token !== "undefined" && token !== "null") {
+    inMemoryCafeOpsSessionToken = token.trim();
+    try {
+      globalThis.sessionStorage?.setItem(CAFE_OPS_SESSION_TOKEN_KEY, inMemoryCafeOpsSessionToken);
+    } catch {}
+  } else {
+    inMemoryCafeOpsSessionToken = null;
+    try {
+      globalThis.sessionStorage?.removeItem(CAFE_OPS_SESSION_TOKEN_KEY);
+    } catch {}
+  }
+}
+
+export function clearCafeOpsSessionToken() {
+  inMemoryCafeOpsSessionToken = null;
+  try {
+    globalThis.sessionStorage?.removeItem(CAFE_OPS_SESSION_TOKEN_KEY);
   } catch {}
 }
 
@@ -113,6 +190,8 @@ export function clearSessionId() {
 export function clearAllAuthTokens() {
   inMemoryAccessToken = null;
   inMemorySessionId = null;
+  inMemoryCafeOpsDeviceToken = null;
+  inMemoryCafeOpsSessionToken = null;
   try {
     globalThis.localStorage?.removeItem(ACCESS_TOKEN_STORAGE_KEY);
     globalThis.sessionStorage?.removeItem(ACCESS_TOKEN_STORAGE_KEY);
@@ -120,6 +199,7 @@ export function clearAllAuthTokens() {
     globalThis.sessionStorage?.removeItem(SESSION_ID_STORAGE_KEY);
     globalThis.localStorage?.removeItem(REFRESH_TOKEN_STORAGE_KEY);
     globalThis.sessionStorage?.removeItem(REFRESH_TOKEN_STORAGE_KEY);
+    globalThis.sessionStorage?.removeItem(CAFE_OPS_SESSION_TOKEN_KEY);
   } catch {}
 }
 
@@ -370,9 +450,16 @@ export function getOrCreateDeviceId() {
     return memoryCachedDeviceId;
   }
   try {
-    const existing = globalThis.localStorage?.getItem(DEVICE_ID_STORAGE_KEY);
-    if (existing && existing.trim()) {
-      memoryCachedDeviceId = existing.trim();
+    const primary = globalThis.localStorage?.getItem(DEVICE_ID_STORAGE_KEY);
+    if (primary && primary.trim()) {
+      memoryCachedDeviceId = primary.trim();
+      try { globalThis.localStorage?.setItem("zamorin_device_id", memoryCachedDeviceId); } catch {}
+      return memoryCachedDeviceId;
+    }
+    const legacy = globalThis.localStorage?.getItem("zamorin_device_id");
+    if (legacy && legacy.trim()) {
+      memoryCachedDeviceId = legacy.trim();
+      try { globalThis.localStorage?.setItem(DEVICE_ID_STORAGE_KEY, memoryCachedDeviceId); } catch {}
       return memoryCachedDeviceId;
     }
   } catch {}
@@ -393,9 +480,25 @@ export function getOrCreateDeviceId() {
   memoryCachedDeviceId = deviceId;
   try {
     globalThis.localStorage?.setItem(DEVICE_ID_STORAGE_KEY, deviceId);
+    globalThis.localStorage?.setItem("zamorin_device_id", deviceId);
   } catch {}
 
   return deviceId;
+}
+
+export function getCanonicalDeviceId() {
+  return getOrCreateDeviceId();
+}
+
+export function setCanonicalDeviceId(id) {
+  if (typeof id === "string" && id.trim()) {
+    const clean = id.trim();
+    memoryCachedDeviceId = clean;
+    try {
+      globalThis.localStorage?.setItem(DEVICE_ID_STORAGE_KEY, clean);
+      globalThis.localStorage?.setItem("zamorin_device_id", clean);
+    } catch {}
+  }
 }
 
 export const AUTH_REQUEST_TIMEOUT_MS = 60000;
@@ -653,6 +756,8 @@ export async function performRequest(
   }
 
   const token = getAccessToken();
+  const cafeOpsDeviceToken = getCafeOpsDeviceToken();
+  const cafeOpsSessionToken = getCafeOpsSessionToken();
   const requestHeaders = {
     Accept: "application/json, text/plain, */*",
     "x-device-id": getOrCreateDeviceId(),
@@ -660,6 +765,12 @@ export async function performRequest(
 
   if (token && typeof token === "string" && token.trim() && token !== "undefined" && token !== "null") {
     requestHeaders["Authorization"] = `Bearer ${token.trim()}`;
+  }
+  if (cafeOpsDeviceToken && typeof cafeOpsDeviceToken === "string" && cafeOpsDeviceToken.trim()) {
+    requestHeaders["x-cafeops-device-token"] = cafeOpsDeviceToken.trim();
+  }
+  if (cafeOpsSessionToken && typeof cafeOpsSessionToken === "string" && cafeOpsSessionToken.trim()) {
+    requestHeaders["x-cafeops-session-token"] = cafeOpsSessionToken.trim();
   }
 
   if (headers) {
@@ -918,6 +1029,12 @@ export async function requestJson(
     }
 
     if (!response.ok) {
+      if (response.status === 401) {
+        const errCode = payload?.error?.code || '';
+        if (errCode === 'SESSION_INVALID' || errCode === 'SESSION_EXPIRED' || errCode === 'GATEWAY_CONTEXT_EXPIRED' || normalized.startsWith('/cafe-ops/') || normalized.startsWith('/cafe-operations/')) {
+          clearCafeOpsSessionToken();
+        }
+      }
       throw createApiError(response, payload);
     }
 

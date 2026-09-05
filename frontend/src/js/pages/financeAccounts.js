@@ -10,6 +10,18 @@ import { navigate } from "../router.js";
 
 let activeTab = "overview";
 let liveFinanceData = null;
+let cachedCafes = [];
+
+async function loadCafesList() {
+  if (cachedCafes.length) return cachedCafes;
+  try {
+    const res = await apiGet("/cafes");
+    cachedCafes = res?.data || res?.cafes || (Array.isArray(res) ? res : []);
+  } catch (err) {
+    cachedCafes = [];
+  }
+  return cachedCafes;
+}
 
 function fmtInr(paisa) {
   if (paisa === null || paisa === undefined) return "₹0.00";
@@ -1334,7 +1346,10 @@ async function renderIntegrityTab(wrap) {
 // ── MODALS ───────────────────────────────────────────────────────────────────
 
 // 1. New Journal Modal
-function openNewJournalModal(wrap) {
+async function openNewJournalModal(wrap) {
+  await loadCafesList();
+  const cafeOpts = cachedCafes.map(c => `<option value="${c.cafeId || c.code || c.id || c._id}">${c.name || 'Outlet'} (${c.cafeId || c.code || ''})</option>`).join('');
+
   const modalHtml = `
     <div style="padding:6px;">
       <h3 style="font-size:18px; font-weight:800; margin:0 0 16px; color:var(--ink);">New Balanced Journal Entry</h3>
@@ -1359,8 +1374,7 @@ function openNewJournalModal(wrap) {
           <label class="form-label" style="font-size:12px; font-weight:600;">Café Location</label>
           <select name="cafeId" class="form-input">
             <option value="">Global / Corporate HQ</option>
-            <option value="ZC-0001">Main Outlet (ZC-0001)</option>
-            <option value="ZC-0002">Branch Outlet (ZC-0002)</option>
+            ${cafeOpts}
           </select>
         </div>
 
@@ -1421,7 +1435,10 @@ function openNewJournalModal(wrap) {
 }
 
 // 2. Record AP Bill Modal
-function openNewAPBillModal(wrap) {
+async function openNewAPBillModal(wrap) {
+  await loadCafesList();
+  const cafeOpts = cachedCafes.map(c => `<option value="${c.cafeId || c.code || c.id || c._id}">${c.name || 'Outlet'} (${c.cafeId || c.code || ''})</option>`).join('');
+
   const modalHtml = `
     <div style="padding:6px;">
       <h3 style="font-size:18px; font-weight:800; margin:0 0 16px; color:var(--ink);">Record Accounts Payable Supplier Bill</h3>
@@ -1450,9 +1467,7 @@ function openNewAPBillModal(wrap) {
           <div>
             <label class="form-label" style="font-size:12px; font-weight:600;">Café Allocation</label>
             <select name="cafeId" class="form-input">
-              <option value="ZC-0001">Main Outlet (ZC-0001)</option>
-              <option value="ZC-0002">Branch Outlet (ZC-0002)</option>
-              <option value="ZC-0003">Calicut Beach Main (ZC-0003)</option>
+              ${cafeOpts || '<option value="">No Active Cafes</option>'}
             </select>
           </div>
         </div>
@@ -1540,7 +1555,7 @@ function openNewARCollectionModal(wrap) {
         receivableId: `AR-2026-${String(DEFAULT_RECEIVABLES.length + 213).padStart(4, "0")}`,
         customerName: fd.get("customerName"),
         invoiceDate: new Date().toISOString().slice(0, 10),
-        cafeId: "ZC-0001",
+        cafeId: state.currentCafeId || state.selectedCafeId || "",
         amountPaisa: amtPaisa,
         status: "SETTLED",
         dueDate: new Date().toISOString().slice(0, 10),

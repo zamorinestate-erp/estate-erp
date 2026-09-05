@@ -15,19 +15,14 @@ let activeTab = "OVERVIEW"; // 'OVERVIEW' | 'CALENDAR' | 'REQUESTS' | 'BALANCES'
 let selectedDurationUnit = "FULL_DAY";
 let selectedLeaveFilter = "ALL";
 let cachedBalances = {
-  casual: 4.5,
-  sick: 6.0,
-  earned: 12.0,
-  compOff: 1.0,
-  totalAvailable: 23.5
+  casual: 0,
+  sick: 0,
+  earned: 0,
+  compOff: 0,
+  totalAvailable: 0,
 };
 let cachedTypes = [];
-let cachedRequests = [
-  { id: "LR-20260829-001", type: "Casual Leave", dates: "29 Aug 2026", days: 1.0, status: "PENDING", submitted: "19 Aug, 10:15 AM", canWithdraw: true, canCancel: false, reason: "Family personal function" },
-  { id: "LR-20260910-001", type: "Casual Leave", dates: "10–11 Sep 2026", days: 2.0, status: "APPROVED", submitted: "14 Aug, 09:30 AM", canWithdraw: false, canCancel: true, reason: "Attending wedding" },
-  { id: "LR-20260710-001", type: "Casual Leave", dates: "10–11 Jul 2026", days: 2.0, status: "APPROVED", submitted: "02 Jul, 11:00 AM", canWithdraw: false, canCancel: false, reason: "Personal work" },
-  { id: "LR-20260601-001", type: "Earned Leave", dates: "05–08 Jun 2026", days: 4.0, status: "REJECTED", submitted: "25 May, 04:00 PM", canWithdraw: false, canCancel: false, reason: "Summer vacation" },
-];
+let cachedRequests = [];
 let cachedLedger = [];
 let currentCalendarMonth = "2026-08";
 
@@ -64,9 +59,9 @@ function renderHeader() {
       <div>
         <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
           <h1 style="font-size:24px; font-weight:700; margin:0; color:var(--ink);">My Leave Self-Service</h1>
-          <span class="badge" style="background:rgba(180,83,9,0.12); color:#b45309; font-weight:600; font-size:12px; padding:4px 10px; border-radius:12px; white-space:nowrap;">EMP-SCR-003</span>
+          <span class="badge" style="background:rgba(180,83,9,0.12); color:#b45309; font-weight:600; font-size:12px; padding:4px 10px; border-radius:12px; white-space:nowrap;">${state.user?.badgeId || state.user?.userId || "STAFF"}</span>
         </div>
-        <p style="font-size:13px; color:var(--muted); margin:4px 0 0;">Main Outlet · Employee Leave Entitlement &amp; Requests</p>
+        <p style="font-size:13px; color:var(--muted); margin:4px 0 0;">${state.user?.primaryCafeName || "Assigned Outlet"} · Employee Leave Entitlement &amp; Requests</p>
       </div>
 
       <!-- Total Available Balance Pill -->
@@ -76,9 +71,9 @@ function renderHeader() {
             TOTAL AVAILABLE BALANCE
           </div>
           <div id="total-available-leave-val" style="font-size:18px; font-weight:800; color:#059669; font-family:var(--font-heading); line-height:1.2; margin-top:2px;">
-            24.5 Days
+            ${(cachedBalances.totalAvailable || 0).toFixed(1)} Days
           </div>
-          <div style="font-size:11px; color:var(--muted);">Across 4 paid plans</div>
+          <div style="font-size:11px; color:var(--muted);">Across ${cachedTypes.length || 4} paid plans</div>
         </div>
       </div>
     </div>
@@ -122,8 +117,8 @@ function renderOverviewTab() {
             <div style="font-size:11.5px; color:var(--muted); text-transform:uppercase; font-weight:700; letter-spacing:0.4px;">Casual Leave</div>
             <span class="badge-tag" style="background:var(--surface-sunken); color:var(--ink); font-size:10px; font-weight:700; padding:1px 6px; border-radius:4px;">PAID</span>
           </div>
-          <div style="font-size:26px; font-weight:800; color:var(--ink); font-family:var(--font-heading); margin-top:4px;">4.5 <span style="font-size:13px; font-weight:500; color:var(--muted);">days</span></div>
-          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">1.0 day pending · 8.0 accrued YTD</div>
+          <div style="font-size:26px; font-weight:800; color:var(--ink); font-family:var(--font-heading); margin-top:4px;">${(cachedBalances.casual ?? 0).toFixed(1)} <span style="font-size:13px; font-weight:500; color:var(--muted);">days</span></div>
+          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">Casual leave balance</div>
         </div>
 
         <div class="kpi-card" style="background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); padding:16px 18px; box-shadow:var(--shadow-xs);">
@@ -131,8 +126,8 @@ function renderOverviewTab() {
             <div style="font-size:11.5px; color:var(--muted); text-transform:uppercase; font-weight:700; letter-spacing:0.4px;">Sick Leave</div>
             <span class="badge-tag" style="background:var(--surface-sunken); color:var(--ink); font-size:10px; font-weight:700; padding:1px 6px; border-radius:4px;">PAID</span>
           </div>
-          <div style="font-size:26px; font-weight:800; color:#059669; font-family:var(--font-heading); margin-top:4px;">6.0 <span style="font-size:13px; font-weight:500; color:var(--muted);">days</span></div>
-          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">0 pending · Medical slip &gt; 2 days</div>
+          <div style="font-size:26px; font-weight:800; color:#059669; font-family:var(--font-heading); margin-top:4px;">${(cachedBalances.sick ?? 0).toFixed(1)} <span style="font-size:13px; font-weight:500; color:var(--muted);">days</span></div>
+          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">Sick &amp; medical leave balance</div>
         </div>
 
         <div class="kpi-card" style="background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); padding:16px 18px; box-shadow:var(--shadow-xs);">
@@ -140,8 +135,8 @@ function renderOverviewTab() {
             <div style="font-size:11.5px; color:var(--muted); text-transform:uppercase; font-weight:700; letter-spacing:0.4px;">Earned Leave</div>
             <span class="badge-tag" style="background:var(--surface-sunken); color:var(--ink); font-size:10px; font-weight:700; padding:1px 6px; border-radius:4px;">PAID</span>
           </div>
-          <div style="font-size:26px; font-weight:800; color:var(--ink); font-family:var(--font-heading); margin-top:4px;">12.0 <span style="font-size:13px; font-weight:500; color:var(--muted);">days</span></div>
-          <div style="font-size:11.5px; color:#b45309; font-weight:600; margin-top:2px;">2.0 days expire 31 Dec 2026</div>
+          <div style="font-size:26px; font-weight:800; color:var(--ink); font-family:var(--font-heading); margin-top:4px;">${(cachedBalances.earned ?? 0).toFixed(1)} <span style="font-size:13px; font-weight:500; color:var(--muted);">days</span></div>
+          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">Annual accrued privilege balance</div>
         </div>
 
         <div class="kpi-card" style="background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); padding:16px 18px; box-shadow:var(--shadow-xs);">
@@ -149,8 +144,8 @@ function renderOverviewTab() {
             <div style="font-size:11.5px; color:var(--muted); text-transform:uppercase; font-weight:700; letter-spacing:0.4px;">Comp-Off</div>
             <span class="badge-tag" style="background:var(--surface-sunken); color:var(--ink); font-size:10px; font-weight:700; padding:1px 6px; border-radius:4px;">PAID</span>
           </div>
-          <div style="font-size:26px; font-weight:800; color:var(--ink); font-family:var(--font-heading); margin-top:4px;">1.0 <span style="font-size:13px; font-weight:500; color:var(--muted);">day</span></div>
-          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">Expires 31 Aug 2026</div>
+          <div style="font-size:26px; font-weight:800; color:var(--ink); font-family:var(--font-heading); margin-top:4px;">${(cachedBalances.compOff ?? 0).toFixed(1)} <span style="font-size:13px; font-weight:500; color:var(--muted);">days</span></div>
+          <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">Compensatory off balance</div>
         </div>
       </div>
 
@@ -171,11 +166,11 @@ function renderOverviewTab() {
                   Leave Type *
                 </label>
                 <select id="leave-type-select" class="input" style="width:100%;">
-                  <option value="CASUAL" selected>Casual Leave (4.5 days available)</option>
-                  <option value="SICK">Sick Leave (6.0 days available)</option>
-                  <option value="EARNED">Earned / Privilege Leave (12.0 days available)</option>
-                  <option value="COMP_OFF">Compensatory Off (1.0 day available)</option>
-                  <option value="RESTRICTED_HOLIDAY">Restricted / Optional Holiday (1.0 day)</option>
+                  <option value="CASUAL" selected>Casual Leave (${(cachedBalances.casual ?? 0).toFixed(1)} days available)</option>
+                  <option value="SICK">Sick Leave (${(cachedBalances.sick ?? 0).toFixed(1)} days available)</option>
+                  <option value="EARNED">Earned / Privilege Leave (${(cachedBalances.earned ?? 0).toFixed(1)} days available)</option>
+                  <option value="COMP_OFF">Compensatory Off (${(cachedBalances.compOff ?? 0).toFixed(1)} days available)</option>
+                  <option value="RESTRICTED_HOLIDAY">Restricted / Optional Holiday</option>
                   <option value="UNPAID">Leave Without Pay (Unpaid · Payroll Affecting)</option>
                 </select>
               </div>
@@ -186,13 +181,13 @@ function renderOverviewTab() {
                   <label style="font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:4px; display:block;">
                     From Date *
                   </label>
-                  <input type="date" id="leave-start-date" class="input" style="width:100%;" value="2026-08-24" />
+                  <input type="date" id="leave-start-date" class="input" style="width:100%;" value="${new Date().toISOString().substring(0, 10)}" />
                 </div>
                 <div>
                   <label style="font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:4px; display:block;">
                     To Date *
                   </label>
-                  <input type="date" id="leave-end-date" class="input" style="width:100%;" value="2026-08-26" />
+                  <input type="date" id="leave-end-date" class="input" style="width:100%;" value="${new Date().toISOString().substring(0, 10)}" />
                 </div>
               </div>
 
@@ -218,19 +213,19 @@ function renderOverviewTab() {
               <div id="leave-calc-preview-box" style="padding:12px 14px; background:var(--bg-surface-2); border-radius:var(--radius-md); border:1px solid var(--border-subtle); font-size:12.5px;">
                 <div class="flex justify-between items-center" style="margin-bottom:4px;">
                   <span style="color:var(--text-secondary);">Total Calendar Days:</span>
-                  <strong style="color:var(--text-primary);">3 Days</strong>
+                  <strong style="color:var(--text-primary);">1 Day</strong>
                 </div>
                 <div class="flex justify-between items-center" style="margin-bottom:4px;">
                   <span style="color:var(--text-secondary);">Weekly Offs Excluded:</span>
-                  <span style="color:var(--text-muted);">1 Day (Tue, 25 Aug)</span>
+                  <span style="color:var(--text-muted);">0 Days</span>
                 </div>
                 <div class="flex justify-between items-center" style="margin-bottom:6px; padding-top:4px; border-top:1px solid var(--border-subtle);">
                   <span style="font-weight:700; color:var(--text-primary);">Leave Days Charged:</span>
-                  <strong style="font-size:14px; color:var(--brand-gold);">2.0 Days</strong>
+                  <strong style="font-size:14px; color:var(--brand-gold);">1.0 Day</strong>
                 </div>
                 <div class="flex justify-between items-center" style="font-size:11.5px; color:var(--color-accent-mint);">
                   <span>Projected Balance After:</span>
-                  <strong>2.5 Days Available</strong>
+                  <strong>${Math.max(0, (cachedBalances.totalAvailable || 0) - 1).toFixed(1)} Days Available</strong>
                 </div>
               </div>
 
@@ -245,7 +240,7 @@ function renderOverviewTab() {
               <!-- Supporting Document Picker (Optional) -->
               <div>
                 <label style="font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:4px; display:block;">
-                  Supporting Document (Optional PDF / Image)
+                  Supporting Proof (Optional, for Medical/Sick &gt; 2 Days)
                 </label>
                 <input type="file" id="leave-file-input" class="input" accept=".pdf,.png,.jpg,.jpeg" style="width:100%; padding:6px;" />
               </div>
@@ -270,17 +265,29 @@ function renderOverviewTab() {
               <span class="badge badge-mint" style="font-size:10px;">APPROVED</span>
             </div>
 
-            <div style="padding:12px 14px; background:var(--bg-surface-2); border-radius:var(--radius-md); border:1px solid var(--border-subtle);">
-              <div style="font-size:14px; font-weight:700; color:var(--text-primary);">
-                Casual Leave · 2 Days
-              </div>
-              <div style="font-size:12.5px; color:var(--brand-gold); margin-top:2px; font-weight:600;">
-                10 Sep 2026 – 11 Sep 2026
-              </div>
-              <div style="font-size:11.5px; color:var(--text-muted); margin-top:4px;">
-                Shift schedule adjusted · Status marked as ON_LEAVE
-              </div>
-            </div>
+            ${(() => {
+              const approved = cachedRequests.find((r) => r.status === "APPROVED");
+              if (!approved) {
+                return `
+                  <div style="padding:16px; text-align:center; color:var(--text-muted); font-size:12px; background:var(--bg-surface-2); border-radius:var(--radius-md);">
+                    No upcoming approved leave scheduled.
+                  </div>
+                `;
+              }
+              return `
+                <div style="padding:12px 14px; background:var(--bg-surface-2); border-radius:var(--radius-md); border:1px solid var(--border-subtle);">
+                  <div style="font-size:14px; font-weight:700; color:var(--text-primary);">
+                    ${approved.type} · ${approved.days} ${approved.days === 1 ? "Day" : "Days"}
+                  </div>
+                  <div style="font-size:12.5px; color:var(--brand-gold); margin-top:2px; font-weight:600;">
+                    ${approved.dates}
+                  </div>
+                  <div style="font-size:11.5px; color:var(--text-muted); margin-top:4px;">
+                    Shift schedule adjusted · Status marked as ON_LEAVE
+                  </div>
+                </div>
+              `;
+            })()}
           </div>
 
           <!-- Pending Requests Snapshot -->
@@ -296,18 +303,32 @@ function renderOverviewTab() {
             </div>
 
             <div style="display:flex; flex-direction:column; gap:10px;">
-              <div class="flex items-center justify-between" style="padding:10px 12px; background:var(--bg-surface-2); border-radius:var(--radius-sm); border:1px solid var(--border-subtle);">
-                <div>
-                  <div style="font-size:13px; font-weight:700; color:var(--text-primary);">Casual Leave (1.0 Day)</div>
-                  <div style="font-size:11.5px; color:var(--text-muted);">29 Aug 2026 · Reason: Family event</div>
-                </div>
-                <div class="flex items-center gap-xs">
-                  <span class="badge badge-gold" style="font-size:10px;">PENDING</span>
-                  <button class="btn btn-xs btn-ghost btn-withdraw-request" data-leave-id="LR-20260829-001" style="color:var(--color-accent-coral); padding:2px 6px;">
-                    Withdraw
-                  </button>
-                </div>
-              </div>
+              ${(() => {
+                const pending = cachedRequests.filter((r) => r.status === "PENDING");
+                if (pending.length === 0) {
+                  return `
+                    <div style="padding:16px; text-align:center; color:var(--text-muted); font-size:12px; background:var(--bg-surface-2); border-radius:var(--radius-md);">
+                      No active pending leave requests.
+                    </div>
+                  `;
+                }
+                return pending.map((r) => `
+                  <div class="flex items-center justify-between" style="padding:10px 12px; background:var(--bg-surface-2); border-radius:var(--radius-sm); border:1px solid var(--border-subtle);">
+                    <div>
+                      <div style="font-size:13px; font-weight:700; color:var(--text-primary);">${r.type} (${r.days} ${r.days === 1 ? "Day" : "Days"})</div>
+                      <div style="font-size:11.5px; color:var(--text-muted);">${r.dates}${r.reason ? ` · Reason: ${r.reason}` : ""}</div>
+                    </div>
+                    <div class="flex items-center gap-xs">
+                      <span class="badge badge-gold" style="font-size:10px;">PENDING</span>
+                      ${r.canWithdraw ? `
+                        <button class="btn btn-xs btn-ghost btn-withdraw-request" data-leave-id="${r.id}" style="color:var(--color-accent-coral); padding:2px 6px;">
+                          Withdraw
+                        </button>
+                      ` : ""}
+                    </div>
+                  </div>
+                `).join("");
+              })()}
             </div>
           </div>
         </div>

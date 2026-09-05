@@ -1574,11 +1574,23 @@ function openManageViewsModal(root) {
 
 // ─── Target Management Modal (Primary Master / Owner only) ────────────────────
 
-function openTargetModal(root) {
+async function openTargetModal(root) {
   const modalRoot = root.querySelector("#cc-modals-mount");
   if (!modalRoot) return;
 
   const monthKey = new Date().toISOString().slice(0, 7);
+
+  let cafesList = [];
+  try {
+    const res = await apiGet('/cafes');
+    cafesList = res?.data || res?.cafes || (Array.isArray(res) ? res : []);
+  } catch (_e) {
+    cafesList = [];
+  }
+
+  const cafeOptions = cafesList.length
+    ? cafesList.map(c => `<option value="${c.cafeId || c.code || c.id || c._id}">${c.cafeId || c.code || ''} · ${c.name || 'Outlet'}</option>`).join('')
+    : '<option value="">No Active Cafes Found</option>';
 
   modalRoot.innerHTML = `
     <div class="modal-backdrop" style="position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;display:flex;align-items:center;justify-content:center;">
@@ -1594,9 +1606,7 @@ function openTargetModal(root) {
         <div class="form-group" style="margin-bottom:12px;">
           <label class="form-label" style="font-size:12px;font-weight:700;">Café Location</label>
           <select id="cc-target-cafe-id" class="form-control">
-            <option value="ZC-0001">ZC-0001 · Main Outlet</option>
-            <option value="ZC-0002">ZC-0002 · Branch Outlet</option>
-            <option value="ZC-0003">ZC-0003 · Calicut Beach</option>
+            ${cafeOptions}
           </select>
         </div>
 

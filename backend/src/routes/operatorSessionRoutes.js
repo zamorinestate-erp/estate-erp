@@ -13,6 +13,7 @@ router.get('/directory', operatorSessionController.getDirectory);
 
 // 1. Operator Sign-In on Cafe Device (Public/Device endpoint, validates PIN)
 router.post('/signin', attachDeviceContext, operatorSessionController.signIn);
+router.post('/sign-in', attachDeviceContext, operatorSessionController.signIn);
 
 // 1b. Master Sign-In on Cafe Device (Canonical Master credentials, strictly single-cafe workspace)
 router.post('/signin-master', attachDeviceContext, operatorSessionController.signInMaster);

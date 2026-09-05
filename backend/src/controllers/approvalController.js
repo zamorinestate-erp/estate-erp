@@ -25,6 +25,9 @@ const {
   recordRequestAudit,
 } = require('../services/auditService');
 
+const { LeaveRequest } = require('../models/LeaveRequest');
+const { reconcileLeaveToAttendance } = require('../services/leaveReconciliationService');
+
 function normalizeId(value) {
   return typeof value === 'string'
     ? value.trim().toUpperCase()
@@ -155,6 +158,29 @@ const decideApproval = asyncHandler(async (request, response) => {
   approval.decidedAt = new Date();
 
   await approval.save();
+
+  if (approval.entityType === 'LEAVE' || approval.entityType === 'LEAVE_REQUEST') {
+    try {
+      const leaveRequest = await LeaveRequest.findOne({
+        organisationId: request.auth.organisationId,
+        $or: [{ leaveId: approval.entityId }, { requestId: approval.entityId }],
+      });
+      if (leaveRequest) {
+        leaveRequest.status = targetDecision;
+        leaveRequest.approvedBy = request.auth.userId;
+        leaveRequest.approvedAt = new Date();
+        leaveRequest.decisionReason = typeof reason === 'string' ? reason.trim() : '';
+        await leaveRequest.save();
+
+        await reconcileLeaveToAttendance({
+          organisationId: request.auth.organisationId,
+          leaveRequest,
+          action: targetDecision === 'APPROVED' ? 'APPROVE' : 'REJECT',
+          actorUserId: request.auth.userId,
+        });
+      }
+    } catch (_) {}
+  }
 
   await recordRequestAudit({
     request,

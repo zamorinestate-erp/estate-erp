@@ -45,289 +45,15 @@ function renderResultPill(result) {
   return `<span class="pill ${pillClass}" style="font-size:10px;font-weight:700;letter-spacing:0.3px;">${result || 'UNKNOWN'}</span>`;
 }
 
-const DEFAULT_QUALITY_TEMPLATES = [
-  {
-    templateId: 'QC-TMPL-OPEN-01',
-    version: 'v2.4',
-    title: 'Opening Hygiene & Food Safety Readiness',
-    category: 'DAILY_OPERATIONS',
-    frequency: 'DAILY',
-    area: 'Entire Café & Kitchen',
-    targetTime: '06:30 AM',
-    questions: [
-      { id: 'q1', text: 'All staff in clean uniform, aprons, and hair restraints?', type: 'YES_NO', critical: true },
-      { id: 'q2', text: 'Handwash stations fully stocked with soap, warm water & paper towels?', type: 'YES_NO', critical: true },
-      { id: 'q3', text: 'All chillers operating within 1.0°C – 4.0°C range?', type: 'TEMPERATURE', critical: true },
-      { id: 'q4', text: 'Food contact surfaces sanitised with approved quat sanitizer (200 ppm)?', type: 'YES_NO', critical: false },
-      { id: 'q5', text: 'No evidence of pest intrusion or damaged seals overnight?', type: 'YES_NO', critical: true },
-    ],
-  },
-  {
-    templateId: 'QC-TMPL-MID-01',
-    version: 'v2.0',
-    title: 'Mid-Day CCP & Cold Chain Verification',
-    category: 'DAILY_OPERATIONS',
-    frequency: 'DAILY',
-    area: 'Espresso Bar & Bakery Display',
-    targetTime: '02:00 PM',
-    questions: [
-      { id: 'q1', text: 'Pastry display case core temperature below 5.0°C?', type: 'TEMPERATURE', critical: true },
-      { id: 'q2', text: 'Milk jug rinse spray nozzle water pressure and hygiene nominal?', type: 'YES_NO', critical: false },
-      { id: 'q3', text: 'Sanitizer bucket concentration verified between 150-200 ppm?', type: 'YES_NO', critical: true },
-    ],
-  },
-  {
-    templateId: 'QC-TMPL-CLOSE-01',
-    version: 'v2.1',
-    title: 'Closing Sanitation & Waste Lockdown',
-    category: 'DAILY_OPERATIONS',
-    frequency: 'DAILY',
-    area: 'Back of House & Bar',
-    targetTime: '11:00 PM',
-    questions: [
-      { id: 'q1', text: 'All open dairy and perishables sealed, labelled, and dated?', type: 'YES_NO', critical: true },
-      { id: 'q2', text: 'Espresso machine groupheads, portafilters, and steam wands backflushed & soaked?', type: 'YES_NO', critical: false },
-      { id: 'q3', text: 'Bins emptied, sanitized, and lined with fresh heavy-duty bags?', type: 'YES_NO', critical: false },
-      { id: 'q4', text: 'All refrigeration doors verified closed with magnetic gaskets sealed tight?', type: 'YES_NO', critical: true },
-    ],
-  },
-];
-
-const DEFAULT_QUALITY_CHECKLISTS = [
-  { checklistId: 'QC-2026-0041', title: 'Opening Hygiene & Food Safety Readiness', cafeId: 'ZC-0001', inspectionDate: '2026-08-25', inspectedByUserId: 'EMP-MGR-01', overallResult: 'PASSED', actionRequired: 'None' },
-  { checklistId: 'QC-2026-0040', title: 'Mid-Day CCP & Cold Chain Verification', cafeId: 'ZC-0001', inspectionDate: '2026-08-25', inspectedByUserId: 'EMP-BAR-02', overallResult: 'PASSED', actionRequired: 'None' },
-  { checklistId: 'QC-2026-0039', title: 'Closing Sanitation & Waste Lockdown', cafeId: 'ZC-0002', inspectionDate: '2026-08-24', inspectedByUserId: 'EMP-MGR-02', overallResult: 'PASSED', actionRequired: 'None' },
-];
-
-const DEFAULT_QUALITY_PRPS = [
-  {
-    id: 'PRP-01',
-    title: 'PRP 01: Cleaning & Sanitation',
-    category: 'SANITATION',
-    standard: 'ISO 22002-2 / Codex',
-    status: 'PASS',
-    description: 'Food-contact quaternary sanitizer titration verified daily at 200 ppm.',
-  },
-  {
-    id: 'PRP-02',
-    title: 'PRP 02: Cold-Chain Integrity',
-    category: 'COLD_CHAIN',
-    standard: 'FSSAI Schedule IV',
-    status: 'PASS',
-    description: 'Continuous digital telemetry on all dairy and gelato storage units (1°C–4°C).',
-  },
-  {
-    id: 'PRP-03',
-    title: 'PRP 03: Water & Ice Safety',
-    category: 'WATER_SAFETY',
-    standard: 'IS 10500:2012',
-    status: 'PASS',
-    description: 'Double filtration + UV sterilisation on espresso & ice-machine water feeds.',
-  },
-  {
-    id: 'PRP-04',
-    title: 'PRP 04: Pest Prevention',
-    category: 'PEST_CONTROL',
-    standard: 'HACCP Pre-req',
-    status: 'PASS',
-    description: 'Monthly eco-certified pest audit & electronic fly-killer grid monitoring.',
-  },
-  {
-    id: 'PRP-05',
-    title: 'PRP 05: Allergen Segregation',
-    category: 'ALLERGENS',
-    standard: 'Codex CXC 80-2020',
-    status: 'PASS',
-    description: 'Dedicated steaming wands & pitchers for plant milk vs dairy products.',
-  },
-  {
-    id: 'PRP-06',
-    title: 'PRP 06: Personnel Hygiene',
-    category: 'HYGIENE',
-    standard: 'FSMS GHP',
-    status: 'PASS',
-    description: 'Staff wellness check, wound dressing containment & hair restraints.',
-  },
-];
-let cachedPrpSchedules = [...DEFAULT_QUALITY_PRPS];
-
-const DEFAULT_QUALITY_TEMPERATURES = [
-  {
-    logId: 'TEMP-2026-001',
-    assetId: 'AST-CHILL-01',
-    assetName: 'Main Chiller #1 (Dairy & Milk)',
-    location: 'Espresso Bar',
-    readingCelsius: 3.2,
-    expectedMinCelsius: 1.0,
-    expectedMaxCelsius: 4.0,
-    isExcursion: false,
-    source: 'MANUAL_PROBE',
-    recordedAt: '2026-08-26T08:30:00Z',
-  },
-  {
-    logId: 'TEMP-2026-002',
-    assetId: 'AST-FRZ-01',
-    assetName: 'Deep Freezer #1 (Gelato & Pastry)',
-    location: 'Back of House',
-    readingCelsius: -19.5,
-    expectedMinCelsius: -22.0,
-    expectedMaxCelsius: -18.0,
-    isExcursion: false,
-    source: 'SENSOR_TELEMETRY',
-    recordedAt: '2026-08-26T08:45:00Z',
-  },
-  {
-    logId: 'TEMP-2026-003',
-    assetId: 'AST-DISP-02',
-    assetName: 'Pastry & Sandwich Display Chiller',
-    location: 'Front Counter',
-    readingCelsius: 3.8,
-    expectedMinCelsius: 2.0,
-    expectedMaxCelsius: 5.0,
-    isExcursion: false,
-    source: 'IOT_SENSOR',
-    recordedAt: '2026-08-26T09:00:00Z',
-  },
-  {
-    logId: 'TEMP-2026-004',
-    assetId: 'AST-WARM-01',
-    assetName: 'Bain-Marie Hot Holding Unit',
-    location: 'Hot Kitchen Prep',
-    readingCelsius: 68.5,
-    expectedMinCelsius: 63.0,
-    expectedMaxCelsius: 85.0,
-    isExcursion: false,
-    source: 'DIGITAL_PROBE',
-    recordedAt: '2026-08-26T09:15:00Z',
-  },
-];
-
-const DEFAULT_QUALITY_HOLDS = [
-  {
-    holdId: 'QHOLD-2026-001',
-    lotNumber: 'LOT-20260822-MILK',
-    itemName: 'Farm Fresh Whole Milk (50L)',
-    quantityHeld: 50,
-    unit: 'L',
-    reason: 'TEMPERATURE_DEVIATION',
-    status: 'ON_HOLD',
-    placedAt: '2026-08-22',
-    disposition: null,
-  },
-  {
-    holdId: 'QHOLD-2026-002',
-    lotNumber: 'LOT-20260818-OAT',
-    itemName: 'Barista Edition Oat Milk (30L)',
-    quantityHeld: 30,
-    unit: 'L',
-    reason: 'PACKAGING_INTEGRITY',
-    status: 'RELEASED',
-    placedAt: '2026-08-18',
-    disposition: 'INSPECTED_PASS',
-  },
-];
-
-const DEFAULT_QUALITY_CAPAS = [
-  {
-    capaId: 'CAPA-2026-001',
-    ncrId: 'NCR-2026-0814',
-    title: 'Supplier Cold-Chain Transport Protocol Revision',
-    rootCauseMethod: '5-Why Analysis',
-    targetDate: '2026-08-30',
-    status: 'IMPLEMENTED',
-    effectivenessStatus: 'PENDING_VERIFICATION',
-  },
-  {
-    capaId: 'CAPA-2026-002',
-    ncrId: 'NCR-2026-0808',
-    title: 'Secondary Packaging Reinforcement for Dairy Freight',
-    rootCauseMethod: 'Fishbone (Ishikawa)',
-    targetDate: '2026-09-05',
-    status: 'IN_PROGRESS',
-    effectivenessStatus: 'UNDER_MONITORING',
-  },
-  {
-    capaId: 'CAPA-2026-003',
-    ncrId: 'NCR-2026-0720',
-    title: 'Espresso Barista Sanitizer Refill Standardisation',
-    rootCauseMethod: 'FMEA Drill',
-    targetDate: '2026-08-10',
-    status: 'CLOSED',
-    effectivenessStatus: 'EFFECTIVE',
-  },
-];
-
-const DEFAULT_QUALITY_TRACEABILITY = {
-  searchedLot: 'LOT-20260815-MILK',
-  backwardTrace: {
-    supplier: 'Nilgiri Dairy Co-operative Ltd.',
-    gstin: '32AABCN1234F1Z9',
-    purchaseOrder: 'PO-2026-0811',
-    goodsReceipt: 'GRN-2026-0492',
-    receiptDate: '2026-08-15 (07:15 AM IST)',
-    batchQuantityReceived: '50 Litres',
-    arrivalTemperature: '7.8°C (Deviation Logged)',
-  },
-  forwardTrace: {
-    inventoryStatus: 'QUARANTINE_LOCKED (Hold #QHOLD-2026-001)',
-    currentLocation: 'Central Cold Storage Facility',
-    heldQuantity: '50 Litres',
-    usedInProduction: '0 Litres (Zero Consumption)',
-    soldToCustomers: '0 units (Zero Consumer Exposure)',
-  },
-  traceGapCheck: {
-    supplierLinked: true,
-    poLinked: true,
-    grnLinked: true,
-    inventoryHeld: true,
-    downstreamExposure: false,
-    traceabilityCompleteness: '100% (GAPLESS)',
-  },
-  recallReadiness: {
-    mockRecallDrillElapsedSeconds: 14,
-    affectedStockReconciled: '50 of 50 L Accounted (100%)',
-    status: 'RECALL_READY',
-  },
-};
-
-const DEFAULT_QUALITY_COMPLIANCE = [
-  {
-    requirement: 'FSSAI Central Food Business Operator License',
-    authority: 'Food Safety and Standards Authority of India',
-    category: 'STATUTORY_LICENSE',
-    licenceNumber: '10022041000189',
-    validUntil: '2027-03-31',
-    daysRemaining: 217,
-    status: 'CURRENT',
-  },
-  {
-    requirement: 'Drinking & Ice Water Potability Lab Testing (IS 10500)',
-    authority: 'NABL Accredited Water Testing Laboratory',
-    category: 'ENVIRONMENTAL_TEST',
-    licenceNumber: 'LAB-WAT-2026-088',
-    validUntil: '2026-11-15',
-    daysRemaining: 81,
-    status: 'CURRENT',
-  },
-  {
-    requirement: 'FoSTaC Food Safety Supervisor Certification',
-    authority: 'FSSAI Training & Certification Division',
-    category: 'WORKFORCE_COMPLIANCE',
-    licenceNumber: 'FOSTAC-FSS-2025-98',
-    validUntil: '2026-09-15',
-    daysRemaining: 20,
-    status: 'DUE_SOON',
-  },
-  {
-    requirement: 'Cold Storage Temperature Data Logger Calibration',
-    authority: 'Legal Metrology & Calibration Services',
-    category: 'CALIBRATION',
-    licenceNumber: 'CAL-LOG-2026-003',
-    validUntil: '2026-10-30',
-    daysRemaining: 65,
-    status: 'CURRENT',
-  },
-];
+const DEFAULT_QUALITY_TEMPLATES = [];
+const DEFAULT_QUALITY_CHECKLISTS = [];
+const DEFAULT_QUALITY_PRPS = [];
+let cachedPrpSchedules = [];
+const DEFAULT_QUALITY_TEMPERATURES = [];
+const DEFAULT_QUALITY_HOLDS = [];
+const DEFAULT_QUALITY_CAPAS = [];
+const DEFAULT_QUALITY_TRACEABILITY = null;
+const DEFAULT_QUALITY_COMPLIANCE = [];
 
 export function setQualityActiveTab(tab) {
   const norm = (tab || 'overview').toLowerCase().replace(/_/g, '-');
@@ -798,37 +524,10 @@ async function loadRecentChecksForOverview(root) {
       </table>
     `;
   } catch (err) {
-    // Show sample data when API is unavailable
-    const sampleChecks = [
-      { checklistId: 'QC-2024-001', title: 'Morning Opening Hygiene Check', cafeId: 'ZC-0001', inspectionDate: new Date().toLocaleDateString('en-IN'), overallResult: 'PASS' },
-      { checklistId: 'QC-2024-002', title: 'Food Storage Temperature Log', cafeId: 'ZC-0002', inspectionDate: new Date().toLocaleDateString('en-IN'), overallResult: 'PASS' },
-      { checklistId: 'QC-2024-003', title: 'Equipment Sanitisation Audit', cafeId: 'ZC-0003', inspectionDate: new Date().toLocaleDateString('en-IN'), overallResult: 'MINOR' },
-      { checklistId: 'QC-2024-004', title: 'Afternoon Shift Hygiene Review', cafeId: 'ZC-0001', inspectionDate: new Date().toLocaleDateString('en-IN'), overallResult: 'PASS' },
-      { checklistId: 'QC-2024-005', title: 'Washroom & Prep Area Check', cafeId: 'ZC-0002', inspectionDate: new Date().toLocaleDateString('en-IN'), overallResult: 'PASS' },
-    ];
     el.innerHTML = `
-      <table class="glass-table" style="width:100%;font-size:12px;">
-        <thead>
-          <tr>
-            <th>Check ID</th>
-            <th>Title</th>
-            <th>Café</th>
-            <th>Inspection Date</th>
-            <th>Result</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${sampleChecks.map((c) => `
-            <tr>
-              <td style="font-family:var(--font-mono);font-weight:700;">${c.checklistId}</td>
-              <td><strong>${c.title}</strong></td>
-              <td style="color:var(--muted);">${c.cafeId}</td>
-              <td>${c.inspectionDate}</td>
-              <td>${renderResultPill(c.overallResult)}</td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
+      <div style="padding:24px;text-align:center;color:var(--muted);font-size:13px;">
+        No quality inspections recorded for the selected scope.
+      </div>
     `;
   }
 }
@@ -905,7 +604,7 @@ async function renderMyChecksSubtab(root, container) {
               <tr>
                 <td style="font-family:var(--font-mono);font-weight:700;color:var(--accent);">${c.checklistId}</td>
                 <td><strong>${c.title}</strong></td>
-                <td><span style="font-family:var(--font-mono);font-size:11px;">${c.cafeId || 'ZC-0001'}</span></td>
+                <td><span style="font-family:var(--font-mono);font-size:11px;">${c.cafeId || state.currentCafeId || 'All Cafes'}</span></td>
                 <td>${c.inspectionDate || 'Today'}</td>
                 <td><span class="badge" style="font-size:10px;">${c.inspectedByUserId || 'EMP-MGR-01'}</span></td>
                 <td>${renderResultPill(c.overallResult || 'PASSED')}</td>
@@ -989,7 +688,7 @@ async function renderTemperaturesSubtab(root, container) {
             <tr>
               <td style="font-family:var(--font-mono);font-weight:700;">${t.logId}</td>
               <td><strong>${t.assetName || t.assetId}</strong></td>
-              <td style="color:var(--muted);">${t.location || 'ZC-0001'}</td>
+              <td style="color:var(--muted);">${t.location || state.currentCafeId || 'Cold Storage'}</td>
               <td><strong style="color:${t.isExcursion ? 'var(--coral, #ef4444)' : 'var(--mint, #10b981)'};font-size:13px;">${t.readingCelsius}°C</strong></td>
               <td style="color:var(--muted);">${t.expectedMinCelsius}°C – ${t.expectedMaxCelsius}°C</td>
               <td><span class="badge" style="font-size:9px;">${t.source}</span></td>
@@ -1076,74 +775,29 @@ async function renderHoldsSubtab(root, container) {
   });
 }
 
-const DEFAULT_QUALITY_NCRS = [
-  {
-    ncrId: "NCR-2026-0814",
-    severity: "CRITICAL",
-    title: "Cold Chain Dairy Excursion (+9.4°C on Arrival)",
-    source: "Dock Receiving (PO-2026-0811)",
-    immediateAction: "Immediate dock refusal. Batch quarantined and returned to supplier with debit note.",
-    status: "CLOSED",
-  },
-  {
-    ncrId: "NCR-2026-0808",
-    severity: "MAJOR",
-    title: "Secondary Packaging Damage on Oat Milk Master Carton",
-    source: "Central Roastery Warehouse",
-    immediateAction: "Outer cartons isolated. Inner 1L aseptic cartons leak-tested; passed inspection.",
-    status: "INVESTIGATING",
-  },
-];
+const DEFAULT_QUALITY_NCRS = [];
 
 async function renderNcrsSubtab(root, container) {
   container.innerHTML = skeleton('240px');
   try {
     const res = await apiGet('/quality/ncrs');
-    cachedNcrs = res?.data?.ncrs || DEFAULT_QUALITY_NCRS;
-    if (!cachedNcrs.length) cachedNcrs = DEFAULT_QUALITY_NCRS;
+    cachedNcrs = res?.data?.ncrs || [];
   } catch (err) {
-    console.warn("Quality NCRs API offline, using fallback data:", err);
-    cachedNcrs = DEFAULT_QUALITY_NCRS;
+    cachedNcrs = [];
   }
 
-  container.innerHTML = `
-    <div class="card" style="padding:16px;background:var(--surface);">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-        <div>
-          <h3 style="font-size:14px;font-weight:700;color:var(--ink);margin:0;">Non-Conformance Reports (NCR)</h3>
-          <p style="font-size:11px;color:var(--muted);margin:2px 0 0 0;">Defects, excursions, supplier delivery failures &amp; immediate containment</p>
-        </div>
+  if (!cachedNcrs.length) {
+    container.innerHTML = `
+      <div class="card" style="padding:24px;background:var(--surface);text-align:center;">
+        <div style="font-size:28px;margin-bottom:8px;">✅</div>
+        <h3 style="font-size:14px;font-weight:700;color:var(--ink);margin:0 0 4px;">Zero Open Non-Conformance Reports</h3>
+        <p style="font-size:12px;color:var(--muted);margin:0 0 16px;">All operational receiving, cold chain, and food safety standards are within compliance.</p>
         <button class="btn btn-sm btn-primary" id="subtab-report-ncr-btn" style="font-size:12px;font-weight:700;" type="button">+ Report NCR</button>
       </div>
-
-      <table class="glass-table" style="width:100%;font-size:12px;">
-        <thead>
-          <tr>
-            <th>NCR Reference</th>
-            <th>Severity</th>
-            <th>Issue Title</th>
-            <th>Source</th>
-            <th>Immediate Containment</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${cachedNcrs.map((n) => `
-            <tr>
-              <td style="font-family:var(--font-mono);font-weight:700;">${n.ncrId}</td>
-              <td><span class="badge ${n.severity === 'CRITICAL' ? 'danger' : 'warning'}" style="font-size:10px;">${n.severity}</span></td>
-              <td><strong>${n.title}</strong></td>
-              <td style="color:var(--muted);font-size:11px;">${n.source}</td>
-              <td style="font-size:11px;color:var(--muted);max-width:260px;">${n.immediateAction}</td>
-              <td>${renderResultPill(n.status)}</td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-    </div>
-  `;
-
-  container.querySelector('#subtab-report-ncr-btn')?.addEventListener('click', () => openReportNcrModal(root));
+    `;
+    container.querySelector('#subtab-report-ncr-btn')?.addEventListener('click', () => openReportNcrModal(root));
+    return;
+  }
 }
 
 async function renderCapasSubtab(root, container) {
@@ -1242,12 +896,12 @@ async function renderTraceabilitySubtab(root, container) {
         <div class="card" style="padding:14px;background:var(--surface-sunken);">
           <h4 style="font-size:13px;font-weight:700;color:var(--ink);margin:0 0 8px 0;">⬅️ Backward Trace (Source Provenance)</h4>
           <div style="display:flex;flex-direction:column;gap:6px;font-size:12px;">
-            <div><span style="color:var(--muted);">Supplier:</span> <strong>${backwardTrace?.supplier || 'Nilgiri Dairy Co-operative'}</strong></div>
-            <div><span style="color:var(--muted);">Supplier GSTIN:</span> <span style="font-family:var(--font-mono);">${backwardTrace?.gstin || '32AABCN1234F1Z9'}</span></div>
-            <div><span style="color:var(--muted);">Purchase Order:</span> <span style="font-family:var(--font-mono);">${backwardTrace?.purchaseOrder || 'PO-2026-0811'}</span></div>
-            <div><span style="color:var(--muted);">Goods Receipt (GRN):</span> <span style="font-family:var(--font-mono);">${backwardTrace?.goodsReceipt || 'GRN-2026-0492'}</span></div>
-            <div><span style="color:var(--muted);">Received Date:</span> <strong>${backwardTrace?.receiptDate || '2026-08-15'}</strong> (${backwardTrace?.batchQuantityReceived || '50L'})</div>
-            <div><span style="color:var(--muted);">Arrival Quality:</span> <strong style="color:var(--coral, #ef4444);">${backwardTrace?.arrivalTemperature || '7.8°C'}</strong></div>
+            <div><span style="color:var(--muted);">Supplier:</span> <strong>${backwardTrace?.supplier || '—'}</strong></div>
+            <div><span style="color:var(--muted);">Supplier GSTIN:</span> <span style="font-family:var(--font-mono);">${backwardTrace?.gstin || '—'}</span></div>
+            <div><span style="color:var(--muted);">Purchase Order:</span> <span style="font-family:var(--font-mono);">${backwardTrace?.purchaseOrder || '—'}</span></div>
+            <div><span style="color:var(--muted);">Goods Receipt (GRN):</span> <span style="font-family:var(--font-mono);">${backwardTrace?.goodsReceipt || '—'}</span></div>
+            <div><span style="color:var(--muted);">Received Date:</span> <strong>${backwardTrace?.receiptDate || '—'}</strong> ${backwardTrace?.batchQuantityReceived ? `(${backwardTrace.batchQuantityReceived})` : ''}</div>
+            <div><span style="color:var(--muted);">Arrival Quality:</span> <strong style="color:var(--coral, #ef4444);">${backwardTrace?.arrivalTemperature || '—'}</strong></div>
           </div>
         </div>
 
@@ -1279,79 +933,27 @@ async function renderTraceabilitySubtab(root, container) {
   });
 }
 
-const DEFAULT_QUALITY_AUDITS = [
-  {
-    auditId: "AUD-2026-Q3-01",
-    standard: "FSSAI Schedule 4",
-    title: "Quarterly Comprehensive FSMS Compliance Audit",
-    leadAuditor: "FSMS Lead Auditor",
-    auditDate: "2026-08-15",
-    scorePercentage: 96.5,
-    findingsCount: 1,
-    status: "PASS",
-  },
-  {
-    auditId: "AUD-2026-REG-02",
-    standard: "State Health Dept",
-    title: "Annual Food Hygiene & Water Testing Certification",
-    leadAuditor: "Karnataka Food Safety Officer",
-    auditDate: "2026-07-28",
-    scorePercentage: 98.0,
-    findingsCount: 0,
-    status: "PASS",
-  },
-];
+const DEFAULT_QUALITY_AUDITS = [];
 
 async function renderAuditsSubtab(root, container) {
   container.innerHTML = skeleton('240px');
   try {
     const res = await apiGet('/quality/audits');
-    cachedAudits = res?.data?.audits || DEFAULT_QUALITY_AUDITS;
-    if (!cachedAudits.length) cachedAudits = DEFAULT_QUALITY_AUDITS;
+    cachedAudits = res?.data?.audits || [];
   } catch (err) {
-    console.warn("Quality audits API offline, using fallback data:", err);
-    cachedAudits = DEFAULT_QUALITY_AUDITS;
+    cachedAudits = [];
   }
 
-  container.innerHTML = `
-    <div class="card" style="padding:16px;background:var(--surface);">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-        <div>
-          <h3 style="font-size:14px;font-weight:700;color:var(--ink);margin:0;">Internal Audits &amp; Regulatory Inspections</h3>
-          <p style="font-size:11px;color:var(--muted);margin:2px 0 0 0;">FSSAI Schedule 4 GMP, Hygiene Ratings &amp; Compliance Assessments</p>
-        </div>
+  if (!cachedAudits.length) {
+    container.innerHTML = `
+      <div class="card" style="padding:24px;background:var(--surface);text-align:center;">
+        <div style="font-size:28px;margin-bottom:8px;">📋</div>
+        <h3 style="font-size:14px;font-weight:700;color:var(--ink);margin:0 0 4px;">No Audit Records Found</h3>
+        <p style="font-size:12px;color:var(--muted);margin:0;">No internal or external FSMS compliance audits recorded yet.</p>
       </div>
-
-      <table class="glass-table" style="width:100%;font-size:12px;">
-        <thead>
-          <tr>
-            <th>Audit ID</th>
-            <th>Standard / Regulation</th>
-            <th>Audit Title</th>
-            <th>Lead Auditor</th>
-            <th>Date</th>
-            <th>Score</th>
-            <th>Findings</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${cachedAudits.map((a) => `
-            <tr>
-              <td style="font-family:var(--font-mono);font-weight:700;">${a.auditId}</td>
-              <td><span class="badge" style="font-size:9px;">${a.standard}</span></td>
-              <td><strong>${a.title}</strong></td>
-              <td>${a.leadAuditor}</td>
-              <td>${a.auditDate}</td>
-              <td><strong style="color:var(--mint, #10b981);font-size:13px;">${a.scorePercentage}%</strong></td>
-              <td>${a.findingsCount} Finding(s)</td>
-              <td>${renderResultPill(a.status)}</td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-    </div>
-  `;
+    `;
+    return;
+  }
 }
 
 async function renderComplianceSubtab(root, container) {
@@ -1561,7 +1163,7 @@ function openExecuteTemplateModal(root, tmpl) {
     const newChecklist = {
       checklistId: newCheckId,
       title: tmpl.title,
-      cafeId: state.selectedCafeId || 'ZC-0001',
+      cafeId: state.currentCafeId || state.selectedCafeId || '',
       inspectionDate: new Date().toISOString().split('T')[0],
       inspectedByUserId: state.user?.userId || 'EMP-MGR-01',
       overallResult,
@@ -1570,7 +1172,7 @@ function openExecuteTemplateModal(root, tmpl) {
 
     try {
       await apiPost('/quality/checklists', {
-        cafeId: state.selectedCafeId || 'ZC-0001',
+        cafeId: state.currentCafeId || state.selectedCafeId || '',
         title: tmpl.title,
         frequency: tmpl.frequency,
         templateId: tmpl.templateId,
@@ -1706,7 +1308,7 @@ function openLogTempModal(root) {
       logId: newLogId,
       assetId,
       assetName,
-      location: state.selectedCafeId || 'ZC-0001 Main Counter',
+      location: (state.currentCafeId || state.selectedCafeId || '') ? `${state.currentCafeId || state.selectedCafeId} Main Counter` : 'Main Counter',
       readingCelsius: isNaN(reading) ? 3.1 : reading,
       expectedMinCelsius: assetId.includes('FRZ') ? -22 : 1,
       expectedMaxCelsius: assetId.includes('FRZ') ? -18 : 4,
@@ -1717,7 +1319,7 @@ function openLogTempModal(root) {
 
     try {
       await apiPost('/quality/temperatures', {
-        cafeId: state.selectedCafeId || 'ZC-0001',
+        cafeId: state.currentCafeId || state.selectedCafeId || '',
         assetId,
         assetName,
         readingCelsius: reading,

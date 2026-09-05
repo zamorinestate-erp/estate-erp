@@ -6,6 +6,10 @@
 
 const mongoose = require('mongoose');
 
+const {
+  calculateAttendanceMetrics,
+} = require('../../services/attendanceCalculationService');
+
 const ATTENDANCE_STATUSES = [
   'CHECKED_IN',
   'CHECKED_OUT',
@@ -13,11 +17,32 @@ const ATTENDANCE_STATUSES = [
   'MISSED_PUNCH',
   'ABSENT',
   'ON_LEAVE',
+  'HALF_DAY',
   'HOLIDAY',
   'WEEKLY_OFF',
   'NOT_SCHEDULED',
   'SCHEDULED',
+  'MANUALLY_CORRECTED',
 ];
+
+const breakEntrySchema = new mongoose.Schema(
+  {
+    startedAt: {
+      type: Date,
+      required: true,
+    },
+    endedAt: {
+      type: Date,
+      default: null,
+    },
+    durationMinutes: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+  },
+  { _id: false }
+);
 
 const ATTENDANCE_SOURCES = [
   'SELF',
@@ -74,6 +99,70 @@ const rawTimeEventSchema = new mongoose.Schema(
       type: String,
       trim: true,
       default: '',
+    },
+  },
+  { _id: false }
+);
+
+const punchEvidenceSchema = new mongoose.Schema(
+  {
+    photoFileId: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    selfieMediaId: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    verificationStatus: {
+      type: String,
+      enum: ['VERIFIED', 'PENDING', 'FLAGGED', 'REJECTED'],
+      default: 'VERIFIED',
+    },
+    qrChallengeId: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    latitude: {
+      type: Number,
+      default: null,
+    },
+    longitude: {
+      type: Number,
+      default: null,
+    },
+    accuracyMeters: {
+      type: Number,
+      default: null,
+    },
+    distanceMeters: {
+      type: Number,
+      default: null,
+    },
+    geofenceVerified: {
+      type: Boolean,
+      default: false,
+    },
+    qrVerified: {
+      type: Boolean,
+      default: false,
+    },
+    serverTimestamp: {
+      type: Date,
+      default: Date.now,
+    },
+    deviceId: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    deviceFingerprint: {
+      type: String,
+      trim: true,
+      default: null,
     },
   },
   { _id: false }
@@ -195,10 +284,28 @@ const attendanceSchema = new mongoose.Schema(
       default: 0,
     },
 
+    breaks: [breakEntrySchema],
+
     breakMinutes: {
       type: Number,
       min: 0,
       default: 0,
+    },
+
+    scheduledStartAt: {
+      type: Date,
+      default: null,
+    },
+
+    scheduledEndAt: {
+      type: Date,
+      default: null,
+    },
+
+    scheduledDurationMinutes: {
+      type: Number,
+      min: 0,
+      default: null,
     },
 
     detectedOvertimeMinutes: {
@@ -249,9 +356,17 @@ const attendanceSchema = new mongoose.Schema(
       default: 0,
     },
 
+    payableMinutes: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+
     // Secondary Condition Markers
     isLate: { type: Boolean, default: false },
+    lateMinutes: { type: Number, min: 0, default: 0 },
     isEarlyExit: { type: Boolean, default: false },
+    earlyDepartureMinutes: { type: Number, min: 0, default: 0 },
     isOvertime: { type: Boolean, default: false },
     isManualEntry: { type: Boolean, default: false },
     isCorrection: { type: Boolean, default: false },
@@ -261,6 +376,16 @@ const attendanceSchema = new mongoose.Schema(
 
     // Evidence & Privacy
     selfieFileId: { type: String, default: null },
+    attendanceEvidence: {
+      checkIn: {
+        type: punchEvidenceSchema,
+        default: null,
+      },
+      checkOut: {
+        type: punchEvidenceSchema,
+        default: null,
+      },
+    },
     isEvidenceHold: { type: Boolean, default: false },
     evidenceHoldReason: { type: String, default: '' },
     isSelfiePurged: { type: Boolean, default: false },
@@ -373,39 +498,27 @@ attendanceSchema.pre(
 
 attendanceSchema.methods.calculateWorkedMinutes =
   function calculateWorkedMinutes() {
-    if (!this.checkInAt || !this.checkOutAt) {
-      this.totalWorkedMinutes = 0;
-      this.regularMinutes = 0;
-      this.overtimeMinutes = 0;
+    const metrics = calculateAttendanceMetrics({
+      checkInAt: this.checkInAt,
+      checkOutAt: this.checkOutAt,
+      breaks: this.breaks,
+      scheduledStartAt: this.scheduledStartAt,
+      scheduledEndAt: this.scheduledEndAt,
+      scheduledDurationMinutes: this.scheduledDurationMinutes,
+      approvedOvertimeMinutes: this.approvedOvertimeMinutes,
+    });
 
-      return;
-    }
-
-    const elapsedMinutes = Math.max(
-      0,
-      Math.floor(
-        (this.checkOutAt.getTime() -
-          this.checkInAt.getTime()) /
-          60000
-      ) - (this.breakMinutes || 0)
-    );
-
-    const regularMinuteLimit = 8 * 60;
-
-    this.totalWorkedMinutes = elapsedMinutes;
-
-    this.regularMinutes = Math.min(
-      elapsedMinutes,
-      regularMinuteLimit
-    );
-
-    this.detectedOvertimeMinutes = Math.max(
-      0,
-      elapsedMinutes - regularMinuteLimit
-    );
-
-    this.overtimeMinutes = this.approvedOvertimeMinutes || 0;
-    this.isOvertime = this.detectedOvertimeMinutes > 0;
+    this.breakMinutes = metrics.breakMinutes;
+    this.totalWorkedMinutes = metrics.totalWorkedMinutes;
+    this.regularMinutes = metrics.regularMinutes;
+    this.detectedOvertimeMinutes = metrics.detectedOvertimeMinutes;
+    this.overtimeMinutes = metrics.overtimeMinutes;
+    this.isOvertime = metrics.isOvertime;
+    this.isLate = metrics.isLate;
+    this.lateMinutes = metrics.lateMinutes;
+    this.isEarlyExit = metrics.isEarlyExit;
+    this.earlyDepartureMinutes = metrics.earlyDepartureMinutes;
+    this.payableMinutes = metrics.payableMinutes;
   };
 
 attendanceSchema.pre(

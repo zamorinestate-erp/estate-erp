@@ -163,8 +163,6 @@ export function renderTrashBin() {
         <select id="trash-cafe-filter" class="input-field" style="padding:9px 12px; font-size:13px; min-width:130px; background:var(--surface); color:var(--ink); border:1px solid var(--line); border-radius:6px;">
           <option value="ALL">All Cafés</option>
           <option value="GLOBAL">Global Catalogue</option>
-          <option value="ZC-0001">Kochi Flagship (ZC-0001)</option>
-          <option value="ZC-0002">Calicut Beach (ZC-0002)</option>
         </select>
       </div>
 
@@ -210,6 +208,19 @@ export async function wireTrashBin(root) {
     _selectedCafe = e.target.value;
     _loadTabContent(root);
   });
+
+  apiGet('/cafes').then((res) => {
+    const cafes = res?.data?.cafes;
+    const filter = root.querySelector('#trash-cafe-filter');
+    if (filter && Array.isArray(cafes) && cafes.length > 0) {
+      filter.innerHTML = `
+        <option value="ALL">All Cafés</option>
+        <option value="GLOBAL">Global Catalogue</option>
+        ${cafes.map((c) => `<option value="${c.code || c.id || c._id}">${c.name} (${c.code || c.id || c._id})</option>`).join('')}
+      `;
+      filter.value = _selectedCafe || 'ALL';
+    }
+  }).catch(() => {});
 
   // Refresh button
   root.querySelector('#trash-refresh-btn')?.addEventListener('click', () => {
@@ -267,54 +278,7 @@ async function _loadTabContent(root) {
 
 // ── Tab: Active / Expiring / Holds / Review Trash Items ───────────────────────
 
-const SAMPLE_TRASH_ITEMS = [
-  {
-    trashId: 'TRASH-2026-0001',
-    recordId: 'MENU-ITEM-0042',
-    recordTitle: 'Seasonal Cold Brew Tonic',
-    module: 'MENU',
-    deletedByName: 'Operator',
-    deletedByUserId: 'AD-0001',
-    deletedAt: new Date(Date.now() - 86400000 * 3).toISOString(),
-    retentionExpiresAt: new Date(Date.now() + 86400000 * 27).toISOString(),
-    status: 'ACTIVE',
-    daysRemaining: 27,
-    cafeId: 'ZC-0001',
-    cafeName: 'Main Outlet',
-    hasHold: false
-  },
-  {
-    trashId: 'TRASH-2026-0002',
-    recordId: 'RECIPE-0018',
-    recordTitle: 'Cardamom Infused Cold Foam',
-    module: 'MENU',
-    deletedByName: 'Operator',
-    deletedByUserId: 'AD-0001',
-    deletedAt: new Date(Date.now() - 86400000 * 28).toISOString(),
-    retentionExpiresAt: new Date(Date.now() + 86400000 * 2).toISOString(),
-    status: 'EXPIRING_SOON',
-    daysRemaining: 2,
-    cafeId: 'ZC-0001',
-    cafeName: 'Main Outlet',
-    hasHold: false
-  },
-  {
-    trashId: 'TRASH-2026-0003',
-    recordId: 'VENDOR-0009',
-    recordTitle: 'Malabar Dairy Farms Consignment',
-    module: 'VENDORS',
-    deletedByName: 'Zamorin Master',
-    deletedByUserId: 'MU-0001',
-    deletedAt: new Date(Date.now() - 86400000 * 10).toISOString(),
-    retentionExpiresAt: new Date(Date.now() + 86400000 * 20).toISOString(),
-    status: 'ON_HOLD',
-    daysRemaining: 20,
-    cafeId: 'ALL',
-    cafeName: 'Global Portfolio',
-    hasHold: true,
-    holdReason: 'Statutory audit inquiry pending'
-  }
-];
+const SAMPLE_TRASH_ITEMS = [];
 
 async function _renderTrashListTab(root, container) {
   const params = new URLSearchParams();
@@ -332,10 +296,10 @@ async function _renderTrashListTab(root, container) {
     data = res?.data || {};
     items = data.items || [];
   } catch (e) {
-    items = SAMPLE_TRASH_ITEMS;
+    items = [];
     data = {
-      items: SAMPLE_TRASH_ITEMS,
-      kpis: { inTrash: 3, expiringSoon: 1, onHold: 1, pendingDisposition: 0, certificatesIssued: 2 }
+      items: [],
+      kpis: { inTrash: 0, expiringSoon: 0, onHold: 0, pendingDisposition: 0, certificatesIssued: 0 }
     };
   }
 
@@ -358,10 +322,6 @@ async function _renderTrashListTab(root, container) {
     _emergencyPause = data.emergencyPause;
     const banner = root.querySelector('#trash-emergency-banner');
     if (banner) banner.style.display = _emergencyPause.isPaused ? 'block' : 'none';
-  }
-
-  if (!items.length) {
-    items = SAMPLE_TRASH_ITEMS;
   }
 
   if (!items.length) {
@@ -600,11 +560,19 @@ async function _renderPoliciesTab(root, container) {
     const res = await apiGet('/trash/policies');
     policies = res?.data?.policies || [];
   } catch (e) {
-    policies = [
-      { name: "Standard Operational Records", entityType: "ORDERS", dataClassification: "OPERATIONAL", retentionDurationDays: 30, dispositionReviewRequired: false },
-      { name: "Statutory Financial Documents", entityType: "BILLS", dataClassification: "FINANCIAL", retentionDurationDays: 2920, dispositionReviewRequired: true },
-      { name: "Employee & Payroll Records", entityType: "EMPLOYEES", dataClassification: "HR_CONFIDENTIAL", retentionDurationDays: 1825, dispositionReviewRequired: true }
-    ];
+    policies = [];
+  }
+
+  if (!policies.length) {
+    container.innerHTML = `
+      <div style="padding:36px; text-align:center;">
+        <div style="font-size:28px; margin-bottom:8px;">⚖️</div>
+        <div style="color:var(--ink); font-weight:600; font-size:14px;">No custom retention policies configured</div>
+        <div style="color:var(--muted); font-size:12px; margin-top:4px;">
+          Default statutory schedules apply across standard ERP records.
+        </div>
+      </div>`;
+    return;
   }
 
   container.innerHTML = `

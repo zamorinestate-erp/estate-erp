@@ -22,6 +22,17 @@ import { navigate } from "../router.js";
 import { state } from "../state.js";
 import { icon } from "../icons.js";
 import { renderTrashBin, wireTrashBin } from "./trashBin.js";
+import { openCafeCreateModal } from "./cafeCreateModal.js";
+import { openCafeAccessManagementModal } from "./cafeAccessManagementModal.js";
+
+function escHtml(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
 
 const MAIN_TABS = [
   { id: "overview", label: "Overview", icon: "📊" },
@@ -393,11 +404,7 @@ function renderOverviewTab() {
 // ─── 2. CAFÉS TAB ─────────────────────────────────────────────────────────────
 
 function renderCafesTab() {
-  const cafes = adminState.cafes.length > 0 ? adminState.cafes : [
-    { cafeId: "ZC-0001", name: "Main Outlet", city: "Bengaluru", address: "80 Feet Rd, 4th Block", managerName: "Admin User", status: "ACTIVE", phone: "+91 98450 11223", health: "HEALTHY", staffCount: 8, setupCompleteness: "5/5 Complete" },
-    { cafeId: "ZC-0002", name: "Branch Outlet", city: "Bengaluru", address: "100 Feet Rd, HAL 2nd Stage", managerName: "Suresh Menon", status: "ACTIVE", phone: "+91 98450 44556", health: "HEALTHY", staffCount: 7, setupCompleteness: "5/5 Complete" },
-    { cafeId: "ZC-0003", name: "Calicut Beachside", city: "Kozhikode", address: "Beach Road, Vellayil", managerName: "Meera Iyer", status: "ACTIVE", phone: "+91 98450 77889", health: "ATTENTION", staffCount: 6, setupCompleteness: "4/5 Complete" },
-  ];
+  const cafes = adminState.cafes || [];
 
   return `
     <div class="card" style="padding:24px;">
@@ -452,7 +459,13 @@ function renderCafesTab() {
             </tr>
           </thead>
           <tbody>
-            ${cafes
+            ${cafes.length === 0 ? `
+              <tr>
+                <td colspan="8" style="text-align:center; padding:32px; color:var(--muted); font-size:13px;">
+                  No café locations found in registry. Click "+ Add New Café" to initialize an operational branch.
+                </td>
+              </tr>
+            ` : cafes
               .map((c) => {
                 const statusBadge =
                   c.status === "ACTIVE"
@@ -465,26 +478,27 @@ function renderCafesTab() {
 
                 return `
                 <tr>
-                  <td style="font-family:var(--font-mono);font-weight:700;color:var(--bronze-600);">${c.cafeId}</td>
+                  <td style="font-family:var(--font-mono);font-weight:700;color:var(--bronze-600);">${escHtml(c.cafeId)}</td>
                   <td>
-                    <strong style="color:var(--ink);">${c.name}</strong>
-                    <div style="font-size:11px;color:var(--muted);">${c.address || ""}</div>
+                    <strong style="color:var(--ink);">${escHtml(c.name)}</strong>
+                    <div style="font-size:11px;color:var(--muted);">${escHtml(c.address || "")}</div>
                   </td>
-                  <td style="color:var(--ink);">${c.city}</td>
+                  <td style="color:var(--ink);">${escHtml(c.city || "")}</td>
                   <td>
-                    <strong style="color:var(--ink);">${c.managerName || "Unassigned"}</strong>
-                    <div style="font-size:11px;color:var(--muted);">${c.phone || ""}</div>
+                    <strong style="color:var(--ink);">${escHtml(c.managerName || "Unassigned")}</strong>
+                    <div style="font-size:11px;color:var(--muted);">${escHtml(c.phone || "")}</div>
                   </td>
-                  <td style="color:var(--ink);font-weight:600;">${c.staffCount || 0} Staff</td>
+                  <td style="color:var(--ink);font-weight:600;">${Number(c.staffCount || 0)} Staff</td>
                   <td>
-                    <span class="badge" style="font-size:10.5px;">${c.setupCompleteness || "5/5 Complete"}</span>
+                    <span class="badge" style="font-size:10.5px;">${escHtml(c.setupCompleteness || "5/5 Complete")}</span>
                   </td>
                   <td>${statusBadge}</td>
                   <td style="text-align:right;">
                     <div style="display:inline-flex;gap:6px;">
-                      <button class="btn btn-xs btn-ghost" data-view-cafe="${c.cafeId}" type="button">View</button>
-                      <button class="btn btn-xs btn-ghost" data-edit-cafe="${c.cafeId}" type="button">Edit</button>
-                      <button class="btn btn-xs btn-ghost" data-cafe-actions-menu="${c.cafeId}" type="button">More ▾</button>
+                      <button class="btn btn-xs btn-ghost" data-view-cafe="${escHtml(c.cafeId)}" type="button">View</button>
+                      <button class="btn btn-xs btn-secondary" data-access-cafe="${escHtml(c.cafeId)}" type="button" style="color:var(--bronze-500);font-weight:700;">Access</button>
+                      <button class="btn btn-xs btn-ghost" data-edit-cafe="${escHtml(c.cafeId)}" type="button">Edit</button>
+                      <button class="btn btn-xs btn-ghost" data-cafe-actions-menu="${escHtml(c.cafeId)}" type="button">More ▾</button>
                     </div>
                   </td>
                 </tr>
@@ -503,20 +517,13 @@ function renderCafesTab() {
 
 function renderUsersTab() {
   const isPrimary = Boolean(state.user?.isPrimaryMaster);
-  const users = adminState.users.length > 0 ? adminState.users : [
-    { userId: "MU-0001", fullName: "Zamorin Executive Master", email: "master@zamorincafe.com", role: "MASTER", isPrimaryMaster: true, assignedCafeIds: ["ALL"], accountStatus: "ACTIVE", lastActivityAt: new Date() },
-    { userId: "MU-0002", fullName: "Operational Master", email: "ops.master@zamorincafe.com", role: "MASTER", isPrimaryMaster: false, assignedCafeIds: ["ALL"], accountStatus: "ACTIVE", lastActivityAt: new Date() },
-    { userId: "AD-0001", fullName: "Admin User", email: "ravi.kumar@zamorincafe.com", role: "CAFE_ADMIN", isPrimaryMaster: false, assignedCafeIds: ["ZC-0001"], accountStatus: "ACTIVE", lastActivityAt: new Date() },
-    { userId: "AD-0002", fullName: "Suresh Menon", email: "suresh.m@zamorincafe.com", role: "CAFE_ADMIN", isPrimaryMaster: false, assignedCafeIds: ["ZC-0002"], accountStatus: "ACTIVE", lastActivityAt: new Date() },
-    { userId: "AD-0003", fullName: "Meera Iyer", email: "meera.i@zamorincafe.com", role: "CAFE_ADMIN", isPrimaryMaster: false, assignedCafeIds: ["ZC-0003"], accountStatus: "ACTIVE", lastActivityAt: new Date() },
-    { userId: "OW-0001", fullName: "Deepak Varma", email: "owner@zamorincafe.com", role: "OWNER", isPrimaryMaster: false, assignedCafeIds: ["ZC-0001", "ZC-0002"], accountStatus: "ACTIVE", lastActivityAt: new Date() },
-  ];
+  const users = adminState.users || [];
 
   return `
     <div class="card" style="padding:24px;">
 
       <!-- Top Action Bar -->
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;flex-wrap:wrap;gap:12px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:18px;flex-wrap:gap:12px;">
         <div>
           <h2 style="font-size:18px;font-weight:700;margin:0 0 4px;color:var(--ink);">Users &amp; Identity Directory</h2>
           <p style="font-size:13px;color:var(--muted);margin:0;">Identity lifecycle management, role governance, café scopes, and device binding controls.</p>
@@ -566,7 +573,13 @@ function renderUsersTab() {
             </tr>
           </thead>
           <tbody>
-            ${users
+            ${users.length === 0 ? `
+              <tr>
+                <td colspan="7" style="text-align:center; padding:32px; color:var(--muted); font-size:13px;">
+                  No administrative users found in directory.
+                </td>
+              </tr>
+            ` : users
               .map((u) => {
                 const authorityBadge =
                   u.role === "MASTER"
@@ -751,20 +764,9 @@ function renderGovSubpanel(sub) {
               </thead>
               <tbody>
                 <tr>
-                  <td style="font-family:var(--font-mono);font-weight:700;color:var(--bronze-600);">DEV-ZC01-POS01</td>
-                  <td><strong>POS Terminal #1</strong> · Samsung Tab S8</td>
-                  <td>ZC-0001 · Main Outlet</td>
-                  <td><span class="status success" style="font-size:10px;">TRUSTED</span></td>
-                  <td>Just now</td>
-                  <td style="text-align:right;"><button class="btn btn-xs btn-ghost" type="button">Replace Device</button></td>
-                </tr>
-                <tr>
-                  <td style="font-family:var(--font-mono);font-weight:700;color:var(--bronze-600);">DEV-ZC02-POS01</td>
-                  <td><strong>POS Terminal #1</strong> · Apple iPad 10th Gen</td>
-                  <td>ZC-0002 · Branch Outlet</td>
-                  <td><span class="status success" style="font-size:10px;">TRUSTED</span></td>
-                  <td>4 mins ago</td>
-                  <td style="text-align:right;"><button class="btn btn-xs btn-ghost" type="button">Replace Device</button></td>
+                  <td colspan="6" style="text-align:center; padding:32px; color:var(--muted); font-size:13px;">
+                    No POS terminal hardware or companion devices currently registered or authorized.
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -1010,20 +1012,9 @@ function renderAuditTab() {
           </thead>
           <tbody>
             <tr>
-              <td style="font-family:var(--font-mono);color:var(--muted);">19 Aug, 22:40 IST</td>
-              <td><strong>master@zamorincafe.com</strong> · <span class="pill pill-mint" style="font-size:9px;">PRIMARY</span></td>
-              <td><strong style="color:var(--ink);">UPDATE_LOCATION_TARGET</strong></td>
-              <td>CAFE · ZC-0001</td>
-              <td><span class="status success" style="font-size:10px;">SUCCESS</span></td>
-              <td style="text-align:right;"><button class="btn btn-xs btn-ghost" type="button">Inspect →</button></td>
-            </tr>
-            <tr>
-              <td style="font-family:var(--font-mono);color:var(--muted);">19 Aug, 21:15 IST</td>
-              <td><strong>ops.master@zamorincafe.com</strong> · <span class="pill pill-dark" style="font-size:9px;">NORMAL</span></td>
-              <td><strong style="color:var(--ink);">ONBOARD_EMPLOYEE</strong></td>
-              <td>EMPLOYEE · ST-0012</td>
-              <td><span class="status success" style="font-size:10px;">SUCCESS</span></td>
-              <td style="text-align:right;"><button class="btn btn-xs btn-ghost" type="button">Inspect →</button></td>
+              <td colspan="6" style="text-align:center; padding:32px; color:var(--muted); font-size:13px;">
+                No administrative governance events recorded in security ledger.
+              </td>
             </tr>
           </tbody>
         </table>
@@ -1141,7 +1132,7 @@ function wireActiveTab(root) {
   });
 
   // Wire Child Submodule Header Action Buttons
-  root.querySelector("#btn-child-add-cafe")?.addEventListener("click", () => openAddCafeWizard(root));
+  root.querySelector("#btn-child-add-cafe")?.addEventListener("click", () => openCafeCreateModal(root, { onSuccess: () => loadAdminData(root) }));
   root.querySelector("#btn-child-add-user")?.addEventListener("click", () => openAddUserWizard(root));
   root.querySelector("#btn-child-new-policy")?.addEventListener("click", () => openSecurityPolicyModal(root));
   root.querySelector("#btn-child-add-custom-field")?.addEventListener("click", () => openCreateCustomFieldModal(root));
@@ -1150,7 +1141,7 @@ function wireActiveTab(root) {
 
   // Wire Add Café Modal Button
   root.querySelector("#admin-add-cafe-btn")?.addEventListener("click", () => {
-    openAddCafeWizard(root);
+    openCafeCreateModal(root, { onSuccess: () => loadAdminData(root) });
   });
 
   // Wire Add User Modal Button
@@ -1192,6 +1183,13 @@ function wireActiveTab(root) {
     btn.addEventListener("click", () => {
       const cafeId = btn.dataset.viewCafe;
       showToast(`Inspecting café ${cafeId} operational topology.`, "info");
+    });
+  });
+
+  root.querySelectorAll("[data-access-cafe]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const cafeId = btn.dataset.accessCafe;
+      if (cafeId) openCafeAccessManagementModal(root, cafeId);
     });
   });
 
@@ -1276,11 +1274,15 @@ function openSecurityPolicyModal(root) {
 
 function exportAdminAuditLogCsv() {
   const headers = ["Timestamp", "Action", "Actor", "Role", "Target Entity", "Status", "IP Address"];
-  const rows = [
-    ["2026-08-31T08:00:00Z", "USER_LOGIN_SUCCESS", "ravi.kumar", "CAFE_ADMIN", "ZC-0001", "SUCCESS", "192.168.1.45"],
-    ["2026-08-31T07:45:00Z", "GRN_INTAKE_RECORDED", "priya.nair", "STAFF", "GRN-2026-0012", "SUCCESS", "192.168.1.12"],
-    ["2026-08-31T07:30:00Z", "BANK_DETAIL_MAKER_SUBMIT", "meera.iyer", "CAFE_ADMIN", "VEND-0001", "SUCCESS", "192.168.2.8"],
-  ];
+  const rows = (adminState.auditEvents || []).map((e) => [
+    e.timestamp || new Date().toISOString(),
+    e.action || "EVENT",
+    e.actor || "system",
+    e.role || "SYSTEM",
+    e.targetEntity || "—",
+    e.status || "SUCCESS",
+    e.ipAddress || "—"
+  ]);
   let csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
   const encodedUri = encodeURI(csvContent);
   const link = document.createElement("a");
@@ -1481,9 +1483,9 @@ function openAddUserWizard(root) {
             <div class="form-group">
               <label class="form-label" style="font-size:12px;font-weight:700;">Assigned Café</label>
               <select id="user-wiz-cafe" class="form-control">
-                <option value="ZC-0001">ZC-0001 · Main Outlet</option>
-                <option value="ZC-0002">ZC-0002 · Branch Outlet</option>
-                <option value="ZC-0003">ZC-0003 · Calicut Beach</option>
+                ${adminState.cafes.length === 0
+                  ? `<option value="" disabled selected>No registered cafés found</option>`
+                  : adminState.cafes.map((c) => `<option value="${c.cafeId}">${c.cafeId} · ${c.name}</option>`).join("")}
               </select>
             </div>
           </div>

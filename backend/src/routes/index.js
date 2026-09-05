@@ -8,6 +8,9 @@ const authRoutes =
 const cafeRoutes =
   require('./cafeRoutes');
 
+const cafeAccessRoutes =
+  require('./cafeAccessRoutes');
+
 const userRoutes =
   require('./userRoutes');
 
@@ -110,6 +113,12 @@ const adminRoutes =
 const settingsRoutes =
   require('./settingsRoutes');
 
+const shiftRoutes =
+  require('./shiftRoutes');
+
+const holidayRoutes =
+  require('./holidayRoutes');
+
 const router = express.Router();
 
 router.use(
@@ -125,6 +134,16 @@ router.use(
 router.use(
   '/cafes',
   cafeRoutes
+);
+
+router.use(
+  '/cafe-access',
+  cafeAccessRoutes
+);
+
+router.use(
+  '/cafe-operations/access',
+  cafeAccessRoutes
 );
 
 router.use(
@@ -150,6 +169,16 @@ router.use(
 router.use(
   '/attendance',
   attendanceRoutes
+);
+
+router.use(
+  '/shifts',
+  shiftRoutes
+);
+
+router.use(
+  '/holidays',
+  holidayRoutes
 );
 
 router.use(

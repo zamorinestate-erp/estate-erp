@@ -84,7 +84,7 @@ const getAnalyticsOverview = asyncHandler(async (request, response) => {
     {
       id: 'ACT-01',
       title: 'Cash Book Variance Detected',
-      description: 'Koramangala (ZC-0001) register #1 had ₹140 deficit at EOD count.',
+      description: 'Primary register cash audit variance detected at EOD count.',
       deepTab: 'finance',
       severity: 'WARNING',
     },
@@ -378,10 +378,10 @@ const getWorkforceAnalytics = asyncHandler(async (request, response) => {
   };
 
   const exceptions = [
-    { employeeName: 'Staff Member #104', cafe: 'ZC-0001', type: 'Late Arrival', minutes: 22, status: 'RESOLVED' },
-    { employeeName: 'Staff Member #108', cafe: 'ZC-0001', type: 'Overtime +2.5h', minutes: 150, status: 'APPROVED' },
-    { employeeName: 'Staff Member #202', cafe: 'ZC-0002', type: 'Missing Punch Out', minutes: 0, status: 'PENDING_ADMIN' },
-    { employeeName: 'Staff Member #205', cafe: 'ZC-0002', type: 'Late Arrival', minutes: 15, status: 'RESOLVED' },
+    { employeeName: 'Staff Member #104', cafe: 'CAFE-01', type: 'Late Arrival', minutes: 22, status: 'RESOLVED' },
+    { employeeName: 'Staff Member #108', cafe: 'CAFE-01', type: 'Overtime +2.5h', minutes: 150, status: 'APPROVED' },
+    { employeeName: 'Staff Member #202', cafe: 'CAFE-02', type: 'Missing Punch Out', minutes: 0, status: 'PENDING_ADMIN' },
+    { employeeName: 'Staff Member #205', cafe: 'CAFE-02', type: 'Late Arrival', minutes: 15, status: 'RESOLVED' },
   ];
 
   return response.status(200).json({
@@ -533,8 +533,8 @@ const getQualityAnalytics = asyncHandler(async (request, response) => {
   };
 
   const recentIncidents = [
-    { ref: 'QA-CAPA-142', cafe: 'ZC-0001', title: 'Chiller probe temperature drift', status: 'IN_PROGRESS', severity: 'WARNING' },
-    { ref: 'NCR-2026-003', cafe: 'ZC-0002', title: 'Packaging seal test failure', status: 'CONTAINED', severity: 'RESOLVED' },
+    { ref: 'QA-CAPA-142', cafe: 'CAFE-01', title: 'Chiller probe temperature drift', status: 'IN_PROGRESS', severity: 'WARNING' },
+    { ref: 'NCR-2026-003', cafe: 'CAFE-02', title: 'Packaging seal test failure', status: 'CONTAINED', severity: 'RESOLVED' },
   ];
 
   return response.status(200).json({
@@ -577,8 +577,8 @@ const getPortfolioAnalytics = asyncHandler(async (request, response) => {
 
   const portfolio = [
     {
-      cafeId: 'ZC-0001',
-      name: 'Koramangala 5th Block',
+      cafeId: 'CAFE-01',
+      name: 'Primary Hub',
       category: 'MATURE',
       openedAt: '2024-06-01',
       operatingDays: 30,
@@ -589,8 +589,8 @@ const getPortfolioAnalytics = asyncHandler(async (request, response) => {
       marginPct: 71.2,
     },
     {
-      cafeId: 'ZC-0002',
-      name: 'Indiranagar 100ft Rd',
+      cafeId: 'CAFE-02',
+      name: 'Secondary Hub',
       category: 'MATURE',
       openedAt: '2024-11-15',
       operatingDays: 30,
@@ -601,8 +601,8 @@ const getPortfolioAnalytics = asyncHandler(async (request, response) => {
       marginPct: 69.4,
     },
     {
-      cafeId: 'ZC-0003',
-      name: 'Whitefield Tech Park',
+      cafeId: 'CAFE-03',
+      name: 'Roastery Reserve',
       category: 'RAMPING',
       openedAt: '2026-05-10',
       operatingDays: 30,

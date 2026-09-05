@@ -7,13 +7,32 @@ import { navigate } from "../router.js";
 let activeSubpanel = "overview";
 let activeFilter = "ALL";
 let expenseSearchQuery = "";
-let selectedApprovalVoucherId = "EX-20260815-0090";
+let selectedApprovalVoucherId = null;
 
 let EXPENSE_VOUCHERS = [];
 let PRE_SPEND_REQUESTS = [];
 let CORPORATE_CARDS = [];
 let CARD_TRANSACTIONS = [];
 let CASH_ADVANCES = [];
+let cachedCafes = [];
+
+function escapeHtml(str) {
+  if (!str) return "";
+  return String(str).replace(/[&<>"']/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[m]);
+}
+
+async function loadCafesIfEmpty() {
+  if (cachedCafes.length === 0) {
+    try {
+      const res = await apiGet("/cafes");
+      if (res?.data?.cafes && Array.isArray(res.data.cafes)) {
+        cachedCafes = res.data.cafes;
+      }
+    } catch (e) {
+      cachedCafes = [];
+    }
+  }
+}
 
 // Helper to normalize subroutes
 function normalizeSubroute(route) {
@@ -143,8 +162,8 @@ function renderActiveSubpanel() {
 function renderOverviewSubpanel() {
   const isCafeOps = state.role === ROLES.CAFE_ADMIN;
   const user = state.auth?.user || state.user || {};
-  const cafeName = user.primaryCafeName || "Main Outlet";
-  const cafeId = user.primaryCafeId || "ZC-0001";
+  const cafeName = user.primaryCafeName || user.cafeName || "—";
+  const cafeId = user.primaryCafeId || user.cafeId || "";
 
   const pendingCount = EXPENSE_VOUCHERS.filter((v) => v.status === "SUBMITTED").length;
   const missingReceiptsCount = EXPENSE_VOUCHERS.filter((v) => !v.fileProof).length;
@@ -298,69 +317,8 @@ function renderOverviewSubpanel() {
       <!-- Café Operating Expense Breakdown -->
       <div>
         <h3 style="font-size:14px;font-weight:700;color:var(--ink);margin:0 0 12px;text-transform:uppercase;">Café Operating Expense Breakdown</h3>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;">
-          <div class="card" style="padding:16px;background:var(--surface);">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-              <h4 style="margin:0;font-size:15px;color:var(--ink);font-weight:700;">☕ Main Outlet</h4>
-              <span class="badge badge-neutral" style="font-size:11px;">ZC-0001</span>
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;margin-bottom:8px;">
-              <div>
-                <span style="color:var(--muted);">Month Spend:</span>
-                <div style="font-weight:700;color:var(--ink);font-size:15px;">₹40,550</div>
-              </div>
-              <div>
-                <span style="color:var(--muted);">Approved:</span>
-                <div style="font-weight:700;color:var(--color-success, #10b981);font-size:15px;">₹37,350</div>
-              </div>
-            </div>
-            <div style="font-size:12px;color:var(--muted);display:flex;justify-content:space-between;">
-              <span>Pending: <strong style="color:var(--warning);">₹3,200</strong></span>
-              <span style="color:var(--color-success, #10b981);font-weight:600;">62% Budget Used</span>
-            </div>
-          </div>
-
-          <div class="card" style="padding:16px;background:var(--surface);">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-              <h4 style="margin:0;font-size:15px;color:var(--ink);font-weight:700;">☕ Branch Outlet</h4>
-              <span class="badge badge-neutral" style="font-size:11px;">ZC-0002</span>
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;margin-bottom:8px;">
-              <div>
-                <span style="color:var(--muted);">Month Spend:</span>
-                <div style="font-weight:700;color:var(--ink);font-size:15px;">₹11,200</div>
-              </div>
-              <div>
-                <span style="color:var(--muted);">Approved:</span>
-                <div style="font-weight:700;color:var(--color-success, #10b981);font-size:15px;">₹0</div>
-              </div>
-            </div>
-            <div style="font-size:12px;color:var(--muted);display:flex;justify-content:space-between;">
-              <span>Pending: <strong style="color:var(--warning);">₹11,200</strong></span>
-              <span style="color:var(--color-success, #10b981);font-weight:600;">38% Budget Used</span>
-            </div>
-          </div>
-
-          <div class="card" style="padding:16px;background:var(--surface);">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-              <h4 style="margin:0;font-size:15px;color:var(--ink);font-weight:700;">☕ Calicut Beach Main</h4>
-              <span class="badge badge-neutral" style="font-size:11px;">ZC-0003</span>
-            </div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;margin-bottom:8px;">
-              <div>
-                <span style="color:var(--muted);">Month Spend:</span>
-                <div style="font-weight:700;color:var(--ink);font-size:15px;">₹11,400</div>
-              </div>
-              <div>
-                <span style="color:var(--muted);">Approved:</span>
-                <div style="font-weight:700;color:var(--color-success, #10b981);font-size:15px;">₹11,400</div>
-              </div>
-            </div>
-            <div style="font-size:12px;color:var(--muted);display:flex;justify-content:space-between;">
-              <span>Pending: <strong style="color:var(--ink);">₹0</strong></span>
-              <span style="color:var(--color-success, #10b981);font-weight:600;">45% Budget Used</span>
-            </div>
-          </div>
+        <div style="background:var(--surface);border:1px solid var(--border);padding:24px;border-radius:8px;text-align:center;color:var(--muted);font-size:13px;">
+          No café operating expense records recorded for this period.
         </div>
       </div>
     </div>
@@ -983,6 +941,7 @@ export function wireExpenses(container, subroute) {
     activeSubpanel = normalizeSubroute(subroute);
   }
   const root = container || document;
+  loadCafesIfEmpty();
 
   // 1. Expense Hub Tile Buttons
   root.querySelectorAll("[data-exp-hub-tile]").forEach((btn) => {
@@ -1258,9 +1217,7 @@ function openRecordExpenseModal(root) {
         <div>
           <label style="font-weight:600;display:block;margin-bottom:4px;">Café Location *</label>
           <select id="modal-exp-cafe" class="form-control" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;">
-            <option value="ZC-0001">Main Outlet (ZC-0001)</option>
-            <option value="ZC-0002">Branch Outlet (ZC-0002)</option>
-            <option value="ZC-0003">Calicut Beach Main (ZC-0003)</option>
+            ${cachedCafes.length > 0 ? cachedCafes.map((c) => `<option value="${escapeHtml(c.cafeId)}">${escapeHtml(c.name || c.cafeId)} (${escapeHtml(c.cafeId)})</option>`).join("") : '<option value="">No active cafés</option>'}
           </select>
         </div>
 
@@ -1334,7 +1291,7 @@ function openRecordExpenseModal(root) {
         payee,
         invoiceRef: `Manual #${Math.floor(1000 + Math.random() * 9000)}`,
         cafeId,
-        cafeName: cafeId === "ZC-0001" ? "Main Outlet" : cafeId === "ZC-0002" ? "Branch Outlet" : "Calicut Beach Main",
+        cafeName: cachedCafes.find((c) => c.cafeId === cafeId)?.name || cafeId || "—",
         date: new Date().toISOString().split("T")[0],
         paymentSource: source === "COMPANY_BANK_UPI" ? "Bank UPI" : source === "PETTY_CASH" ? "Petty Cash" : "Corporate Card",
         paymentSourceCode: source,
@@ -1468,7 +1425,7 @@ function openCreateSpendRequestModal(root) {
         purpose,
         department: dept,
         requester: state.auth?.user?.name || "Store Supervisor",
-        cafeId: "ZC-0001",
+        cafeId: cachedCafes[0]?.cafeId || "",
         estimatedAmount: est,
         actualSpent: 0.0,
         status: "SUBMITTED",
@@ -1527,9 +1484,7 @@ function openDisburseFloatModal(root) {
           <div>
             <label style="font-weight:600;display:block;margin-bottom:4px;">Café Outlet *</label>
             <select id="float-cafe" class="form-control" style="width:100%;padding:8px;border:1px solid var(--border);border-radius:6px;">
-              <option value="ZC-0001">Main Outlet (ZC-0001)</option>
-              <option value="ZC-0002">Branch Outlet (ZC-0002)</option>
-              <option value="ZC-0003">Calicut Beach (ZC-0003)</option>
+              ${cachedCafes.length > 0 ? cachedCafes.map((c) => `<option value="${escapeHtml(c.cafeId)}">${escapeHtml(c.name || c.cafeId)} (${escapeHtml(c.cafeId)})</option>`).join("") : '<option value="">No active cafés</option>'}
             </select>
           </div>
           <div>
@@ -1561,7 +1516,7 @@ function openDisburseFloatModal(root) {
         employee,
         role: "Store Staff",
         cafeId,
-        cafeName: cafeId === "ZC-0001" ? "Main Outlet" : cafeId === "ZC-0002" ? "Branch Outlet" : "Calicut Beach Main",
+        cafeName: cachedCafes.find((c) => c.cafeId === cafeId)?.name || cafeId || "—",
         disbursedAmount: amount,
         spentAmount: 0.0,
         returnedAmount: 0.0,

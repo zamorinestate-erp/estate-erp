@@ -109,6 +109,18 @@ class StorageAdapterService {
     };
   }
 
+  async readObjectBuffer({ fileKey }) {
+    if (this.driver === 'local') {
+      const fullPath = path.join(this.localStorageRoot, fileKey);
+      if (fs.existsSync(fullPath)) {
+        this.metrics.totalDownloads++;
+        return fs.readFileSync(fullPath);
+      }
+      return null;
+    }
+    return null;
+  }
+
   getStorageArchitecture() {
     return {
       driver: this.driver,

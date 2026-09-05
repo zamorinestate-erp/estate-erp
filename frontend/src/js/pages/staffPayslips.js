@@ -159,286 +159,9 @@ function numberToWords(paise) {
   return inWords(rupees) + " Rupees Only";
 }
 
-// Canonical fixture supporting multi-event months, off-cycle bonuses, and retro adjustments
-const DEV_PAYSLIP_FIXTURES = [
-  {
-    payslipId: "PS-202607-00104",
-    organisationId: "ZAMORIN",
-    payrollRunId: "PR-2026-07",
-    cafeId: "ZC-0001",
-    employeeUserId: "ST-0042",
-    employeeName: "Staff Member",
-    jobTitle: "Senior Head Barista & Shift Lead",
-    department: "Food & Beverage",
-    runType: "REGULAR",
-    version: 1,
-    pan: "ABCPS1234F",
-    uan: "100987654321",
-    pfNumber: "KN/BNG/1234567/0042",
-    esiNumber: "31001234560001001",
-    bankName: "HDFC Bank Ltd.",
-    bankAccountMasked: "••••••••4892",
-    periodKey: "2026-07",
-    periodStartDate: "2026-07-01",
-    periodEndDate: "2026-07-31",
-    attendanceSummary: {
-      totalCalendarDays: 31,
-      presentDays: 24,
-      paidLeaveDays: 2,
-      unpaidLeaveDays: 0,
-      weeklyOffDays: 4,
-      holidayDays: 1,
-      payableDays: 31,
-      overtimeMinutes: 480,
-    },
-    earnings: {
-      basicPayPaise: 2800000,
-      houseRentAllowancePaise: 1120000,
-      otherAllowancePaise: 560000,
-      overtimePayPaise: 250000,
-      incentivePaise: 350000,
-      otherEarningPaise: 0,
-      grossPayPaise: 5080000,
-    },
-    deductions: {
-      providentFundPaise: 336000,
-      employeeStateInsurancePaise: 0,
-      professionalTaxPaise: 20000,
-      incomeTaxPaise: 150000,
-      loanAdvanceDeductionPaise: 500000,
-      unpaidLeaveDeductionPaise: 0,
-      otherDeductionPaise: 0,
-      totalDeductionPaise: 1006000,
-    },
-    employerContributions: {
-      pfEmployerSharePaise: 336000,
-      esiEmployerSharePaise: 0,
-      gratuityAccrualPaise: 134600,
-      insuranceAccrualPaise: 45000,
-    },
-    netPayPaise: 4074000,
-    currency: "INR",
-    status: "PAID",
-    paymentStatus: "PAID",
-    issuedAt: "2026-07-31T18:30:00.000Z",
-    issuedBy: "MU-0001",
-    paidAt: "2026-08-01T10:15:00.000Z",
-    paidBy: "MU-0001",
-    paymentReference: "CMS-NEFT-HDFC-982341908234",
-    notes: "Regular July 2026 payroll including Coffee Championship Incentive and scheduled Loan Deduction (LN-2026-0001).",
-  },
-  {
-    payslipId: "PS-202607-OFF-0002",
-    organisationId: "ZAMORIN",
-    payrollRunId: "PR-2026-07-OFF",
-    cafeId: "ZC-0001",
-    employeeUserId: "ST-0042",
-    employeeName: "Staff Member",
-    jobTitle: "Senior Head Barista & Shift Lead",
-    department: "Food & Beverage",
-    runType: "OFF_CYCLE",
-    version: 1,
-    pan: "ABCPS1234F",
-    uan: "100987654321",
-    pfNumber: "KN/BNG/1234567/0042",
-    esiNumber: "31001234560001001",
-    bankName: "HDFC Bank Ltd.",
-    bankAccountMasked: "••••••••4892",
-    periodKey: "2026-07",
-    periodStartDate: "2026-07-01",
-    periodEndDate: "2026-07-31",
-    attendanceSummary: {
-      totalCalendarDays: 31,
-      presentDays: 0,
-      paidLeaveDays: 0,
-      unpaidLeaveDays: 0,
-      weeklyOffDays: 0,
-      holidayDays: 0,
-      payableDays: 0,
-      overtimeMinutes: 0,
-    },
-    earnings: {
-      basicPayPaise: 0,
-      houseRentAllowancePaise: 0,
-      otherAllowancePaise: 0,
-      overtimePayPaise: 0,
-      incentivePaise: 1000000,
-      otherEarningPaise: 0,
-      grossPayPaise: 1000000,
-    },
-    deductions: {
-      providentFundPaise: 0,
-      employeeStateInsurancePaise: 0,
-      professionalTaxPaise: 0,
-      incomeTaxPaise: 100000,
-      loanAdvanceDeductionPaise: 0,
-      unpaidLeaveDeductionPaise: 0,
-      otherDeductionPaise: 0,
-      totalDeductionPaise: 100000,
-    },
-    employerContributions: {
-      pfEmployerSharePaise: 0,
-      esiEmployerSharePaise: 0,
-      gratuityAccrualPaise: 0,
-      insuranceAccrualPaise: 0,
-    },
-    netPayPaise: 900000,
-    currency: "INR",
-    status: "PAID",
-    paymentStatus: "PAID",
-    issuedAt: "2026-07-15T12:00:00.000Z",
-    issuedBy: "MU-0001",
-    paidAt: "2026-07-15T15:30:00.000Z",
-    paidBy: "MU-0001",
-    paymentReference: "CMS-IMPS-HDFC-99128341",
-    notes: "Special Q1 Best Barista Award & Outlet Milestone Bonus (Off-Cycle Disbursed).",
-  },
-  {
-    payslipId: "PS-202606-00098",
-    organisationId: "ZAMORIN",
-    payrollRunId: "PR-2026-06",
-    cafeId: "ZC-0001",
-    employeeUserId: "ST-0042",
-    employeeName: "Staff Member",
-    jobTitle: "Senior Head Barista & Shift Lead",
-    department: "Food & Beverage",
-    runType: "REGULAR",
-    version: 1,
-    pan: "ABCPS1234F",
-    uan: "100987654321",
-    pfNumber: "KN/BNG/1234567/0042",
-    esiNumber: "31001234560001001",
-    bankName: "HDFC Bank Ltd.",
-    bankAccountMasked: "••••••••4892",
-    periodKey: "2026-06",
-    periodStartDate: "2026-06-01",
-    periodEndDate: "2026-06-30",
-    attendanceSummary: {
-      totalCalendarDays: 30,
-      presentDays: 23,
-      paidLeaveDays: 3,
-      unpaidLeaveDays: 0,
-      weeklyOffDays: 4,
-      holidayDays: 0,
-      payableDays: 30,
-      overtimeMinutes: 360,
-    },
-    earnings: {
-      basicPayPaise: 2800000,
-      houseRentAllowancePaise: 1120000,
-      otherAllowancePaise: 560000,
-      overtimePayPaise: 187500,
-      incentivePaise: 200000,
-      otherEarningPaise: 0,
-      grossPayPaise: 4867500,
-    },
-    deductions: {
-      providentFundPaise: 336000,
-      employeeStateInsurancePaise: 0,
-      professionalTaxPaise: 20000,
-      incomeTaxPaise: 150000,
-      loanAdvanceDeductionPaise: 500000,
-      unpaidLeaveDeductionPaise: 0,
-      otherDeductionPaise: 0,
-      totalDeductionPaise: 1006000,
-    },
-    employerContributions: {
-      pfEmployerSharePaise: 336000,
-      esiEmployerSharePaise: 0,
-      gratuityAccrualPaise: 134600,
-      insuranceAccrualPaise: 45000,
-    },
-    netPayPaise: 3861500,
-    currency: "INR",
-    status: "PAID",
-    paymentStatus: "PAID",
-    issuedAt: "2026-06-30T18:30:00.000Z",
-    issuedBy: "MU-0001",
-    paidAt: "2026-07-01T11:00:00.000Z",
-    paidBy: "MU-0001",
-    paymentReference: "CMS-NEFT-HDFC-883491209341",
-    notes: "June 2026 regular payroll disbursement.",
-  },
-  {
-    payslipId: "PS-202605-00085",
-    organisationId: "ZAMORIN",
-    payrollRunId: "PR-2026-05",
-    cafeId: "ZC-0001",
-    employeeUserId: "ST-0042",
-    employeeName: "Staff Member",
-    jobTitle: "Senior Head Barista & Shift Lead",
-    department: "Food & Beverage",
-    runType: "REGULAR",
-    version: 1,
-    pan: "ABCPS1234F",
-    uan: "100987654321",
-    pfNumber: "KN/BNG/1234567/0042",
-    esiNumber: "31001234560001001",
-    bankName: "HDFC Bank Ltd.",
-    bankAccountMasked: "••••••••4892",
-    periodKey: "2026-05",
-    periodStartDate: "2026-05-01",
-    periodEndDate: "2026-05-31",
-    attendanceSummary: {
-      totalCalendarDays: 31,
-      presentDays: 25,
-      paidLeaveDays: 1,
-      unpaidLeaveDays: 0,
-      weeklyOffDays: 4,
-      holidayDays: 1,
-      payableDays: 31,
-      overtimeMinutes: 240,
-    },
-    earnings: {
-      basicPayPaise: 2800000,
-      houseRentAllowancePaise: 1120000,
-      otherAllowancePaise: 560000,
-      overtimePayPaise: 125000,
-      incentivePaise: 150000,
-      otherEarningPaise: 0,
-      grossPayPaise: 4755000,
-    },
-    deductions: {
-      providentFundPaise: 336000,
-      employeeStateInsurancePaise: 0,
-      professionalTaxPaise: 20000,
-      incomeTaxPaise: 150000,
-      loanAdvanceDeductionPaise: 500000,
-      unpaidLeaveDeductionPaise: 0,
-      otherDeductionPaise: 0,
-      totalDeductionPaise: 1006000,
-    },
-    employerContributions: {
-      pfEmployerSharePaise: 336000,
-      esiEmployerSharePaise: 0,
-      gratuityAccrualPaise: 134600,
-      insuranceAccrualPaise: 45000,
-    },
-    netPayPaise: 3749000,
-    currency: "INR",
-    status: "PAID",
-    paymentStatus: "PAID",
-    issuedAt: "2026-05-31T18:30:00.000Z",
-    issuedBy: "MU-0001",
-    paidAt: "2026-06-01T10:30:00.000Z",
-    paidBy: "MU-0001",
-    paymentReference: "CMS-NEFT-HDFC-772910394812",
-    notes: "May 2026 standard disbursement.",
-  },
-];
-
-let payrollQueries = [
-  {
-    id: "PQ-2026-0012",
-    periodKey: "2026-07",
-    category: "OVERTIME_DISCREPANCY",
-    subject: "Weekend shift overtime calculation",
-    status: "RESOLVED",
-    createdAt: "2026-08-02T09:30:00.000Z",
-    resolvedAt: "2026-08-03T14:15:00.000Z",
-    response: "Verified additional 2 hours from July 26th shift. Compensated in July final settlement.",
-  },
-];
+// No fixture data u2014 production app uses live API only
+const DEV_PAYSLIP_FIXTURES = [];
+let payrollQueries = [];
 
 function calculateMetrics(payslips) {
   let latestNetPayPaise = 0;
@@ -566,7 +289,13 @@ function detailRow(label, value, { strong = false, alert = false, mint = false }
 }
 
 function renderOverviewTab(payslips) {
-  const latest = payslips[0] || DEV_PAYSLIP_FIXTURES[0];
+  if (!payslips || payslips.length === 0) {
+    return emptyState({
+      title: "No payslips yet",
+      body: "Your payslips will appear here once payroll is processed.",
+    });
+  }
+  const latest = payslips[0];
   const e = latest.earnings || {};
   const d = latest.deductions || {};
 
@@ -621,38 +350,35 @@ function renderOverviewTab(payslips) {
         </div>
       </div>
 
-      <!-- Trend & Comparison Teaser -->
+      <!-- Pay Trend Teaser -->
       <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:18px;">
-        <div class="card" style="padding:20px; background:var(--bg-surface-1); border-radius:var(--radius-lg); border:1px solid var(--border-subtle); box-shadow:var(--shadow-sm);">
+        <div class="card" style="padding:20px; background:var(--bg-surface-1); border-radius:var(--radius-lg); border:1px solid var(--border-subtle); box-shadow:var(--shadow-sm);
+">
           <div style="color:var(--text-primary); font-size:15px; font-weight:800; margin-bottom:12px;" class="font-display">Monthly Pay Trend</div>
           <div style="display:flex; align-items:flex-end; gap:16px; height:140px; padding:10px 0; border-bottom:1px solid var(--border-subtle);">
-            ${[
-              { label: "May", amount: 3749000 },
-              { label: "Jun", amount: 3861500 },
-              { label: "Jul (Bonus)", amount: 900000 },
-              { label: "Jul", amount: 4074000 }
-            ].map(p => {
-              const height = Math.round((p.amount / 4500000) * 110);
+            ${payslips.slice(0, 4).reverse().map(p => {
+              const maxNet = Math.max(...payslips.slice(0, 4).map(x => x.netPayPaise || 0), 1);
+              const height = Math.round(((p.netPayPaise || 0) / maxNet) * 110);
               return `
                 <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:6px;">
-                  <div style="font-size:11px; color:#059669; font-weight:800;">₹${Math.round(p.amount/100000)}k</div>
+                  <div style="font-size:11px; color:#059669; font-weight:800;">${formatPaise(p.netPayPaise, { allowMask: false })}</div>
                   <div style="width:100%; max-width:38px; height:${Math.max(20, height)}px; background:linear-gradient(to top, #059669, #34d399); border-radius:4px 4px 0 0;"></div>
-                  <div style="color:var(--text-secondary); font-size:11px; font-weight:600;">${p.label}</div>
+                  <div style="color:var(--text-secondary); font-size:11px; font-weight:600;">${formatPeriod(p.periodKey).split(' ')[0]}</div>
                 </div>
               `;
             }).join('')}
           </div>
           <div class="flex justify-between" style="font-size:11px; color:var(--text-muted); margin-top:10px;">
             <span>Bars indicate monthly net take-home</span>
-            <span style="color:#059669; font-weight:600;">Indexed &amp; Verified</span>
+            <span style="color:#059669; font-weight:600;">Live Data</span>
           </div>
         </div>
 
         <div class="card" style="padding:20px; background:var(--bg-surface-1); border-radius:var(--radius-lg); border:1px solid var(--border-subtle); box-shadow:var(--shadow-sm); display:flex; flex-direction:column; justify-content:space-between;">
           <div>
-            <div style="color:var(--text-primary); font-size:15px; font-weight:800; margin-bottom:10px;" class="font-display">Why Did My Pay Change?</div>
+            <div style="color:var(--text-primary); font-size:15px; font-weight:800; margin-bottom:10px;" class="font-display">Pay Comparison</div>
             <div style="font-size:13px; color:var(--text-secondary); line-height:1.6;">
-              July 2026 regular take-home increased by <strong style="color:#059669;">+₹2,125.00</strong> compared to June 2026 due to an approved <strong style="color:var(--text-primary);">Overtime Incentive (+₹625.00)</strong> and a special <strong style="color:var(--text-primary);">Championship Performance Bonus (+₹1,500.00)</strong>.
+              Switch to the <strong style="color:var(--text-primary);">Pay Comparison &amp; Diff</strong> tab to see a month-over-month breakdown of your earnings, deductions, and any changes between pay periods.
             </div>
           </div>
           <div style="margin-top:16px;">
@@ -768,8 +494,14 @@ function renderPayslipCards(payslips) {
 }
 
 function renderComparisonTab(payslips) {
-  const p1 = payslips[0] || DEV_PAYSLIP_FIXTURES[0];
-  const p2 = payslips[2] || DEV_PAYSLIP_FIXTURES[2] || payslips[1];
+  if (!payslips || payslips.length < 2) {
+    return emptyState({
+      title: "Not enough payslips",
+      body: "At least two payslips are needed to generate a comparison.",
+    });
+  }
+  const p1 = payslips[0];
+  const p2 = payslips[2] || payslips[1];
 
   const diffBasic = (p1.earnings?.basicPayPaise || 0) - (p2.earnings?.basicPayPaise || 0);
   const diffHra = (p1.earnings?.houseRentAllowancePaise || 0) - (p2.earnings?.houseRentAllowancePaise || 0);
@@ -868,7 +600,13 @@ function renderComparisonTab(payslips) {
 }
 
 function renderFormVTab(payslips) {
-  const p = payslips[0] || DEV_PAYSLIP_FIXTURES[0];
+  if (!payslips || payslips.length === 0) {
+    return emptyState({
+      title: "No payslips available",
+      body: "Statutory Form V will be available once your first payslip is issued.",
+    });
+  }
+  const p = payslips[0];
   const e = p.earnings || {};
   const d = p.deductions || {};
   const att = p.attendanceSummary || {};
@@ -897,7 +635,7 @@ function renderFormVTab(payslips) {
         <div class="glass" style="padding:14px;">
           <div style="color:#38bdf8;font-size:11px;font-weight:700;text-transform:uppercase;margin-bottom:8px;">Establishment & Workman</div>
           ${detailRow("Establishment", "Zamorin Speciality Coffee & Kitchens Pvt Ltd")}
-          ${detailRow("Outlet / Branch", "Main Outlet (ZC-0001)")}
+          ${detailRow("Outlet / Branch", p.cafeId ? `${p.cafeName || p.cafeId} (${p.cafeId})` : (state.currentCafeId || "Assigned Outlet"))}
           ${detailRow("Workman Name", p.employeeName, { strong: true })}
           ${detailRow("Employee ID / Token", p.employeeUserId)}
           ${detailRow("Designation", p.jobTitle || "Barista")}
@@ -1422,7 +1160,7 @@ async function openPayslip(payslipId) {
       });
       payslip = payload?.data?.payslip;
     } catch {
-      payslip = loadedPayslips.find((p) => p.payslipId === payslipId) || DEV_PAYSLIP_FIXTURES[0];
+      payslip = loadedPayslips.find((p) => p.payslipId === payslipId) || null;
     }
 
     if (!payslip) {
@@ -1600,14 +1338,14 @@ function bindTabActions(root) {
   root.querySelectorAll("[data-quick-print]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const payslipId = btn.getAttribute("data-quick-print");
-      const p = loadedPayslips.find((x) => x.payslipId === payslipId) || DEV_PAYSLIP_FIXTURES[0];
-      printPayslip(p);
+      const p = loadedPayslips.find((x) => x.payslipId === payslipId) || null;
+      if (p) printPayslip(p);
     });
   });
 
   root.querySelector("[data-print-form-v]")?.addEventListener("click", () => {
-    const p = loadedPayslips[0] || DEV_PAYSLIP_FIXTURES[0];
-    printPayslip(p);
+    const p = loadedPayslips[0] || null;
+    if (p) printPayslip(p);
   });
 
   root.querySelector("[data-raise-query-btn]")?.addEventListener("click", () => showRaiseQueryModal(root));
@@ -1783,11 +1521,11 @@ async function loadMyPayslips(root) {
       });
       payslips = payload?.data?.payslips;
     } catch {
-      payslips = DEV_PAYSLIP_FIXTURES;
+      payslips = [];
     }
 
-    if (!Array.isArray(payslips) || payslips.length === 0) {
-      payslips = DEV_PAYSLIP_FIXTURES;
+    if (!Array.isArray(payslips)) {
+      payslips = [];
     }
 
     if (requestController.signal.aborted || !root.isConnected) return;
@@ -1796,7 +1534,7 @@ async function loadMyPayslips(root) {
     renderContent(root);
   } catch (error) {
     if (error?.name === "AbortError" || !root.isConnected) return;
-    loadedPayslips = DEV_PAYSLIP_FIXTURES;
+    loadedPayslips = [];
     renderContent(root);
   } finally {
     if (activeListRequest === requestController) {

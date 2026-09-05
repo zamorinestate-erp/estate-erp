@@ -16,19 +16,35 @@
 
 'use strict';
 
+import { getCanonicalDeviceId } from '../apiClient.js';
+
 let signInError = '';
 let signInBusy = false;
 let signInForgotVisible = false;
 let pinDigits = []; // array of 0–6 digits collected from keypad
 
+let activeOnlineHandler = null;
+let activeOfflineHandler = null;
+
+function removeWindowListeners() {
+  if (activeOnlineHandler) {
+    window.removeEventListener('online', activeOnlineHandler);
+    activeOnlineHandler = null;
+  }
+  if (activeOfflineHandler) {
+    window.removeEventListener('offline', activeOfflineHandler);
+    activeOfflineHandler = null;
+  }
+}
+
 function getDeviceContext() {
   try {
-    const id = localStorage.getItem('zamorin_device_id') || 'ZC-DEV-0001';
-    const cafe = localStorage.getItem('zamorin_bound_cafe_name') || 'Main Outlet';
-    const cafeId = localStorage.getItem('zamorin_bound_cafe_id') || 'ZC-0001';
+    const id = getCanonicalDeviceId() || '';
+    const cafe = localStorage.getItem('zamorin_bound_cafe_name') || (id ? 'Bound Outlet' : 'Unassigned Device');
+    const cafeId = localStorage.getItem('zamorin_bound_cafe_id') || '';
     return { id, cafe, cafeId };
   } catch {
-    return { id: 'ZC-DEV-0001', cafe: 'Main Outlet', cafeId: 'ZC-0001' };
+    return { id: '', cafe: 'Unassigned Device', cafeId: '' };
   }
 }
 
@@ -272,6 +288,7 @@ export function wireCafeOperatorSignIn(root, { onSignIn, onReturnKiosk } = {}) {
   }
 
   // Online/offline badge live update
+  removeWindowListeners();
   const updateBadge = () => {
     const badge = root.querySelector('.cafe-ops-online-badge');
     if (!badge) return;
@@ -279,14 +296,17 @@ export function wireCafeOperatorSignIn(root, { onSignIn, onReturnKiosk } = {}) {
     badge.textContent = online.label;
     badge.className = `${online.cls} cafe-ops-online-badge`;
   };
-  window.addEventListener('online', updateBadge);
-  window.addEventListener('offline', updateBadge);
+  activeOnlineHandler = updateBadge;
+  activeOfflineHandler = updateBadge;
+  window.addEventListener('online', activeOnlineHandler);
+  window.addEventListener('offline', activeOfflineHandler);
 
   // Form submit
   const form = root.querySelector('#cafe-ops-signin-form');
   if (form) {
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
+      if (signInBusy) return;
       const employeeId = root.querySelector('#ops-employee-id')?.value?.trim() || '';
       const pin = pinDigits.join('');
 
@@ -349,14 +369,6 @@ export function wireCafeOperatorSignIn(root, { onSignIn, onReturnKiosk } = {}) {
       }
     });
   }
-
-  // Sign In button (also submits form)
-  const signinBtn = root.querySelector('#ops-signin-btn');
-  if (signinBtn) {
-    signinBtn.addEventListener('click', () => {
-      form?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-    });
-  }
 }
 
 /** Resets module-level UI state (call on route change or logout). */
@@ -365,4 +377,5 @@ export function resetCafeOperatorSignInUi() {
   signInError = '';
   signInBusy = false;
   signInForgotVisible = false;
+  removeWindowListeners();
 }

@@ -10,25 +10,10 @@ let cachedOrders = [];
 let cachedRequisitions = [];
 let cachedRfqs = [];
 let cachedGrns = [];
-let cachedAgreements = [
-  { id: 'BPA-2026-001', supplier: 'Wayanad Organic Estates', category: 'Coffee Beans', validTo: '2026-12-31', totalLimit: 60000000, released: 38500000 },
-  { id: 'BPA-2026-002', supplier: 'Nilgiri Dairy Co-operative', category: 'Dairy & Milk', validTo: '2026-11-30', totalLimit: 36000000, released: 21000000 },
-  { id: 'BPA-2026-003', supplier: 'EcoZamorin Packaging', category: 'Packaging Materials', validTo: '2027-03-31', totalLimit: 24000000, released: 9600000 },
-];
-let cachedSuppliers = [
-  { id: 'VEND-0001', name: 'Wayanad Organic Estates', category: 'Coffee Beans & Roasts', gstin: '32AABCT1332L1ZV', status: 'ACTIVE', performance: '98% On-Time', paymentTerms: 'Net 30' },
-  { id: 'VEND-0002', name: 'Nilgiri Dairy Co-operative', category: 'Fresh Milk & Cream', gstin: '33AABCT9981M1ZR', status: 'ACTIVE', performance: '96% On-Time', paymentTerms: 'Net 15' },
-  { id: 'VEND-0003', name: 'EcoZamorin Packaging', category: 'Biodegradable Cups & Bags', gstin: '29AABCT4412K1ZX', status: 'ACTIVE', performance: '100% On-Time', paymentTerms: 'Due on Receipt' },
-  { id: 'VEND-0004', name: 'Imperial Dairy Imports', category: 'European Bakery Butters', gstin: '27AABCT7741P1ZQ', status: 'ACTIVE', performance: '94% On-Time', paymentTerms: 'Net 45' },
-];
-let cachedReturns = [
-  { rtvId: 'RTV-2026-001', refDoc: 'GRN-2026-0012', supplier: 'Nilgiri Dairy Co-operative', reason: 'Near Expiry / Expired Lot', debitNotePaise: 480000, status: 'DEBIT_NOTE_ISSUED', createdAt: '2026-08-20' },
-];
-let sampleGRNs = [
-  { grnId: 'GRN-2026-0881', purchaseOrderId: 'PO-2026-0001', vendorName: 'Wayanad Organic Estates', cafeId: 'ZC-0001', receivedDate: '2026-08-25', condition: 'GOOD', qualityStatus: 'ACCEPTED', totalReceivedValuePaise: 1550000 },
-  { grnId: 'GRN-2026-0880', purchaseOrderId: 'PO-2026-0002', vendorName: 'Nilgiri Dairy Co-operative', cafeId: 'ZC-0001', receivedDate: '2026-08-24', condition: 'GOOD', qualityStatus: 'ACCEPTED', totalReceivedValuePaise: 840000 },
-  { grnId: 'GRN-2026-0879', purchaseOrderId: 'PO-2026-0003', vendorName: 'EcoZamorin Packaging', cafeId: 'ZC-0002', receivedDate: '2026-08-23', condition: 'GOOD', qualityStatus: 'ACCEPTED', totalReceivedValuePaise: 1220000 },
-];
+let cachedAgreements = [];
+let cachedSuppliers = [];
+let cachedReturns = [];
+let sampleGRNs = [];
 let cachedMatching = null;
 let searchQuery = '';
 let selectedCafe = 'ALL';
@@ -531,37 +516,10 @@ async function loadOrdersForOverview(root) {
       </table>
     `;
   } catch (err) {
-    // Show sample data when API is unavailable
-    const sampleOrders = [
-      { purchaseOrderId: 'PO-2024-001', vendorName: 'Fresh Farms Pvt Ltd', cafeId: 'ZC-0001', status: 'RECEIVED', totalAmountPaisa: 4250000 },
-      { purchaseOrderId: 'PO-2024-002', vendorName: 'Metro Beverages Co.', cafeId: 'ZC-0002', status: 'ORDERED', totalAmountPaisa: 1870000 },
-      { purchaseOrderId: 'PO-2024-003', vendorName: 'Sunrise Dairy', cafeId: 'ZC-0003', status: 'APPROVED', totalAmountPaisa: 980000 },
-      { purchaseOrderId: 'PO-2024-004', vendorName: 'Kerala Spices Direct', cafeId: 'ZC-0001', status: 'SUBMITTED', totalAmountPaisa: 620000 },
-      { purchaseOrderId: 'PO-2024-005', vendorName: 'PureLeaf Tea Exports', cafeId: 'ZC-0002', status: 'PARTIALLY_RECEIVED', totalAmountPaisa: 1340000 },
-    ];
     el.innerHTML = `
-      <table class="glass-table" style="width:100%;font-size:12px;">
-        <thead>
-          <tr>
-            <th>PO ID</th>
-            <th>Supplier</th>
-            <th>Café</th>
-            <th>Status</th>
-            <th style="text-align:right;">Total Value</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${sampleOrders.map((o) => `
-            <tr>
-              <td style="font-family:var(--font-mono);font-size:11px;font-weight:700;">${o.purchaseOrderId}</td>
-              <td><strong>${o.vendorName}</strong></td>
-              <td style="color:var(--muted);">${o.cafeId}</td>
-              <td>${renderStatusPill(o.status)}</td>
-              <td style="text-align:right;font-weight:700;">${formatPaise(o.totalAmountPaisa)}</td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
+      <div style="padding:24px;text-align:center;color:var(--muted);font-size:13px;">
+        No purchase orders found for the selected scope.
+      </div>
     `;
   }
 }
@@ -604,55 +562,16 @@ async function renderOrdersSubtab(root, container) {
   await loadOrdersSubtabData(root);
 }
 
-const DEFAULT_PROCUREMENT_ORDERS = [
-  {
-    purchaseOrderId: "PO-2026-0812",
-    vendorId: "VND-001",
-    vendorName: "Malabar Coffee Growers Co-op",
-    cafeId: "Main Outlet (ZC-0001)",
-    orderDate: "2026-08-20T10:00:00.000Z",
-    status: "ORDERED",
-    totalAmountPaisa: 8500000,
-    lineItems: [
-      { itemId: "ITEM-1001", name: "Single Origin Arabica Beans", quantity: 100, unitPricePaisa: 85000, subtotalPaisa: 8500000 }
-    ]
-  },
-  {
-    purchaseOrderId: "PO-2026-0811",
-    vendorId: "VND-002",
-    vendorName: "Nilgiri Dairy & Creamery",
-    cafeId: "Branch Outlet (ZC-0002)",
-    orderDate: "2026-08-21T09:30:00.000Z",
-    status: "SUBMITTED",
-    totalAmountPaisa: 3250000,
-    lineItems: [
-      { itemId: "ITEM-1002", name: "Farm Fresh Whole Milk 1L", quantity: 500, unitPricePaisa: 6500, subtotalPaisa: 3250000 }
-    ]
-  },
-  {
-    purchaseOrderId: "PO-2026-0809",
-    vendorId: "VND-003",
-    vendorName: "Monin India Distribution",
-    cafeId: "Central Roastery & Warehouse",
-    orderDate: "2026-08-18T14:15:00.000Z",
-    status: "RECEIVED",
-    totalAmountPaisa: 4760000,
-    lineItems: [
-      { itemId: "ITEM-1004", name: "Vanilla Bean Artisan Syrup 750ml", quantity: 70, unitPricePaisa: 68000, subtotalPaisa: 4760000 }
-    ]
-  },
-];
+const DEFAULT_PROCUREMENT_ORDERS = [];
 
 async function loadOrdersSubtabData(root) {
   const wrap = root.querySelector('#orders-table-wrapper');
   if (!wrap) return;
   try {
     const res = await apiGet('/procurement/orders');
-    cachedOrders = (res?.data?.orders || res?.data) || DEFAULT_PROCUREMENT_ORDERS;
-    if (!cachedOrders.length) cachedOrders = DEFAULT_PROCUREMENT_ORDERS;
+    cachedOrders = (res?.data?.orders || res?.data) || [];
   } catch (err) {
-    console.warn("Procurement orders API offline, using fallback data:", err);
-    cachedOrders = DEFAULT_PROCUREMENT_ORDERS;
+    cachedOrders = [];
   }
   renderFilteredOrders(root);
 }
@@ -807,14 +726,8 @@ async function renderRequisitionsSubtab(root, container) {
 }
 
 function renderCatalogueSubtab(root, container) {
-  const items = [
-    { sku: 'ITM-COF-01', name: 'Estate Blend Arabica Green Beans', category: 'Coffee Beans', price: 62000, uom: 'kg', moq: 20, supplier: 'Wayanad Organic Estates' },
-    { sku: 'ITM-COF-02', name: 'Monsooned Malabar Specialty Roast', category: 'Coffee Beans', price: 74000, uom: 'kg', moq: 10, supplier: 'Malabar Highland Roasters' },
-    { sku: 'ITM-MLK-01', name: 'Farm-Fresh Whole Milk (Pasteurised)', category: 'Dairy', price: 6400, uom: 'L', moq: 50, supplier: 'Nilgiri Dairy Co-operative' },
-    { sku: 'ITM-MLK-02', name: 'Barista Oat Milk (Steam Formulation)', category: 'Dairy', price: 18000, uom: 'L', moq: 24, supplier: 'Oat Kraft India' },
-    { sku: 'ITM-PKG-01', name: 'Compostable 8oz Hot Cups + Lids', category: 'Packaging', price: 450, uom: 'pack', moq: 500, supplier: 'EcoZamorin Packaging' },
-    { sku: 'ITM-BAK-01', name: 'Normandy Butter 82% Fat (25kg block)', category: 'Bakery Inputs', price: 1950000, uom: 'block', moq: 2, supplier: 'Imperial Dairy Imports' },
-  ];
+  // TODO: Replace with API-fetched catalogue from /procurement/catalogue
+  const items = [];
 
   container.innerHTML = `
     <div class="card" style="padding:16px;background:var(--surface);">
@@ -974,10 +887,8 @@ function renderAgreementsSubtab(root, container) {
 }
 
 function renderDeliveriesSubtab(root, container) {
-  const deliveries = [
-    { asn: 'ASN-2026-081', po: 'PO-2026-0001', supplier: 'Wayanad Organic Estates', carrier: 'Blue Dart Surface', status: 'IN_TRANSIT', eta: 'Today, 4:00 PM', items: 'Arabica Green Beans (500 kg)' },
-    { asn: 'ASN-2026-082', po: 'PO-2026-0004', supplier: 'Nilgiri Dairy Co-operative', carrier: 'Direct Chilled Van', status: 'ARRIVING_SOON', eta: 'Tomorrow, 7:00 AM', items: 'Pasteurised Whole Milk (300 L)' },
-  ];
+  // TODO: Replace with API-fetched ASN/delivery data from /procurement/deliveries
+  const deliveries = [];
 
   container.innerHTML = `
     <div class="card" style="padding:16px;background:var(--surface);">
@@ -1184,7 +1095,7 @@ function openNewPoModal(root, preselectedSku = null) {
         </div>
         <div>
           <label style="font-size:11px;font-weight:700;color:var(--muted);display:block;margin-bottom:4px;">Destination Café *</label>
-          <input type="text" id="modal-po-cafe" class="input" style="font-size:12px;width:100%;" value="ZC-0001" placeholder="e.g. ZC-0001">
+          <input type="text" id="modal-po-cafe" class="input" style="font-size:12px;width:100%;" value="${state.currentCafeId || state.selectedCafeId || ''}" placeholder="e.g. Cafe ID">
         </div>
       </div>
 
@@ -1270,7 +1181,7 @@ function openNewRequisitionModal(root) {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
         <div>
           <label style="font-size:11px;font-weight:700;color:var(--muted);display:block;margin-bottom:4px;">Café *</label>
-          <input type="text" id="modal-prq-cafe" class="input" style="font-size:12px;width:100%;" value="ZC-0001">
+          <input type="text" id="modal-prq-cafe" class="input" style="font-size:12px;width:100%;" value="${state.currentCafeId || state.selectedCafeId || ''}" placeholder="e.g. Cafe ID">
         </div>
         <div>
           <label style="font-size:11px;font-weight:700;color:var(--muted);display:block;margin-bottom:4px;">Estimated Amount (₹)</label>
@@ -1476,12 +1387,8 @@ function openPo360Modal(root, po) {
 }
 
 function renderSuppliersSubtab(root, container) {
-  const suppliers = [
-    { id: 'VEND-0001', name: 'Wayanad Organic Estates', category: 'Coffee Beans & Roasts', gstin: '32AABCT1332L1ZV', status: 'ACTIVE', performance: '98% On-Time', paymentTerms: 'Net 30' },
-    { id: 'VEND-0002', name: 'Nilgiri Dairy Co-operative', category: 'Fresh Milk & Cream', gstin: '33AABCT9981M1ZR', status: 'ACTIVE', performance: '96% On-Time', paymentTerms: 'Net 15' },
-    { id: 'VEND-0003', name: 'EcoZamorin Packaging', category: 'Biodegradable Cups & Bags', gstin: '29AABCT4412K1ZX', status: 'ACTIVE', performance: '100% On-Time', paymentTerms: 'Due on Receipt' },
-    { id: 'VEND-0004', name: 'Imperial Dairy Imports', category: 'European Bakery Butters', gstin: '27AABCT7741P1ZQ', status: 'ACTIVE', performance: '94% On-Time', paymentTerms: 'Net 45' },
-  ];
+  // Render from API-populated cachedSuppliers; empty state when none loaded yet
+  const suppliers = cachedSuppliers;
 
   container.innerHTML = `
     <div class="card" style="padding:16px;background:var(--surface);">
@@ -1658,19 +1565,8 @@ function openTrackInboundModal(root) {
       <p style="font-size:12px;color:var(--muted);margin:-8px 0 0 0;">Live tracking of dispatched vendor shipments</p>
 
       <div style="display:flex;flex-direction:column;gap:8px;font-size:12px;">
-        <div style="padding:10px;background:var(--surface-sunken);border-radius:6px;border-left:3px solid var(--mint, #10b981);">
-          <div style="display:flex;justify-content:space-between;font-weight:700;">
-            <span>ASN-2026-0881 · Wayanad Organic Estates</span>
-            <span style="color:var(--mint, #10b981);">IN TRANSIT</span>
-          </div>
-          <div style="color:var(--muted);font-size:11px;margin-top:2px;">Carrier: BlueDart Express (Tracking #BLU-99214) · ETA: Today 2:30 PM</div>
-        </div>
-        <div style="padding:10px;background:var(--surface-sunken);border-radius:6px;border-left:3px solid var(--accent);">
-          <div style="display:flex;justify-content:space-between;font-weight:700;">
-            <span>ASN-2026-0879 · EcoZamorin Packaging</span>
-            <span style="color:var(--accent);">DISPATCHED</span>
-          </div>
-          <div style="color:var(--muted);font-size:11px;margin-top:2px;">Carrier: V-Trans Logistics (Tracking #VT-44102) · ETA: Tomorrow 11:00 AM</div>
+        <div style="padding:20px;text-align:center;color:var(--muted);font-size:12px;">
+          No active inbound shipments. ASN data will appear here once vendors dispatch confirmed orders.
         </div>
       </div>
 
@@ -1732,7 +1628,7 @@ function openDirectGrnModal(root) {
       grnId: newGrnId,
       purchaseOrderId: poId,
       vendorName: 'Direct Dock Intake',
-      cafeId: state.selectedCafeId || 'ZC-0001',
+      cafeId: state.currentCafeId || state.selectedCafeId || '',
       receivedDate: new Date().toISOString().split('T')[0],
       condition: 'GOOD',
       qualityStatus: 'ACCEPTED',
@@ -1858,7 +1754,7 @@ function openNewReturnModal(root) {
     cachedReturns.unshift({
       rtvId: newId,
       refDoc: ref,
-      supplier: 'Wayanad Organic Estates',
+      supplier: document.getElementById('modal-rtv-supplier')?.value || '—',
       reason: reasonText,
       debitNotePaise: 350000,
       status: 'DEBIT_NOTE_ISSUED',
@@ -1873,12 +1769,15 @@ function openNewReturnModal(root) {
 }
 
 function exportSpendReportCsv() {
-  const headers = ['PO ID', 'Date', 'Supplier', 'Category', 'Cafe ID', 'Amount (INR)', 'Status'];
-  const rows = [
-    ['PO-2026-0001', '2026-08-15', 'Wayanad Organic Estates', 'Coffee Beans', 'ZC-0001', '15500.00', 'RECEIVED'],
-    ['PO-2026-0002', '2026-08-16', 'Nilgiri Dairy Co-operative', 'Fresh Milk', 'ZC-0001', '8400.00', 'RECEIVED'],
-    ['PO-2026-0003', '2026-08-17', 'EcoZamorin Packaging', 'Disposables', 'ZC-0002', '12200.00', 'IN_TRANSIT'],
-  ];
+  const headers = ['PO ID', 'Date', 'Supplier', 'Cafe ID', 'Amount (INR)', 'Status'];
+  const rows = (cachedOrders || []).map((o) => [
+    o.purchaseOrderId || o.poNumber || o.id || '',
+    o.orderDate ? o.orderDate.split('T')[0] : (o.createdAt ? o.createdAt.split('T')[0] : ''),
+    o.vendorName || o.supplier || '',
+    o.cafeId || '',
+    ((o.totalAmountPaisa || o.totalAmount || 0) / 100).toFixed(2),
+    o.status || ''
+  ]);
 
   let csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
   const encodedUri = encodeURI(csvContent);

@@ -94,9 +94,9 @@ function getConnectivityStatus() {
 
 export const DEFAULT_CAFE_ADMIN_PAYLOAD = {
   cafeContext: {
-    cafeName: "Main Outlet",
-    cafeId: "ZC-0001",
-    cafeStatus: "OPEN",
+    cafeName: "",
+    cafeId: "",
+    cafeStatus: "ACTIVE",
   },
   businessDate: new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }),
   todaySales: {
@@ -128,10 +128,10 @@ export const DEFAULT_CAFE_ADMIN_PAYLOAD = {
 export function renderAdminDashboard() {
   const user = state.auth?.user || state.user || {};
   const operatorName = user.name || user.fullName || "Operator";
-  const operatorId = user.permanentEmployeeId || user.userId || user.id || "EMP-0042";
-  const cafeName = user.primaryCafeName || user.primaryCafeId || "Main Outlet";
-  const cafeId = user.primaryCafeId || "ZC-0001";
-  const deviceId = getOrCreateDeviceId()?.slice(0, 8) || "DEV-CAF-01";
+  const operatorId = user.permanentEmployeeId || user.userId || user.id || "";
+  const cafeName = user.primaryCafeName || user.primaryCafeId || "Assigned Outlet";
+  const cafeId = user.primaryCafeId || state.currentCafeId || "";
+  const deviceId = getOrCreateDeviceId()?.slice(0, 8) || "";
   const conn = getConnectivityStatus();
 
   const todayStr = new Date().toLocaleDateString("en-IN", {

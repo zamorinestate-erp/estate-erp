@@ -47,8 +47,9 @@ async function deviceContext(req, res, next) {
       return fail(res, 403, `DEVICE_${device.lifecycleStatus}`, LIFECYCLE_MESSAGE[device.lifecycleStatus] || 'This device cannot access Cafe Operations.');
     }
 
-    // Cross-reference canonical DeviceRegistration trust if available
-    if (DeviceRegistration && typeof DeviceRegistration.findOne === 'function') {
+    // Cross-reference canonical DeviceRegistration trust if available and database is connected
+    const mongoose = require('mongoose');
+    if (DeviceRegistration && mongoose.connection && mongoose.connection.readyState === 1 && typeof DeviceRegistration.findOne === 'function') {
       try {
         const canonical = await DeviceRegistration.findOne({
           $or: [

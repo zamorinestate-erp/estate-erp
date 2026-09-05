@@ -7,6 +7,10 @@ const { authenticate } = require('../middleware/authenticate');
 const { authorize } = require('../middleware/authorize');
 const { attachDeviceContext } = require('../middleware/deviceContext');
 const deviceController = require('../controllers/deviceController');
+const deviceEnrollmentRoutes = require('../cafe-operations/routes/deviceEnrollmentRoutes');
+
+// Canonical Stage-2 Device Enrollment alias (/enroll, /status, /policy)
+router.use('/', deviceEnrollmentRoutes);
 
 // List devices for cafe / fleet management
 router.get(

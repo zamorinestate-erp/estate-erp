@@ -271,28 +271,33 @@ test('24-POINT PRODUCTION-EQUIVALENCE VALIDATION SUITE', async (t) => {
 
   // TEST 08 — MFA / TOTP REQUIRED LOGIN
   await t.test('TEST 08: MFA-enabled user halts for TOTP challenge and denies bypass', async () => {
-    const authResult = await authService.authenticatePassword({
-      organisationId: TEST_ORG,
-      email: 'mfa@zamorin.com',
-      password: 'Password@123',
-    });
+    process.env.REQUIRE_MFA = 'true';
+    try {
+      const authResult = await authService.authenticatePassword({
+        organisationId: TEST_ORG,
+        email: 'mfa@zamorin.com',
+        password: 'Password@123',
+      });
 
-    assert.equal(authResult.requiresMfa, true, 'requiresMfa must be true');
-    // Session cannot be created with unverified MFA if user role/config enforces it
-    await assert.rejects(
-      async () => {
-        await authService.createSession({
-          user: authResult.user,
-          device: { deviceId: 'DEV-MFA-01', deviceType: 'DESKTOP' },
-          mfaVerified: false,
-          createdBy: authResult.user.userId,
-        });
-      },
-      (err) => {
-        assert.ok(err.message.includes('MFA verification is required'));
-        return true;
-      }
-    );
+      assert.equal(authResult.requiresMfa, true, 'requiresMfa must be true');
+      // Session cannot be created with unverified MFA if user role/config enforces it
+      await assert.rejects(
+        async () => {
+          await authService.createSession({
+            user: authResult.user,
+            device: { deviceId: 'DEV-MFA-01', deviceType: 'DESKTOP' },
+            mfaVerified: false,
+            createdBy: authResult.user.userId,
+          });
+        },
+        (err) => {
+          assert.ok(err.message.includes('MFA verification is required'));
+          return true;
+        }
+      );
+    } finally {
+      delete process.env.REQUIRE_MFA;
+    }
   });
 
   // TEST 09 — INVALID MFA

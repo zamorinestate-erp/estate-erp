@@ -16,9 +16,9 @@ let searchQuery = "";
 let activeFilterTreatment = "ALL";
 
 const SAMPLE_OVERVIEW = {
-  accountHolderId: "OWNER-0001",
-  financialYear: "2026-2027",
-  accessLevel: "PRIMARY_MASTER",
+  accountHolderId: "",
+  financialYear: "",
+  accessLevel: "",
   confidential: true,
   balances: {
     dueToOwnerPaisa: 0,
@@ -43,13 +43,7 @@ const SAMPLE_OVERVIEW = {
     auditTrailState: "HEALTHY",
     financeGLDifferencePaisa: 0,
   },
-  availableAccounts: [
-    { accountType: "OWNER_CURRENT_ACCOUNT", label: "Owner Current Account", isDefault: true },
-    { accountType: "PRIMARY_MASTER_PERSONAL_LEDGER", label: "Primary Master Personal Ledger", isDefault: false },
-    { accountType: "DIRECTOR_SHAREHOLDER_LOAN", label: "Director / Shareholder Loan", isDefault: false },
-    { accountType: "OWNER_FUNDING_ACCOUNT", label: "Owner Funding Account", isDefault: false },
-    { accountType: "REIMBURSEMENT_PAYABLE", label: "Reimbursement Payable", isDefault: false },
-  ],
+  availableAccounts: [],
 };
 
 const SAMPLE_ENTRIES = [];

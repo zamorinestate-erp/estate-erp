@@ -1044,7 +1044,16 @@ async function openMessage360Modal(inboundId) {
   }
 }
 
-function openComposeModal(wrap) {
+async function openComposeModal(wrap) {
+  let cafesList = [];
+  try {
+    const res = await apiGet('/cafes');
+    cafesList = res?.data || res?.cafes || (Array.isArray(res) ? res : []);
+  } catch (_e) {
+    cafesList = [];
+  }
+  const cafeOptions = cafesList.map(c => `<option value="${c.cafeId || c.code || c.id || c._id}">${c.name || 'Outlet'} (${c.cafeId || c.code || ''})</option>`).join('');
+
   const modalHtml = `
     <div style="padding:6px;">
       <h3 style="font-size:18px; font-weight:800; margin:0 0 16px; color:var(--ink);">Compose Operational Email</h3>
@@ -1063,8 +1072,7 @@ function openComposeModal(wrap) {
             <label class="form-label" style="font-size:12px; font-weight:600;">Café Context (Optional)</label>
             <select name="cafeId" class="form-input">
               <option value="">Global / Non-Café</option>
-              <option value="ZC-0001">Main Outlet (ZC-0001)</option>
-              <option value="ZC-0002">Branch Outlet (ZC-0002)</option>
+              ${cafeOptions}
             </select>
           </div>
         </div>

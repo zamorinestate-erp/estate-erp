@@ -11,6 +11,7 @@ const { AdministrativeRequest } = require('../src/models/AdministrativeRequest')
 const { AccessReview } = require('../src/models/AccessReview');
 const { ServiceIdentity } = require('../src/models/ServiceIdentity');
 const authService = require('../src/services/authService');
+const cafeService = require('../src/services/cafeService');
 
 function makeRequest({ port, method, path, headers = {}, body = null }) {
   return new Promise((resolve, reject) => {
@@ -307,10 +308,16 @@ test('Administration & Governance — Screen 002 Integration Test Suite', async 
 
   // 7. POST /cafes (Both Primary and Normal Master can create cafes)
   await t.test('Normal Master can create a new Café location', async () => {
-    t.mock.method(Cafe, 'create', async (data) => ({
-      ...data,
-      cafeId: 'ZC-0004',
-      status: 'DRAFT',
+    t.mock.method(cafeService, 'createCafeWithAccess', async ({ cafeData }) => ({
+      cafe: {
+        ...cafeData,
+        cafeId: 'ZC-0004',
+        status: 'DRAFT',
+      },
+      access: {
+        cafeId: 'ZC-0004',
+        accessStatus: 'ACTIVE',
+      },
     }));
 
     const res = await makeRequest({

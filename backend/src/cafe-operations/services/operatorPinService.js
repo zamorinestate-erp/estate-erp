@@ -1,17 +1,24 @@
 'use strict';
-const bcrypt = require('bcryptjs');
+let bcrypt;
+try {
+  bcrypt = require('bcrypt');
+} catch {
+  bcrypt = require('bcryptjs');
+}
 const crypto = require('crypto');
 const pinPolicy = require('../config/pinPolicy');
 const { getRepositories } = require('../repositories');
 
 const PEPPER = process.env.CAFE_OPS_PIN_PEPPER || 'REPLACE_WITH_A_REAL_SECRET_VIA_CAFE_OPS_PIN_PEPPER_ENV_VAR';
 
+const SALT_ROUNDS = process.env.NODE_ENV === 'production' ? 12 : 4;
+
 // Precomputed once, at runtime, via bcrypt itself — not a hand-typed string —
-// so it's guaranteed to be a validly-formatted hash bcryptjs will happily run
+// so it's guaranteed to be a validly-formatted hash bcrypt will happily run
 // a full comparison against. Used to keep "no PIN matched" and "PIN matched
 // but was wrong" taking the same amount of time, so response timing can't
 // be used to enumerate which PINs are in use.
-const DUMMY_HASH = bcrypt.hashSync('__no_candidate_found__', 12);
+const DUMMY_HASH = bcrypt.hashSync('__no_candidate_found__', SALT_ROUNDS);
 
 function isWeakPin(pin) {
   if (!/^\d{6}$/.test(pin)) return true;
@@ -35,7 +42,7 @@ function computeLookupHash(pin) {
   return crypto.createHmac('sha256', PEPPER).update(String(pin)).digest('hex');
 }
 
-async function hashPin(pin) { return bcrypt.hash(pin, 12); }
+async function hashPin(pin) { return bcrypt.hash(pin, SALT_ROUNDS); }
 
 async function verifyPin(pin, hash) {
   if (!hash) { await bcrypt.compare(String(pin), DUMMY_HASH); return false; }

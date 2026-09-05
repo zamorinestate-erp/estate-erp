@@ -187,18 +187,18 @@ export function renderTopbar({ scopeChip } = {}) {
   let cafeScopeHtml = '';
   if (isCafeOps) {
     const operatorName = user.name || "Operations Lead";
-    const operatorId = user.userId || "AD-0001";
-    const cafeName = user.primaryCafeName || "Main Outlet";
-    const cafeId = user.primaryCafeId || "ZC-0001";
+    const operatorId = user.userId || "";
+    const cafeName = user.primaryCafeName || (state.currentCafeId ? `Outlet ${state.currentCafeId}` : "Assigned Outlet");
+    const cafeId = user.primaryCafeId || state.currentCafeId || "";
     const todayStr = new Date().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 
     cafeScopeHtml = `
       <div class="cafe-ops-context-bar" style="display:inline-flex; align-items:center; flex-wrap:wrap; gap:8px; padding:4px 10px; border-radius:var(--radius-md); background:var(--bg-surface-2); border:1px solid var(--border-subtle); font-size:12px; color:var(--ink);">
-        <span style="font-weight:700; display:inline-flex; align-items:center; gap:4px;"><span style="color:var(--color-accent-amber);">📍</span> ${cafeName} (${cafeId})</span>
+        <span style="font-weight:700; display:inline-flex; align-items:center; gap:4px;"><span style="color:var(--color-accent-amber);">📍</span> ${cafeName}${cafeId ? ` (${cafeId})` : ''}</span>
         <span style="color:var(--muted); opacity:0.6;">·</span>
         <span style="color:var(--muted);">${todayStr}</span>
         <span style="color:var(--muted); opacity:0.6;">·</span>
-        <span style="font-weight:600; color:var(--ink);">${operatorName} <span style="font-size:10.5px; color:var(--muted); font-family:var(--font-mono);">(${operatorId})</span></span>
+        <span style="font-weight:600; color:var(--ink);">${operatorName}${operatorId ? ` <span style="font-size:10.5px; color:var(--muted); font-family:var(--font-mono);">(${operatorId})</span>` : ''}</span>
         <span style="color:var(--muted); opacity:0.6;">·</span>
         ${getConnectivityBadge()}
         <button class="btn btn-ghost" id="cafe-ops-switch-btn" type="button" style="font-size:11px; padding:2px 8px; margin-left:4px; font-weight:600; color:var(--color-accent-amber);" title="Switch to another authorized operator">Switch</button>
@@ -208,15 +208,14 @@ export function renderTopbar({ scopeChip } = {}) {
   } else if (isStaff) {
     cafeScopeHtml = `<div class="cafe-scope-context" style="display:inline-flex; align-items:center; gap:6px; padding:6px 12px; border-radius:var(--radius-md); background:var(--bg-surface-2); border:1px solid var(--border-subtle); font-size:12px; font-weight:600; color:var(--text-primary);">
         <span style="font-size:13px;">📍</span>
-        <span>${user.primaryCafeName || user.primaryCafeId || "ZC-0001"} · Main Outlet</span>
+        <span>${user.primaryCafeName || (user.primaryCafeId ? `Outlet ${user.primaryCafeId}` : "Assigned Outlet")}</span>
       </div>`;
   } else {
+    const cafeOptions = (state.cafes || []).map(c => `<option value="${c.cafeId || c.id || c.code}" ${(state.selectedCafeId === (c.cafeId || c.id || c.code)) ? 'selected' : ''}>☕ ${c.cafeId || c.id || c.code} · ${c.name || 'Outlet'}</option>`).join('');
     cafeScopeHtml = `<div class="cafe-scope-dropdown">
         <select id="global-cafe-selector" class="select-scope" aria-label="Selected Cafe Scope">
           <option value="ALL">🏠 All Cafés (Global Portfolio)</option>
-          <option value="ZC-0001">☕ ZC-0001 · Main Outlet</option>
-          <option value="ZC-0002">☕ ZC-0002 · Branch Outlet</option>
-          <option value="ZC-0003">☕ ZC-0003 · Calicut Beach</option>
+          ${cafeOptions}
         </select>
       </div>`;
   }
@@ -445,7 +444,10 @@ export function wireBell(root) {
       state.selectedCafeId = newCafeId;
       if (state.user) {
         state.user.primaryCafeId = newCafeId;
-        state.user.primaryCafeName = newCafeId === "ZC-0002" ? "Branch Outlet" : newCafeId === "ZC-0003" ? "Calicut Beach" : "Main Outlet";
+        const selOpt = globalCafeSel.options[globalCafeSel.selectedIndex];
+        const optText = selOpt ? selOpt.textContent.trim() : "";
+        const cleanName = optText.includes("·") ? optText.split("·").slice(1).join("·").trim() : optText;
+        state.user.primaryCafeName = cleanName || state.cafes?.find((c) => c.cafeId === newCafeId)?.name || newCafeId;
       }
       showToast(`Global café scope switched to ${newCafeId === "ALL" ? "All Cafés (Portfolio)" : newCafeId}`, "info");
       // Trigger navigation refresh to update the active page data under new cafe context
@@ -985,7 +987,10 @@ export function showToast(message, type = "mint", title = "") {
     stack.id = "toast-root";
     stack.className = "toast-stack";
     stack.setAttribute("aria-live", "polite");
-    document.body.appendChild(stack);
+    // Guard against document.body being null (e.g., during early module imports in test contexts)
+    const mountTarget = document.body || document.documentElement;
+    if (!mountTarget) return;
+    mountTarget.appendChild(stack);
   }
 
   const toast = document.createElement("div");
@@ -1117,9 +1122,9 @@ export function setButtonBusy(btn, isBusy = true, busyText = "Processing...") {
 export function openOperatorLockModal() {
   const user = state.auth?.user || state.user || {};
   const operatorName = user.name || "Operations Lead";
-  const operatorId = user.userId || "AD-0001";
-  const cafeName = user.primaryCafeName || "Main Outlet";
-  const cafeId = user.primaryCafeId || "ZC-0001";
+  const operatorId = user.userId || "";
+  const cafeName = user.primaryCafeName || (state.currentCafeId ? `Outlet ${state.currentCafeId}` : "Assigned Outlet");
+  const cafeId = user.primaryCafeId || state.currentCafeId || "";
 
   const content = `
     <div style="max-width:440px; margin:0 auto; padding:10px 0; text-align:center;">
@@ -1180,8 +1185,8 @@ export function openOperatorLockModal() {
 export function openSwitchOperatorModal() {
   const user = state.auth?.user || state.user || {};
   const currentOperatorName = user.name || "Operations Lead";
-  const cafeName = user.primaryCafeName || "Main Outlet";
-  const cafeId = user.primaryCafeId || "ZC-0001";
+  const cafeName = user.primaryCafeName || (state.currentCafeId ? `Outlet ${state.currentCafeId}` : "Assigned Outlet");
+  const cafeId = user.primaryCafeId || state.currentCafeId || "";
 
   const content = `
     <div style="max-width:500px; margin:0 auto; padding:10px 0;">
@@ -1238,7 +1243,7 @@ export function openSwitchOperatorModal() {
         newOperatorUserId,
         newPin,
         handoverNote,
-        deviceId: "ZC-DEV-0001",
+        deviceId: localStorage.getItem("zamorin_device_id") || state.user?.deviceId || "DEV-POS-01",
       });
 
       showToast(`Switched operator to ${res?.operatorSession?.operatorName || newOperatorUserId}`, "success");
@@ -1275,11 +1280,11 @@ export function renderCafeContextStrip({
 } = {}) {
   const isCafeOps = state.role === ROLES.CAFE_ADMIN;
   const user = state.auth?.user || state.user || {};
-  const cafeName = user.primaryCafeName || "Main Outlet";
-  const cafeId = user.primaryCafeId || "ZC-0001";
+  const cafeName = user.primaryCafeName || (state.currentCafeId ? `Outlet ${state.currentCafeId}` : "Assigned Outlet");
+  const cafeId = user.primaryCafeId || state.currentCafeId || "";
   const terminalId = user.terminalId || "TERM-01";
   const operatorName = user.name || "Duty Operator";
-  const operatorId = user.userId || "EMP-0042";
+  const operatorId = user.userId || user.employeeId || "";
 
   if (isCafeOps) {
     return `
@@ -1317,6 +1322,7 @@ export function renderCafeContextStrip({
 
   // Master / Owner Multi-Café Switcher Header
   const effectiveCafe = selectedCafe || state.selectedCafeId || state.activeCafe || "ALL";
+  const cafeOptions = (state.cafes || []).map(c => `<option value="${c.cafeId || c.id || c.code}" ${effectiveCafe === (c.cafeId || c.id || c.code) ? "selected" : ""}>📍 ${c.name || 'Outlet'} (${c.cafeId || c.id || c.code})</option>`).join('');
 
   return `
     <div class="glass-card" style="padding:12px 16px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
@@ -1330,10 +1336,7 @@ export function renderCafeContextStrip({
       <div style="display:flex; align-items:center; gap:12px;">
         <select id="ctx-cafe-selector" class="input" style="height:36px; font-size:12.5px; padding:4px 10px; min-width:220px; font-weight:600;">
           <option value="ALL" ${effectiveCafe === "ALL" ? "selected" : ""}>🌐 All Cafés (Global Portfolio)</option>
-          <option value="ZC-0001" ${effectiveCafe === "ZC-0001" ? "selected" : ""}>📍 Main Outlet (ZC-0001)</option>
-          <option value="ZC-0002" ${effectiveCafe === "ZC-0002" ? "selected" : ""}>📍 Branch Outlet (ZC-0002)</option>
-          <option value="ZC-0003" ${effectiveCafe === "ZC-0003" ? "selected" : ""}>📍 Whitefield Tech Park (ZC-0003)</option>
-          <option value="ZC-0004" ${effectiveCafe === "ZC-0004" ? "selected" : ""}>📍 MG Road Express (ZC-0004)</option>
+          ${cafeOptions}
         </select>
         ${actionsHtml}
       </div>
@@ -1359,17 +1362,9 @@ export function wireCafeContextStrip(root = document, onCafeChange = null) {
     state.activeCafe = newCafeId;
 
     if (state.user) {
-      state.user.primaryCafeId = newCafeId === "ALL" ? "ZC-0001" : newCafeId;
-      state.user.primaryCafeName =
-        newCafeId === "ZC-0002"
-          ? "Branch Outlet"
-          : newCafeId === "ZC-0003"
-          ? "Whitefield Tech Park"
-          : newCafeId === "ZC-0004"
-          ? "MG Road Express"
-          : newCafeId === "ALL"
-          ? "All Cafés (Global Portfolio)"
-          : "Main Outlet";
+      state.user.primaryCafeId = newCafeId === "ALL" ? "" : newCafeId;
+      const foundCafe = (state.cafes || []).find(c => (c.cafeId || c.id || c.code) === newCafeId);
+      state.user.primaryCafeName = newCafeId === "ALL" ? "All Cafés (Global Portfolio)" : (foundCafe?.name || `Outlet ${newCafeId}`);
     }
 
     // Sync with Topbar selector if present
@@ -1378,18 +1373,11 @@ export function wireCafeContextStrip(root = document, onCafeChange = null) {
       topbarSel.value = newCafeId;
     }
 
+    const foundCafe = (state.cafes || []).find(c => (c.cafeId || c.id || c.code) === newCafeId);
     const cafeLabel =
       newCafeId === "ALL"
         ? "All Cafés (Global Portfolio)"
-        : newCafeId === "ZC-0001"
-        ? "Main Outlet (ZC-0001)"
-        : newCafeId === "ZC-0002"
-        ? "Branch Outlet (ZC-0002)"
-        : newCafeId === "ZC-0003"
-        ? "Whitefield Tech Park (ZC-0003)"
-        : newCafeId === "ZC-0004"
-        ? "MG Road Express (ZC-0004)"
-        : newCafeId;
+        : (foundCafe ? `${foundCafe.name} (${foundCafe.cafeId || newCafeId})` : newCafeId);
 
     showToast(`Global Portfolio context switched to ${cafeLabel}.`, "info");
 

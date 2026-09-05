@@ -944,7 +944,7 @@ const getTraceability = asyncHandler(async (request, response) => {
     },
     forwardTrace: {
       inventoryStatus: 'QUARANTINE_ON_HOLD',
-      currentLocation: 'Koramangala Café (CAFE-001) - Cold Room B',
+      currentLocation: 'Cold Storage - Zone B',
       heldQuantity: '50 L',
       usedInProduction: '0 L (Prevented by Quality Hold QHOLD-2026-001)',
       soldToCustomers: '0 units (Zero Consumer Exposure)',

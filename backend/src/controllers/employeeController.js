@@ -1,5 +1,4 @@
-'use strict';
-
+const mongoose = require('mongoose');
 const { User } = require('../models/User');
 const { Position } = require('../models/Position');
 const { StaffingRequest } = require('../models/StaffingRequest');
@@ -9,6 +8,7 @@ const { EmployeeDocument } = require('../models/EmployeeDocument');
 const { EmployeeMovement } = require('../models/EmployeeMovement');
 const { ProbationReview } = require('../models/ProbationReview');
 const { Asset } = require('../models/Asset');
+const { Cafe } = require('../models/Cafe');
 const { SequenceCounter } = require('../models/SequenceCounter');
 const { asyncHandler } = require('../utils/asyncHandler');
 const { ApiError } = require('../utils/ApiError');
@@ -66,11 +66,26 @@ const getWorkforceOverview = asyncHandler(async (req, res) => {
   const documentsMissing = documents.filter((d) => d.status === 'PENDING_ACKNOWLEDGEMENT').length;
 
   // Cafe workforce breakdown
-  const cafeWorkforce = [
-    { cafeId: 'ZC-0001', name: 'Dawn Roast — Koramangala', totalHeadcount: 0, approvedPositions: 0, capacityGap: 0, vacancies: 0, openPositions: 0, frozenPositions: 0, probation: 0, crossTrained: 0 },
-    { cafeId: 'ZC-0002', name: 'Zamorin Bay — Indiranagar', totalHeadcount: 0, approvedPositions: 0, capacityGap: 0, vacancies: 0, openPositions: 0, frozenPositions: 0, probation: 0, crossTrained: 0 },
-    { cafeId: 'ZC-0003', name: 'Calicut Heritage Flagship', totalHeadcount: 0, approvedPositions: 0, capacityGap: 0, vacancies: 0, openPositions: 0, frozenPositions: 0, probation: 0, crossTrained: 0 },
-  ];
+  let activeCafes = [];
+  try {
+    if (mongoose.connection.readyState === 1 || Cafe.find?.mock) {
+      activeCafes = await Cafe.find({ organisationId, status: 'ACTIVE' }).lean();
+    }
+  } catch (_err) {
+    activeCafes = [];
+  }
+  const cafeWorkforce = (activeCafes || []).map((c) => ({
+    cafeId: c.cafeId,
+    name: c.name,
+    totalHeadcount: 0,
+    approvedPositions: 0,
+    capacityGap: 0,
+    vacancies: 0,
+    openPositions: 0,
+    frozenPositions: 0,
+    probation: 0,
+    crossTrained: 0,
+  }));
 
   cafeWorkforce.forEach((cw) => {
     const cafeUsers = activeEmployees.filter((u) => u.primaryCafeId === cw.cafeId);
@@ -856,13 +871,14 @@ const getSelfDashboard = asyncHandler(async (req, res) => {
   }
 
   // 1. Cafe details for primary / assigned cafe
-  const { Cafe } = require('../models/Cafe');
-  const primaryCafeId = user.primaryCafeId || (user.assignedCafeIds && user.assignedCafeIds[0]) || 'ZC-0001';
-  let cafeDisplay = `${primaryCafeId} — Koramangala`;
+  const primaryCafeId = user.primaryCafeId || (user.assignedCafeIds && user.assignedCafeIds[0]) || '';
+  let cafeDisplay = primaryCafeId ? `${primaryCafeId}` : 'Unassigned';
   try {
-    const cafe = await Cafe.findOne({ organisationId, cafeId: primaryCafeId }).lean();
-    if (cafe) {
-      cafeDisplay = `${cafe.name || primaryCafeId} — ${cafe.city || cafe.location || 'Bengaluru'}`;
+    if (primaryCafeId) {
+      const cafe = await Cafe.findOne({ organisationId, cafeId: primaryCafeId }).lean();
+      if (cafe) {
+        cafeDisplay = `${cafe.name || primaryCafeId}${cafe.city ? ' — ' + cafe.city : ''}`;
+      }
     }
   } catch (e) {}
 
@@ -874,8 +890,17 @@ const getSelfDashboard = asyncHandler(async (req, res) => {
     todayAttendance = await Attendance.findOne({
       organisationId,
       userId,
-      businessDate: todayStr,
-    }).lean();
+      status: { $in: ['CHECKED_IN', 'ON_BREAK'] },
+      checkOutAt: null,
+    }).sort({ checkInAt: -1 }).lean();
+
+    if (!todayAttendance) {
+      todayAttendance = await Attendance.findOne({
+        organisationId,
+        userId,
+        businessDate: todayStr,
+      }).lean();
+    }
   } catch (e) {}
 
   let attendanceState = 'NOT_CHECKED_IN';
@@ -885,8 +910,8 @@ const getSelfDashboard = asyncHandler(async (req, res) => {
 
   if (todayAttendance) {
     attendanceState = todayAttendance.status;
-    checkInTime = todayAttendance.firstCheckInTime || (todayAttendance.events?.find((e) => e.eventType === 'CHECK_IN')?.timestamp) || null;
-    checkOutTime = todayAttendance.lastCheckOutTime || (todayAttendance.events?.find((e) => e.eventType === 'CHECK_OUT')?.timestamp) || null;
+    checkInTime = todayAttendance.checkInAt || (todayAttendance.rawTimeEvents?.find((e) => e.eventType === 'CHECK_IN')?.timestamp) || null;
+    checkOutTime = todayAttendance.checkOutAt || (todayAttendance.rawTimeEvents?.find((e) => e.eventType === 'CHECK_OUT')?.timestamp) || null;
     if (checkInTime && !checkOutTime) {
       elapsedMinutes = Math.max(0, Math.floor((Date.now() - new Date(checkInTime).getTime()) / 60000));
     }
@@ -949,24 +974,60 @@ const getSelfDashboard = asyncHandler(async (req, res) => {
     }).lean() || [];
   } catch (e) {}
 
+  const [cYear, cMonth] = currentMonthPrefix.split('-').map(Number);
+  const daysInMonth = new Date(cYear, cMonth, 0).getDate();
+  let totalWorkingDays = 0;
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dayOfWeek = new Date(cYear, cMonth - 1, d).getDay();
+    if (dayOfWeek !== 0) totalWorkingDays++; // Non-Sundays
+  }
+
   const attendanceSummary = {
     month: currentMonthPrefix,
-    totalWorkingDays: 26,
+    totalWorkingDays,
     presentDays: monthlyAttendances.filter((a) => a.status === 'CHECKED_OUT' || a.status === 'CHECKED_IN').length,
-    lateDays: monthlyAttendances.filter((a) => a.isLateCheckIn).length,
+    lateDays: monthlyAttendances.filter((a) => a.isLate || a.lateMinutes > 0).length,
     leaveDays: monthlyAttendances.filter((a) => a.status === 'ON_LEAVE').length,
     weeklyOffDays: monthlyAttendances.filter((a) => a.status === 'WEEKLY_OFF').length,
-    exceptionCount: monthlyAttendances.filter((a) => a.status === 'MISSED_PUNCH' || a.status === 'ATTENDANCE_EXCEPTION').length,
+    exceptionCount: monthlyAttendances.filter((a) => a.status === 'MISSED_PUNCH' || a.correctionRequired || a.status === 'ATTENDANCE_EXCEPTION').length,
     overtimeHours: Math.round((monthlyAttendances.reduce((acc, a) => acc + (a.overtimeMinutes || 0), 0) / 60) * 10) / 10,
   };
 
   // 5. Leave Balances & Requests
+  const { LeaveRequest } = require('../models/LeaveRequest');
+  let usedCasual = 0;
+  let usedSick = 0;
+  let usedEarned = 0;
+  let pendingRequestsCount = 0;
+  try {
+    const approvedLeaves = await LeaveRequest.find({
+      organisationId,
+      userId,
+      status: 'APPROVED',
+      startDate: { $regex: `^${cYear}` },
+    }).lean() || [];
+    for (const req of approvedLeaves) {
+      if (req.leaveType === 'CASUAL') usedCasual += req.requestedDays || 0;
+      if (req.leaveType === 'SICK') usedSick += req.requestedDays || 0;
+      if (req.leaveType === 'EARNED') usedEarned += req.requestedDays || 0;
+    }
+    pendingRequestsCount = await LeaveRequest.countDocuments({
+      organisationId,
+      userId,
+      status: { $in: ['PENDING', 'UNDER_REVIEW'] },
+    });
+  } catch (e) {}
+
+  const earnedLeaveBalance = Math.max(0, 12 - usedEarned);
+  const casualLeaveBalance = Math.max(0, 4.5 - usedCasual);
+  const sickLeaveBalance = Math.max(0, 6 - usedSick);
+
   const leaveSummary = {
-    earnedLeaveBalance: 12,
-    casualLeaveBalance: 4.5,
-    sickLeaveBalance: 6,
-    totalAvailableDays: 22.5,
-    pendingRequestsCount: 0,
+    earnedLeaveBalance,
+    casualLeaveBalance,
+    sickLeaveBalance,
+    totalAvailableDays: earnedLeaveBalance + casualLeaveBalance + sickLeaveBalance,
+    pendingRequestsCount,
   };
 
   // 6. Latest Payslip
@@ -988,10 +1049,10 @@ const getSelfDashboard = asyncHandler(async (req, res) => {
     paymentDate: latestPayslip.paymentDate || latestPayslip.createdAt,
     available: true,
   } : {
-    periodName: 'June 2026',
-    status: 'ISSUED',
-    netPayPaise: 2850000,
-    available: true,
+    available: false,
+    periodName: null,
+    status: null,
+    netPayPaise: 0,
   };
 
   // 7. Active Staff Loan / Advance

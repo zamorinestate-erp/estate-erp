@@ -254,13 +254,18 @@ test('Login Page 2.0 Integration & 24-Point Production-Equivalence Suite', async
   // 8. MFA / TOTP Verification Challenge
   // ---------------------------------------------------------------------------
   await t.test('8. MFA-enabled user triggers MFA challenge requirement', async () => {
-    const authResult = await authService.authenticatePassword({
-      organisationId: TEST_ORG,
-      email: 'mfa.user@zamorin.com',
-      password: 'Password@123',
-    });
+    process.env.REQUIRE_MFA = 'true';
+    try {
+      const authResult = await authService.authenticatePassword({
+        organisationId: TEST_ORG,
+        email: 'mfa.user@zamorin.com',
+        password: 'Password@123',
+      });
 
-    assert.equal(authResult.requiresMfa, true, 'requiresMfa is true');
+      assert.equal(authResult.requiresMfa, true, 'requiresMfa is true');
+    } finally {
+      delete process.env.REQUIRE_MFA;
+    }
   });
 
   // ---------------------------------------------------------------------------

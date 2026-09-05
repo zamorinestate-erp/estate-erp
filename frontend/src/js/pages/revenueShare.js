@@ -768,7 +768,7 @@ function showCreateOutletModal() {
       modalRoot.querySelector('#form-create-outlet')?.addEventListener('submit', async (e) => {
         e.preventDefault();
         const payload = {
-          cafeId: 'ZC-0001',
+          cafeId: state.currentCafeId || state.selectedCafeId || '',
           name: document.getElementById('out-name').value,
           spaceType: document.getElementById('out-type').value,
           areaSqFt: Number(document.getElementById('out-area').value) || 120,

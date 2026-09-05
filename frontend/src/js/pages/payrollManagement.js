@@ -103,101 +103,28 @@ function isDevMode() {
 
 // ─── CANONICAL DEV FIXTURES ──────────────────────────────────────────────────
 function getDevRunsFixture() {
-  const currentPeriod = defaultPeriodKey();
-  return [
-    {
-      payrollRunId: "PR-202608-0001",
-      organisationId: "ORG-ZAMORIN-01",
-      cafeId: "ZC-0001",
-      cafeName: "Zamorin Calicut Beach",
-      periodKey: currentPeriod,
-      periodStartDate: "2026-08-01",
-      periodEndDate: "2026-08-31",
-      status: "APPROVED",
-      employeeCount: 14,
-      totalGrossPaise: 42500000, // ₹4,25,000
-      totalDeductionPaise: 5100000, // ₹51,000
-      totalNetPayPaise: 37400000, // ₹3,74,000
-      currency: "INR",
-      notes: "August regular cafe operations & baristas run",
-      calculatedAt: "2026-08-18T10:30:00Z",
-      approvedAt: "2026-08-19T14:00:00Z",
-    },
-    {
-      payrollRunId: "PR-202608-0002",
-      organisationId: "ORG-ZAMORIN-01",
-      cafeId: "ZC-0002",
-      cafeName: "Zamorin Kochi Hub",
-      periodKey: currentPeriod,
-      periodStartDate: "2026-08-01",
-      periodEndDate: "2026-08-31",
-      status: "CALCULATED",
-      employeeCount: 18,
-      totalGrossPaise: 54000000, // ₹5,40,000
-      totalDeductionPaise: 6480000, // ₹64,800
-      totalNetPayPaise: 47520000, // ₹4,75,200
-      currency: "INR",
-      notes: "Kochi staff and kitchen crew",
-      calculatedAt: "2026-08-19T11:15:00Z",
-    },
-    {
-      payrollRunId: "PR-202608-0003",
-      organisationId: "ORG-ZAMORIN-01",
-      cafeId: "ZC-0003",
-      cafeName: "Zamorin Wayanad Reserve",
-      periodKey: currentPeriod,
-      periodStartDate: "2026-08-01",
-      periodEndDate: "2026-08-31",
-      status: "DRAFT",
-      employeeCount: 8,
-      totalGrossPaise: 0,
-      totalDeductionPaise: 0,
-      totalNetPayPaise: 0,
-      currency: "INR",
-      notes: "Wayanad estate outlet roster",
-    },
-  ];
+  return [];
 }
 
 function getDevOverviewFixture() {
   const currentPeriod = defaultPeriodKey();
   return {
     activePeriod: currentPeriod,
-    previousPeriod: "2026-07",
+    previousPeriod: "",
     kpis: {
-      employeesInPayroll: 40,
-      grossPaise: 96500000,
-      deductionPaise: 11580000,
-      netPayPaise: 84920000,
-      employerLiabilitiesPaise: 7720000,
-      totalEmployerCostPaise: 104220000,
+      employeesInPayroll: 0,
+      grossPaise: 0,
+      deductionPaise: 0,
+      netPayPaise: 0,
+      employerLiabilitiesPaise: 0,
+      totalEmployerCostPaise: 0,
       unresolvedExceptionsCount: 0,
-      grossVariancePct: 4.2,
-      activeRunsCount: 3,
-      workflowStep: "FINALISATION_APPROVED",
+      grossVariancePct: 0,
+      activeRunsCount: 0,
+      workflowStep: "PENDING_SETUP",
     },
-    readinessChecklist: [
-      { domain: "Attendance & Shift Rosters", status: "READY", description: "Biometric punches reconciled for 40/40 employees." },
-      { domain: "Overtime Recommendations", status: "READY", description: "All supervisor overtime inputs verified & capped." },
-      { domain: "Salary & Compensation Master", status: "READY", description: "Active wage structures synchronized." },
-      { domain: "Loans & Advances EMIs", status: "READY", description: "Monthly loan repayment schedule active." },
-      { domain: "Bank Account & Payment Profiles", status: "READY", description: "Validated IFSC & NEFT formats across staff." },
-      { domain: "India Statutory & 2026 Tax Regimes", status: "READY", description: "EPF (12%), ESI (0.75%), PT, and Section 192 TDS active." },
-    ],
-    actionItems: [
-      {
-        id: "ACT-001",
-        level: "WARNING",
-        message: "Wayanad Reserve run is in Draft. Calculation required.",
-        actionLabel: "Calculate",
-      },
-      {
-        id: "ACT-002",
-        level: "INFO",
-        message: "Calicut Beach run is approved and ready for Payment Batch generation.",
-        actionLabel: "Generate Payment",
-      },
-    ],
+    readinessChecklist: [],
+    actionItems: [],
   };
 }
 
@@ -256,11 +183,7 @@ function getDevIntegrityFixture() {
 }
 
 function getDevCafesFixture() {
-  return [
-    { cafeId: "ZC-0001", name: "Zamorin Calicut Beach", status: "ACTIVE" },
-    { cafeId: "ZC-0002", name: "Zamorin Kochi Hub", status: "ACTIVE" },
-    { cafeId: "ZC-0003", name: "Zamorin Wayanad Reserve", status: "ACTIVE" },
-  ];
+  return [];
 }
 
 // ─── HEADER & WORKFLOW STRIP ─────────────────────────────────────────────────
@@ -808,10 +731,40 @@ function renderEmployeesTab(runs) {
 
 // ─── TAB: RECONCILIATION & GROSS-TO-NET ───────────────────────────────────────
 function renderReconciliationTab(overview) {
+  const kpis = overview?.kpis || {};
+  const grossPaise = kpis.grossPaise || 0;
+  const deductionPaise = kpis.deductionPaise || 0;
+  const netPayPaise = kpis.netPayPaise || 0;
+  const hasData = grossPaise > 0 || deductionPaise > 0;
+
+  if (!hasData) {
+    return `
+      <div style="display: flex; flex-direction: column; gap: 20px; width: 100%; min-width: 0;">
+        <div>
+          <h3 style="font-size: 18px; font-weight: 700; color: var(--ink); margin: 0 0 6px 0;">Gross-to-Net Balance &amp; Invariant Verification</h3>
+          <p style="color: var(--muted); font-size: 13px; margin: 0;">Strict mathematical verification ensuring Total Gross - Total Deductions === Net Pay across all active runs.</p>
+        </div>
+        <div class="card card-pad" style="text-align: center; padding: 40px 20px;">
+          <div style="font-size: 32px; margin-bottom: 12px;">📊</div>
+          <div style="font-weight: 700; color: var(--ink); font-size: 15px; margin-bottom: 6px;">No Payroll Data for Reconciliation</div>
+          <div style="color: var(--muted); font-size: 13px;">Generate and finalise payroll runs to see gross-to-net balance verification.</div>
+        </div>
+      </div>
+    `;
+  }
+
+  // Derive statutory breakdown from kpis fields or estimate from statutory rates
+  const epfPaise     = kpis.epfEmployeePaise     || Math.round(grossPaise * 0.12);
+  const esiPaise     = kpis.esiEmployeePaise     || Math.round(grossPaise * 0.0075);
+  const ptPaise      = kpis.professionalTaxPaise  || 0;
+  const tdsPaise     = kpis.tdsPaise             || 0;
+  const loanEmiPaise = kpis.loanDeductionPaise   || 0;
+  const invariantOk  = (grossPaise - deductionPaise) === netPayPaise;
+
   return `
     <div style="display: flex; flex-direction: column; gap: 20px; width: 100%; min-width: 0;">
       <div style="margin-bottom: 6px;">
-        <h3 style="font-size: 18px; font-weight: 700; color: var(--ink); margin: 0 0 6px 0;">Gross-to-Net Balance & Invariant Verification</h3>
+        <h3 style="font-size: 18px; font-weight: 700; color: var(--ink); margin: 0 0 6px 0;">Gross-to-Net Balance &amp; Invariant Verification</h3>
         <p style="color: var(--muted); font-size: 13px; margin: 0;">
           Strict mathematical verification ensuring Total Gross - Total Deductions === Net Pay across all active runs.
         </p>
@@ -820,29 +773,26 @@ function renderReconciliationTab(overview) {
       <div class="grid grid-2" style="grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 16px;">
         <!-- EARNINGS SUMMARY -->
         <div class="card card-pad">
-          <div style="font-size: 14px; font-weight: 700; color: var(--bronze-600); margin-bottom: 14px;">(+) Total Earnings Components</div>
+          <div style="font-size: 14px; font-weight: 700; color: var(--bronze-600); margin-bottom: 14px;">(+) Total Gross Earnings</div>
           <div style="display: flex; flex-direction: column; gap: 8px;">
-            <div style="display: flex; justify-content: space-between;"><span style="color: var(--muted);">Basic Salary</span><span style="color: var(--ink); font-weight: 600;">₹6,50,000</span></div>
-            <div style="display: flex; justify-content: space-between;"><span style="color: var(--muted);">House Rent Allowance (HRA)</span><span style="color: var(--ink); font-weight: 600;">₹1,95,000</span></div>
-            <div style="display: flex; justify-content: space-between;"><span style="color: var(--muted);">Other Allowances</span><span style="color: var(--ink); font-weight: 600;">₹75,000</span></div>
-            <div style="display: flex; justify-content: space-between;"><span style="color: var(--muted);">Overtime Pay</span><span style="color: var(--ink); font-weight: 600;">₹25,000</span></div>
-            <div style="display: flex; justify-content: space-between;"><span style="color: var(--muted);">Incentives / Variable</span><span style="color: var(--ink); font-weight: 600;">₹20,000</span></div>
+            <div style="display: flex; justify-content: space-between;"><span style="color: var(--muted);">Total Gross Pay (all components)</span><span style="color: var(--bronze-600); font-weight: 700;">${formatMoney(grossPaise)}</span></div>
+            ${kpis.employerLiabilitiesPaise ? `<div style="display: flex; justify-content: space-between;"><span style="color: var(--muted);">Employer Liabilities (PF + ESI)</span><span style="color: var(--ink); font-weight: 600;">${formatMoney(kpis.employerLiabilitiesPaise)}</span></div>` : ''}
             <div style="border-top: 1px solid var(--line); margin: 8px 0;"></div>
-            <div style="display: flex; justify-content: space-between; font-size: 15px; font-weight: 700;"><span style="color: var(--bronze-600);">Total Gross Pay</span><span style="color: var(--bronze-600);">₹9,65,000</span></div>
+            <div style="display: flex; justify-content: space-between; font-size: 15px; font-weight: 700;"><span style="color: var(--bronze-600);">Total Employer Cost</span><span style="color: var(--bronze-600);">${formatMoney(kpis.totalEmployerCostPaise || grossPaise)}</span></div>
           </div>
         </div>
 
         <!-- DEDUCTIONS SUMMARY -->
         <div class="card card-pad">
-          <div style="font-size: 14px; font-weight: 700; color: var(--danger); margin-bottom: 14px;">(-) Total Statutory & Policy Deductions</div>
+          <div style="font-size: 14px; font-weight: 700; color: var(--danger); margin-bottom: 14px;">(-) Total Statutory &amp; Policy Deductions</div>
           <div style="display: flex; flex-direction: column; gap: 8px;">
-            <div style="display: flex; justify-content: space-between;"><span style="color: var(--muted);">Provident Fund (EPF 12%)</span><span style="color: var(--ink); font-weight: 600;">₹52,000</span></div>
-            <div style="display: flex; justify-content: space-between;"><span style="color: var(--muted);">Employee State Insurance (ESI 0.75%)</span><span style="color: var(--ink); font-weight: 600;">₹7,200</span></div>
-            <div style="display: flex; justify-content: space-between;"><span style="color: var(--muted);">Professional Tax (PT)</span><span style="color: var(--ink); font-weight: 600;">₹6,600</span></div>
-            <div style="display: flex; justify-content: space-between;"><span style="color: var(--muted);">Income Tax (TDS Section 192)</span><span style="color: var(--ink); font-weight: 600;">₹22,000</span></div>
-            <div style="display: flex; justify-content: space-between;"><span style="color: var(--muted);">Loan / Advance EMIs</span><span style="color: var(--ink); font-weight: 600;">₹28,000</span></div>
+            ${epfPaise     ? `<div style="display: flex; justify-content: space-between;"><span style="color: var(--muted);">Provident Fund (EPF 12%)</span><span style="color: var(--ink); font-weight: 600;">${formatMoney(epfPaise)}</span></div>` : ''}
+            ${esiPaise     ? `<div style="display: flex; justify-content: space-between;"><span style="color: var(--muted);">Employee State Insurance (ESI 0.75%)</span><span style="color: var(--ink); font-weight: 600;">${formatMoney(esiPaise)}</span></div>` : ''}
+            ${ptPaise      ? `<div style="display: flex; justify-content: space-between;"><span style="color: var(--muted);">Professional Tax (PT)</span><span style="color: var(--ink); font-weight: 600;">${formatMoney(ptPaise)}</span></div>` : ''}
+            ${tdsPaise     ? `<div style="display: flex; justify-content: space-between;"><span style="color: var(--muted);">Income Tax (TDS Section 192)</span><span style="color: var(--ink); font-weight: 600;">${formatMoney(tdsPaise)}</span></div>` : ''}
+            ${loanEmiPaise ? `<div style="display: flex; justify-content: space-between;"><span style="color: var(--muted);">Loan / Advance EMIs</span><span style="color: var(--ink); font-weight: 600;">${formatMoney(loanEmiPaise)}</span></div>` : ''}
             <div style="border-top: 1px solid var(--line); margin: 8px 0;"></div>
-            <div style="display: flex; justify-content: space-between; font-size: 15px; font-weight: 700;"><span style="color: var(--danger);">Total Deductions</span><span style="color: var(--danger);">₹1,15,800</span></div>
+            <div style="display: flex; justify-content: space-between; font-size: 15px; font-weight: 700;"><span style="color: var(--danger);">Total Deductions</span><span style="color: var(--danger);">${formatMoney(deductionPaise)}</span></div>
           </div>
         </div>
       </div>
@@ -864,51 +814,56 @@ function renderReconciliationTab(overview) {
 // ─── TAB: PAYMENTS & BANKING ─────────────────────────────────────────────────
 function renderPaymentsTab(userRole) {
   const isOwner = userRole === "OWNER";
+  // Derive payment batches from loaded payroll runs (runs that are approvable / disbursable)
+  const batches = (loadedPayrollRuns || []).filter(
+    (r) => r.status === "APPROVED_READY" || r.status === "PAID" || r.status === "PENDING_APPROVAL"
+  );
+
+  const batchCards = batches.length > 0
+    ? batches.map((run) => {
+        const batchId = run.paymentBatchId || run.runId || run._id || "—";
+        const cafeName = run.cafeName || run.cafeId || "Café";
+        const beneficiaries = run.employeeCount || run.beneficiaryCount || 0;
+        const netPaise = run.netPayPaise || 0;
+        const statusClass = run.status === "APPROVED_READY" ? "pill-mint"
+          : run.status === "PAID" ? "pill-cobalt" : "pill-amber";
+        const canExport = run.status === "APPROVED_READY" || run.status === "PAID";
+        const runId = escapeHtml(run.runId || run._id || "");
+        return `
+          <div class="card card-pad">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; gap: 8px; flex-wrap: wrap;">
+              <span style="font-weight: 700; font-size: 14px; color: var(--ink);">${escapeHtml(String(batchId))}</span>
+              <span class="pill ${statusClass}">${escapeHtml(run.status || "PENDING")}</span>
+            </div>
+            <div style="font-size: 12px; color: var(--muted); margin-bottom: 8px;">Café: ${escapeHtml(String(cafeName))} (${beneficiaries} Beneficiaries)</div>
+            <div class="kpi-value" style="color: var(--success); margin-bottom: 12px;">${formatMoney(netPaise)}</div>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+              ${canExport
+                ? `<button class="btn btn-sm btn-ghost" type="button" data-download-neft data-run-id="${runId}">Export NEFT Format</button>
+                   <button class="btn btn-sm btn-ghost" type="button" data-view-payment-items data-run-id="${runId}">View Beneficiaries</button>`
+                : `<button class="btn btn-sm btn-ghost" type="button" disabled>Awaiting Run Approval</button>`}
+            </div>
+          </div>`;
+      }).join("")
+    : `<div class="card card-pad" style="text-align: center; padding: 40px 20px; grid-column: 1 / -1;">
+        <div style="font-size: 32px; margin-bottom: 12px;">🏦</div>
+        <div style="font-weight: 700; color: var(--ink); font-size: 15px; margin-bottom: 6px;">No Payment Batches Generated</div>
+        <div style="color: var(--muted); font-size: 13px;">Approve payroll runs and generate payment batches to see NEFT disbursement details here.</div>
+      </div>`;
+
   return `
     <div style="display: flex; flex-direction: column; gap: 16px; width: 100%; min-width: 0;">
       <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
         <div>
-          <h3 style="font-size: 18px; font-weight: 700; color: var(--ink); margin: 0 0 6px 0;">Disbursement & Banking Workspace</h3>
+          <h3 style="font-size: 18px; font-weight: 700; color: var(--ink); margin: 0 0 6px 0;">Disbursement &amp; Banking Workspace</h3>
           <p style="color: var(--muted); font-size: 13px; margin: 0;">
             Bank payment batch generation, masked account verification, and NEFT payment registers.
           </p>
         </div>
-        ${
-          !isOwner
-            ? `
-          <button class="btn btn-primary" type="button" data-generate-payment-batch>
-            ⚡ Generate Payment Batch
-          </button>
-        `
-            : ""
-        }
+        ${!isOwner ? `<button class="btn btn-primary" type="button" data-generate-payment-batch>⚡ Generate Payment Batch</button>` : ""}
       </div>
-
       <div class="grid grid-2" style="grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 14px;">
-        <div class="card card-pad">
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; gap: 8px; flex-wrap: wrap;">
-            <span style="font-weight: 700; font-size: 14px; color: var(--ink);">Batch PB-202608-ZC0001</span>
-            <span class="pill pill-mint">APPROVED_READY</span>
-          </div>
-          <div style="font-size: 12px; color: var(--muted); margin-bottom: 8px;">Café: Zamorin Calicut Beach (14 Beneficiaries)</div>
-          <div class="kpi-value" style="color: var(--success); margin-bottom: 12px;">₹3,74,000</div>
-          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-            <button class="btn btn-sm btn-ghost" type="button" data-download-neft>Export NEFT Format</button>
-            <button class="btn btn-sm btn-ghost" type="button" data-view-payment-items>View Beneficiaries</button>
-          </div>
-        </div>
-
-        <div class="card card-pad">
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; gap: 8px; flex-wrap: wrap;">
-            <span style="font-weight: 700; font-size: 14px; color: var(--ink);">Batch PB-202608-ZC0002</span>
-            <span class="pill pill-amber">PENDING_APPROVAL</span>
-          </div>
-          <div style="font-size: 12px; color: var(--muted); margin-bottom: 8px;">Café: Zamorin Kochi Hub (18 Beneficiaries)</div>
-          <div class="kpi-value" style="color: var(--bronze-600); margin-bottom: 12px;">₹4,75,200</div>
-          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-            <button class="btn btn-sm btn-ghost" type="button" disabled>Awaiting Run Approval</button>
-          </div>
-        </div>
+        ${batchCards}
       </div>
     </div>
   `;
@@ -979,23 +934,9 @@ function renderAuditTab() {
       </div>
 
       <div style="display: flex; flex-direction: column; gap: 8px;">
-        ${[
-          { action: "APPROVE_PAYROLL_RUN", user: "MU-0001 (Primary Master)", entity: "PR-202608-0001", time: "2026-08-19 14:00:00 IST", risk: "HIGH" },
-          { action: "CALCULATE_PAYROLL_RUN", user: "MU-0001 (Primary Master)", entity: "PR-202608-0001", time: "2026-08-18 10:30:00 IST", risk: "MEDIUM" },
-          { action: "CREATE_PAYROLL_RUN", user: "MU-0001 (Primary Master)", entity: "PR-202608-0001", time: "2026-08-18 10:00:00 IST", risk: "LOW" },
-        ]
-          .map(
-            (log) => `
-          <div class="card card-pad" style="display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
-            <div>
-              <div style="font-size: 13.5px; font-weight: 700; color: var(--ink);">${escapeHtml(log.action)} · ${escapeHtml(log.entity)}</div>
-              <div style="font-size: 11.5px; color: var(--muted); margin-top: 2px;">Executed by ${escapeHtml(log.user)} at ${escapeHtml(log.time)}</div>
-            </div>
-            <span class="pill ${log.risk === "HIGH" ? "pill-amber" : "pill-dark"}" style="font-size: 10px;">${escapeHtml(log.risk)} RISK</span>
-          </div>
-        `
-          )
-          .join("")}
+        <div class="card card-pad" style="text-align: center; padding: 32px 20px; color: var(--muted); font-size: 13px;">
+          No payroll audit events recorded for this period. Lifecycle actions will appear here automatically.
+        </div>
       </div>
     </div>
   `;
@@ -1072,7 +1013,7 @@ function renderAccessDenied() {
 
 // ─── CREATE RUN MODAL ────────────────────────────────────────────────────────
 function openCreateRunModal(root) {
-  const cafes = cachedCafes.length > 0 ? cachedCafes : getDevCafesFixture();
+  const cafes = cachedCafes && cachedCafes.length > 0 ? cachedCafes : [];
   const defaultPeriod = defaultPeriodKey();
 
   const overlay = document.createElement("div");
@@ -1286,7 +1227,7 @@ function wireEvents(root) {
 
   // Generate Payment Batch button
   root.querySelector("[data-generate-payment-batch]")?.addEventListener("click", () => {
-    showToast("Authoritative Payment Batch PB-202608-ZC0001 generated.", "mint");
+    showToast("Payment batch generation initiated. The batch will be available for NEFT export once approved.", "mint");
   });
 
   // Export NEFT button
@@ -1320,7 +1261,14 @@ function wireEvents(root) {
     showToast("Attendance pipelines synchronized for active period.", "mint");
   });
   root.querySelector("#btn-child-export-staff")?.addEventListener("click", () => {
-    exportPayrollCsv("staff_compensation_master.csv", ["Employee ID", "Name", "Designation", "Base Salary", "Gross Rate"], [["EMP-0001", "Staff Member", "Barista", "25000.00", "25000.00"], ["EMP-0002", "Staff Member", "Supervisor", "32000.00", "32000.00"]]);
+    const staffRows = (cachedOverview?.staff || []).map((s) => [
+      s.employeeId || s.userId || "",
+      s.name || "",
+      s.designation || "",
+      (s.baseSalary || 0).toFixed(2),
+      (s.grossSalary || 0).toFixed(2),
+    ]);
+    exportPayrollCsv("staff_compensation_master.csv", ["Employee ID", "Name", "Designation", "Base Salary", "Gross Rate"], staffRows);
   });
   root.querySelector("#btn-child-run-gates")?.addEventListener("click", () => {
     showToast("10/10 automated quality gates passed with zero anomalies.", "mint");
@@ -1341,13 +1289,13 @@ function wireEvents(root) {
     showToast("EPF ECR & ESI monthly challans generated.", "mint");
   });
   root.querySelector("#btn-child-export-ytd")?.addEventListener("click", () => {
-    exportPayrollCsv("ytd_tax_accumulators.csv", ["Employee ID", "Name", "YTD Gross", "YTD TDS", "YTD EPF", "YTD ESI"], [["EMP-0001", "Staff Member", "175000.00", "0.00", "21000.00", "1312.50"]]);
+    exportPayrollCsv("ytd_tax_accumulators.csv", ["Employee ID", "Name", "YTD Gross", "YTD TDS", "YTD EPF", "YTD ESI"], []);
   });
   root.querySelector("#btn-child-export-reports")?.addEventListener("click", () => {
-    exportPayrollCsv("payroll_finance_jv.csv", ["Account Code", "Account Name", "Debit", "Credit"], [["5010-01", "Staff Salaries & Wages", "300000.00", "0.00"], ["2040-01", "EPF Payable", "0.00", "36000.00"], ["2050-01", "Net Salaries Payable", "0.00", "264000.00"]]);
+    exportPayrollCsv("payroll_finance_jv.csv", ["Account Code", "Account Name", "Debit", "Credit"], []);
   });
   root.querySelector("#btn-child-download-audit")?.addEventListener("click", () => {
-    exportPayrollCsv("payroll_audit_trail.csv", ["Timestamp", "Run ID", "Event", "Actor", "Status"], [["2026-08-31T08:00:00Z", "PR-202608-ZC0001", "RUN_CALCULATED", "admin", "SUCCESS"]]);
+    exportPayrollCsv("payroll_audit_trail.csv", ["Timestamp", "Run ID", "Event", "Actor", "Status"], []);
   });
 }
 

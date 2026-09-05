@@ -10,6 +10,26 @@ let cachedCustomers = [];
 let cachedRewards = [];
 let cachedFeedbacks = [];
 let cachedProgramme = null;
+let cachedCafes = [];
+
+function renderCafeOptions(selectedCafeId, includeAllOption = false) {
+  let html = "";
+  if (includeAllOption) {
+    html += `<option value="">All Cafés</option>`;
+  }
+  if (!cachedCafes || cachedCafes.length === 0) {
+    if (!includeAllOption) {
+      html += `<option value="" disabled ${!selectedCafeId ? 'selected' : ''}>No registered cafés found</option>`;
+    }
+    return html;
+  }
+  html += cachedCafes.map((c) => {
+    const id = c.cafeId || c.id || c._id;
+    const name = c.name || c.cafeName || id;
+    return `<option value="${id}" ${selectedCafeId === id ? "selected" : ""}>${name} (${id})</option>`;
+  }).join("");
+  return html;
+}
 
 const DEFAULT_OVERVIEW = {
   kpis: {
@@ -181,7 +201,7 @@ function renderActiveSubpanel() {
 // 1. OVERVIEW SUBPANEL
 function renderOverviewSubpanel() {
   const isCafeOps = state.role === ROLES.CAFE_ADMIN;
-  const userCafe = state.auth?.user?.primaryCafeId || state.user?.primaryCafeId || "ZC-0001";
+  const userCafe = state.auth?.user?.primaryCafeId || state.user?.primaryCafeId || "";
 
   const ov = cachedOverview || DEFAULT_OVERVIEW;
 
@@ -202,7 +222,7 @@ function renderOverviewSubpanel() {
     <div style="display:flex; flex-direction:column; gap:24px;">
       <!-- Control Centre Button Hub Section -->
       <div class="module-hub-section">
-        <h3 class="module-hub-section-title">Customer Relationship &amp; Loyalty Workspaces</h3>
+        <h3 class="module-hub-section-title">Customer &amp; Loyalty Workspaces</h3>
         <div class="module-tile-grid">
           ${custTiles.map((t) => `
             <button class="module-hub-tile" data-cust-hub-tile="${t.id}" type="button">
@@ -219,112 +239,60 @@ function renderOverviewSubpanel() {
         </div>
       </div>
 
-      <!-- Top KPI Row -->
-      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:12px;">
-      ${kpiCard("Total Customers", `${ov.kpis.totalCustomers}`, "Profiles Registered", "var(--ink)")}
-      ${kpiCard("Active Members", `${ov.kpis.activeMembers}`, "30-Day Activity", "var(--color-success, #2E7D32)")}
-      ${kpiCard("Repeat Guests", `${ov.kpis.repeatCustomers}`, "> 1 Verified Visit", "var(--ink)")}
-      ${kpiCard("Outstanding Points", `${Number(ov.kpis.outstandingPoints).toLocaleString("en-IN")} pts`, "Active Loyalty Balance", "var(--color-accent-amber, #C89D5C)")}
-      ${kpiCard("Rewards Redeemed", `${ov.kpis.rewardsRedeemed}`, "Vouchers Claimed", "var(--ink)")}
-      ${kpiCard("Member Sales", `₹${Number(ov.kpis.memberSales).toLocaleString("en-IN")}`, "Lifetime Member Spend", "var(--color-success)")}
-      ${kpiCard("Average Bill", `₹${ov.kpis.averageMemberBill}`, "Per Member Visit", "var(--ink)")}
-      ${kpiCard("Open Feedback", `${ov.kpis.feedbackOpen}`, "Pending Review", ov.kpis.feedbackOpen > 0 ? "var(--color-warning, #ED6C02)" : "var(--color-success)")}
-    </div>
-
-    <!-- Operational Control Strip -->
-    <div style="padding:12px 18px; background:var(--bg-subtle, rgba(0,0,0,0.02)); border:1px solid var(--border-subtle); border-radius:8px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:24px;">
-      <div style="display:flex; gap:16px; font-size:12.5px; font-weight:700;">
-        <span style="color:var(--color-success);">✓ NEW MEMBERS TODAY: ${ov.controlStrip.newMembersToday}</span>
-        <span style="color:var(--color-success);">✓ REWARDS AVAILABLE: ${ov.controlStrip.rewardsAvailable}</span>
-        <span style="color:var(--color-warning);">● POINTS EXPIRING: ${ov.controlStrip.pointsExpiringSoon}</span>
-        <span style="color:var(--color-accent-amber);">● DUPLICATES TO MERGE: ${ov.controlStrip.duplicateCandidates}</span>
+      <!-- KPI Ribbon (9 Invariant Metrics) -->
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(155px, 1fr)); gap:14px;">
+        ${kpiCard("Total Guests", ov.kpis.totalCustomers, "Registered Portfolio", "var(--ink)")}
+        ${kpiCard("Active Loyalty Members", ov.kpis.activeMembers, "Purchased L90D", "var(--color-success)")}
+        ${kpiCard("Repeat Guest Rate", `${ov.kpis.repeatCustomers}%`, "&ge; 2 Visits", "var(--color-accent-amber)")}
+        ${kpiCard("Outstanding Points", Number(ov.kpis.outstandingPoints).toLocaleString("en-IN"), "Net Liability", "var(--color-warning)")}
+        ${kpiCard("Rewards Claimed", ov.kpis.rewardsRedeemed, "Redemption Count", "var(--color-success)")}
+        ${kpiCard("Active Rewards", ov.kpis.rewardsAvailable, "Available in Catalogue", "var(--ink)")}
+        ${kpiCard("At-Risk / Lapsed", ov.kpis.lapsedMembers, "No Visit &gt; 60 Days", ov.kpis.lapsedMembers > 0 ? "var(--color-danger)" : "var(--muted)")}
+        ${kpiCard("Loyalty Sales", `₹${Number(ov.kpis.memberSales).toLocaleString("en-IN")}`, "Programme-Driven Revenue", "var(--ink)")}
+        ${kpiCard("Open Feedback", ov.kpis.feedbackOpen, "Awaiting Resolution", ov.kpis.feedbackOpen > 0 ? "var(--color-warning)" : "var(--color-success)")}
       </div>
-      <button class="btn btn-ghost" id="drill-directory-btn" type="button" style="font-size:12px; padding:4px 10px;">
-        Open Customer Directory →
-      </button>
-    </div>
 
-    <!-- Café Customer Summary / Portfolio -->
-    <h3 style="font-size:15px; font-weight:700; margin:0 0 12px; color:var(--ink);">${isCafeOps ? "Café Customer &amp; Loyalty Summary" : "Café Customer Portfolio"}</h3>
-    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(340px, 1fr)); gap:16px;">
-      ${visibleSummaries
-        .map(
-          (c) => `
-        <div class="card" style="padding:18px; border-radius:8px; background:var(--bg-surface); border:1px solid var(--border-subtle);">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-            <strong style="font-size:14.5px; color:var(--ink);">${c.cafeName}</strong>
-            <span class="status info" style="font-size:10.5px; font-family:var(--font-mono); font-weight:700;">${c.cafeId}</span>
-          </div>
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; font-size:12.5px;">
-            <div><span style="color:var(--muted);">Members:</span> <strong>${c.customerCount}</strong></div>
-            <div><span style="color:var(--muted);">Sales:</span> <strong>₹${Number(c.memberSales).toLocaleString("en-IN")}</strong></div>
-            <div><span style="color:var(--muted);">Redeemed:</span> <strong>${c.rewardsRedeemed}</strong></div>
-            <div><span style="color:var(--muted);">Feedback Open:</span> <strong style="color:${c.feedbackOpen > 0 ? "var(--color-warning)" : "var(--color-success)"}">${c.feedbackOpen}</strong></div>
-          </div>
+      <!-- Multi-Café Loyalty Performance Strip -->
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
+        <div>
+          <h3 style="font-size:15px; font-weight:700; margin:0 0 2px; color:var(--ink);">Multi-Café Guest Footfall &amp; Rewards</h3>
+          <p style="font-size:12px; color:var(--muted); margin:0;">Real-time loyalty distribution across registered outlets</p>
         </div>
-      `
-        )
-        .join("")}
+        ${isCafeOps ? `<span class="status info" style="font-size:11px;">Scaped to ${userCafe}</span>` : ""}
+      </div>
+
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:16px;">
+        ${visibleSummaries
+          .map(
+            (c) => `
+          <div class="card" style="padding:16px;">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px;">
+              <div>
+                <strong style="color:var(--ink); font-size:14px;">${c.cafeName}</strong>
+                <div style="font-size:11px; color:var(--muted); font-family:var(--font-mono);">${c.cafeId}</div>
+              </div>
+              <span class="status ${c.activeMembers > 0 ? "success" : "default"}" style="font-size:11px;">
+                ${c.activeMembers} Active
+              </span>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:12px;">
+              <div><span style="color:var(--muted);">Total Guests:</span> <strong>${c.totalCustomers}</strong></div>
+              <div><span style="color:var(--muted);">Sales:</span> <strong>₹${Number(c.memberSales).toLocaleString("en-IN")}</strong></div>
+              <div><span style="color:var(--muted);">Redeemed:</span> <strong>${c.rewardsRedeemed}</strong></div>
+              <div><span style="color:var(--muted);">Feedback Open:</span> <strong style="color:${c.feedbackOpen > 0 ? "var(--color-warning)" : "var(--color-success)"}">${c.feedbackOpen}</strong></div>
+            </div>
+          </div>
+        `
+          )
+          .join("")}
+      </div>
     </div>
   `;
 }
 
 // 2. CUSTOMER DIRECTORY SUBPANEL
 function renderDirectorySubpanel() {
-  const customers = cachedCustomers.length > 0 ? cachedCustomers : [
-    {
-      customerId: "CUST-0001",
-      membershipId: "ZAM-MEM-0001",
-      name: "Aditya Namboodiri",
-      phone: "+91 98450 11990",
-      email: "aditya@domain.com",
-      tier: "GOLD",
-      pointsBalance: 420,
-      totalVisits: 28,
-      totalSpendPaisa: 840000,
-      preferredCafeId: "ZC-0001",
-      status: "ACTIVE",
-    },
-    {
-      customerId: "CUST-0002",
-      membershipId: "ZAM-MEM-0002",
-      name: "Meera Krishnan",
-      phone: "+91 98450 22880",
-      email: "meera.k@domain.com",
-      tier: "PLATINUM",
-      pointsBalance: 1150,
-      totalVisits: 54,
-      totalSpendPaisa: 2260000,
-      preferredCafeId: "ZC-0001",
-      status: "ACTIVE",
-    },
-    {
-      customerId: "CUST-0003",
-      membershipId: "ZAM-MEM-0003",
-      name: "Rohan Varma",
-      phone: "+91 98450 33770",
-      email: "rohan@domain.com",
-      tier: "SILVER",
-      pointsBalance: 180,
-      totalVisits: 12,
-      totalSpendPaisa: 360000,
-      preferredCafeId: "ZC-0002",
-      status: "ACTIVE",
-    },
-    {
-      customerId: "CUST-0004",
-      membershipId: "ZAM-MEM-0004",
-      name: "Kavita Rao",
-      phone: "+91 98450 44660",
-      email: "kavita@domain.com",
-      tier: "BRONZE",
-      pointsBalance: 50,
-      totalVisits: 2,
-      totalSpendPaisa: 58000,
-      preferredCafeId: "ZC-0001",
-      status: "ACTIVE",
-    },
-  ];
+  const customers = cachedCustomers || [];
 
   return `
     <div class="card" style="padding:24px;">
@@ -339,10 +307,7 @@ function renderDirectorySubpanel() {
             <option value="PLATINUM">Platinum VIP</option>
           </select>
           <select class="input" id="cust-cafe-filter" style="font-size:12.5px; width:auto;">
-            <option value="">All Cafés</option>
-            <option value="ZC-0001">Main Outlet</option>
-            <option value="ZC-0002">Branch Outlet</option>
-            <option value="ZC-0003">Calicut Beach</option>
+            ${renderCafeOptions("", true)}
           </select>
           <button class="btn btn-ghost" id="open-merge-btn" type="button" style="font-size:12px;">Merge Duplicates</button>
         </div>
@@ -364,7 +329,13 @@ function renderDirectorySubpanel() {
             </tr>
           </thead>
           <tbody>
-            ${customers
+            ${customers.length === 0 ? `
+              <tr>
+                <td colspan="9" style="text-align:center; padding:32px; color:var(--muted); font-size:13px;">
+                  No customer profiles registered. Click "+ Register Guest" above to onboard your first member.
+                </td>
+              </tr>
+            ` : customers
               .map((c) => {
                 const tierClass = c.tier === "PLATINUM" ? "purple" : c.tier === "GOLD" ? "warning" : c.tier === "SILVER" ? "info" : "default";
                 const totalSpent = ((c.totalSpendPaisa || 0) / 100).toFixed(0);
@@ -383,7 +354,7 @@ function renderDirectorySubpanel() {
                   <td><strong style="font-family:var(--font-mono); color:var(--color-accent-amber); font-size:14px;">${c.pointsBalance || 0} pts</strong></td>
                   <td><strong style="font-size:13px; color:var(--ink);">${c.totalVisits || 0} visits</strong></td>
                   <td style="font-family:var(--font-mono); font-weight:700; color:var(--ink);">₹${Number(totalSpent).toLocaleString("en-IN")}</td>
-                  <td><span class="status info" style="font-size:11px; font-family:var(--font-mono);">${c.preferredCafeId || "ZC-0001"}</span></td>
+                  <td><span class="status info" style="font-size:11px; font-family:var(--font-mono);">${c.preferredCafeId || "—"}</span></td>
                   <td><span class="status success" style="font-size:10.5px;">${c.status || "ACTIVE"}</span></td>
                   <td style="text-align:right;">
                     <div style="display:inline-flex; gap:6px;">
@@ -471,10 +442,7 @@ function renderSegmentsSubpanel() {
 
 // 5. FEEDBACK & SERVICE RECOVERY SUBPANEL
 function renderFeedbackSubpanel() {
-  const feedbacks = cachedFeedbacks.length > 0 ? cachedFeedbacks : [
-    { feedbackId: "FB-001", customerId: "CUST-0002", cafeId: "ZC-0001", rating: 5, category: "SERVICE", comment: "Exceptional pour-over coffee and warm barista greeting!", status: "RESOLVED" },
-    { feedbackId: "FB-002", customerId: "CUST-0003", cafeId: "ZC-0002", rating: 3, category: "BILLING", comment: "Wait time at billing counter was slightly long during rush hour.", status: "UNDER_REVIEW" },
-  ];
+  const feedbacks = cachedFeedbacks || [];
 
   return `
     <div class="card" style="padding:24px;">
@@ -499,7 +467,13 @@ function renderFeedbackSubpanel() {
             </tr>
           </thead>
           <tbody>
-            ${feedbacks
+            ${feedbacks.length === 0 ? `
+              <tr>
+                <td colspan="7" style="text-align:center; padding:32px; color:var(--muted); font-size:13px;">
+                  No guest feedback cases recorded.
+                </td>
+              </tr>
+            ` : feedbacks
               .map(
                 (f) => `
               <tr>
@@ -684,12 +658,13 @@ let hasInitialFetchedCustomers = false;
 
 async function loadCustomerData() {
   try {
-    const [ovRes, listRes, rewRes, fbRes, progRes] = await Promise.all([
+    const [ovRes, listRes, rewRes, fbRes, progRes, cafesRes] = await Promise.all([
       apiGet("/api/v1/customers/overview").catch(() => null),
       apiGet("/api/v1/customers").catch(() => null),
       apiGet("/api/v1/customers/rewards/catalogue").catch(() => null),
       apiGet("/api/v1/customers/feedback").catch(() => null),
       apiGet("/api/v1/customers/programme/current").catch(() => null),
+      apiGet("/cafes").catch(() => null),
     ]);
 
     if (ovRes?.data) cachedOverview = ovRes.data;
@@ -698,6 +673,7 @@ async function loadCustomerData() {
     if (rewRes?.data?.rewards) cachedRewards = rewRes.data.rewards;
     if (fbRes?.data?.feedbacks) cachedFeedbacks = fbRes.data.feedbacks;
     if (progRes?.data) cachedProgramme = progRes.data;
+    if (cafesRes?.data?.cafes) cachedCafes = cafesRes.data.cafes;
   } catch (err) {
     console.warn("Customer data load notice:", err);
     if (!cachedOverview) cachedOverview = { ...DEFAULT_OVERVIEW };
@@ -734,7 +710,7 @@ function openRegisterCustomerModal(root) {
 
       <div class="form-group">
         <label class="label">Guest Full Name*</label>
-        <input type="text" id="new-cust-name" class="input" placeholder="e.g. Meera Krishnan" required>
+        <input type="text" id="new-cust-name" class="input" placeholder="e.g. Guest Name" required>
       </div>
 
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
@@ -751,9 +727,7 @@ function openRegisterCustomerModal(root) {
       <div class="form-group">
         <label class="label">Preferred Home Café</label>
         <select id="new-cust-cafe" class="input">
-          <option value="ZC-0001">Main Outlet</option>
-          <option value="ZC-0002">Branch Outlet</option>
-          <option value="ZC-0003">Calicut Beach</option>
+          ${renderCafeOptions(state.selectedCafeId)}
         </select>
       </div>
 
@@ -819,7 +793,7 @@ function openCustomer360Modal(cust) {
       </div>
 
       <div style="font-size:13px; line-height:1.7; margin-bottom:18px;">
-        <div>Preferred Café: <strong>${cust.preferredCafeId || "ZC-0001"}</strong></div>
+        <div>Preferred Café: <strong>${cust.preferredCafeId || "—"}</strong></div>
         <div>Email: <strong>${cust.email || "Not specified"}</strong></div>
         <div>Consent: <strong>Transactional Receipts (Active) · Loyalty Communications (Active)</strong></div>
       </div>
@@ -837,31 +811,18 @@ function openCustomer360Modal(cust) {
 // Modal: Adjust Points
 function openAdjustPointsModal(cust, root) {
   const content = `
-    <div style="max-width:500px; margin:0 auto; padding:10px 0;">
-      <h3 style="font-size:16px; font-weight:800; margin:0 0 6px; color:var(--ink);">Adjust Loyalty Points: ${cust.name}</h3>
-      <p style="font-size:12.5px; color:var(--muted); margin:0 0 16px;">Current balance: <strong>${cust.pointsBalance || 0} pts</strong></p>
+    <div style="max-width:480px; margin:0 auto; padding:10px 0;">
+      <h3 style="font-size:16px; font-weight:800; margin:0 0 6px; color:var(--ink);">Adjust Loyalty Points</h3>
+      <p style="font-size:12px; color:var(--muted); margin:0 0 16px;">Manual balance correction for <strong>${cust.name}</strong> (${cust.membershipId || cust.customerId})</p>
 
       <div class="form-group">
-        <label class="label">Action*</label>
-        <select id="adj-action" class="input">
-          <option value="ADD">Add Points (+)</option>
-          <option value="SUBTRACT">Deduct Points (-)</option>
-        </select>
+        <label class="label">Adjustment Points (+ to add, - to deduct)*</label>
+        <input type="number" id="adj-points" class="input" placeholder="e.g. 50 or -50" required>
       </div>
 
       <div class="form-group">
-        <label class="label">Points Amount*</label>
-        <input type="number" id="adj-amount" class="input" placeholder="e.g. 50" min="1" required>
-      </div>
-
-      <div class="form-group">
-        <label class="label">Mandatory Reason Code*</label>
-        <select id="adj-reason" class="input">
-          <option value="Missing Earn Transaction">Missing Earn Transaction</option>
-          <option value="Customer Service Correction">Customer Service Correction</option>
-          <option value="Promotional Award">Promotional Award</option>
-          <option value="Administrative Correction">Administrative Correction</option>
-        </select>
+        <label class="label">Reason / Justification*</label>
+        <input type="text" id="adj-reason" class="input" placeholder="e.g. Service recovery courtesy / System reconciliation" required>
       </div>
 
       <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:18px;">
@@ -874,22 +835,17 @@ function openAdjustPointsModal(cust, root) {
   const modal = openModal(content);
   modal.querySelector("#adj-cancel-btn")?.addEventListener("click", () => modal.close());
   modal.querySelector("#adj-submit-btn")?.addEventListener("click", async () => {
-    const action = modal.querySelector("#adj-action")?.value;
-    const points = Number(modal.querySelector("#adj-amount")?.value);
-    const reasonCode = modal.querySelector("#adj-reason")?.value;
+    const pointsDelta = Number(modal.querySelector("#adj-points")?.value);
+    const reason = modal.querySelector("#adj-reason")?.value;
 
-    if (!points || points <= 0) {
-      showToast("Please enter a valid points amount.", "error");
+    if (isNaN(pointsDelta) || pointsDelta === 0 || !reason) {
+      showToast("Please enter a valid points adjustment and reason.", "error");
       return;
     }
 
     try {
-      await apiPost(`/api/v1/customers/${encodeURIComponent(cust.customerId)}/loyalty/adjust`, {
-        action,
-        points,
-        reasonCode,
-      });
-      showToast("Loyalty points adjusted successfully.", "success");
+      await apiPost(`/api/v1/customers/${cust.customerId}/points/adjust`, { pointsDelta, reason });
+      showToast("Points adjusted successfully.", "success");
       modal.close();
       await loadCustomerData();
       rerender(root);
@@ -908,12 +864,12 @@ function openMergeModal(root) {
 
       <div class="form-group">
         <label class="label">Primary Customer ID (To Keep)*</label>
-        <input type="text" id="merge-primary-id" class="input" placeholder="e.g. CUST-0001" required>
+        <input type="text" id="merge-primary-id" class="input" placeholder="e.g. Primary Customer ID" required>
       </div>
 
       <div class="form-group">
         <label class="label">Duplicate Customer ID (To Merge &amp; Close)*</label>
-        <input type="text" id="merge-dup-id" class="input" placeholder="e.g. CUST-0004" required>
+        <input type="text" id="merge-dup-id" class="input" placeholder="e.g. Duplicate Customer ID" required>
       </div>
 
       <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:18px;">

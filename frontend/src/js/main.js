@@ -55,6 +55,7 @@ import {
   wireMfaChallenge2,
   showGlassAlert,
 } from "./pages/login2.js?v=3.4.4";
+import { mountPublicCafeGateway } from "./pages/cafeGatewayPage.js";
 import "./responsiveAuditor.js";
 
 // =============================================================================
@@ -110,9 +111,9 @@ export const DEV_PREVIEW_USERS = Object.freeze({
     name: "Cafe Admin (Ops)",
     email: "admin@example.com",
     role: "CAFE_ADMIN",
-    primaryCafeId: "ZC-0001",
-    primaryCafeName: "Main Outlet",
-    assignedCafeIds: ["ZC-0001"],
+    primaryCafeId: "",
+    primaryCafeName: "",
+    assignedCafeIds: [],
     organisationId: "ZAMORIN",
     status: "ACTIVE",
     isDevPreview: true,
@@ -124,8 +125,8 @@ export const DEV_PREVIEW_USERS = Object.freeze({
     name: "Normal Employee / Staff",
     email: "staff@example.com",
     role: "STAFF",
-    primaryCafeId: "ZC-0001",
-    assignedCafeIds: ["ZC-0001"],
+    primaryCafeId: "",
+    assignedCafeIds: [],
     organisationId: "ZAMORIN",
     status: "ACTIVE",
     isDevPreview: true,
@@ -846,6 +847,24 @@ async function boot() {
       ? new URLSearchParams(window.location.search)
       : null;
 
+  // Direct Café Access QR / Link / PIN Gateway Routing (P0-02, P0-02B)
+  const pathname = typeof window !== "undefined" ? window.location.pathname : "";
+  const isQrPath = pathname.startsWith("/cafe-access/qr/") || urlHash.startsWith("cafe-access/qr/");
+  const isLinkPath = pathname.startsWith("/cafe-access/link/") || urlHash.startsWith("cafe-access/link/");
+  const isGatewayPath = pathname === "/cafe-gateway" || urlHash === "cafe-gateway";
+
+  if (isQrPath || isLinkPath || isGatewayPath) {
+    const token = isQrPath
+      ? (pathname.startsWith("/cafe-access/qr/") ? pathname.slice("/cafe-access/qr/".length) : urlHash.slice("cafe-access/qr/".length))
+      : isLinkPath
+      ? (pathname.startsWith("/cafe-access/link/") ? pathname.slice("/cafe-access/link/".length) : urlHash.slice("cafe-access/link/".length))
+      : null;
+    const method = isQrPath ? "QR" : isLinkPath ? "LINK" : null;
+
+    mountPublicCafeGateway(document.getElementById("app"), { method, token });
+    return;
+  }
+
   // Direct Auth Screen Routing (0ms instant mount)
   if (urlHash === "login" || params?.get("auth") === "login") {
     mountAuthScreen("login");
@@ -871,6 +890,35 @@ async function boot() {
     }
   } catch (_err) {
     clearAllAuthTokens();
+  }
+
+  // Local development / automated testing persona resolution
+  if (isDirectDashboardAllowed() && (params?.get("role") || params?.get("devRole") || localStorage.getItem("zamorin-dev-role"))) {
+    const devKey = getRequestedDevRole();
+    const devUser = DEV_PREVIEW_USERS[devKey] || DEV_PREVIEW_USERS.master;
+    const canonicalRole = devKey === "master_normal" ? "master" : devKey;
+    const isPrimary = Boolean(devUser?.isPrimaryMaster);
+    const roleNavigation = NAVIGATION[canonicalRole] || NAVIGATION.master;
+    const defaultRoute = roleNavigation?.items?.[0]?.route || (canonicalRole === "staff" ? "staff-home" : "dashboard");
+    const initialRoute = urlHash ? (isRouteAllowed(canonicalRole, urlHash, isPrimary) ? urlHash : defaultRoute) : defaultRoute;
+
+    setState({
+      auth: {
+        authenticated: true,
+        loading: false,
+        user: devUser,
+        authentication: null,
+        error: null,
+      },
+      user: devUser,
+      isPrimaryMaster: isPrimary,
+      role: canonicalRole,
+      route: initialRoute,
+    });
+
+    renderShell();
+    registerServiceWorker().catch(() => {});
+    return;
   }
 
   // Unauthenticated: Mount login screen immediately with ZERO latency!
@@ -904,6 +952,12 @@ if (typeof window !== "undefined") {
       mountAuthScreen("forgot");
     } else if (rawHash === "mfa") {
       mountAuthScreen("mfa");
+    } else if (rawHash === "cafe-gateway" || rawHash.startsWith("cafe-access/")) {
+      const isQr = rawHash.startsWith("cafe-access/qr/");
+      const isLink = rawHash.startsWith("cafe-access/link/");
+      const token = isQr ? rawHash.slice("cafe-access/qr/".length) : isLink ? rawHash.slice("cafe-access/link/".length) : null;
+      const method = isQr ? "QR" : isLink ? "LINK" : null;
+      mountPublicCafeGateway(document.getElementById("app"), { method, token });
     } else if (rawHash && state.route !== rawHash) {
       navigate(rawHash);
     }

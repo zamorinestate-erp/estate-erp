@@ -10,6 +10,8 @@ const {
   SequenceCounter,
 } = require('../models/SequenceCounter');
 
+const cafeService = require('../services/cafeService');
+
 const {
   asyncHandler,
 } = require('../utils/asyncHandler');
@@ -24,14 +26,19 @@ function normalizeIdentifier(value) {
     : '';
 }
 
-function requireMaster(request) {
-  if (request.auth.role !== 'MASTER') {
+function requireGovernanceRole(request) {
+  const role = request.auth?.role ? request.auth.role.toUpperCase() : '';
+  if (role !== 'MASTER' && role !== 'OWNER') {
     throw new ApiError(
       403,
-      'MASTER_ACCESS_REQUIRED',
-      'Only the MASTER role may perform this action.'
+      'GOVERNANCE_ACCESS_REQUIRED',
+      'Only Master and Owner roles may perform this action.'
     );
   }
+}
+
+function requireMaster(request) {
+  requireGovernanceRole(request);
 }
 
 function buildCafeFilter(request) {
@@ -40,7 +47,7 @@ function buildCafeFilter(request) {
       request.auth.organisationId,
   };
 
-  if (request.auth.role !== 'MASTER') {
+  if (request.auth.role !== 'MASTER' && request.auth.role !== 'OWNER') {
     filter.cafeId = {
       $in: request.auth.assignedCafeIds || [],
     };
@@ -132,6 +139,7 @@ const getCafe = asyncHandler(
 
     if (
       request.auth.role !== 'MASTER' &&
+      request.auth.role !== 'OWNER' &&
       !request.auth.assignedCafeIds.includes(
         cafeId
       )
@@ -166,109 +174,26 @@ const getCafe = asyncHandler(
 
 const createCafe = asyncHandler(
   async (request, response) => {
-    requireMaster(request);
+    requireGovernanceRole(request);
 
-    const {
-      name,
-      displayName,
-      cafeType = 'STANDARD_CAFE',
-    } = request.body || {};
-
-    if (
-      typeof name !== 'string' ||
-      !name.trim() ||
-      typeof displayName !== 'string' ||
-      !displayName.trim()
-    ) {
-      throw new ApiError(
-        400,
-        'CAFE_FIELDS_REQUIRED',
-        'Café name and display name are required.'
-      );
-    }
-
-    const normalizedCafeType =
-      normalizeIdentifier(cafeType);
-
-    if (
-      !CAFE_TYPES.includes(
-        normalizedCafeType
-      )
-    ) {
-      throw new ApiError(
-        400,
-        'INVALID_CAFE_TYPE',
-        'The café type is invalid.'
-      );
-    }
-
-    const cafeId =
-      await SequenceCounter.generateId({
-        organisationId:
-          request.auth.organisationId,
-        sequenceKey: 'CAFE',
-        prefix: 'ZC',
-        minimumDigits: 4,
-      });
-
-    const cafe = await Cafe.create({
-      ...request.body,
-      cafeId,
-      organisationId:
-        request.auth.organisationId,
-      name: name.trim(),
-      displayName:
-        displayName.trim(),
-      cafeType:
-        normalizedCafeType,
-      status: 'DRAFT',
-      timezone: 'Asia/Kolkata',
-      currency: 'INR',
-      createdBy:
-        request.auth.userId,
-      updatedBy:
-        request.auth.userId,
+    const result = await cafeService.createCafeWithAccess({
+      auth: request.auth,
+      cafeData: request.body || {},
+      clientIp: request.ip,
+      userAgent: request.headers['user-agent'],
+      correlationId:
+        request.correlationId ||
+        request.headers['x-correlation-id'] ||
+        null,
     });
-
-    // Stage 008 Non-Negotiable: Auto-provision all active global inventory items to the new café with quantity 0
-    try {
-      const { GlobalInventoryItem } = require('../models/GlobalInventoryItem');
-      const { CafeInventoryConfig } = require('../models/CafeInventoryConfig');
-      const activeItems = await GlobalInventoryItem.find({ organisationId: request.auth.organisationId, status: 'ACTIVE' }).lean();
-      if (activeItems.length > 0) {
-        const configDocs = activeItems.map((itm) => ({
-          organisationId: request.auth.organisationId,
-          cafeId,
-          itemId: itm.itemId,
-          currentQuantityBase: 0,
-          availableQuantityBase: 0,
-          reservedQuantityBase: 0,
-          quarantinedQuantityBase: 0,
-          expiredQuantityBase: 0,
-          inTransitQuantityBase: 0,
-          incomingQuantityBase: 0,
-          minQuantityBase: 10,
-          parQuantityBase: 25,
-          maxQuantityBase: 50,
-          safetyStockBase: 5,
-          stockedHere: true,
-          replenishmentEnabled: true,
-          primaryLocation: 'Main Store',
-          storageLocations: ['Main Store'],
-          status: 'ACTIVE',
-        }));
-        await CafeInventoryConfig.insertMany(configDocs, { ordered: false }).catch(() => {});
-      }
-    } catch (_) {
-      // Non-blocking provisioning catch
-    }
 
     return response.status(201).json({
       success: true,
       message:
-        'Café created successfully and global inventory items provisioned.',
+        'Café created successfully and access credentials provisioned.',
       data: {
-        cafe,
+        cafe: result.cafe,
+        access: result.access,
       },
       correlationId:
         request.correlationId || null,
@@ -402,6 +327,21 @@ const changeCafeStatus = asyncHandler(
       );
     }
 
+    try {
+      const { CafeAccess } = require('../models/CafeAccess');
+      if (status === 'TEMPORARILY_CLOSED' || status === 'CLOSED') {
+        await CafeAccess.updateOne(
+          { organisationId: request.auth.organisationId, cafeId },
+          { $set: { accessStatus: 'DISABLED', updatedBy: request.auth.userId } }
+        ).catch(() => {});
+      } else if (status === 'ACTIVE') {
+        await CafeAccess.updateOne(
+          { organisationId: request.auth.organisationId, cafeId, accessStatus: 'DISABLED' },
+          { $set: { accessStatus: 'ACTIVE', updatedBy: request.auth.userId } }
+        ).catch(() => {});
+      }
+    } catch (_) {}
+
     return response.status(200).json({
       success: true,
       message:
@@ -460,6 +400,23 @@ const archiveCafe = asyncHandler(
         request.auth.userId,
       reason,
     });
+
+    try {
+      const { CafeAccess } = require('../models/CafeAccess');
+      await CafeAccess.updateOne(
+        {
+          organisationId: request.auth.organisationId,
+          cafeId,
+        },
+        {
+          $set: {
+            accessStatus: 'SUSPENDED',
+            provisioningStatus: 'ARCHIVED',
+            updatedBy: request.auth.userId,
+          },
+        }
+      ).catch(() => {});
+    } catch (_) {}
 
     return response.status(200).json({
       success: true,

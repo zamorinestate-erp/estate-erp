@@ -31,6 +31,26 @@ export function setDepartmentOrdersActiveTab(tab) {
   activeTab = aliasMap[norm] || norm || "overview";
 }
 
+let cachedCafes = [];
+
+function escapeHtml(str) {
+  if (!str) return "";
+  return String(str).replace(/[&<>"']/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[m]);
+}
+
+async function loadCafesIfEmpty() {
+  if (cachedCafes.length === 0) {
+    try {
+      const res = await apiGet("/cafes");
+      if (res?.data?.cafes && Array.isArray(res.data.cafes)) {
+        cachedCafes = res.data.cafes;
+      }
+    } catch (e) {
+      cachedCafes = [];
+    }
+  }
+}
+
 const SAMPLE_ORDERS = [];
 const SAMPLE_QUOTES = [];
 const SAMPLE_ACCOUNTS = [];
@@ -40,7 +60,7 @@ export function renderDepartmentOrders(subroute) {
     setDepartmentOrdersActiveTab(subroute);
   }
   const isCafeOps = state.role === "CAFE_ADMIN";
-  const userCafe = state.auth?.user?.primaryCafeId || state.user?.primaryCafeId || "ZC-0001";
+  const userCafe = state.auth?.user?.primaryCafeId || state.user?.primaryCafeId || "";
   const rawOrders = liveOrders || SAMPLE_ORDERS;
   const orders = isCafeOps ? rawOrders.filter((o) => !o.cafeId || o.cafeId === userCafe) : rawOrders;
 
@@ -354,6 +374,7 @@ function renderOverviewTab(orders, totalOutstanding, totalSettled, upcomingCount
 }
 
 export function wireDepartmentOrders(root, subroute) {
+  loadCafesIfEmpty();
   if (subroute !== undefined) {
     setDepartmentOrdersActiveTab(subroute);
   }
@@ -865,9 +886,7 @@ function openNewOrderWizard(root) {
         <div class="field">
           <label class="label" style="font-weight:600;font-size:12.5px;">Café Location *</label>
           <select id="dept-cafe" class="select" required>
-            <option value="ZC-0001">ZC-0001 · Main Outlet</option>
-            <option value="ZC-0002">ZC-0002 · Branch Outlet</option>
-            <option value="ZC-0003">ZC-0003 · Calicut Beach</option>
+            ${cachedCafes.length > 0 ? cachedCafes.map(c => `<option value="${escapeHtml(c.cafeId)}">${escapeHtml(c.cafeId)} · ${escapeHtml(c.name || c.cafeId)}</option>`).join('') : '<option value="">No active cafés</option>'}
           </select>
         </div>
         <div class="field">
@@ -1054,9 +1073,7 @@ function openConvertQuoteModal(quoteId, root) {
         <div class="field">
           <label class="label" style="font-weight:600;font-size:12.5px;">Café Location *</label>
           <select id="convert-cafe" class="select" required>
-            <option value="ZC-0001">ZC-0001 · Main Outlet</option>
-            <option value="ZC-0002">ZC-0002 · Branch Outlet</option>
-            <option value="ZC-0003">ZC-0003 · Calicut Beach</option>
+            ${cachedCafes.length > 0 ? cachedCafes.map(c => `<option value="${escapeHtml(c.cafeId)}">${escapeHtml(c.cafeId)} · ${escapeHtml(c.name || c.cafeId)}</option>`).join('') : '<option value="">No active cafés</option>'}
           </select>
         </div>
         <div class="field" style="grid-column:1/-1;">
@@ -1070,7 +1087,7 @@ function openConvertQuoteModal(quoteId, root) {
       const po = modalEl.querySelector("#convert-po")?.value?.trim() || `PO-${quote.quoteId.replace('QUO-', '')}`;
       const date = modalEl.querySelector("#convert-date")?.value;
       const windowTime = modalEl.querySelector("#convert-window")?.value?.trim();
-      const cafeId = modalEl.querySelector("#convert-cafe")?.value || "ZC-0001";
+      const cafeId = modalEl.querySelector("#convert-cafe")?.value || (cachedCafes[0]?.cafeId || "");
       const loc = modalEl.querySelector("#convert-loc")?.value?.trim();
 
       if (!date || !windowTime) {

@@ -15,33 +15,18 @@ import { ROLES } from "../navigation.js";
 function getOperatorSession() {
   const user = state.auth?.user || state.user || {};
   return {
-    operatorUserId: user.userId || "EMP-0042",
-    operatorName: user.name || "Operations Lead",
+    operatorUserId: user.userId || "",
+    operatorName: user.name || "Operator",
     role: user.role || "CAFE_ADMIN",
-    primaryCafeId: user.primaryCafeId || "ZC-0001",
-    primaryCafeName: user.primaryCafeName || "Main Outlet",
-    deviceId: "DEV-CAF-01",
+    primaryCafeId: user.primaryCafeId || user.assignedCafeIds?.[0] || "",
+    primaryCafeName: user.primaryCafeName || "Café Outlet",
+    deviceId: user.deviceId || "DEV-POS-01",
     businessDate: new Date().toISOString().slice(0, 10),
   };
 }
 
-// Master menu catalogue
-let _menuCatalogue = [
-  { id: "MNU-01", name: "Zamorin Pour-Over", category: "Hot Coffees", price: 240, foodType: "Veg", code: "PO-01", hasModifiers: true, availability: "AVAILABLE" },
-  { id: "MNU-02", name: "Spanish Cortado", category: "Hot Coffees", price: 210, foodType: "Veg", code: "COR-02", hasModifiers: true, availability: "AVAILABLE" },
-  { id: "MNU-03", name: "Single Origin Flat White", category: "Hot Coffees", price: 230, foodType: "Veg", code: "FW-03", hasModifiers: true, availability: "AVAILABLE" },
-  { id: "MNU-04", name: "18-Hour Cold Brew", category: "Cold Brews", price: 260, foodType: "Veg", code: "CB-01", hasModifiers: true, availability: "AVAILABLE" },
-  { id: "MNU-05", name: "Spiced Cardamom Latte", category: "Cold Brews", price: 280, foodType: "Veg", code: "SCL-02", hasModifiers: true, availability: "AVAILABLE" },
-  { id: "MNU-06", name: "Yuzu Espresso Tonic", category: "Cold Brews", price: 290, foodType: "Veg", code: "YET-03", hasModifiers: true, availability: "AVAILABLE" },
-  { id: "MNU-07", name: "Butter Croissant", category: "Bakery & Viennoiserie", price: 180, foodType: "Veg", code: "BC-01", hasModifiers: false, availability: "AVAILABLE" },
-  { id: "MNU-08", name: "Pain au Chocolat", category: "Bakery & Viennoiserie", price: 210, foodType: "Veg", code: "PAC-02", hasModifiers: false, availability: "AVAILABLE" },
-  { id: "MNU-09", name: "Cardamom Pistachio Babka", category: "Bakery & Viennoiserie", price: 220, foodType: "Veg", code: "CPB-03", hasModifiers: false, availability: "AVAILABLE" },
-  { id: "MNU-10", name: "Avocado Sourdough Toast", category: "Savouries & Mains", price: 340, foodType: "Veg", code: "AST-01", hasModifiers: false, availability: "AVAILABLE" },
-  { id: "MNU-11", name: "Smoked Chicken Panini", category: "Savouries & Mains", price: 380, foodType: "Non-Veg", code: "SCP-02", hasModifiers: false, availability: "AVAILABLE" },
-  { id: "MNU-12", name: "Truffle Mushroom Brioche", category: "Savouries & Mains", price: 360, foodType: "Veg", code: "TMB-03", hasModifiers: false, availability: "AVAILABLE" },
-  { id: "MNU-13", name: "Kerala Vanilla Bean Tart", category: "Desserts", price: 240, foodType: "Veg", code: "VBT-01", hasModifiers: false, availability: "AVAILABLE" },
-  { id: "MNU-14", name: "Dark Roast Coffee Mousse", category: "Desserts", price: 260, foodType: "Veg", code: "DCM-02", hasModifiers: false, availability: "AVAILABLE" },
-];
+// Master menu catalogue (Loaded dynamically from database)
+let _menuCatalogue = [];
 
 // POS State
 let cart = []; // Array of { lineId, item, qty, modifiers, notes }
@@ -96,10 +81,10 @@ export function renderPOS() {
 function renderTerminalView() {
   const isCafeOps = state.role === ROLES.CAFE_ADMIN;
   const operator = getOperatorSession();
-  const operatorName = operator?.name || state.user?.name || "Duty Operator";
-  const operatorEmpId = operator?.employeeId || state.user?.employeeId || "EMP-0042";
-  const cafeName = isCafeOps ? "📍 Main Outlet (ZC-0001)" : "☕ Zamorin Master POS Terminal · All Outlets";
-  const deviceName = "Register 01 · DEV-CAF-01";
+  const operatorName = operator?.operatorName || state.user?.name || "Duty Operator";
+  const operatorEmpId = operator?.operatorUserId || state.user?.employeeId || "—";
+  const cafeName = isCafeOps ? `📍 ${operator?.primaryCafeName || 'Café Outlet'}` : "☕ Zamorin Master POS Terminal · All Outlets";
+  const deviceName = operator?.deviceId ? `Register · ${operator.deviceId}` : "Active Register";
   const businessDateStr = new Intl.DateTimeFormat("en-IN", {
     timeZone: "Asia/Kolkata",
     day: "2-digit",
@@ -297,9 +282,15 @@ function renderTerminalView() {
                 </div>
               </div>
             `).join("") : `
-              <div style="grid-column:1/-1;text-align:center;padding:40px 10px;color:var(--muted);">
-                <p style="font-size:13px;margin:0;">No menu items match "<strong>${escapeHtml(searchQuery)}</strong>"</p>
-                <button class="btn btn-sm btn-secondary" id="pos-reset-search-btn" style="margin-top:8px;font-size:11.5px;" type="button">Clear Search</button>
+              <div style="grid-column:1/-1;text-align:center;padding:48px 10px;color:var(--muted);">
+                ${searchQuery ? `
+                  <p style="font-size:13px;margin:0;">No menu items match "<strong>${escapeHtml(searchQuery)}</strong>"</p>
+                  <button class="btn btn-sm btn-secondary" id="pos-reset-search-btn" style="margin-top:8px;font-size:11.5px;" type="button">Clear Search</button>
+                ` : `
+                  <div style="font-size:32px;margin-bottom:8px;">☕</div>
+                  <strong style="font-size:14px;display:block;color:var(--ink);">No Menu Products Configured</strong>
+                  <p style="font-size:12px;margin:4px 0 0;">Create products in Menu Management or configure your café POS catalogue.</p>
+                `}
               </div>
             `}
           </div>
@@ -871,7 +862,7 @@ function wirePOSEventListeners(root) {
       try {
         const holdName = `${activeServiceMode === "DINE_IN" ? activeTable : activeToken} (Hold)`;
         const res = await apiPost("/bills", {
-          cafeId: state.user?.assignedCafeIds?.[0] || "ZC-0001",
+          cafeId: state.user?.assignedCafeIds?.[0] || state.user?.primaryCafeId || "",
           orderType: activeServiceMode,
           serviceMode: activeServiceMode,
           tableNumber: activeServiceMode === "DINE_IN" ? activeTable : "",
@@ -1355,7 +1346,7 @@ async function executeFinalSale(grandTotal, tender, root, paymentRef = "", custo
     ];
 
     const payload = {
-      cafeId: state.user?.assignedCafeIds?.[0] || "ZC-0001",
+      cafeId: state.user?.assignedCafeIds?.[0] || state.user?.primaryCafeId || "",
       orderType: activeServiceMode,
       serviceMode: activeServiceMode,
       tableNumber: activeServiceMode === "DINE_IN" ? activeTable : "",
@@ -1413,6 +1404,7 @@ function openReceiptModal(bill, isReprint = false) {
   const subtotal = bill.subtotalPaisa ? bill.subtotalPaisa / 100 : bill.totalPaisa ? bill.totalPaisa / 100 : 0;
   const gst = bill.taxPaisa ? bill.taxPaisa / 100 : Math.round(subtotal * 0.05);
   const grandTotal = bill.totalPaisa ? bill.totalPaisa / 100 : subtotal + gst;
+  const cafeName = bill.cafeName || state.user?.primaryCafeName || (state.cafes?.find((c) => c.cafeId === bill.cafeId)?.name) || "Zamorin Outlet";
 
   openModal({
     title: isReprint ? "Tax Invoice · [DUPLICATE REPRINT]" : "Sale Completed · Tax Invoice Receipt",
@@ -1420,7 +1412,7 @@ function openReceiptModal(bill, isReprint = false) {
     body: `
       <div style="font-family:var(--font-mono);background:var(--surface-sunken);padding:18px;border-radius:var(--radius-sm);font-size:12px;line-height:1.5;border:1px solid var(--line);">
         <div style="text-align:center;font-weight:800;font-size:15px;margin-bottom:2px;color:var(--ink);">ZAMORIN CAFE ESTATE</div>
-        <div style="text-align:center;font-size:10px;color:var(--muted);">GSTIN: 32AABCT1332L1ZV · Main Outlet</div>
+        <div style="text-align:center;font-size:10px;color:var(--muted);">GSTIN: 32AABCT1332L1ZV · ${escapeHtml(cafeName)}</div>
         <div style="text-align:center;font-size:11px;font-weight:700;color:var(--bronze-600);margin-bottom:10px;">
           ${isReprint ? "TAX INVOICE — [DUPLICATE REPRINT]" : "TAX INVOICE / RETAIL BILL"}
         </div>
@@ -1693,7 +1685,7 @@ function openRegisterModal(root) {
         const floatVal = Number(document.querySelector("#opening-float-input")?.value) || 0;
         try {
           const res = await apiPost("/bills/register/session/open", {
-            cafeId: state.user?.assignedCafeIds?.[0] || "ZC-0001",
+            cafeId: state.user?.assignedCafeIds?.[0] || state.user?.primaryCafeId || "",
             registerId: "REG-01",
             openingFloatPaisa: floatVal * 100,
           });

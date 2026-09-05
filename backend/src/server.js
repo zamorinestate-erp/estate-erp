@@ -291,7 +291,12 @@ async function startServer() {
   try {
     const { initRepositories } = require('./cafe-operations/repositories');
     initRepositories('mongo');
-  } catch (_) {}
+  } catch (err) {
+    if (environment.nodeEnv === 'production' || process.env.NODE_ENV === 'production') {
+      console.error('[FATAL] Failed to initialize CafeOps Mongo repositories in production mode:', err.message);
+      process.exit(1);
+    }
+  }
 
   const app =
     createApp(environment);

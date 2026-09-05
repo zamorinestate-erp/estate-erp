@@ -218,17 +218,102 @@ class OperatorSessionService {
   /**
    * Operator Sign-In on a cafe-owned, trusted device (supports dual-PIN verification).
    */
-  async signInOperator({ organisationId, deviceId, cafeId, operatorUserId, pin, cafePin, rememberAccess, clientIp, userAgent, correlationId }) {
-    const orgId = (organisationId || 'ZAMORIN').toUpperCase();
-
-    // 1. Resolve & Verify Cafe
-    const targetCafeId = (cafeId || '').trim().toUpperCase();
+  async signInOperator({ organisationId, deviceId, cafeId, operatorUserId, employeeId, cafePin, pin, gatewayContextToken, rememberAccess, clientIp, userAgent, correlationId }) {
+    const effectiveOperatorUserId = (operatorUserId || employeeId || '').trim();
+    let orgId = (organisationId || 'ZAMORIN').toUpperCase();
+    let targetCafeId = null;
     let cafe = null;
-    if (targetCafeId) {
+    let accessMethod = 'DEVICE';
+
+    const cleanGatewayToken = (gatewayContextToken || '').trim();
+
+    if (cleanGatewayToken) {
+      // 1. Authoritative Gateway Context Resolution (P0-01)
+      const { CafeGatewayContext } = require('../models/CafeGatewayContext');
+      const gatewayContext = await CafeGatewayContext.findOne({
+        gatewayContextId: cleanGatewayToken,
+      });
+
+      if (!gatewayContext) {
+        throw new ApiError(401, 'INVALID_GATEWAY_CONTEXT', 'Cafe Operations access is unavailable or invalid.');
+      }
+
+      // P0-01B: Expiration check (independent of MongoDB TTL monitor)
+      if (!gatewayContext.expiresAt || new Date(gatewayContext.expiresAt) <= new Date() || gatewayContext.status === 'EXPIRED') {
+        throw new ApiError(401, 'GATEWAY_CONTEXT_EXPIRED', 'This access session has expired. Please start again.');
+      }
+
+      if (gatewayContext.consumed || gatewayContext.status === 'CONSUMED') {
+        throw new ApiError(401, 'GATEWAY_CONTEXT_CONSUMED', 'This access context has already been used. Please scan or enter PIN again.');
+      }
+
+      if (gatewayContext.status !== 'ACTIVE') {
+        throw new ApiError(403, 'GATEWAY_CONTEXT_INACTIVE', 'Cafe Operations access is currently unavailable.');
+      }
+
+      // Check CafeAccess record & emergency lock
+      const { CafeAccess } = require('../models/CafeAccess');
+      const cafeAccessDoc = await CafeAccess.findOne({
+        organisationId: gatewayContext.organisationId,
+        cafeId: gatewayContext.cafeId,
+      });
+
+      if (!cafeAccessDoc || cafeAccessDoc.accessStatus === 'LOCKED' || cafeAccessDoc.accessStatus === 'DISABLED') {
+        throw new ApiError(403, 'CAFE_ACCESS_UNAVAILABLE', 'Café Operations access is currently unavailable.');
+      }
+
+      // Check parent cafe status
       cafe = await Cafe.findOne({
-        organisationId: orgId,
-        cafeId: targetCafeId,
-      }).select('+operationsPinHash');
+        organisationId: gatewayContext.organisationId,
+        cafeId: gatewayContext.cafeId,
+      });
+
+      if (!cafe || cafe.status === 'ARCHIVED' || cafe.status === 'CLOSED') {
+        throw new ApiError(403, 'CAFE_INACTIVE', 'Café Operations access is currently unavailable.');
+      }
+
+      // Authoritative derivation from server Gateway Context (P0-01)
+      orgId = gatewayContext.organisationId;
+      targetCafeId = gatewayContext.cafeId;
+      accessMethod = gatewayContext.accessMethod || 'GATEWAY';
+
+      // Security Invariant: Client-supplied cafeId is NEVER authoritative; if supplied, reject tampering
+      if (cafeId && cafeId.trim().toUpperCase() !== targetCafeId) {
+        throw new ApiError(403, 'CAFE_MISMATCH', 'Selected cafe does not match the active gateway context.');
+      }
+
+      // Mark gateway context consumed
+      gatewayContext.consumed = true;
+      gatewayContext.status = 'CONSUMED';
+      gatewayContext.consumedAt = new Date();
+      gatewayContext.consumedByUserId = (effectiveOperatorUserId || '').toUpperCase();
+      await gatewayContext.save().catch(() => {});
+    } else {
+      // Direct registered device sign-in
+      const resolvedDeviceId = deviceId;
+      let device = null;
+      if (resolvedDeviceId) {
+        device = await DeviceRegistration.findOne({
+          deviceId: resolvedDeviceId,
+          organisationId: orgId,
+        });
+      }
+
+      if (device && device.assignedCafeId) {
+        targetCafeId = device.assignedCafeId;
+        cafe = await Cafe.findOne({ organisationId: orgId, cafeId: targetCafeId }).select('+operationsPinHash');
+      } else if (cafeId) {
+        targetCafeId = cafeId.trim().toUpperCase();
+        cafe = await Cafe.findOne({ organisationId: orgId, cafeId: targetCafeId }).select('+operationsPinHash');
+      }
+
+      if (cafeId && targetCafeId && cafeId.trim().toUpperCase() !== targetCafeId) {
+        throw new ApiError(403, 'CAFE_DEVICE_MISMATCH', 'Selected cafe does not match the device assigned cafe.');
+      }
+
+      if (!targetCafeId) {
+        throw new ApiError(400, 'DEVICE_OR_CAFE_REQUIRED', 'Cafe Operations require a registered device or valid cafe gateway context.');
+      }
 
       if (!cafe) {
         throw new ApiError(404, 'CAFE_NOT_FOUND', `Cafe ${targetCafeId} was not found.`);
@@ -237,52 +322,56 @@ class OperatorSessionService {
       if (cafe.status !== 'ACTIVE') {
         throw new ApiError(403, 'CAFE_INACTIVE', `Cafe ${targetCafeId} is currently ${cafe.status}. Operations access is blocked.`);
       }
-    }
 
-    // 2. Cafe PIN Verification (if cafe has PIN set or cafePin was provided)
-    if (cafe && cafe.operationsPinHash) {
-      if (cafe.operationsPinLockedUntil && new Date(cafe.operationsPinLockedUntil) > new Date()) {
-        const waitMinutes = Math.ceil((new Date(cafe.operationsPinLockedUntil) - new Date()) / 60000);
-        throw new ApiError(429, 'CAFE_PIN_LOCKED', `Cafe Operations PIN is temporarily locked. Try again in ${waitMinutes} minute(s).`);
-      }
-
-      if (!cafePin) {
-        throw new ApiError(400, 'CAFE_PIN_REQUIRED', 'Cafe PIN is required for this location.');
-      }
-
-      const isCafePinValid = await bcrypt.compare(String(cafePin), cafe.operationsPinHash);
-      if (!isCafePinValid) {
-        cafe.operationsPinFailedAttempts = (cafe.operationsPinFailedAttempts || 0) + 1;
-        if (cafe.operationsPinFailedAttempts >= MAX_FAILED_PIN_ATTEMPTS) {
-          cafe.operationsPinLockedUntil = new Date(Date.now() + PIN_LOCK_MINUTES * 60 * 1000);
+      // Dual-PIN Verification (if location has operationsPinHash configured or cafePin supplied)
+      if (cafe && (cafe.operationsPinHash || cafePin)) {
+        if (cafe.operationsPinLockedUntil && new Date(cafe.operationsPinLockedUntil) > new Date()) {
+          const waitMinutes = Math.ceil((new Date(cafe.operationsPinLockedUntil) - new Date()) / 60000);
+          throw new ApiError(429, 'CAFE_PIN_LOCKED', `Cafe Operations PIN is temporarily locked. Try again in ${waitMinutes} minute(s).`);
         }
-        await cafe.save();
 
-        await this._logAudit({
-          organisationId: orgId,
-          cafeId: cafe.cafeId,
-          action: 'CAFE_PIN_AUTH_FAILED',
-          actorUserId: operatorUserId || 'UNKNOWN',
-          actorRole: 'CAFE_ADMIN',
-          entityType: 'CAFE',
-          entityId: cafe.cafeId,
-          result: 'FAILURE',
-          riskClassification: 'HIGH',
-          details: { failedAttempts: cafe.operationsPinFailedAttempts, targetCafeId: cafe.cafeId },
-        });
+        if (!cafePin) {
+          throw new ApiError(400, 'CAFE_PIN_REQUIRED', 'Cafe PIN is required for this location.');
+        }
 
-        throw new ApiError(401, 'INVALID_CAFE_PIN', 'Cafe PIN not recognised. Please verify and try again.');
-      }
+        if (!cafe.operationsPinHash) {
+          throw new ApiError(401, 'INVALID_CAFE_PIN', 'Cafe PIN not recognised. Please verify and try again.');
+        }
 
-      // Reset cafe PIN failed attempts on success
-      if (cafe.operationsPinFailedAttempts > 0) {
-        cafe.operationsPinFailedAttempts = 0;
-        cafe.operationsPinLockedUntil = null;
-        await cafe.save();
+        const isCafePinValid = await bcrypt.compare(String(cafePin), cafe.operationsPinHash);
+        if (!isCafePinValid) {
+          cafe.operationsPinFailedAttempts = (cafe.operationsPinFailedAttempts || 0) + 1;
+          if (cafe.operationsPinFailedAttempts >= MAX_FAILED_PIN_ATTEMPTS) {
+            cafe.operationsPinLockedUntil = new Date(Date.now() + PIN_LOCK_MINUTES * 60 * 1000);
+          }
+          await cafe.save();
+
+          await this._logAudit({
+            organisationId: orgId,
+            cafeId: cafe.cafeId,
+            action: 'CAFE_PIN_AUTH_FAILED',
+            actorUserId: effectiveOperatorUserId || 'UNKNOWN',
+            actorRole: 'CAFE_ADMIN',
+            entityType: 'CAFE',
+            entityId: cafe.cafeId,
+            result: 'FAILURE',
+            riskClassification: 'HIGH',
+            details: { failedAttempts: cafe.operationsPinFailedAttempts, targetCafeId: cafe.cafeId },
+          });
+
+          throw new ApiError(401, 'INVALID_CAFE_PIN', 'Cafe PIN not recognised. Please verify and try again.');
+        }
+
+        // Reset cafe PIN failed attempts on success
+        if (cafe.operationsPinFailedAttempts > 0) {
+          cafe.operationsPinFailedAttempts = 0;
+          cafe.operationsPinLockedUntil = null;
+          await cafe.save();
+        }
       }
     }
 
-    // 3. Device Verification / Resolution
+    // 2. Device Verification / Resolution
     let resolvedDeviceId = deviceId || (cafe ? `DEV-WEB-${cafe.cafeId}` : null);
     if (!resolvedDeviceId) {
       throw new ApiError(400, 'DEVICE_OR_CAFE_REQUIRED', 'Cafe Operations require a registered device or valid cafe selection.');
@@ -332,13 +421,16 @@ class OperatorSessionService {
     }
 
     // 4. Operator Identification & Role Verification
-    if (!operatorUserId || !pin) {
+    if (!effectiveOperatorUserId || !pin) {
       throw new ApiError(400, 'MISSING_CREDENTIALS', 'Operator ID and 6-digit PIN are required.');
     }
 
     const user = await User.findOne({
       organisationId: orgId,
-      userId: operatorUserId.toUpperCase(),
+      $or: [
+        { userId: effectiveOperatorUserId.toUpperCase() },
+        { employeeId: effectiveOperatorUserId.toUpperCase() },
+      ],
     }).select('+operatorPinHash');
 
     if (!user) {
@@ -392,7 +484,7 @@ class OperatorSessionService {
         riskClassification: 'MEDIUM',
         details: { deviceCafeId: deviceCafe, userPrimaryCafeId: user.primaryCafeId },
       });
-      throw new ApiError(403, 'WRONG_CAFE_ACCESS', 'Operator is not assigned to this cafe location.');
+      throw new ApiError(403, 'WRONG_CAFE_ACCESS', 'Your account is not authorised for this café.');
     }
 
     // 6. Rate-Limiting & Lockout Check for Operator PIN
@@ -449,6 +541,9 @@ class OperatorSessionService {
     );
 
     // 9. Create New Active Operator Session
+    const sessionToken = crypto.randomBytes(32).toString('hex');
+    const sessionTokenHash = crypto.createHash('sha256').update(sessionToken).digest('hex');
+
     const operatorSessionId = `OPS-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
     const session = await OperatorSession.create({
       operatorSessionId,
@@ -458,9 +553,10 @@ class OperatorSessionService {
       operatorUserId: user.userId,
       operatorNameSnapshot: user.name,
       status: 'ACTIVE',
-      authMethod: 'OPERATOR_PIN',
+      authMethod: cleanGatewayToken ? `GATEWAY_${accessMethod}` : 'OPERATOR_PIN',
       sessionStartedAt: new Date(),
       lastActivityAt: new Date(),
+      sessionTokenHash,
     });
 
     // Update device last seen
@@ -494,8 +590,10 @@ class OperatorSessionService {
 
     return {
       success: true,
+      sessionToken,
       operatorSession: {
         operatorSessionId: session.operatorSessionId,
+        sessionToken,
         cafeId: session.cafeId,
         deviceId: session.deviceId,
         operatorUserId: session.operatorUserId,

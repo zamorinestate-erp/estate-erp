@@ -17,6 +17,7 @@ yarn-error.log*
 # Local Storage & Uploads
 .local-private-storage/
 .local-evidence-storage/
+backend/uploads/
 logs/
 *.log
 *.tmp

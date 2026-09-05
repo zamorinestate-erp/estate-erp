@@ -49,10 +49,12 @@ function escHtml(str) {
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+import { getCanonicalDeviceId } from '../apiClient.js';
+
 function getDeviceContext() {
   try {
     const cafeName = localStorage.getItem('zamorin_bound_cafe_name') || '';
-    const deviceId = localStorage.getItem('zamorin_device_id') || '';
+    const deviceId = getCanonicalDeviceId() || '';
     return { cafeName, deviceId };
   } catch {
     return { cafeName: '', deviceId: '' };

@@ -15,6 +15,19 @@ let activeSubTab = "overview"; // 'overview' | 'assets' | 'maintenance' | 'work_
 let cachedOverview = null;
 let cachedAssets = [];
 let cachedWorkOrders = [];
+let cachedCafes = [];
+
+function renderCafeOptions(selectedCafeId) {
+  if (!cachedCafes || cachedCafes.length === 0) {
+    return `<option value="" disabled ${!selectedCafeId ? 'selected' : ''}>No registered cafés found</option>`;
+  }
+  return cachedCafes.map((c) => {
+    const id = c.cafeId || c.id || c._id;
+    const name = c.name || c.cafeName || id;
+    return `<option value="${id}" ${selectedCafeId === id ? "selected" : ""}>${name} (${id})</option>`;
+  }).join("");
+}
+
 const ASSET_CATEGORIES = [
   { id: "BREWING_EQUIPMENT", name: "Brewing Equipment" },
   { id: "GRINDERS_MILLS", name: "Grinders & Mills" },
@@ -185,35 +198,24 @@ function renderActiveSubpanel() {
 function renderOverviewSubpanel() {
   const ov = cachedOverview || {
     kpis: {
-      totalAssets: 3,
-      inService: 2,
-      underMaintenance: 1,
-      outOfService: 0,
-      dueSoon: 1,
+      totalAssets: cachedAssets.length,
+      inService: cachedAssets.filter((a) => a.operationalStatus === "IN_SERVICE").length,
+      underMaintenance: cachedAssets.filter((a) => a.operationalStatus === "UNDER_MAINTENANCE").length,
+      outOfService: cachedAssets.filter((a) => a.operationalStatus === "OUT_OF_SERVICE").length,
+      dueSoon: 0,
       overdue: 0,
       criticalIssues: 0,
-      activeWorkOrders: 1
+      activeWorkOrders: cachedWorkOrders.filter((w) => w.status !== "COMPLETED" && w.status !== "RESOLVED").length
     },
-    needsAttention: [
-      {
-        type: "PREVENTIVE_MAINTENANCE_DUE",
-        severity: "MEDIUM",
-        assetId: "AST-001",
-        assetName: "La Marzocco Linea PB 2-Group",
-        cafeId: "ZC-0001",
-        age: "Due in 3 days",
-        status: "Quarterly Descaling Due",
-        nextAction: "Generate Work Order",
-      }
-    ]
+    needsAttention: []
   };
 
   const assetTiles = [
-    { id: "assets", icon: "📋", title: "Asset & Equipment Register", subtitle: "Multi-café machinery, bar equipment & serial tracking", badge: "3 Assets", badgeType: "accent" },
-    { id: "maintenance", icon: "🛠️", title: "Preventive Maintenance", subtitle: "Recurring schedules, PM checklists & service plans", badge: "1 Due Soon", badgeType: "accent" },
-    { id: "work_orders", icon: "🔧", title: "Work Orders & Repairs", subtitle: "Breakdown tickets, technician dispatch & parts replaced", badge: "1 Active", badgeType: "" },
-    { id: "inspections", icon: "📜", title: "Inspections & Warranty", subtitle: "AMC contracts, warranty coverage & calibration certs", badge: "Active", badgeType: "success" },
-    { id: "analytics", icon: "📈", title: "Reliability & Costs", subtitle: "MTBF, MTTR, maintenance spend & lifecycle analytics", badge: "82% Proactive", badgeType: "success" },
+    { id: "assets", icon: "📋", title: "Asset & Equipment Register", subtitle: "Multi-café machinery, bar equipment & serial tracking", badge: cachedAssets.length > 0 ? `${cachedAssets.length} Assets` : "", badgeType: "accent" },
+    { id: "maintenance", icon: "🛠️", title: "Preventive Maintenance", subtitle: "Recurring schedules, PM checklists & service plans", badge: ov.kpis?.dueSoon > 0 ? `${ov.kpis.dueSoon} Due Soon` : "", badgeType: "accent" },
+    { id: "work_orders", icon: "🔧", title: "Work Orders & Repairs", subtitle: "Breakdown tickets, technician dispatch & parts replaced", badge: cachedWorkOrders.length > 0 ? `${cachedWorkOrders.length} Active` : "", badgeType: "" },
+    { id: "inspections", icon: "📜", title: "Inspections & Warranty", subtitle: "AMC contracts, warranty coverage & calibration certs", badge: "", badgeType: "success" },
+    { id: "analytics", icon: "📈", title: "Reliability & Costs", subtitle: "MTBF, MTTR, maintenance spend & lifecycle analytics", badge: "", badgeType: "success" },
   ];
 
   return `
@@ -258,13 +260,13 @@ function renderOverviewSubpanel() {
             <h3 style="font-size:15px; font-weight:700; margin:0 0 2px; color:var(--ink);">Needs Maintenance Attention</h3>
             <p style="font-size:12px; color:var(--muted); margin:0;">Prioritised equipment risks and overdue services</p>
           </div>
-          <span class="status ${ov.needsAttention.length > 0 ? "warning" : "success"}" style="font-size:11px;">
-            ${ov.needsAttention.length} Items
+          <span class="status ${(ov.needsAttention || []).length > 0 ? "warning" : "success"}" style="font-size:11px;">
+            ${(ov.needsAttention || []).length} Items
           </span>
         </div>
 
         ${
-          ov.needsAttention.length === 0
+          !ov.needsAttention || ov.needsAttention.length === 0
             ? `<div style="text-align:center; padding:32px 16px; color:var(--muted); font-size:13px;">
                 ✓ All equipment operating normally. Zero critical alerts.
                </div>`
@@ -298,29 +300,18 @@ function renderOverviewSubpanel() {
         </div>
 
         <div style="display:flex; flex-direction:column; gap:10px;">
-          <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:var(--bg-subtle, rgba(0,0,0,0.02)); border-radius:6px;">
-            <div style="display:flex; align-items:center; gap:10px;">
-              <span class="status info" style="font-size:11px; font-weight:700;">NEXT 7 DAYS</span>
-              <span style="font-size:13px; font-weight:600; color:var(--ink);">Espresso Machine Group Head Decalcification</span>
-            </div>
-            <span style="font-size:12px; color:var(--muted); font-family:var(--font-mono);">ZC-0001</span>
-          </div>
-
-          <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:var(--bg-subtle, rgba(0,0,0,0.02)); border-radius:6px;">
-            <div style="display:flex; align-items:center; gap:10px;">
-              <span class="status info" style="font-size:11px; font-weight:700;">NEXT 30 DAYS</span>
-              <span style="font-size:13px; font-weight:600; color:var(--ink);">Commercial Grinder Burr Calibration &amp; Cleaning</span>
-            </div>
-            <span style="font-size:12px; color:var(--muted); font-family:var(--font-mono);">ZC-0002</span>
-          </div>
-
-          <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:var(--bg-subtle, rgba(0,0,0,0.02)); border-radius:6px;">
-            <div style="display:flex; align-items:center; gap:10px;">
-              <span class="status info" style="font-size:11px; font-weight:700;">NEXT 90 DAYS</span>
-              <span style="font-size:13px; font-weight:600; color:var(--ink);">Refrigeration Condenser Coil Quarterly Service</span>
-            </div>
-            <span style="font-size:12px; color:var(--muted); font-family:var(--font-mono);">ZC-0001</span>
-          </div>
+          ${ov.forecast && ov.forecast.length > 0
+            ? ov.forecast.map((f) => `
+              <div style="display:flex; align-items:center; justify-content:space-between; padding:10px 14px; background:var(--bg-subtle, rgba(0,0,0,0.02)); border-radius:6px;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                  <span class="status info" style="font-size:11px; font-weight:700;">${f.window || "UPCOMING"}</span>
+                  <span style="font-size:13px; font-weight:600; color:var(--ink);">${f.title}</span>
+                </div>
+                <span style="font-size:12px; color:var(--muted); font-family:var(--font-mono);">${f.cafeId || ""}</span>
+              </div>
+            `).join("")
+            : `<div style="text-align:center; padding:32px 16px; color:var(--muted); font-size:13px;">No upcoming maintenance tasks scheduled for the next 90 days.</div>`
+          }
         </div>
       </div>
     </div>
@@ -329,47 +320,7 @@ function renderOverviewSubpanel() {
 
 // 2. ASSETS REGISTER SUBPANEL
 function renderAssetsSubpanel() {
-  const assets = cachedAssets.length > 0 ? cachedAssets : [
-    {
-      assetId: "AST-001",
-      name: "La Marzocco Linea PB 2-Group Espresso Machine",
-      category: "BREWING_EQUIPMENT",
-      serialNumber: "LM-PB-99412",
-      cafeId: "ZC-0001",
-      placementArea: "Main Bar",
-      operationalStatus: "IN_SERVICE",
-      condition: "EXCELLENT",
-      criticality: "CRITICAL",
-      nextMaintenanceDue: "2026-11-01",
-      warrantyExpiryDate: "2027-01-10",
-    },
-    {
-      assetId: "AST-002",
-      name: "Mahlkönig EK43 Commercial Coffee Grinder",
-      category: "GRINDERS_MILLS",
-      serialNumber: "MK-EK43-7721",
-      cafeId: "ZC-0001",
-      placementArea: "Filter Bar",
-      operationalStatus: "IN_SERVICE",
-      condition: "GOOD",
-      criticality: "HIGH",
-      nextMaintenanceDue: "2026-10-15",
-      warrantyExpiryDate: "2026-12-15",
-    },
-    {
-      assetId: "AST-003",
-      name: "True Double-Door Commercial Undercounter Refrigerator",
-      category: "REFRIGERATION",
-      serialNumber: "TRU-UC-4412",
-      cafeId: "ZC-0002",
-      placementArea: "Back Bar",
-      operationalStatus: "UNDER_MAINTENANCE",
-      condition: "FAIR",
-      criticality: "CRITICAL",
-      nextMaintenanceDue: "2026-08-25",
-      warrantyExpiryDate: "2026-09-01",
-    }
-  ];
+  const assets = cachedAssets || [];
 
   return `
     <div class="card" style="padding:24px;">
@@ -418,7 +369,13 @@ function renderAssetsSubpanel() {
             </tr>
           </thead>
           <tbody>
-            ${assets
+            ${assets.length === 0 ? `
+              <tr>
+                <td colspan="8" style="text-align:center; padding:32px; color:var(--muted); font-size:13px;">
+                  No equipment or assets registered. Click "+ Register New Asset" above to add your first machinery item.
+                </td>
+              </tr>
+            ` : assets
               .map((a) => {
                 const condClass = a.condition === "EXCELLENT" || a.condition === "GOOD" ? "success" : a.condition === "FAIR" ? "warning" : "danger";
                 const statusClass = a.operationalStatus === "IN_SERVICE" ? "success" : a.operationalStatus === "UNDER_MAINTENANCE" ? "warning" : "danger";
@@ -480,34 +437,8 @@ function renderMaintenanceSubpanel() {
           <button class="btn btn-ghost" id="create-pm-plan-btn" type="button" style="font-size:12px; padding:4px 10px;">+ New Plan</button>
         </div>
 
-        <div style="display:flex; flex-direction:column; gap:10px;">
-          <div style="padding:12px; border:1px solid var(--border-subtle); border-radius:8px;">
-            <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-              <div>
-                <strong style="color:var(--ink); font-size:13.5px;">Espresso Machine Quarterly Overhaul SOP</strong>
-                <div style="font-size:12px; color:var(--muted); margin-top:2px;">Target: Brewing Equipment · Frequency: Every 90 Days</div>
-              </div>
-              <span class="status success" style="font-size:11px;">Active</span>
-            </div>
-            <div style="display:flex; gap:14px; margin-top:8px; font-size:11.5px; color:var(--muted);">
-              <span>Next Due: <strong style="color:var(--ink);">2026-11-01</strong></span>
-              <span>Window: <strong>Before Opening (06:00)</strong></span>
-            </div>
-          </div>
-
-          <div style="padding:12px; border:1px solid var(--border-subtle); border-radius:8px;">
-            <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-              <div>
-                <strong style="color:var(--ink); font-size:13.5px;">Refrigeration Coil &amp; Temperature Seal Audit</strong>
-                <div style="font-size:12px; color:var(--muted); margin-top:2px;">Target: Commercial Refrigerators · Frequency: Monthly</div>
-              </div>
-              <span class="status success" style="font-size:11px;">Active</span>
-            </div>
-            <div style="display:flex; gap:14px; margin-top:8px; font-size:11.5px; color:var(--muted);">
-              <span>Next Due: <strong style="color:var(--ink);">2026-09-01</strong></span>
-              <span>Window: <strong>After Close (23:00)</strong></span>
-            </div>
-          </div>
+        <div style="padding:32px 16px; text-align:center; color:var(--muted); font-size:13px;">
+          No active preventive maintenance plans found. Click "+ New Plan" to configure recurring maintenance schedules.
         </div>
       </div>
 
@@ -518,25 +449,11 @@ function renderMaintenanceSubpanel() {
             <h3 style="font-size:15px; font-weight:700; margin:0 0 2px; color:var(--ink);">Maintenance Backlog &amp; Queue</h3>
             <p style="font-size:12px; color:var(--muted); margin:0;">Scheduled service jobs awaiting execution</p>
           </div>
-          <span class="status info" style="font-size:11px;">3 Queued</span>
+          <span class="status info" style="font-size:11px;">0 Queued</span>
         </div>
 
-        <div style="display:flex; flex-direction:column; gap:10px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 12px; background:var(--bg-subtle, rgba(0,0,0,0.02)); border-radius:6px;">
-            <div>
-              <div style="font-size:13px; font-weight:700; color:var(--ink);">Water Filter Cartridge Replacement</div>
-              <div style="font-size:11.5px; color:var(--muted);">AST-001 (Main Outlet) · Due: 2026-09-05</div>
-            </div>
-            <span class="status warning" style="font-size:11px;">Waiting Parts</span>
-          </div>
-
-          <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 12px; background:var(--bg-subtle, rgba(0,0,0,0.02)); border-radius:6px;">
-            <div>
-              <div style="font-size:13px; font-weight:700; color:var(--ink);">Grinder Burr Alignment &amp; Zeroing</div>
-              <div style="font-size:11.5px; color:var(--muted);">AST-002 (Main Outlet) · Due: 2026-09-12</div>
-            </div>
-            <span class="status info" style="font-size:11px;">Ready</span>
-          </div>
+        <div style="padding:32px 16px; text-align:center; color:var(--muted); font-size:13px;">
+          No maintenance jobs currently queued or waiting for parts.
         </div>
       </div>
     </div>
@@ -545,20 +462,7 @@ function renderMaintenanceSubpanel() {
 
 // 4. WORK ORDERS SUBPANEL
 function renderWorkOrdersSubpanel() {
-  const workOrders = cachedWorkOrders.length > 0 ? cachedWorkOrders : [
-    {
-      workOrderId: "WO-0001",
-      assetId: "AST-003",
-      title: "Compressor Temperature Fluctuation",
-      workType: "CORRECTIVE_REPAIR",
-      priority: "CRITICAL",
-      status: "IN_PROGRESS",
-      blocker: "WAITING_FOR_PART",
-      cafeId: "ZC-0002",
-      reportedByUserId: "MU-NORMAL-01",
-      createdAt: "2026-08-19",
-    }
-  ];
+  const workOrders = cachedWorkOrders || [];
 
   return `
     <div class="card" style="padding:24px;">
@@ -586,7 +490,13 @@ function renderWorkOrdersSubpanel() {
             </tr>
           </thead>
           <tbody>
-            ${workOrders
+            ${workOrders.length === 0 ? `
+              <tr>
+                <td colspan="7" style="text-align:center; padding:32px; color:var(--muted); font-size:13px;">
+                  No maintenance work orders or repair tickets recorded.
+                </td>
+              </tr>
+            ` : workOrders
               .map((wo) => `
               <tr>
                 <td>
@@ -635,14 +545,8 @@ function renderInspectionsSubpanel() {
         <h3 style="font-size:15px; font-weight:700; margin:0 0 4px; color:var(--ink);">Daily Equipment Condition Checklists</h3>
         <p style="font-size:12px; color:var(--muted); margin:0 0 14px;">Frontline opening and closing verification checks</p>
 
-        <div style="display:flex; flex-direction:column; gap:10px;">
-          <div style="padding:12px; border:1px solid var(--border-subtle); border-radius:8px;">
-            <div style="display:flex; justify-content:space-between;">
-              <strong style="color:var(--ink); font-size:13px;">Morning Opening Bar Equipment Inspection</strong>
-              <span class="status success" style="font-size:11px;">100% Pass</span>
-            </div>
-            <div style="font-size:12px; color:var(--muted); margin-top:4px;">Espresso boiler pressure: 9.1 bar · Refrigerator temperature: 3.2°C</div>
-          </div>
+        <div style="padding:32px 16px; text-align:center; color:var(--muted); font-size:13px;">
+          No equipment checklists submitted for today.
         </div>
       </div>
 
@@ -651,14 +555,8 @@ function renderInspectionsSubpanel() {
         <h3 style="font-size:15px; font-weight:700; margin:0 0 4px; color:var(--ink);">Warranty &amp; Service Contracts (AMC)</h3>
         <p style="font-size:12px; color:var(--muted); margin:0 0 14px;">Active manufacturer warranties and service SLAs</p>
 
-        <div style="display:flex; flex-direction:column; gap:10px;">
-          <div style="padding:12px; border:1px solid var(--border-subtle); border-radius:8px;">
-            <div style="display:flex; justify-content:space-between;">
-              <strong style="color:var(--ink); font-size:13px;">La Marzocco OEM Warranty (AST-001)</strong>
-              <span class="status success" style="font-size:11px;">Active (5 Months)</span>
-            </div>
-            <div style="font-size:12px; color:var(--muted); margin-top:4px;">Provider: La Marzocco India · SLA: 4h Emergency Response</div>
-          </div>
+        <div style="padding:32px 16px; text-align:center; color:var(--muted); font-size:13px;">
+          No active AMC contracts or manufacturer warranties registered.
         </div>
       </div>
     </div>
@@ -672,21 +570,21 @@ function renderAnalyticsSubpanel() {
       <div class="card" style="padding:20px;">
         <h3 style="font-size:15px; font-weight:700; margin:0 0 4px; color:var(--ink);">Preventative Maintenance Compliance</h3>
         <p style="font-size:12px; color:var(--muted); margin:0 0 16px;">Completed on-schedule vs due (Last 90 Days)</p>
-        <div style="font-size:32px; font-weight:800; color:var(--color-success, #2E7D32); font-family:var(--font-mono);">94.8%</div>
+        <div style="font-size:32px; font-weight:800; color:var(--muted); font-family:var(--font-mono);">— %</div>
         <div style="font-size:12px; color:var(--muted); margin-top:6px;">Formula: (Completed On-Time ÷ Items Due)</div>
       </div>
 
       <div class="card" style="padding:20px;">
         <h3 style="font-size:15px; font-weight:700; margin:0 0 4px; color:var(--ink);">Planned vs Unplanned Maintenance</h3>
         <p style="font-size:12px; color:var(--muted); margin:0 0 16px;">Ratio of proactive PM to breakdown repairs</p>
-        <div style="font-size:32px; font-weight:800; color:var(--ink); font-family:var(--font-mono);">82 : 18</div>
+        <div style="font-size:32px; font-weight:800; color:var(--ink); font-family:var(--font-mono);">0 : 0</div>
         <div style="font-size:12px; color:var(--muted); margin-top:6px;">Target: &gt; 80% Planned proactive maintenance</div>
       </div>
 
       <div class="card" style="padding:20px;">
         <h3 style="font-size:15px; font-weight:700; margin:0 0 4px; color:var(--ink);">Recorded Maintenance Spend</h3>
         <p style="font-size:12px; color:var(--muted); margin:0 0 16px;">Parts &amp; external OEM service fees (YTD)</p>
-        <div style="font-size:32px; font-weight:800; color:var(--ink); font-family:var(--font-mono);">₹ 24,500</div>
+        <div style="font-size:32px; font-weight:800; color:var(--ink); font-family:var(--font-mono);">₹ 0</div>
         <div style="font-size:12px; color:var(--muted); margin-top:6px;">Authoritative financial accounting remains in Finance &amp; Bills</div>
       </div>
     </div>
@@ -795,18 +693,22 @@ let hasInitialFetchedAssets = false;
 
 async function loadLiveAssetData() {
   try {
-    const [ovRes, assetRes, woRes] = await Promise.all([
+    const [ovRes, assetRes, woRes, cafesRes] = await Promise.all([
       apiGet("/api/v1/assets/overview").catch(() => null),
       apiGet("/api/v1/assets").catch(() => null),
       apiGet("/api/v1/assets/work-orders").catch(() => null),
+      apiGet("/cafes").catch(() => null),
     ]);
 
     if (ovRes?.data) cachedOverview = ovRes.data;
-    if (assetRes?.data?.assets && assetRes.data.assets.length > 0) {
+    if (assetRes?.data?.assets) {
       cachedAssets = assetRes.data.assets;
     }
-    if (woRes?.data?.workOrders && woRes.data.workOrders.length > 0) {
+    if (woRes?.data?.workOrders) {
       cachedWorkOrders = woRes.data.workOrders;
+    }
+    if (cafesRes?.data?.cafes) {
+      cachedCafes = cafesRes.data.cafes;
     }
   } catch (err) {
     console.warn("Asset data load notice:", err);
@@ -867,13 +769,17 @@ function rerender(root) {
 }
 
 function exportAssetReliabilityCsv() {
-  const headers = ["Asset ID", "Asset Name", "Category", "Café ID", "MTBF (Hours)", "MTTR (Hours)", "Uptime %", "Status"];
-  const rows = [
-    ["AST-001", "La Marzocco Linea PB 2-Group", "BREWING_EQUIPMENT", "ZC-0001", "720", "2.5", "99.2%", "IN_SERVICE"],
-    ["AST-002", "Mahlkönig EK43 S Grinder", "GRINDERS_MILLS", "ZC-0001", "1440", "1.0", "99.8%", "IN_SERVICE"],
-    ["AST-003", "Commercial Double-Door Chiller", "REFRIGERATION", "ZC-0002", "480", "4.0", "98.5%", "UNDER_MAINTENANCE"],
-  ];
-  let csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+  const headers = ["Asset ID", "Asset Name", "Category", "Café ID", "Operational Status", "Condition", "Criticality"];
+  const rows = (cachedAssets || []).map((a) => [
+    a.assetId || "",
+    `"${(a.name || "").replace(/"/g, '""')}"`,
+    a.category || "",
+    a.cafeId || "",
+    a.operationalStatus || "",
+    a.condition || "",
+    a.criticality || ""
+  ]);
+  let csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
   const encodedUri = encodeURI(csvContent);
   const link = document.createElement("a");
   link.setAttribute("href", encodedUri);
@@ -936,7 +842,7 @@ function openRegisterAssetWizard(root) {
     manufacturer: "",
     model: "",
     serialNumber: "",
-    cafeId: "ZC-0001",
+    cafeId: state.selectedCafeId || cachedCafes[0]?.cafeId || cachedCafes[0]?.id || "",
     placementArea: "Main Counter",
     acquisitionType: "PURCHASED",
     condition: "GOOD",
@@ -996,9 +902,7 @@ function openRegisterAssetWizard(root) {
             <div class="form-group">
               <label class="label">Assigned Café*</label>
               <select id="wiz-asset-cafe" class="input">
-                <option value="ZC-0001" ${formData.cafeId === "ZC-0001" ? "selected" : ""}>Main Outlet (ZC-0001)</option>
-                <option value="ZC-0002" ${formData.cafeId === "ZC-0002" ? "selected" : ""}>Branch Outlet (ZC-0002)</option>
-                <option value="ZC-0003" ${formData.cafeId === "ZC-0003" ? "selected" : ""}>Calicut Beach (ZC-0003)</option>
+                ${renderCafeOptions(formData.cafeId)}
               </select>
             </div>
             <div class="form-group">
@@ -1104,7 +1008,7 @@ function openRegisterAssetWizard(root) {
             return;
           }
         } else if (step === 2) {
-          formData.cafeId = modal.querySelector("#wiz-asset-cafe")?.value || "ZC-0001";
+          formData.cafeId = modal.querySelector("#wiz-asset-cafe")?.value || state.selectedCafeId || "";
           formData.placementArea = modal.querySelector("#wiz-asset-area")?.value || "Main Counter";
         } else if (step === 3) {
           formData.condition = modal.querySelector("#wiz-asset-condition")?.value || "GOOD";
@@ -1137,7 +1041,7 @@ function openRegisterAssetWizard(root) {
           name: formData.name || "Commercial Equipment",
           category: formData.category || "BREWING_EQUIPMENT",
           serialNumber: formData.serialNumber || `SN-${Math.floor(10000 + Math.random() * 90000)}`,
-          cafeId: formData.cafeId || "ZC-0001",
+          cafeId: formData.cafeId || state.selectedCafeId || "",
           placementArea: formData.placementArea || "Main Counter",
           operationalStatus: formData.operationalStatus || "IN_SERVICE",
           condition: formData.condition || "GOOD",
@@ -1167,15 +1071,11 @@ function openRegisterAssetWizard(root) {
 
 // Modal: Asset 360 Detail
 function openAssetDetailModal(root, assetId) {
-  const asset = cachedAssets.find((a) => a.assetId === assetId) || {
-    assetId,
-    name: "Equipment Details",
-    category: "BREWING_EQUIPMENT",
-    cafeId: "ZC-0001",
-    condition: "GOOD",
-    operationalStatus: "IN_SERVICE",
-    serialNumber: "SN-99412",
-  };
+  const asset = cachedAssets.find((a) => a.assetId === assetId);
+  if (!asset) {
+    showToast(`Asset "${assetId}" not found.`, "error");
+    return;
+  }
 
   const isPrimary = state.user?.isPrimaryMaster === true;
 
@@ -1268,9 +1168,7 @@ function openTransferAssetModal(root, assetId) {
       <div class="form-group">
         <label class="label">Destination Café*</label>
         <select id="transfer-dest-cafe" class="input">
-          <option value="ZC-0001">Main Outlet (ZC-0001)</option>
-          <option value="ZC-0002">Branch Outlet (ZC-0002)</option>
-          <option value="ZC-0003">Calicut Beach (ZC-0003)</option>
+          ${renderCafeOptions()}
         </select>
       </div>
 
@@ -1375,8 +1273,8 @@ function openCreateWorkOrderModal(root, defaultAssetId = "") {
       priority,
       status: "OPEN",
       blocker: "NONE",
-      cafeId: state.selectedCafeId || "ZC-0001",
-      reportedByUserId: state.user?.userId || "MU-NORMAL-01",
+      cafeId: state.selectedCafeId || cachedCafes[0]?.cafeId || cachedCafes[0]?.id || "",
+      reportedByUserId: state.user?.userId || "SYSTEM",
       createdAt: new Date().toISOString().split("T")[0],
     };
 
@@ -1393,16 +1291,11 @@ function openCreateWorkOrderModal(root, defaultAssetId = "") {
 
 // Modal: Update / Resolve Work Order
 function openUpdateWorkOrderModal(root, woId) {
-  const wo = cachedWorkOrders.find((w) => w.workOrderId === woId) || {
-    workOrderId: woId,
-    assetId: "AST-003",
-    title: "Compressor Temperature Fluctuation",
-    workType: "CORRECTIVE_REPAIR",
-    priority: "CRITICAL",
-    status: "IN_PROGRESS",
-    blocker: "WAITING_FOR_PART",
-    cafeId: "ZC-0002",
-  };
+  const wo = cachedWorkOrders.find((w) => w.workOrderId === woId);
+  if (!wo) {
+    showToast(`Work order "${woId}" not found.`, "error");
+    return;
+  }
 
   const content = `
     <div style="max-width:580px; margin:0 auto; padding:10px 0;">
@@ -1493,9 +1386,15 @@ function openRecordInspectionModal(root) {
       <div class="form-group" style="margin-bottom:12px;">
         <label class="label">Target Asset*</label>
         <select id="insp-asset-id" class="input" style="font-size:12.5px;">
-          <option value="AST-001">La Marzocco Linea PB 2-Group (AST-001 — Main Outlet)</option>
-          <option value="AST-002">Mahlkönig EK43 S Grinder (AST-002 — Main Outlet)</option>
-          <option value="AST-003">Commercial Double-Door Chiller (AST-003 — Branch Outlet)</option>
+          ${cachedAssets && cachedAssets.length > 0
+            ? cachedAssets.map(a => {
+                const id = a.assetId || a._id;
+                const name = a.name || a.assetName || id;
+                const cafe = a.cafeId || a.cafe || '';
+                return `<option value="${id}">${name} (${id}${cafe ? ' — ' + cafe : ''})</option>`;
+              }).join('')
+            : '<option value="" disabled selected>No registered assets found — add assets first</option>'
+          }
         </select>
       </div>
 

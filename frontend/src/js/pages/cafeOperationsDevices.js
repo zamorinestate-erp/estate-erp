@@ -7,6 +7,26 @@ import { navigate } from "../router.js";
 let activeTab = "overview"; // "overview" | "devices" | "sessions" | "pins"
 let cachedDevices = [];
 let cachedSessions = [];
+let cachedCafes = [];
+
+async function loadCafesList() {
+  if (cachedCafes.length) return cachedCafes;
+  try {
+    const res = await apiGet("/cafes");
+    cachedCafes = res?.data || res?.cafes || (Array.isArray(res) ? res : []);
+  } catch (err) {
+    cachedCafes = [];
+  }
+  return cachedCafes;
+}
+
+function escapeHtml(v) {
+  return String(v ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
 
 export function setCafeDevicesActiveTab(tab) {
   activeTab = tab || "overview";
@@ -18,7 +38,7 @@ export function renderCafeOperationsDevices(subroute) {
   }
   const user = state.auth?.user || state.user || {};
   const isMaster = (state.role === "master") || Boolean(user.isPrimaryMaster);
-  const cafeId = state.currentCafeId || user.primaryCafeId || "ZC-0001";
+  const cafeId = state.currentCafeId || user.primaryCafeId || "";
 
   // If on child subroute, render dedicated child shell directly
   if (activeTab && activeTab !== "overview") {
@@ -59,7 +79,7 @@ export function renderCafeOperationsDevices(subroute) {
         <div class="card" style="padding:16px;">
           <div style="font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase;">Enrolled Devices</div>
           <div style="font-size:24px; font-weight:800; color:var(--ink); margin:4px 0;" id="kpi-device-count">--</div>
-          <div style="font-size:12px; color:var(--color-success, #2e7d32);">🟢 100% Cafe-Owned</div>
+          <div style="font-size:12px; color:var(--muted);" id="kpi-device-status-sub">Assigned cafe terminals</div>
         </div>
         <div class="card" style="padding:16px;">
           <div style="font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase;">Active Operator Sessions</div>
@@ -68,8 +88,8 @@ export function renderCafeOperationsDevices(subroute) {
         </div>
         <div class="card" style="padding:16px;">
           <div style="font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase;">Device Trust Health</div>
-          <div style="font-size:24px; font-weight:800; color:var(--ink); margin:4px 0;">ACTIVE</div>
-          <div style="font-size:12px; color:var(--muted);">Zero compromised nodes</div>
+          <div style="font-size:24px; font-weight:800; color:var(--ink); margin:4px 0;" id="kpi-trust-health">--</div>
+          <div style="font-size:12px; color:var(--muted);" id="kpi-trust-sub">Hardware posture monitoring</div>
         </div>
       </div>
 
@@ -97,34 +117,13 @@ export function wireCafeOperationsDevices(root, subroute) {
 
 async function loadFleetData(root) {
   try {
+    await loadCafesList();
     const [devicesRes, sessionsRes] = await Promise.all([
       apiGet("/devices"),
       apiGet("/cafe-operations/operator/sessions?limit=25"),
     ]);
 
-    cachedDevices = devicesRes?.data?.devices || [
-      {
-        deviceId: "ZC-DEV-0001",
-        deviceName: "Main Outlet Operations Tablet",
-        deviceClass: "CAFE_OWNED",
-        assignedCafeId: "ZC-0001",
-        status: "ACTIVE",
-        trustLevel: "ENROLLED",
-        lastSeenAt: new Date().toISOString(),
-        policyVersion: 1,
-      },
-      {
-        deviceId: "ZC-DEV-0002",
-        deviceName: "Branch Outlet Operations Terminal",
-        deviceClass: "CAFE_OWNED",
-        assignedCafeId: "ZC-0002",
-        status: "ACTIVE",
-        trustLevel: "ENROLLED",
-        lastSeenAt: new Date().toISOString(),
-        policyVersion: 1,
-      },
-    ];
-
+    cachedDevices = devicesRes?.data?.devices || devicesRes?.devices || (Array.isArray(devicesRes?.data) ? devicesRes.data : []);
     cachedSessions = sessionsRes?.data?.sessions || [];
 
     const deviceCountEl = root.querySelector("#kpi-device-count");
@@ -133,6 +132,21 @@ async function loadFleetData(root) {
     const activeSessionsCount = cachedSessions.filter((s) => s.status === "ACTIVE").length;
     const activeSessionsEl = root.querySelector("#kpi-active-sessions");
     if (activeSessionsEl) activeSessionsEl.textContent = String(activeSessionsCount);
+
+    const revokedCount = cachedDevices.filter((d) => d.status === "REVOKED" || d.status === "LOST").length;
+    const trustEl = root.querySelector("#kpi-trust-health");
+    if (trustEl) {
+      if (cachedDevices.length === 0) {
+        trustEl.textContent = "—";
+        trustEl.style.color = "var(--muted)";
+      } else if (revokedCount > 0) {
+        trustEl.textContent = `${revokedCount} REVOKED`;
+        trustEl.style.color = "var(--danger)";
+      } else {
+        trustEl.textContent = "STABLE";
+        trustEl.style.color = "var(--success)";
+      }
+    }
 
     renderActiveTabContent(root);
   } catch (err) {
@@ -147,7 +161,7 @@ function renderActiveTabContent(root) {
 
   if (activeTab === "overview") {
     const fleetTiles = [
-      { id: "devices", icon: "📱", title: "Registered Devices", subtitle: "Multi-café hardware fleet, health status & enrollment", badge: `${cachedDevices.length || 2} Devices`, badgeType: "accent" },
+      { id: "devices", icon: "📱", title: "Registered Devices", subtitle: "Multi-café hardware fleet, health status & enrollment", badge: `${cachedDevices.length} Device${cachedDevices.length === 1 ? '' : 's'}`, badgeType: "accent" },
       { id: "sessions", icon: "📜", title: "Operator Sessions Log", subtitle: "Real-time shifts, register handovers & active staff", badge: "Live Shifts", badgeType: "success" },
       { id: "pins", icon: "🔐", title: "Operator PIN Setup", subtitle: "Operator PIN policy, manager overrides & auth keys", badge: "Secured", badgeType: "success" },
     ];
@@ -277,24 +291,24 @@ function renderDevicesTable() {
       return `
         <tr style="border-bottom:1px solid var(--border-subtle);">
           <td style="padding:14px 16px; font-weight:700; font-family:var(--font-mono); color:var(--ink);">
-            ${dev.deviceId}
+            ${escapeHtml(dev.deviceId)}
           </td>
           <td style="padding:14px 16px;">
-            <div style="font-weight:700; color:var(--ink);">${dev.deviceName}</div>
-            <div style="font-size:11.5px; color:var(--muted);">${dev.deviceClass} · Policy v${dev.policyVersion || 1}</div>
+            <div style="font-weight:700; color:var(--ink);">${escapeHtml(dev.deviceName)}</div>
+            <div style="font-size:11.5px; color:var(--muted);">${escapeHtml(dev.deviceClass)} · Policy v${escapeHtml(dev.policyVersion || 1)}</div>
           </td>
           <td style="padding:14px 16px; font-weight:600;">
-            📍 ${dev.assignedCafeId || "Unassigned"}
+            📍 ${escapeHtml(dev.assignedCafeId || "Unassigned")}
           </td>
           <td style="padding:14px 16px;">
-            <span class="status ${statusClass}" style="font-weight:700; font-size:11px;">${dev.status}</span>
+            <span class="status ${statusClass}" style="font-weight:700; font-size:11px;">${escapeHtml(dev.status)}</span>
           </td>
           <td style="padding:14px 16px; font-size:12px; color:var(--muted);">
-            ${lastSeenStr}
+            ${escapeHtml(lastSeenStr)}
           </td>
           <td style="padding:14px 16px; text-align:right;">
             <div style="display:inline-flex; gap:6px;">
-              <button class="btn btn-sm btn-ghost" data-action="manage-device" data-id="${dev.deviceId}" title="Device Actions">Manage</button>
+              <button class="btn btn-sm btn-ghost" data-action="manage-device" data-id="${escapeHtml(dev.deviceId)}" title="Device Actions">Manage</button>
             </div>
           </td>
         </tr>
@@ -445,26 +459,26 @@ function renderSessionsTable() {
       return `
         <tr style="border-bottom:1px solid var(--border-subtle);">
           <td style="padding:14px 16px; font-weight:700; font-family:var(--font-mono); color:var(--ink);">
-            ${s.operatorSessionId}
+            ${escapeHtml(s.operatorSessionId)}
           </td>
           <td style="padding:14px 16px;">
-            <div style="font-weight:700; color:var(--ink);">${s.operatorNameSnapshot || s.operatorUserId}</div>
-            <div style="font-size:11.5px; color:var(--muted); font-family:var(--font-mono);">${s.operatorUserId} · ${s.authMethod || "PIN"}</div>
+            <div style="font-weight:700; color:var(--ink);">${escapeHtml(s.operatorNameSnapshot || s.operatorUserId)}</div>
+            <div style="font-size:11.5px; color:var(--muted); font-family:var(--font-mono);">${escapeHtml(s.operatorUserId)} · ${escapeHtml(s.authMethod || "PIN")}</div>
           </td>
           <td style="padding:14px 16px;">
-            📍 ${s.cafeId} · <span style="font-family:var(--font-mono); font-size:11px;">${s.deviceId}</span>
+            📍 ${escapeHtml(s.cafeId)} · <span style="font-family:var(--font-mono); font-size:11px;">${escapeHtml(s.deviceId)}</span>
           </td>
           <td style="padding:14px 16px;">
-            <span class="status ${statusClass}" style="font-weight:700; font-size:11px;">${s.status}</span>
+            <span class="status ${statusClass}" style="font-weight:700; font-size:11px;">${escapeHtml(s.status)}</span>
           </td>
           <td style="padding:14px 16px; font-size:12px; color:var(--muted);">
-            <div>${startedStr}</div>
-            <div style="font-size:11px;">End: ${endedStr} ${s.endReason ? `(${s.endReason})` : ""}</div>
+            <div>${escapeHtml(startedStr)}</div>
+            <div style="font-size:11px;">End: ${escapeHtml(endedStr)} ${s.endReason ? `(${escapeHtml(s.endReason)})` : ""}</div>
           </td>
           <td style="padding:14px 16px;">
             ${
               s.handoverNote
-                ? `<div style="font-size:12px; color:var(--ink); max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${s.handoverNote}">📝 ${s.handoverNote}</div>`
+                ? `<div style="font-size:12px; color:var(--ink); max-width:240px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${escapeHtml(s.handoverNote)}">📝 ${escapeHtml(s.handoverNote)}</div>`
                 : `<span style="color:var(--muted); font-size:11px;">—</span>`
             }
           </td>
@@ -569,7 +583,12 @@ function wirePinSetupView(root) {
   });
 }
 
-function openEnrollDeviceModal(root) {
+async function openEnrollDeviceModal(root) {
+  await loadCafesList();
+  const cafeOpts = cachedCafes.length
+    ? cachedCafes.map(c => `<option value="${c.cafeId || c.code || c.id || c._id}">${c.cafeId || c.code || ''} · ${c.name || 'Outlet'}</option>`).join('')
+    : '<option value="">No Active Cafes Found</option>';
+
   const content = `
     <div style="max-width:480px; margin:0 auto; padding:10px 0;">
       <h3 style="font-size:17px; font-weight:800; margin:0 0 6px; color:var(--ink);">Enroll Trusted Terminal Hardware</h3>
@@ -588,9 +607,7 @@ function openEnrollDeviceModal(root) {
       <div class="form-group" style="margin-bottom:14px;">
         <label class="label">Assigned Cafe Location*</label>
         <select id="enr-cafe-id" class="input">
-          <option value="ZC-0001">ZC-0001 · Main Outlet</option>
-          <option value="ZC-0002">ZC-0002 · Branch Outlet</option>
-          <option value="ZC-0003">ZC-0003 · Calicut Beach</option>
+          ${cafeOpts}
         </select>
       </div>
 

@@ -616,11 +616,11 @@ function renderReconciliationCentre() {
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-bottom: 20px;">
           <div style="padding: 14px; background: rgba(0,0,0,0.02); border-radius: 8px; border: 1px solid var(--border);">
             <div style="font-size: 11px; color: var(--muted); font-weight: 700;">ERP BOOK BALANCE</div>
-            <div style="font-size: 22px; font-weight: 800; color: var(--ink); margin-top: 4px; font-family: var(--font-mono);">₹28,45,000.00</div>
+            <div style="font-size: 22px; font-weight: 800; color: var(--ink); margin-top: 4px; font-family: var(--font-mono);">₹0.00</div>
           </div>
           <div style="padding: 14px; background: rgba(0,0,0,0.02); border-radius: 8px; border: 1px solid var(--border);">
             <div style="font-size: 11px; color: var(--muted); font-weight: 700;">LAST VERIFIED STATEMENT</div>
-            <div style="font-size: 22px; font-weight: 800; color: #059669; margin-top: 4px; font-family: var(--font-mono);">₹28,45,000.00</div>
+            <div style="font-size: 22px; font-weight: 800; color: #059669; margin-top: 4px; font-family: var(--font-mono);">₹0.00</div>
           </div>
           <div style="padding: 14px; background: #ecfdf5; border-radius: 8px; border: 1px solid #a7f3d0;">
             <div style="font-size: 11px; color: #065f46; font-weight: 700;">RECONCILIATION VARIANCE</div>
@@ -628,7 +628,7 @@ function renderReconciliationCentre() {
           </div>
         </div>
 
-        <p style="font-size: 13px; color: #065f46; font-weight: 600; margin: 0 0 16px;">✓ All active ledger items match uploaded statement row fingerprints with 100% confidence.</p>
+        <p style="font-size: 13px; color: var(--muted); font-weight: 600; margin: 0 0 16px;">Automated reconciliation will compare general ledger entries against imported bank statements.</p>
 
         <h4 style="font-size: 14px; font-weight: 700; color: var(--ink); margin: 0 0 10px;">Recent Automated Statement Matches</h4>
         <div style="overflow-x: auto;">
@@ -644,21 +644,10 @@ function renderReconciliationCentre() {
               </tr>
             </thead>
             <tbody>
-              <tr style="border-bottom: 1px solid var(--border);">
-                <td style="padding: 8px;">2026-08-25</td>
-                <td style="padding: 8px;">PINELABS POS SETTLEMENT W4</td>
-                <td style="padding: 8px; font-family: var(--font-mono);">PBK-202608-0001</td>
-                <td style="padding: 8px; text-align: right; font-weight: 700; color: #059669;">₹1,85,000.00</td>
-                <td style="padding: 8px; text-align: center;"><span class="badge badge-success">100% SHA MATCH</span></td>
-                <td style="padding: 8px; text-align: right;"><span class="badge badge-success">MATCHED</span></td>
-              </tr>
-              <tr style="border-bottom: 1px solid var(--border);">
-                <td style="padding: 8px;">2026-08-24</td>
-                <td style="padding: 8px;">WAYANAD SPECIALITY GREEN BEANS</td>
-                <td style="padding: 8px; font-family: var(--font-mono);">PBK-202608-0002</td>
-                <td style="padding: 8px; text-align: right; font-weight: 700; color: #dc2626;">₹1,25,000.00</td>
-                <td style="padding: 8px; text-align: center;"><span class="badge badge-success">100% SHA MATCH</span></td>
-                <td style="padding: 8px; text-align: right;"><span class="badge badge-success">MATCHED</span></td>
+              <tr>
+                <td colspan="6" style="padding: 24px; text-align: center; color: var(--muted); font-size: 13px;">
+                  No statement matches recorded. Upload a statement to begin automated reconciliation.
+                </td>
               </tr>
             </tbody>
           </table>
@@ -730,29 +719,10 @@ function renderCafeMapping() {
             </tr>
           </thead>
           <tbody>
-            <tr style="border-bottom:1px solid var(--border);">
-              <td style="padding:10px 8px; font-weight:600;">Calicut Flagship</td>
-              <td style="padding:10px 8px;"><span class="badge badge-neutral">PineLabs POS (Card)</span></td>
-              <td style="padding:10px 8px;">ICICI POS Settlement (••••9102)</td>
-              <td style="padding:10px 8px;">T+1 Daily 02:00 AM</td>
-              <td style="padding:10px 8px; text-align:center;"><span class="badge badge-success">ACTIVE</span></td>
-              <td style="padding:10px 8px; text-align:right;"><button class="btn btn-xs btn-secondary">Edit</button></td>
-            </tr>
-            <tr style="border-bottom:1px solid var(--border);">
-              <td style="padding:10px 8px; font-weight:600;">Main Outlet</td>
-              <td style="padding:10px 8px;"><span class="badge badge-neutral">PhonePe UPI QR</span></td>
-              <td style="padding:10px 8px;">HDFC Main Treasury (••••4821)</td>
-              <td style="padding:10px 8px;">Real-Time Instant</td>
-              <td style="padding:10px 8px; text-align:center;"><span class="badge badge-success">ACTIVE</span></td>
-              <td style="padding:10px 8px; text-align:right;"><button class="btn btn-xs btn-secondary">Edit</button></td>
-            </tr>
-            <tr style="border-bottom:1px solid var(--border);">
-              <td style="padding:10px 8px; font-weight:600;">Branch Outlet</td>
-              <td style="padding:10px 8px;"><span class="badge badge-neutral">Swiggy Online</span></td>
-              <td style="padding:10px 8px;">ICICI POS Settlement (••••9102)</td>
-              <td style="padding:10px 8px;">T+3 Weekly Batch</td>
-              <td style="padding:10px 8px; text-align:center;"><span class="badge badge-success">ACTIVE</span></td>
-              <td style="padding:10px 8px; text-align:right;"><button class="btn btn-xs btn-secondary">Edit</button></td>
+            <tr>
+              <td colspan="6" style="padding: 24px; text-align: center; color: var(--muted); font-size: 13px;">
+                No tender account mappings configured. Add a mapping to connect payment methods to bank accounts.
+              </td>
             </tr>
           </tbody>
         </table>
@@ -779,19 +749,19 @@ function renderDayBook() {
       <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:12px; margin-bottom:16px;">
         <div class="card" style="padding:12px; background:rgba(0,0,0,0.02);">
           <div style="font-size:11px; color:var(--muted); font-weight:700;">OPENING FLOAT</div>
-          <div style="font-size:16px; font-weight:800; color:var(--ink); font-family:var(--font-mono);">₹30,000.00</div>
+          <div style="font-size:16px; font-weight:800; color:var(--ink); font-family:var(--font-mono);">₹0.00</div>
         </div>
         <div class="card" style="padding:12px; background:rgba(0,0,0,0.02);">
           <div style="font-size:11px; color:var(--muted); font-weight:700;">CASH COLLECTIONS</div>
-          <div style="font-size:16px; font-weight:800; color:#059669; font-family:var(--font-mono);">+₹1,45,200.00</div>
+          <div style="font-size:16px; font-weight:800; color:#059669; font-family:var(--font-mono);">+₹0.00</div>
         </div>
         <div class="card" style="padding:12px; background:rgba(0,0,0,0.02);">
           <div style="font-size:11px; color:var(--muted); font-weight:700;">PETTY PAYOUTS</div>
-          <div style="font-size:16px; font-weight:800; color:#dc2626; font-family:var(--font-mono);">-₹6,400.00</div>
+          <div style="font-size:16px; font-weight:800; color:#dc2626; font-family:var(--font-mono);">-₹0.00</div>
         </div>
         <div class="card" style="padding:12px; background:#ecfdf5; border:1px solid #a7f3d0;">
           <div style="font-size:11px; color:#065f46; font-weight:700;">CLOSING SAFE BALANCE</div>
-          <div style="font-size:16px; font-weight:800; color:#059669; font-family:var(--font-mono);">₹1,68,800.00</div>
+          <div style="font-size:16px; font-weight:800; color:#059669; font-family:var(--font-mono);">₹0.00</div>
         </div>
       </div>
     </div>
@@ -823,13 +793,10 @@ function renderTransfersWorkspace() {
             </tr>
           </thead>
           <tbody>
-            <tr style="border-bottom:1px solid var(--border);">
-              <td style="padding:10px 8px; font-family:var(--font-mono); font-weight:600; color:var(--gold,#b45309);">TRF-20260826-01</td>
-              <td style="padding:10px 8px; font-size:12px;">2026-08-26</td>
-              <td style="padding:10px 8px;">ICICI POS Settlement</td>
-              <td style="padding:10px 8px;">HDFC Main Treasury</td>
-              <td style="padding:10px 8px; text-align:right; font-weight:700; font-family:var(--font-mono);">₹4,00,000.00</td>
-              <td style="padding:10px 8px; text-align:center;"><span class="badge badge-success">COMPLETED</span></td>
+            <tr>
+              <td colspan="6" style="padding: 24px; text-align: center; color: var(--muted); font-size: 13px;">
+                No treasury transfers recorded. Initiate a transfer to move funds between accounts.
+              </td>
             </tr>
           </tbody>
         </table>
@@ -868,11 +835,10 @@ function renderMigration() {
             </tr>
           </thead>
           <tbody>
-            <tr style="border-bottom:1px solid var(--border);">
-              <td style="padding:10px 8px; font-weight:600;">HDFC Bank Main Treasury</td>
-              <td style="padding:10px 8px; font-family:var(--font-mono); font-weight:700;">₹1,50,00,000.00</td>
-              <td style="padding:10px 8px;">K. S. &amp; Associates Chartered Accountants</td>
-              <td style="padding:10px 8px; text-align:center;"><span class="badge badge-success">LOCKED</span></td>
+            <tr>
+              <td colspan="4" style="padding: 24px; text-align: center; color: var(--muted); font-size: 13px;">
+                No opening balance cut-over records found.
+              </td>
             </tr>
           </tbody>
         </table>
@@ -916,12 +882,8 @@ function renderBalanceConfirmations() {
       <a href="#passbook" class="btn btn-secondary btn-xs" style="text-decoration: none; margin-bottom: 6px;">← Back to Control Centre</a>
       <h3 style="font-size:18px; font-weight:700; margin:4px 0 0; color:var(--ink);">Period Balance Confirmations</h3>
       <p style="color:var(--muted); font-size:12.5px; margin:2px 0 16px;">Formal sign-off schedules between Primary Master, Store Managers, and Statutory Auditors.</p>
-      <div style="padding:14px; background:#ecfdf5; border:1px solid #a7f3d0; border-radius:8px; display:flex; justify-content:space-between; align-items:center;">
-        <div>
-          <strong style="color:#065f46; font-size:14px;">July 2026 Treasury Close Sign-Off</strong>
-          <div style="font-size:12px; color:#047857;">Certified balance: ₹2,84,50,000.00 · Signed by Primary Master on 31-Jul-2026</div>
-        </div>
-        <span class="badge badge-success">CONFIRMED</span>
+      <div style="background:#fafafa; border:1px solid var(--border); padding:20px; border-radius:8px; text-align:center; color:var(--muted); font-size:13px;">
+        No period balance confirmations recorded. Period sign-offs will appear here.
       </div>
     </div>
   `;
@@ -939,22 +901,8 @@ function renderPettyCash() {
         <button class="btn btn-primary btn-sm" id="pbk-btn-replenish-float">+ Replenish Store Float</button>
       </div>
 
-      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:14px;">
-        <div class="card" style="padding:16px; border-left:4px solid #10b981;">
-          <h4 style="margin:0 0 6px; font-size:14px; font-weight:700;">Calicut Roastery Float</h4>
-          <div style="font-size:20px; font-weight:800; color:#059669; font-family:var(--font-mono);">₹18,000.00 / ₹20,000</div>
-          <div style="font-size:12px; color:var(--muted); margin-top:4px;">90% Float Available · Normal</div>
-        </div>
-        <div class="card" style="padding:16px; border-left:4px solid #10b981;">
-          <h4 style="margin:0 0 6px; font-size:14px; font-weight:700;">Main Outlet Float</h4>
-          <div style="font-size:20px; font-weight:800; color:#059669; font-family:var(--font-mono);">₹16,500.00 / ₹20,000</div>
-          <div style="font-size:12px; color:var(--muted); margin-top:4px;">82% Float Available · Normal</div>
-        </div>
-        <div class="card" style="padding:16px; border-left:4px solid #10b981;">
-          <h4 style="margin:0 0 6px; font-size:14px; font-weight:700;">Branch Outlet Float</h4>
-          <div style="font-size:20px; font-weight:800; color:#059669; font-family:var(--font-mono);">₹17,200.00 / ₹20,000</div>
-          <div style="font-size:12px; color:var(--muted); margin-top:4px;">86% Float Available · Normal</div>
-        </div>
+      <div style="background:#fafafa; border:1px solid var(--border); padding:24px; border-radius:8px; text-align:center; color:var(--muted); font-size:13px;">
+        No store petty cash floats configured. Click "+ Replenish Store Float" to initialize branch imprests.
       </div>
     </div>
   `;
@@ -984,19 +932,10 @@ function renderReservedFunds() {
             </tr>
           </thead>
           <tbody>
-            <tr style="border-bottom:1px solid var(--border);">
-              <td style="padding:10px 8px; font-weight:600;">August 2026 Staff Salaries &amp; Statutory EPF</td>
-              <td style="padding:10px 8px;">HDFC Main Treasury</td>
-              <td style="padding:10px 8px; text-align:right; font-weight:700; color:#7c3aed; font-family:var(--font-mono);">₹35,00,000.00</td>
-              <td style="padding:10px 8px; text-align:center;">01-Sep-2026</td>
-              <td style="padding:10px 8px; text-align:right;"><span class="badge badge-warning">COMMITTED</span></td>
-            </tr>
-            <tr style="border-bottom:1px solid var(--border);">
-              <td style="padding:10px 8px; font-weight:600;">5% Composite GST Monthly Filing Reserve</td>
-              <td style="padding:10px 8px;">ICICI POS Settlement</td>
-              <td style="padding:10px 8px; text-align:right; font-weight:700; color:#7c3aed; font-family:var(--font-mono);">₹15,00,000.00</td>
-              <td style="padding:10px 8px; text-align:center;">20-Sep-2026</td>
-              <td style="padding:10px 8px; text-align:right;"><span class="badge badge-warning">COMMITTED</span></td>
+            <tr>
+              <td colspan="5" style="padding: 24px; text-align: center; color: var(--muted); font-size: 13px;">
+                No reserved or committed liquidity earmarks.
+              </td>
             </tr>
           </tbody>
         </table>
@@ -1067,19 +1006,8 @@ function renderDocumentVault() {
       <a href="#passbook" class="btn btn-secondary btn-xs" style="text-decoration: none; margin-bottom: 6px;">← Back to Control Centre</a>
       <h3 style="font-size:18px; font-weight:700; margin:4px 0 0; color:var(--ink);">Receipts &amp; Document Vault</h3>
       <p style="color:var(--muted); font-size:12.5px; margin:2px 0 16px;">Cryptographically stored bank deposit challans, NEFT receipts, and verified statements.</p>
-      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:14px;">
-        <div class="card" style="padding:14px; text-align:center;">
-          <div style="font-size:28px; margin-bottom:4px;">📎</div>
-          <div style="font-weight:700; font-size:13px;">aug2026_hdfc_statement.pdf</div>
-          <div style="font-size:11px; color:var(--muted);">Uploaded 26-Aug-2026 · 1.4 MB</div>
-          <button class="btn btn-xs btn-secondary" style="margin-top:8px;">Download</button>
-        </div>
-        <div class="card" style="padding:14px; text-align:center;">
-          <div style="font-size:28px; margin-bottom:4px;">📎</div>
-          <div style="font-weight:700; font-size:13px;">pinelabs_july_settlement.pdf</div>
-          <div style="font-size:11px; color:var(--muted);">Uploaded 05-Aug-2026 · 840 KB</div>
-          <button class="btn btn-xs btn-secondary" style="margin-top:8px;">Download</button>
-        </div>
+      <div style="background:#fafafa; border:1px solid var(--border); padding:24px; border-radius:8px; text-align:center; color:var(--muted); font-size:13px;">
+        No bank statements or deposit challans uploaded yet.
       </div>
     </div>
   `;
@@ -1122,18 +1050,18 @@ function renderAnalyticsView() {
       <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:14px;">
         <div class="card" style="padding:16px;">
           <div style="font-size:11px; color:var(--muted); font-weight:700;">AVERAGE DAILY INFLOW</div>
-          <div style="font-size:20px; font-weight:800; color:#059669; font-family:var(--font-mono); margin:4px 0;">₹4,25,000.00</div>
+          <div style="font-size:20px; font-weight:800; color:#059669; font-family:var(--font-mono); margin:4px 0;">₹0.00</div>
           <div style="font-size:12px; color:var(--muted);">POS &amp; Online Aggregators</div>
         </div>
         <div class="card" style="padding:16px;">
           <div style="font-size:11px; color:var(--muted); font-weight:700;">AVERAGE DAILY OUTFLOW</div>
-          <div style="font-size:20px; font-weight:800; color:#dc2626; font-family:var(--font-mono); margin:4px 0;">₹1,35,000.00</div>
+          <div style="font-size:20px; font-weight:800; color:#dc2626; font-family:var(--font-mono); margin:4px 0;">₹0.00</div>
           <div style="font-size:12px; color:var(--muted);">Vendor Sourcing &amp; OpEx</div>
         </div>
         <div class="card" style="padding:16px;">
           <div style="font-size:11px; color:var(--muted); font-weight:700;">NET DAILY SURPLUS</div>
-          <div style="font-size:20px; font-weight:800; color:#0891b2; font-family:var(--font-mono); margin:4px 0;">+₹2,90,000.00</div>
-          <div style="font-size:12px; color:#059669; font-weight:600;">Positive Free Cash Flow</div>
+          <div style="font-size:20px; font-weight:800; color:#0891b2; font-family:var(--font-mono); margin:4px 0;">₹0.00</div>
+          <div style="font-size:12px; color:var(--muted); font-weight:600;">Net Cash Flow</div>
         </div>
       </div>
     </div>
@@ -1159,26 +1087,10 @@ function renderCafeComparison() {
             </tr>
           </thead>
           <tbody>
-            <tr style="border-bottom:1px solid var(--border);">
-              <td style="padding:10px 8px; font-weight:600;">Calicut Flagship</td>
-              <td style="padding:10px 8px; text-align:right; font-weight:700;">₹98,00,000.00</td>
-              <td style="padding:10px 8px; text-align:right;">90%</td>
-              <td style="padding:10px 8px; text-align:center;"><span class="badge badge-success">Same-Day T+0</span></td>
-              <td style="padding:10px 8px; text-align:right; font-weight:700; color:#059669;">99.4 / 100</td>
-            </tr>
-            <tr style="border-bottom:1px solid var(--border);">
-              <td style="padding:10px 8px; font-weight:600;">Main Outlet</td>
-              <td style="padding:10px 8px; text-align:right; font-weight:700;">₹1,12,50,000.00</td>
-              <td style="padding:10px 8px; text-align:right;">82%</td>
-              <td style="padding:10px 8px; text-align:center;"><span class="badge badge-success">Same-Day T+0</span></td>
-              <td style="padding:10px 8px; text-align:right; font-weight:700; color:#059669;">98.8 / 100</td>
-            </tr>
-            <tr style="border-bottom:1px solid var(--border);">
-              <td style="padding:10px 8px; font-weight:600;">Branch Outlet</td>
-              <td style="padding:10px 8px; text-align:right; font-weight:700;">₹74,00,000.00</td>
-              <td style="padding:10px 8px; text-align:right;">86%</td>
-              <td style="padding:10px 8px; text-align:center;"><span class="badge badge-success">Same-Day T+0</span></td>
-              <td style="padding:10px 8px; text-align:right; font-weight:700; color:#059669;">98.5 / 100</td>
+            <tr>
+              <td colspan="5" style="padding: 24px; text-align: center; color: var(--muted); font-size: 13px;">
+                No café comparative data available. Performance metrics will appear once active operations commence.
+              </td>
             </tr>
           </tbody>
         </table>
@@ -1196,7 +1108,7 @@ function renderLiquidityRunway() {
 
       <div style="background:#ecfdf5; border:1px solid #a7f3d0; padding:20px; border-radius:10px; margin-bottom:16px; text-align:center;">
         <div style="font-size:12px; color:#065f46; font-weight:700; text-transform:uppercase;">CURRENT UNCOMMITTED RUNWAY</div>
-        <div style="font-size:36px; font-weight:900; color:#059669; font-family:var(--font-mono); margin:6px 0;">94 Days</div>
+        <div style="font-size:36px; font-weight:900; color:#059669; font-family:var(--font-mono); margin:6px 0;">—</div>
         <div style="font-size:13px; color:#047857;">Based on current monthly OpEx burn rate with zero revenue inflow.</div>
       </div>
     </div>
@@ -1210,27 +1122,8 @@ function renderAuditTrail() {
       <h3 style="font-size:18px; font-weight:700; margin:4px 0 0; color:var(--ink);">Immutable Treasury Audit Trail</h3>
       <p style="color:var(--muted); font-size:12.5px; margin:2px 0 16px;">Append-only activity log for every balance modification, transfer, and period lock.</p>
 
-      <div style="display:grid; gap:8px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; border:1px solid var(--border); border-radius:6px; background:#fafafa;">
-          <div>
-            <strong style="font-size:13px;">Direct Balance Adjustment Executed</strong>
-            <div style="font-size:11.5px; color:var(--muted);">Account: HDFC Treasury · Justification: Bank statement interest alignment</div>
-          </div>
-          <div style="text-align:right;">
-            <span class="badge badge-neutral" style="font-size:11px;">Primary Master (MU-0001)</span>
-            <div style="font-size:11px; color:var(--muted); margin-top:2px;">26-Aug-2026 14:30 IST</div>
-          </div>
-        </div>
-        <div style="display:flex; justify-content:space-between; align-items:center; padding:12px; border:1px solid var(--border); border-radius:6px; background:#fafafa;">
-          <div>
-            <strong style="font-size:13px;">Inter-Account Transfer Posted (₹4,00,000.00)</strong>
-            <div style="font-size:11.5px; color:var(--muted);">ICICI POS Settlement -> HDFC Main Treasury</div>
-          </div>
-          <div style="text-align:right;">
-            <span class="badge badge-neutral" style="font-size:11px;">Automated Sweep</span>
-            <div style="font-size:11px; color:var(--muted); margin-top:2px;">25-Aug-2026 02:00 IST</div>
-          </div>
-        </div>
+      <div style="background:#fafafa; border:1px solid var(--border); padding:20px; border-radius:8px; text-align:center; color:var(--muted); font-size:13px;">
+        No treasury audit events recorded.
       </div>
     </div>
   `;

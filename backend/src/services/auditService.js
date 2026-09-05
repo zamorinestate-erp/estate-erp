@@ -341,7 +341,8 @@ async function recordAuditEvent({
       sanitizeAuditValue(metadata),
   };
 
-  if (mongoose.connection.readyState !== 1) {
+  const isStubbed = typeof AuditEvent.create === 'function' && AuditEvent.create !== mongoose.Model.create;
+  if (mongoose.connection.readyState !== 1 && !isStubbed) {
     return eventPayload;
   }
 

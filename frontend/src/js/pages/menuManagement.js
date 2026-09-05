@@ -970,7 +970,8 @@ async function renderSimulatorTab(wrap) {
   wrap.innerHTML = `<div style="text-align:center; padding:30px;"><div class="spinner"></div></div>`;
   let simItems = SAMPLE_SIMULATOR;
   try {
-    const res = await apiGet("/menu/simulator?outletId=ZC-0001&serviceMode=DINE_IN");
+    const outletId = state.currentCafeId || state.selectedCafeId || "";
+    const res = await apiGet(`/menu/simulator?outletId=${outletId}&serviceMode=DINE_IN`);
     if (res && res.simulatedItems?.length) simItems = res.simulatedItems;
   } catch (err) {
     simItems = SAMPLE_SIMULATOR;

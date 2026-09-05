@@ -22,143 +22,15 @@ let recurringOnlyFilter = false;
 let searchQuery = "";
 let lastRefreshedTime = new Date();
 
-const CAFE_NAMES = {
-  "ZC-0001": "Main Outlet",
-  "ZC-0002": "Branch Outlet",
-  "ZC-0003": "Wayanad Heritage Roastery",
-};
+let availableCafes = [];
 
-const SAMPLE_TASKS = [
-  {
-    taskId: "TSK-0001",
-    title: "Espresso Machine Group 1 & 2 Deep Descaling & Backflush",
-    description: "Perform 15-minute chemical backflush on groups 1 and 2, replace shower screens if clogged, check steam wand pressure.",
-    category: "EQUIPMENT_MAINTENANCE",
-    risk: "HIGH",
-    isCriticalControl: true,
-    assignedUserId: "Duty Staff",
-    responsibleUserId: "Admin Lead",
-    cafeId: "ZC-0001",
-    dueDate: "2026-08-22",
-    dueTime: "22:00",
-    priority: "HIGH",
-    status: "AWAITING_VERIFICATION",
-    verificationRequired: true,
-    verificationStatus: "PENDING_VERIFICATION",
-    checklist: [
-      { item: "Backflush with detergent powder", status: "PASS" },
-      { item: "Clean shower screens and dispersion blocks", status: "PASS" },
-      { item: "Purge and wipe steam wands", status: "PASS" },
-      { item: "Verify group head pressure at 9 bar", status: "PASS" },
-    ],
-    sopReference: { title: "SOP-EQ-004 Espresso Daily Maintenance", version: "v2.1", docUrl: "#" },
-    recurrence: { isRecurring: true, frequency: "DAILY", occurrenceIndex: 14 },
-    source: "RECURRING_TEMPLATE",
-    createdAt: new Date("2026-08-22T06:00:00Z"),
-  },
-  {
-    taskId: "TSK-0002",
-    title: "Weekly Arabica & Robusta Coffee Bean Delivery Receiving Signoff",
-    description: "Verify roast date within 14 days, check bag integrity, weigh 50kg Arabica consignment, log batch numbers.",
-    category: "INVENTORY_RECEIVING",
-    risk: "MEDIUM",
-    isCriticalControl: false,
-    assignedUserId: "Admin Lead",
-    responsibleUserId: "Admin Lead",
-    cafeId: "ZC-0001",
-    dueDate: "2026-08-23",
-    dueTime: "11:00",
-    priority: "NORMAL",
-    status: "PENDING",
-    verificationRequired: true,
-    verificationStatus: "NONE",
-    checklist: [
-      { item: "Inspect physical seals on 5x 10kg bags", status: "PENDING" },
-      { item: "Verify roast date <= 14 days", status: "PENDING" },
-      { item: "Confirm invoice matching PO-00241", status: "PENDING" },
-    ],
-    recurrence: { isRecurring: true, frequency: "WEEKLY", occurrenceIndex: 8 },
-    source: "MANUAL",
-    createdAt: new Date("2026-08-22T07:30:00Z"),
-  },
-  {
-    taskId: "TSK-0003",
-    title: "Monthly Fire Safety, Emergency Exits & First Aid Box Audit",
-    description: "Statutory compliance inspection: check fire extinguisher pressure gauges, ensure unblocked exits, verify first-aid supplies.",
-    category: "SAFETY_COMPLIANCE",
-    risk: "CRITICAL",
-    isCriticalControl: true,
-    assignedUserId: "Suresh Menon",
-    responsibleUserId: "Suresh Menon",
-    cafeId: "ZC-0002",
-    dueDate: "2026-08-20",
-    dueTime: "18:00",
-    priority: "URGENT",
-    status: "RETURNED_FOR_CORRECTION",
-    verificationRequired: true,
-    verificationStatus: "RETURNED_FOR_CORRECTION",
-    returnReason: "Extinguisher inspection tag missing for Unit B rear exit.",
-    returnHistory: [
-      { returnedByUserId: "OWNER", returnedAt: new Date("2026-08-21T14:30:00Z"), reason: "Extinguisher inspection tag missing for Unit B rear exit." },
-    ],
-    checklist: [
-      { item: "Fire extinguisher pressure gauges in green zone", status: "FAIL", failureReason: "Unit B tag expired" },
-      { item: "Emergency exit paths 100% unobstructed", status: "PASS" },
-      { item: "First aid burn gel and sterile bandages replenished", status: "PASS" },
-    ],
-    recurrence: { isRecurring: true, frequency: "MONTHLY", occurrenceIndex: 3 },
-    source: "RECURRING_TEMPLATE",
-    createdAt: new Date("2026-08-19T09:00:00Z"),
-  },
-  {
-    taskId: "TSK-0004",
-    title: "Cash Drawer Daily Shift Variance Audit & Safe Drop Reconciliation",
-    description: "Perform blind count verification of opening float, cash receipts, petty cash disbursements and safe drop bag.",
-    category: "CASH_CONTROL_AUDIT",
-    risk: "CRITICAL",
-    isCriticalControl: true,
-    assignedUserId: "Anjali Pillai",
-    responsibleUserId: "Admin Lead",
-    cafeId: "ZC-0001",
-    dueDate: "2026-08-22",
-    dueTime: "23:00",
-    priority: "HIGH",
-    status: "COMPLETED",
-    verificationRequired: true,
-    verificationStatus: "VERIFIED",
-    verifiedByUserId: "OWNER",
-    verifiedAt: new Date("2026-08-22T18:00:00Z"),
-    verificationRemarks: "Verified zero float variance.",
-    recurrence: { isRecurring: true, frequency: "DAILY", occurrenceIndex: 22 },
-    source: "SYSTEM_RULE",
-    createdAt: new Date("2026-08-22T08:00:00Z"),
-  },
-  {
-    taskId: "TSK-0005",
-    title: "Milk Refrigerator Temperature Log & Seal Integrity Check",
-    description: "Verify internal chiller temperature <= 4°C, inspect magnetic door gaskets, clean condenser coils.",
-    category: "HYGIENE_INSPECTION",
-    risk: "HIGH",
-    isCriticalControl: true,
-    assignedUserId: "Supervisor",
-    responsibleUserId: "Suresh Menon",
-    cafeId: "ZC-0002",
-    dueDate: "2026-08-21",
-    dueTime: "12:00",
-    priority: "HIGH",
-    status: "BLOCKED",
-    blockedReason: "Spare gasket on order with vendor (ETA 24 Aug).",
-    blockedAt: new Date("2026-08-21T10:00:00Z"),
-    verificationRequired: true,
-    verificationStatus: "NONE",
-    checklist: [
-      { item: "Digital thermometer read 3.8°C", status: "PASS" },
-      { item: "Door gasket airtight seal", status: "FAIL", failureReason: "Gasket tear detected" },
-    ],
-    source: "MANUAL",
-    createdAt: new Date("2026-08-21T06:00:00Z"),
-  }
-];
+function getCafeName(cafeId) {
+  if (!cafeId) return "General";
+  const found = availableCafes.find((c) => c.code === cafeId || c.id === cafeId || c._id === cafeId);
+  return found ? found.name : cafeId;
+}
+
+const SAMPLE_TASKS = [];
 
 function getIstDateString(date = new Date()) {
   return new Intl.DateTimeFormat("en-CA", {
@@ -380,9 +252,11 @@ export function renderTasks() {
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
             <select id="filter-task-cafe" class="select select-sm" style="background:var(--surface);color:var(--ink);border:1px solid var(--line);font-size:12px;">
               <option value="ALL" ${selectedCafeFilter === "ALL" ? "selected" : ""}>All Authorized Cafés</option>
-              <option value="ZC-0001" ${selectedCafeFilter === "ZC-0001" ? "selected" : ""}>ZC-0001 · Kozhikode Beach</option>
-              <option value="ZC-0002" ${selectedCafeFilter === "ZC-0002" ? "selected" : ""}>ZC-0002 · Branch Outlet</option>
-              <option value="ZC-0003" ${selectedCafeFilter === "ZC-0003" ? "selected" : ""}>ZC-0003 · Wayanad Roastery</option>
+              ${availableCafes.map(c => `
+                <option value="${c.code || c.id || c._id}" ${selectedCafeFilter === (c.code || c.id || c._id) ? "selected" : ""}>
+                  ${c.code ? c.code + " · " : ""}${c.name}
+                </option>
+              `).join('')}
             </select>
 
             <select id="filter-task-category" class="select select-sm" style="background:var(--surface);color:var(--ink);border:1px solid var(--line);font-size:12px;">
@@ -475,7 +349,7 @@ export function renderTasks() {
                   : filteredTasks
                       .map((t) => {
                         const overdue = isTaskOverdue(t);
-                        const cafeName = CAFE_NAMES[t.cafeId] || t.cafeId || "General";
+                        const cafeName = getCafeName(t.cafeId);
                         const riskBadge =
                           t.risk === "CRITICAL" || t.isCriticalControl
                             ? `<span class="oto-badge badge-critical">CRITICAL CONTROL</span>`
@@ -600,27 +474,25 @@ export function renderTasks() {
             <span>📅</span> Upcoming Critical Obligations (7-Day Lookout)
           </h3>
           <div style="display:flex;flex-direction:column;gap:8px;font-size:12.5px;">
-            <div style="padding:8px 10px;background:var(--surface-sunken);border:1px solid var(--line);border-radius:6px;display:flex;justify-content:space-between;align-items:center;">
-              <div>
-                <div style="font-weight:600;color:var(--ink);">Fire Extinguisher & First Aid Audit</div>
-                <div style="font-size:11px;color:var(--muted);">Branch Outlet · Duty Manager</div>
-              </div>
-              <span class="badge" style="background:var(--bronze-100);color:var(--bronze-700);font-size:11px;">24 Aug</span>
-            </div>
-            <div style="padding:8px 10px;background:var(--surface-sunken);border:1px solid var(--line);border-radius:6px;display:flex;justify-content:space-between;align-items:center;">
-              <div>
-                <div style="font-weight:600;color:var(--ink);">Espresso Machine Group 1 Service</div>
-                <div style="font-size:11px;color:var(--muted);">Main Outlet · Duty Barista</div>
-              </div>
-              <span class="badge" style="background:var(--bronze-100);color:var(--bronze-700);font-size:11px;">25 Aug</span>
-            </div>
-            <div style="padding:8px 10px;background:var(--surface-sunken);border:1px solid var(--line);border-radius:6px;display:flex;justify-content:space-between;align-items:center;">
-              <div>
-                <div style="font-weight:600;color:var(--ink);">Quarterly Water Filtration & TDS Test</div>
-                <div style="font-size:11px;color:var(--muted);">Roastery · Supervisor</div>
-              </div>
-              <span class="badge" style="background:var(--bronze-100);color:var(--bronze-700);font-size:11px;">27 Aug</span>
-            </div>
+            ${(() => {
+              const criticalUpcoming = (liveTasks || []).filter((t) => t.priority === "HIGH" || t.priority === "CRITICAL" || t.isCritical);
+              if (criticalUpcoming.length === 0) {
+                return `
+                  <div style="padding:16px;text-align:center;color:var(--muted);font-size:12px;background:var(--surface-sunken);border-radius:6px;">
+                    No upcoming critical obligations in the 7-day window.
+                  </div>
+                `;
+              }
+              return criticalUpcoming.slice(0, 3).map((t) => `
+                <div style="padding:8px 10px;background:var(--surface-sunken);border:1px solid var(--line);border-radius:6px;display:flex;justify-content:space-between;align-items:center;">
+                  <div>
+                    <div style="font-weight:600;color:var(--ink);">${t.title || t.taskName || "Obligation"}</div>
+                    <div style="font-size:11px;color:var(--muted);">${getCafeName(t.cafeId)} · ${t.assignedToRole || t.assigneeRole || "Staff"}</div>
+                  </div>
+                  <span class="badge" style="background:var(--bronze-100);color:var(--bronze-700);font-size:11px;">${t.dueDate || "Upcoming"}</span>
+                </div>
+              `).join("");
+            })()}
           </div>
         </div>
       </div>
@@ -790,12 +662,18 @@ export function wireTasks(root) {
 
 async function fetchTasksFromServer() {
   try {
-    const res = await apiGet("/tasks");
-    if (res?.data?.tasks && Array.isArray(res.data.tasks) && res.data.tasks.length > 0) {
-      liveTasks = res.data.tasks;
-      if (res.data.summary) summaryMetrics = res.data.summary;
+    const [res, cafeRes] = await Promise.allSettled([
+      apiGet("/tasks"),
+      apiGet("/cafes"),
+    ]);
+    if (res.status === "fulfilled" && res.value?.data?.tasks && Array.isArray(res.value.data.tasks) && res.value.data.tasks.length > 0) {
+      liveTasks = res.value.data.tasks;
+      if (res.value.data.summary) summaryMetrics = res.value.data.summary;
     } else {
       liveTasks = [...SAMPLE_TASKS];
+    }
+    if (cafeRes.status === "fulfilled" && cafeRes.value?.data?.cafes) {
+      availableCafes = cafeRes.value.data.cafes;
     }
   } catch (err) {
     console.warn("Could not fetch tasks from server, using existing state:", err);
@@ -828,7 +706,7 @@ function openTaskDetailModal(taskId, root) {
   if (!task) return;
 
   const isOwner = state.role === ROLES.OWNER || state.role === ROLES.MASTER;
-  const cafeName = CAFE_NAMES[task.cafeId] || task.cafeId || "General";
+  const cafeName = getCafeName(task.cafeId);
 
   openModal({
     title: `Task Details · ${task.taskId}`,
@@ -1237,9 +1115,11 @@ function openAssignTaskModal(root) {
         <div>
           <label class="label" style="color:var(--ink, #18181b);font-weight:700;font-size:12px;margin-bottom:4px;display:block;">Authorized Café *</label>
           <select id="assign-cafe" class="select" required style="width:100%;box-sizing:border-box;">
-            <option value="ZC-0001">ZC-0001 · Main Outlet</option>
-            <option value="ZC-0002">ZC-0002 · Branch Outlet Outpost</option>
-            <option value="ZC-0003">ZC-0003 · Wayanad Heritage Roastery</option>
+            ${availableCafes.map(c => `
+              <option value="${c.code || c.id || c._id}">
+                ${c.code ? c.code + " · " : ""}${c.name}
+              </option>
+            `).join('')}
           </select>
         </div>
 

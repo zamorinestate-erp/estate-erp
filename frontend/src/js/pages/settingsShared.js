@@ -711,7 +711,7 @@ function renderProfile() {
           <div class="settings-field-label">
             <span>Primary Assigned Café</span>
           </div>
-          <div class="settings-readonly-field">${escHtml(p?.primaryCafeId || user.assignedCafeIds?.[0] || "ZC-0001")}</div>
+          <div class="settings-readonly-field">${escHtml(p?.primaryCafeId || user.assignedCafeIds?.[0] || "Unassigned")}</div>
         </div>
       </div>
     </div>
@@ -769,7 +769,7 @@ function renderEmployment() {
       <div class="settings-form-grid">
         <div class="settings-field-group">
           <div class="settings-field-label">Employee Code</div>
-          <div class="settings-readonly-field">${escHtml(p?.employeeCode || user.userId || "ZC-EMP-001")}</div>
+          <div class="settings-readonly-field">${escHtml(p?.employeeCode || user.userId || "—")}</div>
         </div>
         <div class="settings-field-group">
           <div class="settings-field-label">Designation</div>
@@ -781,7 +781,7 @@ function renderEmployment() {
         </div>
         <div class="settings-field-group">
           <div class="settings-field-label">Primary Café</div>
-          <div class="settings-readonly-field">${escHtml(p?.primaryCafeId || (user.assignedCafeIds?.[0]) || "ZC-0001")}</div>
+          <div class="settings-readonly-field">${escHtml(p?.primaryCafeId || (user.assignedCafeIds?.[0]) || "Unassigned")}</div>
         </div>
         <div class="settings-field-group">
           <div class="settings-field-label">Employment Type</div>
@@ -852,7 +852,7 @@ function renderEmployment() {
 
 function renderAccess() {
   const user = state.auth?.user || state.user || {};
-  const cafes = user.assignedCafeIds || ["ZC-0001"];
+  const cafes = user.assignedCafeIds || [];
   const role = state.role || ROLES.STAFF;
   const roleLabels = {
     [ROLES.MASTER]: "Master User — Full organisation administrative authority",

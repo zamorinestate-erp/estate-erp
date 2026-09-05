@@ -18,7 +18,7 @@ let server, baseUrl;
 test.before(async () => {
   const app = createApp();
   server = http.createServer(app);
-  await new Promise((resolve) => server.listen(0, resolve));
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   baseUrl = `http://127.0.0.1:${server.address().port}/api/cafe-ops`;
 });
 test.after(async () => { await new Promise((resolve) => server.close(resolve)); });

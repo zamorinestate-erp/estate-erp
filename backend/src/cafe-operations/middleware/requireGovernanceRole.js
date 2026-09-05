@@ -24,7 +24,7 @@ function resolveCallerFromRequest(req) {
   if (req.cafeOpsCaller) {
     return req.cafeOpsCaller;
   }
-  if (req.headers && req.headers['x-mock-user-role']) {
+  if (process.env.NODE_ENV !== 'production' && req.headers && req.headers['x-mock-user-role']) {
     const isPrimary = req.headers['x-mock-user-is-primary'] === 'true' || req.headers['x-mock-user-role'] === 'MASTER_PRIMARY';
     const role = req.headers['x-mock-user-role'];
     return {

@@ -407,7 +407,7 @@ async function runAudit() {
   // Section 8: Navigation & Role Scope Coherence
   console.log("\n8. APP SHELL NAVIGATION & ROLE SCOPES");
   const roleScenarios = [
-    { role: 'master', isPrimary: true, expectedRouteCount: 20 },
+    { role: 'master', isPrimary: true, expectedRouteCount: 25 },
     { role: 'owner', isPrimary: false, expectedRouteCount: 12 },
     { role: 'cafe_admin', isPrimary: false, expectedRouteCount: 15 },
     { role: 'staff', isPrimary: false, expectedRouteCount: 5 },

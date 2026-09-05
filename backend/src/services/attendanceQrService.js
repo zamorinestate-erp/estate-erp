@@ -8,6 +8,7 @@ const { DeviceRegistration } = require('../models/DeviceRegistration');
 const { DeviceSecurityEvent } = require('../models/DeviceSecurityEvent');
 const { Attendance } = require('../modules/attendance/Attendance');
 const { Cafe } = require('../models/Cafe');
+const ApiError = require('../utils/ApiError');
 
 const QR_SIGNING_SECRET = process.env.QR_SIGNING_SECRET || 'zamorin_qr_master_signing_secret_key_2026_dsec';
 
@@ -28,6 +29,10 @@ class AttendanceQrService {
     this.userPinAttempts = new Map();
   }
 
+  calculateDistance(lat1, lon1, lat2, lon2) {
+    return calculateDistanceMetres(lat1, lon1, lat2, lon2);
+  }
+
   getUserPinAttemptState(userId) {
     return this.userPinAttempts.get(userId) || { failedAttempts: 0, lockedUntil: null };
   }
@@ -46,6 +51,394 @@ class AttendanceQrService {
   signPayload(payload) {
     const serialized = JSON.stringify(payload);
     return crypto.createHmac('sha256', QR_SIGNING_SECRET).update(serialized).digest('hex');
+  }
+
+  /**
+   * Authoritatively issues or retrieves the currently active rotating challenge for an authorised display.
+   */
+  async getActiveOrNewChallenge({
+    organisationId = 'ZAMORIN',
+    cafeId,
+    deviceId = 'OPS_CONSOLE',
+    requestedByUserId = 'SYSTEM',
+    requestedByRole = 'SYSTEM',
+    assignedCafeIds = [],
+    rotationIntervalSeconds = 45,
+  }) {
+    if (!cafeId) {
+      throw new ApiError(400, 'CAFE_ID_REQUIRED', 'A cafeId must be provided to display the attendance QR.');
+    }
+
+    // Role-based authorization for displaying the live rotating QR challenge
+    if (requestedByRole === 'STAFF') {
+      throw new ApiError(403, 'FORBIDDEN', 'Staff members are not permitted to generate or view raw QR challenges.');
+    }
+
+    if (requestedByRole === 'CAFE_ADMIN' && Array.isArray(assignedCafeIds) && assignedCafeIds.length > 0) {
+      const allowedSet = new Set(assignedCafeIds.map((c) => String(c).toUpperCase()));
+      if (!allowedSet.has(String(cafeId).toUpperCase())) {
+        throw new ApiError(403, 'CAFE_SCOPE_MISMATCH', 'You are not authorised to display Attendance QR for this café.');
+      }
+    }
+
+    const cafe = await Cafe.findOne({ cafeId, organisationId }).lean();
+    if (!cafe) {
+      throw new ApiError(404, 'CAFE_NOT_FOUND', 'Café not found in organisation.');
+    }
+
+    // 8-Second Pre-Expiry Threshold:
+    // When querying for an active challenge, only return an existing challenge if it has > 8s remaining TTL.
+    // This prevents handing a client a challenge that will expire while the employee is aligning their camera in-flight.
+    // NOTE: This is NOT a post-expiry grace window. Once Date.now() > expiresAt, punches are strictly rejected with 403.
+    let challenge = await AttendanceQrChallenge.findOne({
+      organisationId,
+      cafeId,
+      isRevoked: false,
+      expiresAt: { $gt: new Date(Date.now() + 8 * 1000) },
+    }).sort({ expiresAt: -1 });
+
+    if (!challenge) {
+      const challengeId = `CHL_${Date.now()}_${crypto.randomBytes(8).toString('hex')}`;
+      const opaqueToken = `ZAM_ATT_${crypto.randomBytes(32).toString('hex')}`;
+      const fallbackPin = Math.floor(100000 + Math.random() * 900000).toString();
+      const issuedAt = new Date();
+      const expiresAt = new Date(Date.now() + rotationIntervalSeconds * 1000);
+      const nonce = crypto.randomBytes(16).toString('hex');
+
+      const envelopeData = {
+        ver: 1,
+        cid: challengeId,
+        did: deviceId || 'OPS_CONSOLE',
+        cafeId,
+        orgId: organisationId,
+        iat: Math.floor(issuedAt.getTime() / 1000),
+        exp: Math.floor(expiresAt.getTime() / 1000),
+        nonce,
+        purpose: 'ATTENDANCE_PUNCH',
+      };
+
+      const signature = this.signPayload(envelopeData);
+
+      challenge = await AttendanceQrChallenge.create({
+        challengeId,
+        opaqueToken,
+        organisationId,
+        deviceId: deviceId || 'OPS_CONSOLE',
+        cafeId,
+        fallbackPin,
+        purpose: 'ATTENDANCE_PUNCH',
+        issuedByUserId: requestedByUserId || 'SYSTEM',
+        issuedByRole: requestedByRole || 'SYSTEM',
+        rotationIntervalSeconds,
+        issuedAt,
+        expiresAt,
+        nonce,
+        signature,
+      });
+    } else if (!challenge.opaqueToken) {
+      const opaqueToken = `ZAM_ATT_${crypto.randomBytes(32).toString('hex')}`;
+      challenge.opaqueToken = opaqueToken;
+      await AttendanceQrChallenge.updateOne({ _id: challenge._id }, { $set: { opaqueToken } });
+    }
+
+    const envelope = {
+      ver: 1,
+      cid: challenge.challengeId,
+      did: challenge.deviceId,
+      cafeId: challenge.cafeId,
+      orgId: challenge.organisationId,
+      iat: Math.floor(challenge.issuedAt.getTime() / 1000),
+      exp: Math.floor(challenge.expiresAt.getTime() / 1000),
+      nonce: challenge.nonce,
+      purpose: challenge.purpose || 'ATTENDANCE_PUNCH',
+      sig: challenge.signature,
+    };
+
+    const secret = process.env.ATTENDANCE_QR_SECRET || 'zamorin-attendance-presence-secret-salt-2026';
+    const expiresAtSec = Math.floor(challenge.expiresAt.getTime() / 1000);
+    const issuedAtSec = Math.floor(challenge.issuedAt.getTime() / 1000);
+    const dotPayload = `${challenge.challengeId}.${challenge.organisationId}.${challenge.cafeId}.${issuedAtSec}.${expiresAtSec}`;
+    const dotSig = crypto.createHmac('sha256', secret).update(dotPayload).digest('hex');
+    const dotToken = `${challenge.challengeId}.${challenge.organisationId}.${challenge.cafeId}.${expiresAtSec}.${dotSig}`;
+
+    return {
+      challengeId: challenge.challengeId,
+      purpose: challenge.purpose || 'ATTENDANCE_PUNCH',
+      envelope,
+      qrToken: dotToken,
+      dotToken,
+      opaqueToken: challenge.opaqueToken,
+      qrString: JSON.stringify(envelope),
+      cafeId: challenge.cafeId,
+      cafeName: cafe.name,
+      fallbackPin: challenge.fallbackPin,
+      issuedAt: challenge.issuedAt,
+      expiresAt: challenge.expiresAt,
+      rotationIntervalSeconds: challenge.rotationIntervalSeconds || rotationIntervalSeconds,
+      remainingSeconds: Math.max(0, Math.floor((challenge.expiresAt.getTime() - Date.now()) / 1000)),
+    };
+  }
+
+  /**
+   * Validates a scanned QR token and resolves the authoritative organisationId and cafeId.
+   */
+  async validateChallengeToken(qrToken, { employeeOrgId, employeeAssignedCafes = [], employeeRole = 'STAFF', isPrimaryMaster = false } = {}) {
+    if (!qrToken) {
+      throw new ApiError(400, 'QR_TOKEN_REQUIRED', 'Attendance QR token is required.');
+    }
+
+    const trimmedToken = typeof qrToken === 'string' ? qrToken.trim() : '';
+
+    // Branch 0: Opaque High-Entropy Token (ZAM_ATT_<hex>)
+    // Privacy-hardened architecture: Does not expose organisationId, cafeId, or DB identifiers in QR payload
+    if (trimmedToken.startsWith('ZAM_ATT_')) {
+      const challenge = await AttendanceQrChallenge.findOne({ opaqueToken: trimmedToken });
+      if (!challenge || challenge.isRevoked) {
+        throw new ApiError(404, 'QR_CHALLENGE_NOT_FOUND', 'Attendance QR challenge not found or revoked.');
+      }
+
+      if (Date.now() > new Date(challenge.expiresAt).getTime()) {
+        throw new ApiError(403, 'EXPIRED_ATTENDANCE_QR', 'Attendance QR token has expired. Please scan the latest rotating QR.');
+      }
+
+      if (challenge.purpose && challenge.purpose !== 'ATTENDANCE_PUNCH') {
+        throw new ApiError(403, 'INVALID_CHALLENGE_PURPOSE', 'Invalid challenge purpose.');
+      }
+
+      if (employeeOrgId && challenge.organisationId !== String(employeeOrgId).toUpperCase()) {
+        throw new ApiError(403, 'ORGANISATION_MISMATCH', 'Attendance QR belongs to a different organisation.');
+      }
+
+      const resolvedCafeId = challenge.cafeId;
+      if (employeeRole === 'STAFF' && !isPrimaryMaster) {
+        if (Array.isArray(employeeAssignedCafes) && employeeAssignedCafes.length > 0) {
+          const cafeAllowed = employeeAssignedCafes
+            .map((c) => String(c).toUpperCase())
+            .includes(String(resolvedCafeId).toUpperCase());
+          if (!cafeAllowed) {
+            throw new ApiError(403, 'CROSS_CAFE_UNAUTHORIZED', 'You are not assigned to check in at this café.');
+          }
+        }
+      }
+
+      return {
+        valid: true,
+        verified: true,
+        challenge,
+        challengeId: challenge.challengeId,
+        resolvedCafeId,
+        cafeId: resolvedCafeId,
+        resolvedOrgId: challenge.organisationId,
+        organisationId: challenge.organisationId,
+        expiresAt: challenge.expiresAt,
+        purpose: challenge.purpose || 'ATTENDANCE_PUNCH',
+      };
+    }
+
+    const secret = process.env.ATTENDANCE_QR_SECRET || 'zamorin-attendance-presence-secret-salt-2026';
+
+    // Branch A: Dot-separated compact token (challengeId.orgId.cafeId.expiresAt.signature)
+    if (typeof qrToken === 'string' && !qrToken.trim().startsWith('{')) {
+      const parts = qrToken.split('.');
+      if (parts.length !== 5) {
+        throw new ApiError(400, 'INVALID_CHALLENGE_FORMAT', 'Attendance QR token format is invalid.');
+      }
+
+      const [tokenCid, tokenOrgId, tokenCafeId, tokenExp, tokenSig] = parts;
+      const expSec = Number(tokenExp);
+      if (isNaN(expSec)) {
+        throw new ApiError(400, 'INVALID_CHALLENGE_FORMAT', 'Attendance QR expiration timestamp is invalid.');
+      }
+
+      if (Date.now() > expSec * 1000) {
+        throw new ApiError(403, 'EXPIRED_ATTENDANCE_QR', 'Attendance QR token has expired. Please scan the latest rotating QR.');
+      }
+
+      const challenge = await AttendanceQrChallenge.findOne({ challengeId: tokenCid });
+      if (challenge && challenge.isRevoked) {
+        throw new ApiError(404, 'QR_CHALLENGE_NOT_FOUND', 'Attendance QR challenge revoked.');
+      }
+
+      // Cryptographic signature check
+      let validSig = false;
+      if (challenge?.signature === tokenSig) {
+        validSig = true;
+      }
+      if (!validSig && challenge?.issuedAt) {
+        const iatSec = Math.floor(new Date(challenge.issuedAt).getTime() / 1000);
+        const testPayload = `${tokenCid}.${tokenOrgId}.${tokenCafeId}.${iatSec}.${tokenExp}`;
+        if (crypto.createHmac('sha256', secret).update(testPayload).digest('hex') === tokenSig) {
+          validSig = true;
+        }
+      }
+      if (!validSig) {
+        const directPayload = `${tokenCid}.${tokenOrgId}.${tokenCafeId}.${tokenExp}`;
+        if (crypto.createHmac('sha256', secret).update(directPayload).digest('hex') === tokenSig) {
+          validSig = true;
+        }
+      }
+      if (!validSig) {
+        for (let offset = 40; offset <= 50; offset++) {
+          const testPayload = `${tokenCid}.${tokenOrgId}.${tokenCafeId}.${expSec - offset}.${tokenExp}`;
+          if (crypto.createHmac('sha256', secret).update(testPayload).digest('hex') === tokenSig) {
+            validSig = true;
+            break;
+          }
+        }
+      }
+
+      if (!validSig) {
+        throw new ApiError(403, 'INVALID_CHALLENGE_SIGNATURE', 'QR cryptographic verification failed.');
+      }
+
+      if (employeeOrgId && tokenOrgId !== employeeOrgId) {
+        throw new ApiError(403, 'ORGANISATION_MISMATCH', 'QR challenge belongs to a different organisation.');
+      }
+
+      if (employeeRole === 'STAFF' && Array.isArray(employeeAssignedCafes) && employeeAssignedCafes.length > 0) {
+        const allowedSet = new Set(employeeAssignedCafes.map((c) => String(c).toUpperCase()));
+        if (!allowedSet.has(tokenCafeId.toUpperCase())) {
+          throw new ApiError(403, 'CROSS_CAFE_UNAUTHORIZED', 'You are not assigned to check in at this café.');
+        }
+      }
+
+      return {
+        valid: true,
+        verified: true,
+        challenge: challenge || { challengeId: tokenCid, cafeId: tokenCafeId, organisationId: tokenOrgId },
+        challengeId: tokenCid,
+        resolvedCafeId: tokenCafeId,
+        cafeId: tokenCafeId,
+        organisationId: tokenOrgId,
+        expiresAt: new Date(expSec * 1000),
+      };
+    }
+
+    // Branch B: JSON / base64 object envelope
+    let envelopeData;
+    if (typeof qrToken === 'string') {
+      try {
+        envelopeData = JSON.parse(qrToken);
+      } catch (_) {
+        try {
+          envelopeData = JSON.parse(Buffer.from(qrToken, 'base64').toString('utf8'));
+        } catch (e) {
+          throw new ApiError(400, 'INVALID_QR_PAYLOAD', 'Scanned QR token could not be parsed.');
+        }
+      }
+    } else if (typeof qrToken === 'object' && qrToken !== null) {
+      envelopeData = qrToken;
+    } else {
+      throw new ApiError(400, 'INVALID_QR_PAYLOAD', 'Scanned QR token format is invalid.');
+    }
+
+    if (!envelopeData.sig || !envelopeData.cid) {
+      throw new ApiError(400, 'INVALID_QR_STRUCTURE', 'QR envelope is missing signature or challenge ID.');
+    }
+
+    if (envelopeData.purpose && envelopeData.purpose !== 'ATTENDANCE_PUNCH') {
+      throw new ApiError(400, 'INVALID_QR_PURPOSE', 'Scanned QR code is not valid for attendance punches.');
+    }
+
+    const { sig, ...dataToVerify } = envelopeData;
+    const expectedSig = this.signPayload(dataToVerify);
+    if (sig !== expectedSig) {
+      throw new ApiError(400, 'INVALID_QR_SIGNATURE', 'QR cryptographic verification failed.');
+    }
+
+    const challenge = await AttendanceQrChallenge.findOne({ challengeId: envelopeData.cid });
+    if (!challenge || challenge.isRevoked) {
+      throw new ApiError(404, 'QR_CHALLENGE_NOT_FOUND', 'Attendance QR challenge not found or revoked.');
+    }
+
+    if (new Date() > challenge.expiresAt) {
+      throw new ApiError(400, 'QR_CHALLENGE_EXPIRED', 'Attendance QR has expired. Please scan the current rotating code.');
+    }
+
+    if (employeeOrgId && challenge.organisationId !== employeeOrgId) {
+      throw new ApiError(403, 'ORGANISATION_MISMATCH', 'QR challenge belongs to a different organisation.');
+    }
+
+    const resolvedCafeId = challenge.cafeId;
+    if (employeeRole === 'STAFF' && Array.isArray(employeeAssignedCafes) && employeeAssignedCafes.length > 0) {
+      const allowedSet = new Set(employeeAssignedCafes.map((c) => String(c).toUpperCase()));
+      if (!allowedSet.has(resolvedCafeId.toUpperCase())) {
+        throw new ApiError(403, 'CROSS_CAFE_UNAUTHORIZED', 'You are not assigned to check in at this café.');
+      }
+    }
+
+    return {
+      valid: true,
+      verified: true,
+      challenge,
+      challengeId: challenge.challengeId,
+      resolvedCafeId,
+      cafeId: resolvedCafeId,
+      organisationId: challenge.organisationId,
+      issuedAt: challenge.issuedAt,
+      expiresAt: challenge.expiresAt,
+    };
+  }
+
+  /**
+   * Server-authoritative distance calculation and geofence verification against Cafe.address.
+   */
+  async verifyGeofence({ cafeId, latitude, longitude, accuracyMeters }) {
+    if (typeof latitude !== 'number' || typeof longitude !== 'number') {
+      throw new ApiError(400, 'COORDINATES_REQUIRED', 'Valid numeric GPS latitude and longitude are required.');
+    }
+
+    const cafeDoc = await Cafe.findOne({ cafeId }).lean();
+    if (!cafeDoc) {
+      throw new ApiError(404, 'CAFE_NOT_FOUND', 'Café not found.');
+    }
+
+    if (
+      !cafeDoc.address ||
+      typeof cafeDoc.address.latitude !== 'number' ||
+      typeof cafeDoc.address.longitude !== 'number'
+    ) {
+      throw new ApiError(
+        422,
+        'GEOFENCE_NOT_CONFIGURED',
+        'Attendance Geofence Not Configured: Café location coordinates are missing in system administration.'
+      );
+    }
+
+    if (typeof accuracyMeters === 'number' && accuracyMeters > 100) {
+      throw new ApiError(
+        422,
+        'LOW_GPS_ACCURACY',
+        `GPS accuracy (${Math.round(accuracyMeters)}m) is too poor to verify presence. Please move near a window or open area and retry.`
+      );
+    }
+
+    const distance = calculateDistanceMetres(
+      latitude,
+      longitude,
+      cafeDoc.address.latitude,
+      cafeDoc.address.longitude
+    );
+
+    const allowedRadius = cafeDoc.geofenceRadiusMeters || cafeDoc.address.geofenceRadiusMetres || 100;
+    if (distance > allowedRadius) {
+      throw new ApiError(
+        403,
+        'OUTSIDE_GEOFENCE_RADIUS',
+        'You are outside the authorised attendance location.'
+      );
+    }
+
+    return {
+      valid: true,
+      verified: true,
+      geofenceVerified: true,
+      distanceMeters: Math.round(distance),
+      allowedRadiusMeters: allowedRadius,
+      accuracyMeters: typeof accuracyMeters === 'number' ? Math.round(accuracyMeters) : null,
+      cafeId,
+      cafeName: cafeDoc.name,
+    };
   }
 
   /**

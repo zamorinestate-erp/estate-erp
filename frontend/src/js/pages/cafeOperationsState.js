@@ -169,11 +169,11 @@ const STATE_CONFIG = {
 
 function getDeviceContext() {
   try {
-    const cafe = localStorage.getItem('zamorin_bound_cafe_name') || 'Main Outlet';
-    const cafeId = localStorage.getItem('zamorin_bound_cafe_id') || 'ZC-0001';
+    const cafe = localStorage.getItem('zamorin_bound_cafe_name') || '';
+    const cafeId = localStorage.getItem('zamorin_bound_cafe_id') || '';
     return { cafe, cafeId };
   } catch {
-    return { cafe: 'Main Outlet', cafeId: 'ZC-0001' };
+    return { cafe: '', cafeId: '' };
   }
 }
 

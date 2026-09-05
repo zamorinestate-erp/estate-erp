@@ -18,7 +18,11 @@ const {
   getEmployeeMonthlyCalendar,
   getRoster,
   saveRoster,
+  publishRoster,
   decideOvertime,
+  getOvertimeList,
+  getExceptionList,
+  resolveException,
   closePeriod,
   reopenPeriod,
   purgeSelfieEvidence,
@@ -27,9 +31,21 @@ const {
   getStaffToday,
   staffCheckIn,
   staffCheckOut,
+  staffStartBreak,
+  staffEndBreak,
+  correctAttendance,
+  previewRecalculation,
   getStaffHistory,
   requestStaffCorrection,
+  getPendingCorrections,
+  reviewStaffCorrection,
   recordStaffAttestation,
+  getActiveCafeQr,
+  verifyScannedQr,
+  verifyPunchGeofence,
+  uploadPunchSelfie,
+  getEvidenceMedia,
+  getAttendanceEvidenceRecord,
 } = require('./attendanceController');
 
 const { attachDeviceContext } = require('../../middleware/deviceContext');
@@ -46,17 +62,32 @@ router.get('/today', getStaffToday);
 router.get('/history', getStaffHistory);
 router.post('/check-in', staffCheckIn);
 router.post('/check-out', staffCheckOut);
+router.post('/break/start', staffStartBreak);
+router.post('/break/end', staffEndBreak);
 router.post('/corrections', requestStaffCorrection);
+router.get('/corrections/pending', getPendingCorrections);
+router.post('/corrections/:requestId/review', reviewStaffCorrection);
 router.post('/attestation', recordStaffAttestation);
+
+// Secure Presence & Rotating QR Verification
+router.get('/qr/active', getActiveCafeQr);
+router.post('/qr/verify', verifyScannedQr);
+router.post('/geofence/verify', verifyPunchGeofence);
+router.post('/evidence/upload', uploadPunchSelfie);
+router.get('/evidence/media/:mediaId', getEvidenceMedia);
+router.get('/evidence/record/:attendanceId', getAttendanceEvidenceRecord);
 
 // Overview & Live Presence
 router.get('/overview', getAttendanceOverview);
 router.get('/live', getLiveAttendance);
 router.get('/', getLiveAttendance);
 
-// Master Manual Attendance
+// Master & Management Attendance Mutation & Correction
 router.post('/master-manual', recordMasterManualAttendance);
 router.post('/manual', recordMasterManualAttendance);
+router.patch('/:attendanceId', correctAttendance);
+router.patch('/:attendanceId/correct', correctAttendance);
+router.post('/preview-recalculation', previewRecalculation);
 
 // Employee Attendance 360 Calendar
 router.get('/calendar-360/:userId', getEmployeeMonthlyCalendar);
@@ -64,9 +95,13 @@ router.get('/calendar-360/:userId', getEmployeeMonthlyCalendar);
 // Shift Roster
 router.get('/roster', getRoster);
 router.post('/roster', saveRoster);
+router.post('/roster/:rosterId/publish', publishRoster);
 
-// Overtime Hierarchy Decision
+// Overtime & Exceptions
+router.get('/overtime', getOvertimeList);
 router.post('/overtime/decide', decideOvertime);
+router.get('/exceptions', getExceptionList);
+router.post('/exceptions/:exceptionId/resolve', resolveException);
 
 // Period Closure & Reopen
 router.post('/periods/:periodId/close', closePeriod);

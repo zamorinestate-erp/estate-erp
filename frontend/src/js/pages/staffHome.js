@@ -11,6 +11,7 @@ import { icon } from "../icons.js";
 import { apiGet, apiPost } from "../apiClient.js";
 import { showToast } from "../components.js";
 import { setSettingsActiveSection } from "./settingsShared.js";
+import { openVerificationModal } from "../modules/attendance/staffAttendance.js";
 
 const PRIVACY_MODE_KEY = "zamorin-staff-privacy-mode";
 
@@ -135,11 +136,11 @@ function renderDashboardBody(data) {
     <div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px; margin-bottom:20px;">
       <div>
         <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-          <h1 style="font-size:24px; font-weight:700; margin:0; color:var(--ink);">Hi, ${emp.preferredName || emp.name || "Staff Member"} 👋</h1>
-          <span class="badge" style="background:rgba(180,83,9,0.12); color:#b45309; font-weight:600; font-size:12px; padding:4px 10px; border-radius:12px;">${emp.badgeId || "EMP-SCR-001"}</span>
+          <h1 style="font-size:24px; font-weight:700; margin:0; color:var(--ink);">Hi, ${emp.preferredName || emp.name || state.user?.name || "Staff Member"} 👋</h1>
+          <span class="badge" style="background:rgba(180,83,9,0.12); color:#b45309; font-weight:600; font-size:12px; padding:4px 10px; border-radius:12px;">${emp.badgeId || emp.userId || state.user?.userId || "STAFF"}</span>
         </div>
         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:13px; color:var(--muted); margin-top:4px;">
-          <span>📍 ${emp.cafeName || "Main Outlet"}</span>
+          <span>📍 ${emp.cafeName || state.user?.primaryCafeName || "Assigned Outlet"}</span>
           <span>•</span>
           <span style="font-weight:600; color:var(--ink);">${emp.designation || "Senior Barista"}</span>
           <span>•</span>
@@ -232,7 +233,7 @@ function renderDashboardBody(data) {
         ${todayShift.startTime || "09:00 AM"} – ${todayShift.endTime || "05:00 PM"}
       </div>
       <div style="font-size:13px; color:var(--muted); margin-bottom:16px;">
-        ${todayShift.dutyDesignation || "Counter & Till duty"} · ${todayShift.cafeName || emp.cafeName || "Main Outlet"}
+        ${todayShift.dutyDesignation || "Duty Shift"} · ${todayShift.cafeName || emp.cafeName || state.user?.primaryCafeName || "Assigned Outlet"}
       </div>
 
       <div style="padding-top:14px; border-top:1px solid var(--line);">
@@ -634,7 +635,7 @@ export function wireStaffHome(root) {
   async function loadDashboard() {
     try {
       const res = await apiGet("/employees/me/dashboard");
-      if (res && res.data && activeStaffEmployeeId === "EMP-0042") {
+      if (res && res.data) {
         contentEl.innerHTML = renderDashboardBody(res.data);
         bindDashboardInteractions(contentEl, res.data);
       }
@@ -648,100 +649,19 @@ export function wireStaffHome(root) {
 
 // ── PUNCH VERIFICATION MODAL ────────────────────────────────────────────────
 function openStaffPunchVerificationModal(flowType, data, onComplete) {
-  let existing = document.getElementById("staff-punch-modal");
-  if (existing) existing.remove();
-
-  const isCheckIn = flowType === "CHECK_IN";
-  const modal = document.createElement("div");
-  modal.id = "staff-punch-modal";
-  modal.className = "modal-backdrop flex items-center justify-center";
-  modal.style.cssText = "position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:1050; padding:16px;";
-
-  const emp = data.employee || {};
-  const cafeName = emp.cafeName || "Main Outlet";
-
-  modal.innerHTML = `
-    <div class="card" style="width:100%; max-width:480px; padding:24px; background:var(--bg-surface-1); border-radius:var(--radius-lg); box-shadow:var(--shadow-lg);">
-      <div class="flex items-center justify-between" style="margin-bottom:16px;">
-        <div style="font-size:16px; font-weight:800; color:var(--text-primary);">
-          ${isCheckIn ? "⏱️ Secure Shift Check-In" : "⏱️ Secure Shift Check-Out"}
-        </div>
-        <button class="btn btn-xs btn-ghost" id="spunch-close-btn" style="font-size:16px;">✕</button>
-      </div>
-
-      <!-- Steps Indicator -->
-      <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:18px;">
-        <div class="flex items-center justify-between" style="padding:10px 14px; background:var(--bg-surface-2); border-radius:var(--radius-sm);">
-          <span style="font-size:12.5px; color:var(--text-primary);">1. GPS Geofence (${cafeName})</span>
-          <span class="badge badge-mint" style="font-size:10.5px;">✓ IN RADIUS</span>
-        </div>
-        <div class="flex items-center justify-between" style="padding:10px 14px; background:var(--bg-surface-2); border-radius:var(--radius-sm);">
-          <span style="font-size:12.5px; color:var(--text-primary);">2. Café Verified Token</span>
-          <span class="badge badge-mint" style="font-size:10.5px;">✓ VERIFIED</span>
-        </div>
-        <div class="flex items-center justify-between" style="padding:10px 14px; background:rgba(200,157,92,0.1); border:1px solid var(--brand-gold); border-radius:var(--radius-sm);">
-          <span style="font-size:12.5px; font-weight:700; color:var(--brand-gold);">3. Live Optical / Geo Check</span>
-          <span class="badge badge-gold" style="font-size:10.5px;">READY</span>
-        </div>
-      </div>
-
-      <!-- Live Camera Preview Box -->
-      <div style="width:100%; height:180px; background:#18181b; border-radius:var(--radius-md); border:2px dashed var(--border-subtle); display:flex; flex-direction:column; align-items:center; justify-content:center; margin-bottom:18px; position:relative; overflow:hidden;">
-        <div style="font-size:36px; margin-bottom:6px;">📷</div>
-        <div style="font-size:13px; font-weight:700; color:#fff;">Live Verification Camera Active</div>
-        <div style="font-size:11.5px; color:rgba(255,255,255,0.6); margin-top:2px;">Capturing attendance timestamp with IST sync</div>
-      </div>
-
-      <button class="btn btn-primary btn-block" id="btn-submit-staff-punch" style="padding:12px; font-weight:800; font-size:14px;">
-        📸 ${isCheckIn ? "Verify & Record Check-In" : "Verify & Complete Check-Out"}
-      </button>
-    </div>
-  `;
-
-  document.body.appendChild(modal);
-
-  const close = () => modal.remove();
-  modal.querySelector("#spunch-close-btn")?.addEventListener("click", close);
-
-  modal.querySelector("#btn-submit-staff-punch")?.addEventListener("click", async () => {
-    const btn = modal.querySelector("#btn-submit-staff-punch");
-    btn.disabled = true;
-    btn.innerText = "Recording attendance...";
-
-    try {
-      const endpoint = isCheckIn ? "/attendance/check-in" : "/attendance/check-out";
-      await apiPost(endpoint, {
-        cafeId: "ZC-0001",
-        latitude: 12.9352,
-        longitude: 77.6245,
-        accuracyMeters: 8,
-        qrToken: `QR-ZAMORIN-${Date.now()}`,
-        deviceFingerprint: "DEV-FINGERPRINT-STAFF",
-      }).catch(() => null);
-
-      close();
-
-      if (isCheckIn) {
-        if (!data.todayShift) data.todayShift = {};
-        data.todayShift.attendanceState = "CHECKED_IN";
-        data.todayShift.checkInTime = new Date().toISOString();
-        data.todayShift.elapsedMinutes = 1;
-        showToast("🟢 Attendance Check-In Verified & Recorded!", "mint");
-      } else {
-        if (!data.todayShift) data.todayShift = {};
-        data.todayShift.attendanceState = "CHECKED_OUT";
-        showToast("✓ Shift Completed — Attendance Check-Out Recorded!", "mint");
-      }
-
-      if (typeof onComplete === "function") {
-        onComplete();
-      }
-    } catch (err) {
-      close();
-      showToast(err.message || "Attendance recorded.", "mint");
-      if (typeof onComplete === "function") {
-        onComplete();
-      }
+  openVerificationModal(flowType, (punchResult) => {
+    const isCheckIn = flowType === "CHECK_IN";
+    if (isCheckIn) {
+      if (!data.todayShift) data.todayShift = {};
+      data.todayShift.attendanceState = "CHECKED_IN";
+      data.todayShift.checkInTime = new Date().toISOString();
+      data.todayShift.elapsedMinutes = 1;
+    } else {
+      if (!data.todayShift) data.todayShift = {};
+      data.todayShift.attendanceState = "CHECKED_OUT";
+    }
+    if (typeof onComplete === "function") {
+      onComplete(punchResult);
     }
   });
 }
@@ -786,7 +706,7 @@ function openReportProblemModal(emp) {
         </div>
 
         <div style="font-size:11.5px; color:var(--text-muted); background:var(--bg-surface-2); padding:8px 12px; border-radius:var(--radius-md);">
-          Employee: <strong>${emp.name || "Staff"} (${emp.userId || "SU-0001"})</strong> · Café: <strong>${emp.cafeName || "Main Outlet"}</strong>
+          Employee: <strong>${emp.name || state.user?.name || "Staff"} (${emp.userId || state.user?.userId || "—"})</strong> · Café: <strong>${emp.cafeName || state.user?.primaryCafeName || "Assigned Outlet"}</strong>
         </div>
       </div>
 

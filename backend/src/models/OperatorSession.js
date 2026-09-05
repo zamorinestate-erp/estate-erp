@@ -61,7 +61,7 @@ const operatorSessionSchema = new mongoose.Schema(
 
     authMethod: {
       type: String,
-      enum: ['OPERATOR_PIN', 'NFC_BADGE', 'BIOMETRIC_REAUTH', 'MASTER_OVERRIDE', 'MASTER_PASSWORD_MFA'],
+      enum: ['OPERATOR_PIN', 'NFC_BADGE', 'BIOMETRIC_REAUTH', 'MASTER_OVERRIDE', 'MASTER_PASSWORD_MFA', 'GATEWAY_PIN', 'GATEWAY_QR', 'GATEWAY_LINK', 'GATEWAY'],
       default: 'OPERATOR_PIN',
     },
 
@@ -135,6 +135,12 @@ const operatorSessionSchema = new mongoose.Schema(
     metadata: {
       type: mongoose.Schema.Types.Mixed,
       default: {},
+    },
+
+    sessionTokenHash: {
+      type: String,
+      default: null,
+      index: true,
     },
   },
   {

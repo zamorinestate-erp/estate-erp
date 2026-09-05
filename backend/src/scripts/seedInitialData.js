@@ -1682,14 +1682,18 @@ async function runSeed() {
     });
     await seedPermissionRules({ organisationId, masterUserId: master.userId });
     await seedSystemCommunicationSettings({ organisationId, masterEmail: env.initialMasterEmail || 'master@example.com' });
-    await seedDepartmentOrdersData({ organisationId, masterUserId: master.userId });
-    await seedWorkforceData({ organisationId, masterUserId: master.userId });
-    await seedExpensePolicyData({ organisationId, masterUserId: master.userId });
-    await seedFinanceData({ organisationId, masterUserId: master.userId });
-    await seedInventoryData({ organisationId, masterUserId: master.userId });
-    await seedMenuData({ organisationId, masterUserId: master.userId });
-    await seedLoansData({ organisationId, masterUserId: master.userId });
-    await seedCafeOperationsData(organisationId, master.userId);
+
+    const isMinimal = process.env.SEED_MINIMAL === 'true' || process.env.SEED_DEMO_DATA === 'false' || process.env.NODE_ENV === 'production';
+    if (!isMinimal) {
+      await seedDepartmentOrdersData({ organisationId, masterUserId: master.userId });
+      await seedWorkforceData({ organisationId, masterUserId: master.userId });
+      await seedExpensePolicyData({ organisationId, masterUserId: master.userId });
+      await seedFinanceData({ organisationId, masterUserId: master.userId });
+      await seedInventoryData({ organisationId, masterUserId: master.userId });
+      await seedMenuData({ organisationId, masterUserId: master.userId });
+      await seedLoansData({ organisationId, masterUserId: master.userId });
+      await seedCafeOperationsData(organisationId, master.userId);
+    }
   } finally {
     await disconnectDatabase();
   }

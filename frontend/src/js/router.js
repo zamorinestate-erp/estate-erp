@@ -56,8 +56,8 @@ import { renderCafeOperatorSignIn, wireCafeOperatorSignIn } from "./pages/cafeOp
 import { renderCafeOperationsState, wireCafeOperationsState } from "./pages/cafeOperationsState.js";
 import { startCafeOpsInactivityTimer, stopCafeOpsInactivityTimer } from "./cafeOpsInactivity.js";
 import { renderPassbook, wirePassbook } from "./pages/passbook.js";
-import { renderOrgIdentity, wireOrgIdentity } from "./pages/organisationIdentity.js";
-import { cancelPendingRouteReads, clearApiCacheAndInFlight } from "./apiClient.js";
+import { cancelPendingRouteReads, clearApiCacheAndInFlight, getCanonicalDeviceId, setCanonicalDeviceId, setCafeOpsDeviceToken, setCafeOpsSessionToken, setSessionId, apiPost } from "./apiClient.js";
+import { mountPublicCafeGateway, getActiveGatewayContextToken } from "./pages/cafeGatewayPage.js";
 // ── Stage-2 Login Integration: Terminal auth screens (additive, no backend auth change) ──
 import { renderCafeMasterSignIn, wireCafeMasterSignIn, resetCafeMasterSignInUi } from "./pages/cafeMasterSignIn.js";
 import { renderCafeDeviceEnroll, wireCafeDeviceEnroll, resetCafeDeviceEnrollUi } from "./pages/cafeDeviceEnroll.js";
@@ -439,6 +439,12 @@ async function renderPage() {
       wireAttendance(content, subroute);
       break;
 
+    case "attendance-qr-scanner":
+      setAttendanceActiveTab?.("qrScanner");
+      content.innerHTML = renderAttendance("qrScanner");
+      wireAttendance(content, "qrScanner");
+      break;
+
     case "reports":
       setReportsActiveTab?.(subroute || "overview");
       content.innerHTML = renderReports(subroute);
@@ -512,6 +518,7 @@ async function renderPage() {
       wireStaffPayslips(content);
       break;
 
+    case "staff-loans":
     case "staff-loans-advances":
       content.innerHTML = renderStaffLoansAdvances();
       wireStaffLoansAdvances(content);
@@ -586,22 +593,56 @@ async function renderPage() {
       wireCafeOperationsDevices(content, subroute);
       break;
 
+    case "cafe-gateway":
+      stopCafeOpsInactivityTimer();
+      mountPublicCafeGateway(content);
+      break;
+
+    case "cafe-access": {
+      stopCafeOpsInactivityTimer();
+      if (subroute.startsWith("qr/")) {
+        mountPublicCafeGateway(content, { method: "QR", token: subroute.slice(3) });
+      } else if (subroute.startsWith("link/")) {
+        mountPublicCafeGateway(content, { method: "LINK", token: subroute.slice(5) });
+      } else {
+        mountPublicCafeGateway(content);
+      }
+      break;
+    }
+
     case "cafe-operator-signin":
       // Stop inactivity timer while sign-in UI is visible
       stopCafeOpsInactivityTimer();
       content.innerHTML = renderCafeOperatorSignIn();
       wireCafeOperatorSignIn(content, {
         onSignIn: async ({ employeeId, pin }) => {
-          const { apiPost } = await import('./apiClient.js');
-          const deviceId = localStorage.getItem('zamorin_device_id') || 'ZC-DEV-0001';
-          const res = await apiPost('/cafe-operations/operator/sign-in', {
+          const deviceId = getCanonicalDeviceId();
+          const gatewayContextToken = getActiveGatewayContextToken();
+          const res = await apiPost('/cafe-operations/operator/signin', {
             deviceId,
             operatorUserId: employeeId,
             pin,
-            organisationId: state.auth?.user?.organisationId || 'ZAMORIN',
-            cafeId: localStorage.getItem('zamorin_bound_cafe_id') || 'ZC-0001',
+            gatewayContextToken,
           });
+          const sessionToken = res?.sessionToken || res?.operatorSession?.sessionToken;
+          if (sessionToken) {
+            setCafeOpsSessionToken(sessionToken);
+          }
+          if (res?.trustedDeviceToken) {
+            setCafeOpsDeviceToken(res.trustedDeviceToken);
+          }
           if (res?.operatorSession) {
+            if (res.operatorSession.operatorSessionId) {
+              setSessionId(res.operatorSession.operatorSessionId);
+            }
+            if (res.operatorSession.cafeId) {
+              // DISPLAY CACHE ONLY — NEVER AUTHORIZATION AUTHORITY
+              try { localStorage.setItem('zamorin_bound_cafe_id', res.operatorSession.cafeId); } catch {}
+            }
+            if (res.operatorSession.operatorName) {
+              // DISPLAY CACHE ONLY — NEVER AUTHORIZATION AUTHORITY
+              try { localStorage.setItem('zamorin_bound_cafe_name', res.operatorSession.operatorName); } catch {}
+            }
             // Update state with new operator
             setState({
               user: {
@@ -622,7 +663,8 @@ async function renderPage() {
 
     case "cafe-device-state": {
       // Reads state key from URL hash param: #cafe-device-state?s=DEVICE_REVOKED
-      const params = new URLSearchParams(window.location.search);
+      const hashParts = (window.location.hash || '').split('?');
+      const params = new URLSearchParams(hashParts[1] || window.location.search);
       const stateKey = params.get('s') || 'NO_ACCESS';
       content.innerHTML = renderCafeOperationsState(stateKey);
       wireCafeOperationsState(content, {
@@ -638,8 +680,8 @@ async function renderPage() {
     case "kiosk-attendance":
       const kioskDisplay = new CafeAttendanceDisplayPage();
       kioskDisplay.init(content, {
-        deviceId: localStorage.getItem('zamorin_device_id') || 'ACTIVE_KIOSK',
-        boundCafeId: localStorage.getItem('zamorin_bound_cafe_id') || 'ZC-0001',
+        deviceId: getCanonicalDeviceId() || 'ACTIVE_KIOSK',
+        boundCafeId: localStorage.getItem('zamorin_bound_cafe_id') || state.currentCafeId || '',
       });
       break;
 
@@ -647,19 +689,37 @@ async function renderPage() {
       content.innerHTML = renderNotBuiltYet();
       break;
 
-    // ── Stage-2 Login Integration: Terminal auth screens ─────────────────────
-    // These three cases are CAFE_ADMIN implicit routes (see navigation.js).
-    // They stop the inactivity timer while pre-session auth UI is visible.
-    // Auth callbacks are Stage-3 seams — no production auth logic here.
-
     case "cafe-master-signin":
       stopCafeOpsInactivityTimer();
       resetCafeMasterSignInUi();
       content.innerHTML = renderCafeMasterSignIn();
       wireCafeMasterSignIn(content, {
-        // STAGE-3 SEAM: Wire to authController.authenticatePassword + mfaService
-        onSignIn: undefined,
-        onMfaVerify: undefined,
+        onSignIn: async ({ identifier, password, accessReason }) => {
+          const res = await apiPost('/cafe-operations/operator/signin-master', {
+            masterUserId: identifier,
+            password,
+            deviceId: getCanonicalDeviceId(),
+            accessReason,
+          });
+          const sessionToken = res?.sessionToken || res?.operatorSession?.sessionToken;
+          if (sessionToken) {
+            setCafeOpsSessionToken(sessionToken);
+          }
+          if (res?.operatorSession) {
+            if (res.operatorSession.operatorSessionId) {
+              setSessionId(res.operatorSession.operatorSessionId);
+            }
+            startCafeOpsInactivityTimer();
+            navigate('dashboard');
+            return { requiresMfa: false };
+          }
+          return { requiresMfa: false };
+        },
+        onMfaVerify: async ({ mfaChallengeId, code }) => {
+          await apiPost('/auth/mfa/verify', { mfaChallengeId, code });
+          startCafeOpsInactivityTimer();
+          navigate('dashboard');
+        },
         onBack: () => navigate('cafe-operator-signin'),
       });
       break;
@@ -669,8 +729,32 @@ async function renderPage() {
       resetCafeDeviceEnrollUi();
       content.innerHTML = renderCafeDeviceEnroll();
       wireCafeDeviceEnroll(content, {
-        // STAGE-3 SEAM: Wire to deviceService.enrollDevice
-        onEnroll: undefined,
+        onEnroll: async ({ enrollmentCode, deviceDisplayName }) => {
+          const res = await apiPost('/cafe-ops/devices/enroll', {
+            enrollmentCode,
+            displayName: deviceDisplayName,
+            platform: 'Web',
+            appVersion: '1.0.0',
+            osVersion: navigator.userAgent || 'Unknown',
+          });
+          const data = res?.data || res;
+          if (data?.deviceToken) {
+            setCafeOpsDeviceToken(data.deviceToken);
+          }
+          if (data?.device) {
+            if (data.device.id) setCanonicalDeviceId(data.device.id);
+            if (data.device.cafeId) {
+              // DISPLAY CACHE ONLY — NEVER AUTHORIZATION AUTHORITY
+              try { localStorage.setItem('zamorin_bound_cafe_id', data.device.cafeId); } catch {}
+            }
+            if (data.device.cafeName) {
+              // DISPLAY CACHE ONLY — NEVER AUTHORIZATION AUTHORITY
+              try { localStorage.setItem('zamorin_bound_cafe_name', data.device.cafeName); } catch {}
+            }
+            return { device: data.device };
+          }
+          return { device: data };
+        },
         onBack: () => navigate('cafe-operator-signin'),
         onSuccess: () => navigate('cafe-operator-signin'),
       });

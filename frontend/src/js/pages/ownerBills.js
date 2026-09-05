@@ -34,11 +34,13 @@ let cachedReconciliation = null;
 const DEFAULT_UPLOADED_INVOICES = [];
 let cachedUploadedInvoices = [];
 
-const CAFE_NAMES = {
-  "ZC-0001": "Main Outlet",
-  "ZC-0002": "Branch Outlet",
-  "ZC-0003": "Wayanad Heritage Roastery",
-};
+const CAFE_NAMES = {};
+let cachedCafes = [];
+
+function escapeHtml(str) {
+  if (!str) return "";
+  return String(str).replace(/[&<>"']/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[m]);
+}
 
 function getIstTimeString(date = new Date()) {
   return new Intl.DateTimeFormat("en-US", {
@@ -143,9 +145,7 @@ export function renderOwnerBills(subroute) {
             <label style="font-size:12px; color:var(--muted); font-weight:600;">Café Scope:</label>
             <select id="scope-cafe-selector" class="select select-sm" style="font-size:12px;">
               <option value="ALL" ${selectedCafeFilter === "ALL" ? "selected" : ""}>All Authorized Cafés</option>
-              <option value="ZC-0001" ${selectedCafeFilter === "ZC-0001" ? "selected" : ""}>ZC-0001 · Main Outlet</option>
-              <option value="ZC-0002" ${selectedCafeFilter === "ZC-0002" ? "selected" : ""}>ZC-0002 · Branch Outlet</option>
-              <option value="ZC-0003" ${selectedCafeFilter === "ZC-0003" ? "selected" : ""}>ZC-0003 · Wayanad Heritage Roastery</option>
+              ${cachedCafes.map((c) => `<option value="${escapeHtml(c.cafeId)}" ${selectedCafeFilter === c.cafeId ? "selected" : ""}>${escapeHtml(c.cafeId)} · ${escapeHtml(c.name || c.cafeId)}</option>`).join("")}
             </select>
           </div>
 
@@ -306,9 +306,7 @@ function renderUploadSubpanel() {
             <div>
               <label style="font-size:12px; font-weight:700; color:var(--ink); display:block; margin-bottom:6px;">Café Outlet *</label>
               <select id="bill-doc-cafe" class="select" style="width:100%; font-size:12.5px; height:38px;">
-                <option value="ZC-0001">ZC-0001 · Main Outlet</option>
-                <option value="ZC-0002">ZC-0002 · Branch Outlet</option>
-                <option value="ZC-0003">ZC-0003 · Wayanad Heritage Roastery</option>
+                ${cachedCafes.length > 0 ? cachedCafes.map((c) => `<option value="${escapeHtml(c.cafeId)}">${escapeHtml(c.cafeId)} · ${escapeHtml(c.name || c.cafeId)}</option>`).join("") : '<option value="">No active cafés</option>'}
               </select>
             </div>
           </div>
@@ -941,15 +939,27 @@ function renderAdjustmentsSubpanel() {
             <span class="status danger" style="font-size:11px;">Audited Action</span>
           </div>
 
-          <div style="padding:12px; border:1px solid var(--border-subtle); border-radius:6px; margin-bottom:12px;">
-            <div style="display:flex; justify-content:space-between; font-size:13px;">
-              <strong>ZAM-BILL-882101 · ₹294.00</strong>
-              <span class="status danger" style="font-size:10.5px;">VOIDED</span>
-            </div>
-            <div style="font-size:11.5px; color:var(--muted); margin-top:4px;">
-              Branch: Main Outlet · Operator: Duty Lead · Reason: Customer cancelled before preparation
-            </div>
-          </div>
+          ${(() => {
+            const voidedBills = (cachedBills || []).filter((b) => b.status === "VOID" || b.status === "VOIDED");
+            if (voidedBills.length === 0) {
+              return `
+                <div style="padding:24px; text-align:center; color:var(--muted); font-size:12.5px; border:1px dashed var(--border-subtle); border-radius:6px; margin-bottom:12px;">
+                  No post-sale voided invoices recorded for this period.
+                </div>
+              `;
+            }
+            return voidedBills.map((b) => `
+              <div style="padding:12px; border:1px solid var(--border-subtle); border-radius:6px; margin-bottom:12px;">
+                <div style="display:flex; justify-content:space-between; font-size:13px;">
+                  <strong>${escapeHtml(b.invoiceNumber || b.billId)} · ₹${((b.totalPaisa || 0) / 100).toFixed(2)}</strong>
+                  <span class="status danger" style="font-size:10.5px;">VOIDED</span>
+                </div>
+                <div style="font-size:11.5px; color:var(--muted); margin-top:4px;">
+                  Branch: ${escapeHtml(CAFE_NAMES[b.cafeId] || b.cafeId || "—")} · Operator: ${escapeHtml(b.cashierUserId || "Staff")} · Reason: ${escapeHtml(b.voidReason || "Voided during audit")}
+                </div>
+              </div>
+            `).join("");
+          })()}
 
           <div style="font-size:12px; color:var(--muted); background:var(--bg-subtle, rgba(0,0,0,0.02)); padding:10px; border-radius:6px;">
             ℹ️ <strong>Governance Note:</strong> Owner accounts possess strategic audit oversight of all voids. Mutation rights remain restricted to operational cashier and manager roles.
@@ -966,15 +976,27 @@ function renderAdjustmentsSubpanel() {
             <span class="status info" style="font-size:11px;">100% Traceable</span>
           </div>
 
-          <div style="padding:12px; border:1px solid var(--border-subtle); border-radius:6px; margin-bottom:12px;">
-            <div style="display:flex; justify-content:space-between; font-size:13px;">
-              <strong>REF-20260822-01 · ₹693.00</strong>
-              <span class="status success" style="font-size:10.5px;">COMPLETED</span>
-            </div>
-            <div style="font-size:11.5px; color:var(--muted); margin-top:4px;">
-              Orig Bill: ZAM-BILL-882104 · Tender: UPI · Reason: Cold Coffee replaced with Pour-Over difference
-            </div>
-          </div>
+          ${(() => {
+            const refundedBills = (cachedBills || []).filter((b) => b.status === "REFUNDED" || b.status === "REFUND" || b.refundAmountPaisa > 0);
+            if (refundedBills.length === 0) {
+              return `
+                <div style="padding:24px; text-align:center; color:var(--muted); font-size:12.5px; border:1px dashed var(--border-subtle); border-radius:6px; margin-bottom:12px;">
+                  No refunds or credit notes recorded for this period.
+                </div>
+              `;
+            }
+            return refundedBills.map((b) => `
+              <div style="padding:12px; border:1px solid var(--border-subtle); border-radius:6px; margin-bottom:12px;">
+                <div style="display:flex; justify-content:space-between; font-size:13px;">
+                  <strong>${escapeHtml(b.refundRef || b.invoiceNumber || b.billId)} · ₹${((b.refundAmountPaisa || b.totalPaisa || 0) / 100).toFixed(2)}</strong>
+                  <span class="status success" style="font-size:10.5px;">COMPLETED</span>
+                </div>
+                <div style="font-size:11.5px; color:var(--muted); margin-top:4px;">
+                  Orig Bill: ${escapeHtml(b.invoiceNumber || b.billId)} · Tender: ${escapeHtml(b.paymentMethod || "—")} · Reason: ${escapeHtml(b.refundReason || "Customer refund")}
+                </div>
+              </div>
+            `).join("");
+          })()}
 
           <div style="font-size:12px; color:var(--muted); background:var(--bg-subtle, rgba(0,0,0,0.02)); padding:10px; border-radius:6px;">
             ℹ️ <strong>Refund Policy:</strong> All refunds require supervisor justification and are permanently recorded in both the GST register and payment ledger.
@@ -1067,31 +1089,9 @@ function renderPaymentsSubpanel() {
             </thead>
             <tbody>
               <tr>
-                <td><strong>Main Outlet</strong> (ZC-0001)</td>
-                <td>UPI (Razorpay/BHIM)</td>
-                <td style="font-family:var(--font-mono);">₹15,584.00</td>
-                <td style="font-family:var(--font-mono);">₹15,584.00</td>
-                <td style="font-family:var(--font-mono); color:var(--color-success);">₹0.00</td>
-                <td><span class="status success" style="font-size:11px;">MATCHED</span></td>
-                <td style="font-size:11.5px; color:var(--muted);">22 Aug 2026 · 11:34 AM</td>
-              </tr>
-              <tr>
-                <td><strong>Branch Outlet</strong> (ZC-0002)</td>
-                <td>EDC Card Terminal</td>
-                <td style="font-family:var(--font-mono);">₹4,312.00</td>
-                <td style="font-family:var(--font-mono);">₹4,312.00</td>
-                <td style="font-family:var(--font-mono); color:var(--color-success);">₹0.00</td>
-                <td><span class="status success" style="font-size:11px;">MATCHED</span></td>
-                <td style="font-size:11.5px; color:var(--muted);">22 Aug 2026 · 10:45 AM</td>
-              </tr>
-              <tr>
-                <td><strong>Wayanad Heritage Roastery</strong> (ZC-0003)</td>
-                <td>Cash Till</td>
-                <td style="font-family:var(--font-mono);">₹3,508.00</td>
-                <td style="font-family:var(--font-mono);">₹3,508.00</td>
-                <td style="font-family:var(--font-mono); color:var(--color-success);">₹0.00</td>
-                <td><span class="status success" style="font-size:11px;">MATCHED</span></td>
-                <td style="font-size:11.5px; color:var(--muted);">22 Aug 2026 · 09:30 AM</td>
+                <td colspan="7" style="padding: 24px; text-align: center; color: var(--muted); font-size: 13px;">
+                  No live payment reconciliation records found for the selected filter.
+                </td>
               </tr>
             </tbody>
           </table>
@@ -1166,28 +1166,33 @@ function renderTaxSubpanel() {
             </tr>
           </thead>
           <tbody>
-            <tr>
-              <td><strong style="color:var(--color-accent-amber); font-family:var(--font-mono);">ZAM-BILL-882104</strong></td>
-              <td>22 Aug 2026</td>
-              <td>Main Outlet</td>
-              <td style="color:var(--muted);">B2C Retail</td>
-              <td style="font-family:var(--font-mono);">₹660.00</td>
-              <td style="font-family:var(--font-mono);">₹16.50</td>
-              <td style="font-family:var(--font-mono);">₹16.50</td>
-              <td style="font-family:var(--font-mono); color:var(--color-success);">₹33.00</td>
-              <td style="font-family:var(--font-mono); font-weight:700;">₹693.00</td>
-            </tr>
-            <tr>
-              <td><strong style="color:var(--color-accent-amber); font-family:var(--font-mono);">ZAM-BILL-882103</strong></td>
-              <td>22 Aug 2026</td>
-              <td>Main Outlet</td>
-              <td style="color:var(--muted);">B2C Retail</td>
-              <td style="font-family:var(--font-mono);">₹550.00</td>
-              <td style="font-family:var(--font-mono);">₹13.75</td>
-              <td style="font-family:var(--font-mono);">₹13.75</td>
-              <td style="font-family:var(--font-mono); color:var(--color-success);">₹27.50</td>
-              <td style="font-family:var(--font-mono); font-weight:700;">₹577.50</td>
-            </tr>
+            ${(cachedBills || []).length > 0 ? cachedBills.map((b) => {
+              const taxable = ((b.subtotalPaisa || 0) / 100).toFixed(2);
+              const cgst = ((b.cgstPaisa || (b.taxPaisa ? b.taxPaisa / 2 : 0)) / 100).toFixed(2);
+              const sgst = ((b.sgstPaisa || (b.taxPaisa ? b.taxPaisa / 2 : 0)) / 100).toFixed(2);
+              const totalTax = ((b.taxPaisa || 0) / 100).toFixed(2);
+              const total = ((b.totalPaisa || 0) / 100).toFixed(2);
+              const cafeName = CAFE_NAMES[b.cafeId] || b.cafeId || "—";
+              return `
+                <tr>
+                  <td><strong style="color:var(--color-accent-amber); font-family:var(--font-mono);">${escapeHtml(b.invoiceNumber || b.billId)}</strong></td>
+                  <td>${escapeHtml(b.businessDate || "—")}</td>
+                  <td>${escapeHtml(cafeName)}</td>
+                  <td style="color:var(--muted);">${escapeHtml(b.customerGstin || "B2C Retail")}</td>
+                  <td style="font-family:var(--font-mono);">₹${taxable}</td>
+                  <td style="font-family:var(--font-mono);">₹${cgst}</td>
+                  <td style="font-family:var(--font-mono);">₹${sgst}</td>
+                  <td style="font-family:var(--font-mono); color:var(--color-success);">₹${totalTax}</td>
+                  <td style="font-family:var(--font-mono); font-weight:700;">₹${total}</td>
+                </tr>
+              `;
+            }).join("") : `
+              <tr>
+                <td colspan="9" style="text-align:center; padding:24px; color:var(--muted); font-size:12.5px;">
+                  No GST tax source invoices recorded for this period.
+                </td>
+              </tr>
+            `}
           </tbody>
         </table>
       </div>
@@ -1404,7 +1409,7 @@ export async function wireOwnerBills(root, subroute) {
             id: `UPL-INV-${Date.now().toString().slice(-4)}`,
             invoiceNumber: docMeta.refNumber,
             vendor: docMeta.vendor,
-            cafeId: selectedCafeFilter !== "ALL" ? selectedCafeFilter : "ZC-0001",
+            cafeId: selectedCafeFilter !== "ALL" ? selectedCafeFilter : (cachedCafes[0]?.cafeId || ""),
             category: docMeta.category,
             amount: docMeta.amount,
             date: docMeta.uploadedAt.split("T")[0],
@@ -1437,11 +1442,22 @@ let hasInitialFetchedBills = false;
 
 async function fetchOverviewData() {
   try {
-    const res = await apiGet(`/bills/overview?date=${selectedBusinessDate}`);
-    if (res?.data) {
-      cachedOverview = res.data;
+    const [overviewRes, cafesRes] = await Promise.allSettled([
+      apiGet(`/bills/overview?date=${selectedBusinessDate}`),
+      apiGet("/cafes"),
+    ]);
+    if (overviewRes.status === "fulfilled" && overviewRes.value?.data) {
+      cachedOverview = overviewRes.value.data;
     } else {
       cachedOverview = { baseline: true };
+    }
+    if (cafesRes.status === "fulfilled" && cafesRes.value?.data?.cafes) {
+      cachedCafes = cafesRes.value.data.cafes;
+      cachedCafes.forEach((c) => {
+        if (c.cafeId && c.name) {
+          CAFE_NAMES[c.cafeId] = c.name;
+        }
+      });
     }
   } catch (err) {
     console.warn("Could not fetch bills overview, using baseline:", err.message);
@@ -1765,13 +1781,7 @@ function handleExportReport(exportType) {
 
   if (exportType === "reconciliation-csv") {
     const headers = "Date,Cafe Outlet,Tender Channel,Expected System (INR),Physical Drawer / Gateway (INR),Variance (INR),Reconciliation Status\n";
-    const rows = [
-      `"${dateStr}","ZC-0001 · Beach Main","UPI / QR",15584.00,15584.00,0.00,"MATCHED"`,
-      `"${dateStr}","ZC-0001 · Beach Main","Credit / Debit Card",4870.00,4870.00,0.00,"MATCHED"`,
-      `"${dateStr}","ZC-0001 · Beach Main","Cash Drawer",3896.00,3896.00,0.00,"RECONCILED"`,
-      `"${dateStr}","ZC-0002 · Branch Outlet","UPI / QR",8932.00,8932.00,0.00,"MATCHED"`,
-      `"${dateStr}","ZC-0002 · Branch Outlet","Cash Drawer",2156.00,2156.00,0.00,"RECONCILED"`,
-    ].join("\n");
+    const rows = "";
     triggerDownload(headers + rows, `Zamorin_Tender_Reconciliation_${dateStr}.csv`);
     showToast("Daily Tender Reconciliation CSV exported successfully!", "success");
     return;
@@ -1779,10 +1789,7 @@ function handleExportReport(exportType) {
 
   if (exportType === "adjustments-csv") {
     const headers = "Date,Invoice Ref,Adjustment Type,Reason / Narration,Authorized By,Amount (INR),Accounting Action\n";
-    const rows = [
-      `"${dateStr}","ZAM-BILL-882103","VOID_BEFORE_PREP","Customer changed mind before brewing","Duty Barista",294.00,"DRAWER_ADJUSTMENT"`,
-      `"${dateStr}","ZAM-BILL-882098","PARTIAL_REFUND","Wrong syrup pump dispensed - replaced with refund","Suresh Menon",120.00,"REVERSAL_LEDGER"`,
-    ].join("\n");
+    const rows = "";
     triggerDownload(headers + rows, `Zamorin_Adjustments_Voids_Audit_${dateStr}.csv`);
     showToast("Adjustments & Voids Audit CSV exported successfully!", "success");
     return;
@@ -1796,6 +1803,8 @@ function handleExportReport(exportType) {
   };
 
   const title = reportTitles[exportType] || "Audit Report";
+  const grossSalesTotal = bills.reduce((sum, b) => sum + ((b.totalPaisa || 0) / 100), 0);
+  const statutoryGstTotal = bills.reduce((sum, b) => sum + ((b.taxPaisa || 0) / 100), 0);
 
   openModal({
     title: `📑 ${title} · ${dateStr}`,
@@ -1810,8 +1819,8 @@ function handleExportReport(exportType) {
 
         <div style="background:var(--surface-sunken); padding:12px 14px; border-radius:8px; margin-bottom:16px; font-size:12.5px;">
           <div style="display:flex; justify-content:space-between; margin-bottom:6px;"><span>Total Invoices Generated:</span><strong>${bills.length} Verified Invoices</strong></div>
-          <div style="display:flex; justify-content:space-between; margin-bottom:6px;"><span>Gross Sales Value:</span><strong>₹48,520.00</strong></div>
-          <div style="display:flex; justify-content:space-between; margin-bottom:6px;"><span>Statutory GST Collected (5%):</span><strong>₹2,426.00</strong></div>
+          <div style="display:flex; justify-content:space-between; margin-bottom:6px;"><span>Gross Sales Value:</span><strong>₹${grossSalesTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></div>
+          <div style="display:flex; justify-content:space-between; margin-bottom:6px;"><span>Statutory GST Collected (5%):</span><strong>₹${statutoryGstTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></div>
           <div style="display:flex; justify-content:space-between;"><span>Reconciliation Variance:</span><strong style="color:var(--color-success);">₹0.00 (Zero Variance)</strong></div>
         </div>
 

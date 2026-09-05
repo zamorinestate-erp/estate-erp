@@ -50,7 +50,7 @@ function resolveEffectiveCafeScope(request) {
       throw new ApiError(
         403,
         'CROSS_CAFE_RESOURCE_DENIED',
-        `Device is assigned to ${boundCafe} and cannot access or manipulate resources in ${requestedCafe}.`
+        'Cross-café access is denied. This device is not authorized for the requested café.'
       );
     }
 

@@ -115,7 +115,7 @@ async function main() {
     '--no-sandbox',
     '--disable-setuid-sandbox',
     '--disable-dev-shm-usage',
-    `http://localhost:${HTTP_PORT}`,
+    `http://127.0.0.1:${HTTP_PORT}/index.html?role=master`,
   ]);
 
   await delay(1200);
@@ -369,6 +369,8 @@ async function main() {
             success: true,
             hasContent,
             hasStuckGlobalSpinner,
+            contentSnippet: pageContent ? pageContent.innerHTML.slice(0, 100) : "NO_PAGE_CONTENT",
+            stateRoute: window.state ? window.state.route : "NO_STATE",
           };
         } catch (e) {
           return { success: false, error: e.message };

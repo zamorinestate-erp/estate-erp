@@ -12,6 +12,14 @@ const attendanceQrChallengeSchema = new mongoose.Schema(
       index: true,
     },
 
+    opaqueToken: {
+      type: String,
+      unique: true,
+      sparse: true,
+      trim: true,
+      index: true,
+    },
+
     organisationId: {
       type: String,
       required: true,
@@ -22,7 +30,7 @@ const attendanceQrChallengeSchema = new mongoose.Schema(
 
     deviceId: {
       type: String,
-      required: true,
+      default: 'OPS_CONSOLE',
       trim: true,
       index: true,
     },
@@ -34,9 +42,33 @@ const attendanceQrChallengeSchema = new mongoose.Schema(
       index: true,
     },
 
+    purpose: {
+      type: String,
+      enum: ['ATTENDANCE_PUNCH'],
+      default: 'ATTENDANCE_PUNCH',
+      index: true,
+    },
+
+    issuedByUserId: {
+      type: String,
+      trim: true,
+      default: 'SYSTEM',
+    },
+
+    issuedByRole: {
+      type: String,
+      trim: true,
+      default: 'SYSTEM',
+    },
+
+    rotationIntervalSeconds: {
+      type: Number,
+      default: 45,
+    },
+
     fallbackPin: {
       type: String,
-      required: true,
+      default: () => Math.floor(100000 + Math.random() * 900000).toString(),
       trim: true,
       index: true,
     },

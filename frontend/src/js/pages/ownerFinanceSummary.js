@@ -22,11 +22,7 @@ let lastRefreshedTime = new Date();
 
 let cachedFinanceSummary = null;
 
-const CAFE_NAMES = {
-  "ZC-0001": "Main Outlet",
-  "ZC-0002": "Branch Outlet",
-  "ZC-0003": "Wayanad Heritage Roastery",
-};
+const CAFE_NAMES = {};
 
 function fmtInr(amount) {
   if (amount === null || amount === undefined || isNaN(amount)) return "₹0.00";
@@ -182,9 +178,7 @@ export function renderOwnerFinanceSummary() {
             <label style="font-size:12px; color:var(--muted); font-weight:600;">Café Scope:</label>
             <select id="finance-cafe-scope" class="select select-sm" style="font-size:12px;">
               <option value="ALL" ${selectedCafeFilter === "ALL" ? "selected" : ""}>All Authorized Cafés (${data.cafes.length})</option>
-              <option value="ZC-0001" ${selectedCafeFilter === "ZC-0001" ? "selected" : ""}>ZC-0001 · Main Outlet</option>
-              <option value="ZC-0002" ${selectedCafeFilter === "ZC-0002" ? "selected" : ""}>ZC-0002 · Branch Outlet</option>
-              <option value="ZC-0003" ${selectedCafeFilter === "ZC-0003" ? "selected" : ""}>ZC-0003 · Wayanad Heritage Roastery</option>
+              ${data.cafes.map((c) => `<option value="${c.cafeId}" ${selectedCafeFilter === c.cafeId ? "selected" : ""}>${c.cafeId} · ${c.cafeName || c.name || 'Outlet'}</option>`).join('')}
             </select>
           </div>
 
@@ -374,6 +368,11 @@ function renderOverviewTab(data, totalNetSales, totalGrossSales, totalExpenses, 
 
 // ── Tab 2: Multi-Café Matrix ─────────────────────────────────────────────────
 function renderMatrixTab(filteredCafes) {
+  const topRev = (filteredCafes || []).filter((c) => (c.netSales || 0) > 0).sort((a, b) => (b.netSales || 0) - (a.netSales || 0))[0];
+  const lowestOpex = (filteredCafes || []).filter((c) => (c.expenseRatio || 0) > 0).sort((a, b) => (a.expenseRatio || 0) - (b.expenseRatio || 0))[0];
+  const topRevStr = topRev ? `${topRev.cafeName} (${topRev.revenueSharePct || 0}%)` : "—";
+  const lowestOpexStr = lowestOpex ? `${lowestOpex.cafeName} (${(lowestOpex.expenseRatio || 0).toFixed(1)}%)` : "—";
+
   return `
     <div class="card" style="padding:20px; margin-bottom:24px;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:8px;">
@@ -382,8 +381,8 @@ function renderMatrixTab(filteredCafes) {
           <p style="font-size:12px; color:var(--muted); margin:0;">Branch-by-branch financial efficiency, revenue share, cost ratios &amp; drawer health</p>
         </div>
         <div style="font-size:12px; color:var(--muted);">
-          <span>Strongest Revenue: <strong>Main Outlet (0.0%)</strong></span> · 
-          <span>Lowest OpEx Ratio: <strong>Main Outlet (0.0%)</strong></span>
+          <span>Strongest Revenue: <strong>${topRevStr}</strong></span> · 
+          <span>Lowest OpEx Ratio: <strong>${lowestOpexStr}</strong></span>
         </div>
       </div>
 
@@ -403,7 +402,7 @@ function renderMatrixTab(filteredCafes) {
             </tr>
           </thead>
           <tbody>
-            ${filteredCafes
+            ${(filteredCafes || []).length > 0 ? filteredCafes
               .map(
                 (c) => `
               <tr>
@@ -449,7 +448,13 @@ function renderMatrixTab(filteredCafes) {
               </tr>
             `
               )
-              .join("")}
+              .join("") : `
+              <tr>
+                <td colspan="9" style="text-align:center; padding:24px; color:var(--muted); font-size:12.5px;">
+                  No café financial performance data recorded for this period.
+                </td>
+              </tr>
+            `}
           </tbody>
         </table>
       </div>

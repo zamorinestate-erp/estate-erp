@@ -10,6 +10,7 @@ import { skeleton, showToast, openModal, closeModal, renderCafeContextStrip } fr
 import { state } from '../state.js';
 import { ROLES } from '../navigation.js';
 import { icon } from '../icons.js';
+import { openCafeCreateModal } from './cafeCreateModal.js';
 
 // ─── Component State ──────────────────────────────────────────────────────────
 
@@ -78,6 +79,7 @@ function getIstClockString() {
 
 export function renderPerformance() {
   const canExport = [ROLES.MASTER, ROLES.OWNER].includes(state.role);
+  const canCreateCafe = [ROLES.MASTER, ROLES.OWNER].includes(state.role);
 
   return `
     <div class="page-enter" style="padding-bottom: 60px;">
@@ -94,8 +96,13 @@ export function renderPerformance() {
         </div>
 
         <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          ${canCreateCafe ? `
+            <button class="btn btn-primary" id="perf-add-cafe-btn" type="button" style="font-weight:700;">
+              + Add New Café
+            </button>
+          ` : ''}
           ${canExport ? `
-            <button class="btn btn-primary" id="perf-open-export-btn" style="font-weight:700;" type="button">
+            <button class="btn btn-secondary" id="perf-open-export-btn" style="font-weight:700;" type="button">
               📑 Export Performance (ZURF)
             </button>
           ` : ''}
@@ -346,6 +353,18 @@ export async function wirePerformance(root) {
       perfState.period = 'custom';
       hideDateModal();
       loadPerformanceData(root);
+    });
+  }
+
+  // Add Cafe button
+  const addCafeBtn = root.querySelector('#perf-add-cafe-btn');
+  if (addCafeBtn) {
+    addCafeBtn.addEventListener('click', () => {
+      openCafeCreateModal(root, {
+        onSuccess: () => {
+          loadPerformanceData(root);
+        }
+      });
     });
   }
 

@@ -78,7 +78,7 @@ const getInventoryOverview = asyncHandler(async (request, response) => {
 
   // Multi-café stock matrix heatmap (scoped strictly to effective café for CAFE_ADMIN)
   const cafes = await Cafe.find({ organisationId, status: 'ACTIVE' }).lean();
-  const allCafes = cafes.length > 0 ? cafes : [{ cafeId: 'ZC-0001', name: 'Koramangala Flagship' }, { cafeId: 'ZC-0002', name: 'Indiranagar Roastery' }];
+  const allCafes = cafes;
   const activeCafes = effectiveCafe ? allCafes.filter((c) => c.cafeId === effectiveCafe) : allCafes;
 
   const heatmap = items.slice(0, 10).map((itm) => {

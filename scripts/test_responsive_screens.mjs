@@ -115,7 +115,7 @@ async function main() {
     '--no-sandbox',
     '--disable-setuid-sandbox',
     '--disable-dev-shm-usage',
-    `http://localhost:${HTTP_PORT}`,
+    `http://127.0.0.1:${HTTP_PORT}/index.html?role=master`,
   ]);
 
   await delay(1200);

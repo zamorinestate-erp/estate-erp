@@ -131,19 +131,26 @@ function getMasterAuthAdapter() {
 // accounts only. Exists purely so this module can be exercised end-to-end
 // without your real auth system attached.
 // ---------------------------------------------------------------------
-const bcrypt = require('bcryptjs');
+let bcrypt;
+try {
+  bcrypt = require('bcrypt');
+} catch {
+  bcrypt = require('bcryptjs');
+}
 const demoMastersByIdentifier = new Map();
 const demoMastersByEmployeeId = new Map();
 const pendingMfa = new Map();
 
+const MASTER_SALT_ROUNDS = process.env.NODE_ENV === 'production' ? 10 : 4;
+
 function _seedDemoMaster({ identifier, employeeId, organisationId, role, password, mfaCode }) {
-  const rec = { identifier, employeeId, organisationId, role, passwordHash: bcrypt.hashSync(password, 10), mfaCode: mfaCode || null };
+  const rec = { identifier, employeeId, organisationId, role, passwordHash: bcrypt.hashSync(password, MASTER_SALT_ROUNDS), mfaCode: mfaCode || null };
   demoMastersByIdentifier.set(identifier, rec);
   demoMastersByEmployeeId.set(String(employeeId), rec);
 }
 function _resetDemoMasters() { demoMastersByIdentifier.clear(); demoMastersByEmployeeId.clear(); pendingMfa.clear(); }
 
-const DUMMY_HASH = bcrypt.hashSync('__no_such_master_account__', 10);
+const DUMMY_HASH = bcrypt.hashSync('__no_such_master_account__', MASTER_SALT_ROUNDS);
 
 const referenceAdapter = {
   async identify({ identifier, password }) {

@@ -22,6 +22,8 @@ import { apiGet, apiPost } from "../apiClient.js";
 import { navigate } from "../router.js";
 import { state } from "../state.js";
 import { icon } from "../icons.js";
+import { openCafeCreateModal } from "./cafeCreateModal.js";
+import { openCafeAccessManagementModal } from "./cafeAccessManagementModal.js";
 
 // ─── Format Helpers ──────────────────────────────────────────────────────────
 
@@ -897,12 +899,17 @@ export function renderDashboardBodyHtml(data) {
 
     <!-- Layer 6: Multi-Café Business Health Breakdown Cards & Table -->
     <div class="occ-section-card mt-6">
-      <div class="occ-card-header" style="margin-bottom:16px;">
+      <div class="occ-card-header" style="margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
         <div class="occ-card-title">
           ${icon("reports", 18)}
           <span>Multi-Location Performance &amp; Health Breakdown</span>
         </div>
-        <span class="occ-tag">${cafes.length} Authorized Locations</span>
+        <div style="display:flex;gap:10px;align-items:center;">
+          <span class="occ-tag">${cafes.length} Authorized Locations</span>
+          <button class="btn btn-sm btn-primary" id="occ-btn-add-cafe" type="button" style="font-weight:700;">
+            + Add New Café
+          </button>
+        </div>
       </div>
 
       <!-- Location Cards Grid matching Reference HRIS standard -->
@@ -967,9 +974,12 @@ export function renderDashboardBodyHtml(data) {
                 </div>
               </div>
 
-              <div style="margin-top:6px; padding-top:10px; border-top:1px solid var(--line);">
-                <button class="btn btn-ghost occ-filter-cafe-btn" data-cafe-id="${cafe.cafeId}" style="width:100%; font-size:12.5px; font-weight:600; justify-content:center;" type="button">
-                  Focus Location Portfolio →
+              <div style="margin-top:6px; padding-top:10px; border-top:1px solid var(--line); display:flex; gap:8px;">
+                <button class="btn btn-ghost occ-filter-cafe-btn" data-cafe-id="${cafe.cafeId}" style="flex:1; font-size:12px; font-weight:600; justify-content:center;" type="button">
+                  Focus Portfolio →
+                </button>
+                <button class="btn btn-secondary occ-access-cafe-btn" data-access-cafe="${cafe.cafeId}" style="font-size:12px; font-weight:700; color:var(--bronze-500);" type="button" title="Manage Café Operations Access">
+                  Access
                 </button>
               </div>
             </div>
@@ -1261,6 +1271,26 @@ function wireDashboardBodyActions(container, data) {
         if (sel) sel.value = cafeId;
         loadDashboardData();
         showToast(`Filtered Command Centre to ${cafeId}`, "info");
+      }
+    });
+  });
+
+  const btnAddCafe = container.querySelector("#occ-btn-add-cafe");
+  if (btnAddCafe) {
+    btnAddCafe.addEventListener("click", () => {
+      openCafeCreateModal(container, {
+        onSuccess: () => {
+          loadDashboardData();
+        }
+      });
+    });
+  }
+
+  container.querySelectorAll(".occ-access-cafe-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const cafeId = btn.dataset.accessCafe;
+      if (cafeId) {
+        openCafeAccessManagementModal(container, cafeId);
       }
     });
   });

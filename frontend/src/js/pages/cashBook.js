@@ -68,24 +68,24 @@ let _page = 1;
 let _totalPages = 1;
 let _loading = false;
 
-// Mock session status for active operational till
+// Initial session state — overridden by API data on load
 let _sessionInfo = {
-  sessionId: "SES-20260831-001",
-  status: "ACTIVE", // 'ACTIVE' | 'COUNTING' | 'CLOSED' | 'NOT_STARTED'
-  shift: "Morning Shift (07:00 - 15:30)",
-  registerId: "TILL-01",
-  posTerminal: "POS-MAIN-01",
-  cashierName: "Aswin K. (EMP-0014)",
-  openingFloat: 2000,
-  openedAt: "2026-08-31T07:15:00.000Z",
-  cashSales: 18450,
-  cardSales: 12300,
-  upiSales: 24800,
-  aggregatorSales: 6400,
-  totalPaidIn: 500,
-  totalPaidOut: 1350,
-  totalSafeDrops: 15000,
-  lastSync: "Just now",
+  sessionId: "", // populated from API on session load
+  status: "NOT_STARTED", // 'ACTIVE' | 'COUNTING' | 'CLOSED' | 'NOT_STARTED'
+  shift: "",
+  registerId: "",
+  posTerminal: "",
+  cashierName: "", // populated from state.user on render
+  openingFloat: 0,
+  openedAt: null,
+  cashSales: 0,
+  cardSales: 0,
+  upiSales: 0,
+  aggregatorSales: 0,
+  totalPaidIn: 0,
+  totalPaidOut: 0,
+  totalSafeDrops: 0,
+  lastSync: "—",
 };
 
 // Checklist state for EOD closing
@@ -156,16 +156,12 @@ function canReverse()   { return isMaster(); }
 
 function getAssignedCafes() {
   const u = state.auth?.user || state.user || {};
-  return u.assignedCafes || state.assignedCafes || [
-    { cafeId: "ZC-0001", name: "Main Outlet" },
-    { cafeId: "ZC-0002", name: "Branch Outlet" },
-    { cafeId: "ZC-0003", name: "Wayanad Heritage Roastery" },
-  ];
+  return u.assignedCafes || state.assignedCafes || [];
 }
 
 function getDefaultCafe() {
   const u = state.auth?.user || state.user || {};
-  return u.primaryCafeId || u.assignedCafeIds?.[0] || "ZC-0001";
+  return u.primaryCafeId || u.assignedCafeIds?.[0] || state.currentCafeId || "";
 }
 
 function countTotal() {
@@ -291,10 +287,10 @@ export function renderCashBook() {
 
         <!-- Session Status Pill & Cashier Info -->
         <div style="display:flex; align-items:center; gap:10px; font-size:12px; flex-wrap:wrap;">
-          <span style="color:var(--muted);">Till: <strong style="color:var(--ink);">${_sessionInfo.registerId}</strong></span>
-          <span style="color:var(--muted);">Cashier: <strong style="color:var(--ink);">${_sessionInfo.cashierName}</strong></span>
+          <span style="color:var(--muted);">Till: <strong style="color:var(--ink);">${_sessionInfo.registerId || '—'}</strong></span>
+          <span style="color:var(--muted);">Cashier: <strong style="color:var(--ink);">${_sessionInfo.cashierName || state.user?.name || state.user?.userId || '—'}</strong></span>
           <span class="pill ${_sessionInfo.status === "ACTIVE" ? "pill-mint" : "pill-dark"}" style="font-size:11px; font-weight:700;">
-            ● ${_sessionInfo.status}
+            ● ${_sessionInfo.status || 'NOT_STARTED'}
           </span>
         </div>
       </div>
@@ -713,19 +709,19 @@ function renderMovementsTab() {
           <div style="padding:12px 14px; background:var(--surface-sunken); border:1px solid var(--line); border-radius:var(--radius-sm);">
             <div style="font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase;">Vault Drops Today</div>
             <div style="font-size:18px; font-weight:800; color:var(--ink); margin:2px 0;">${fmtInr(_sessionInfo.totalSafeDrops)}</div>
-            <div style="font-size:11px; color:var(--muted);">3 transfers recorded</div>
+            <div style="font-size:11px; color:var(--muted);">${_transactions.filter(t => t.type === 'SAFE_DROP').length} transfers recorded</div>
           </div>
 
           <div style="padding:12px 14px; background:var(--surface-sunken); border:1px solid var(--line); border-radius:var(--radius-sm);">
             <div style="font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase;">Petty Disbursements</div>
             <div style="font-size:18px; font-weight:800; color:var(--danger); margin:2px 0;">${fmtInr(_sessionInfo.totalPaidOut)}</div>
-            <div style="font-size:11px; color:var(--muted);">Local supplies &amp; ice</div>
+            <div style="font-size:11px; color:var(--muted);">${_transactions.filter(t => t.type === 'PAID_OUT').length} disbursements</div>
           </div>
 
           <div style="padding:12px 14px; background:var(--surface-sunken); border:1px solid var(--line); border-radius:var(--radius-sm);">
             <div style="font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase;">Float Top-ups</div>
             <div style="font-size:18px; font-weight:800; color:var(--success); margin:2px 0;">${fmtInr(_sessionInfo.totalPaidIn)}</div>
-            <div style="font-size:11px; color:var(--muted);">Change replenishment</div>
+            <div style="font-size:11px; color:var(--muted);">${_transactions.filter(t => t.type === 'PAID_IN').length} top-ups</div>
           </div>
         </div>
 
@@ -744,36 +740,33 @@ function renderMovementsTab() {
               </tr>
             </thead>
             <tbody>
-              <tr>
-                <td>11:30 AM</td>
-                <td><span class="pill pill-warning">SAFE_DROP</span></td>
-                <td>SAFE_DROP</td>
-                <td>VAULT-REF-092</td>
-                <td>Aswin K.</td>
-                <td>CASH</td>
-                <td style="text-align:right; font-weight:700; color:var(--danger);">-₹10,000.00</td>
-                <td><span class="pill pill-mint">CONFIRMED</span></td>
-              </tr>
-              <tr>
-                <td>01:15 PM</td>
-                <td><span class="pill pill-coral">PAID_OUT</span></td>
-                <td>MILK_PURCHASE</td>
-                <td>VOC-2026-088</td>
-                <td>Aswin K.</td>
-                <td>CASH</td>
-                <td style="text-align:right; font-weight:700; color:var(--danger);">-₹850.00</td>
-                <td><span class="pill pill-mint">APPROVED</span></td>
-              </tr>
-              <tr>
-                <td>02:40 PM</td>
-                <td><span class="pill pill-warning">SAFE_DROP</span></td>
-                <td>SAFE_DROP</td>
-                <td>VAULT-REF-093</td>
-                <td>Aswin K.</td>
-                <td>CASH</td>
-                <td style="text-align:right; font-weight:700; color:var(--danger);">-₹5,000.00</td>
-                <td><span class="pill pill-mint">CONFIRMED</span></td>
-              </tr>
+              ${(() => {
+                const movements = _transactions.filter(t => ['SAFE_DROP', 'PAID_OUT', 'PAID_IN'].includes(t.type));
+                if (movements.length === 0) {
+                  return '<tr><td colspan="8" style="padding:24px; text-align:center; color:var(--muted); font-size:13px;">No movements recorded for this session yet.</td></tr>';
+                }
+                return movements.map(t => {
+                  const ts = t.createdAt ? new Date(t.createdAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "—";
+                  const typeClass = t.type === "SAFE_DROP" ? "pill-warning" : t.type === "PAID_OUT" ? "pill-coral" : "pill-mint";
+                  const amt = t.amount || 0;
+                  const isOut = t.direction === "OUT" || ["SAFE_DROP", "PAID_OUT"].includes(t.type);
+                  const amtDisplay = `${isOut ? "-" : "+"}${fmtInr(Math.abs(amt))}`;
+                  const amtColor = isOut ? "var(--danger)" : "var(--success)";
+                  const statusClass = t.status === "CONFIRMED" || t.status === "APPROVED" ? "pill-mint" : "pill-warning";
+                  const recorder = t.recordedBy || t.cashierName || "—";
+                  return `
+                    <tr>
+                      <td>${ts}</td>
+                      <td><span class="pill ${typeClass}">${t.type}</span></td>
+                      <td>${t.category || t.type}</td>
+                      <td>${t.voucherRef || t.referenceNumber || "—"}</td>
+                      <td>${recorder}</td>
+                      <td>${t.paymentMethod || "CASH"}</td>
+                      <td style="text-align:right; font-weight:700; color:${amtColor};">${amtDisplay}</td>
+                      <td><span class="pill ${statusClass}">${t.status || "PENDING"}</span></td>
+                    </tr>`;
+                }).join("");
+              })()}
             </tbody>
           </table>
         </div>
@@ -983,30 +976,9 @@ function renderHistoryTab() {
           </thead>
           <tbody>
             <tr>
-              <td><strong>SES-20260830-002</strong></td>
-              <td>30 Aug · Evening</td>
-              <td>Kozhikode Beach</td>
-              <td>Muhammed R.</td>
-              <td style="text-align:right;">₹2,000.00</td>
-              <td style="text-align:right;">₹24,120.00</td>
-              <td style="text-align:right;">₹20,000.00</td>
-              <td style="text-align:right; font-weight:700;">₹4,750.00</td>
-              <td style="text-align:right; color:var(--success); font-weight:700;">₹0.00</td>
-              <td><span class="pill pill-mint">CLOSED · AUDITED</span></td>
-              <td><button class="btn btn-ghost btn-sm" style="font-size:11px;">View Sheet</button></td>
-            </tr>
-            <tr>
-              <td><strong>SES-20260830-001</strong></td>
-              <td>30 Aug · Morning</td>
-              <td>Kozhikode Beach</td>
-              <td>Aswin K.</td>
-              <td style="text-align:right;">₹2,000.00</td>
-              <td style="text-align:right;">₹19,400.00</td>
-              <td style="text-align:right;">₹16,000.00</td>
-              <td style="text-align:right; font-weight:700;">₹4,380.00</td>
-              <td style="text-align:right; color:var(--danger); font-weight:700;">-₹20.00</td>
-              <td><span class="pill pill-mint">CLOSED · AUDITED</span></td>
-              <td><button class="btn btn-ghost btn-sm" style="font-size:11px;">View Sheet</button></td>
+              <td colspan="11" style="text-align:center; padding:32px; color:var(--muted); font-size:13px;">
+                No historical closed till sessions found for this period.
+              </td>
             </tr>
           </tbody>
         </table>
@@ -1555,12 +1527,12 @@ function openSafeDropModal() {
 
           <div>
             <label style="font-size:12px; font-weight:700; color:var(--muted); display:block; margin-bottom:3px;">Safe Bag / Seal Voucher No.</label>
-            <input type="text" id="sd-seal" class="input input-sm" placeholder="BAG-SEAL-0092" required style="width:100%;" />
+            <input type="text" id="sd-seal" class="input input-sm" placeholder="e.g. BAG-SEAL-0001" required style="width:100%;" />
           </div>
 
           <div>
             <label style="font-size:12px; font-weight:700; color:var(--muted); display:block; margin-bottom:3px;">Witness / Manager ID</label>
-            <input type="text" id="sd-witness" class="input input-sm" placeholder="EMP-0004" required style="width:100%;" />
+            <input type="text" id="sd-witness" class="input input-sm" placeholder="e.g. Staff ID" required style="width:100%;" />
           </div>
 
           <div style="display:flex; gap:10px; margin-top:8px;">

@@ -17,12 +17,14 @@ const shiftAssignmentSchema = new mongoose.Schema(
   {
     userId: { type: String, required: true, trim: true, uppercase: true },
     date: { type: String, required: true, match: /^\d{4}-\d{2}-\d{2}$/ },
-    shiftTemplateId: { type: String, trim: true, default: 'MORNING' },
-    shiftName: { type: String, trim: true, default: 'Morning Shift (06:30 - 15:00)' },
+    // shiftTemplateId references a Shift document — must not be hardcoded
+    shiftTemplateId: { type: String, trim: true, uppercase: true, default: null },
+    shiftName: { type: String, trim: true, default: null },
     startTime: { type: String, required: true, match: /^\d{2}:\d{2}$/ },
     endTime: { type: String, required: true, match: /^\d{2}:\d{2}$/ },
-    breakMinutes: { type: Number, default: 30 },
-    assignedRole: { type: String, default: 'BARISTA' },
+    // breakMinutes is informational only; actual breaks tracked on Attendance.breaks
+    breakMinutes: { type: Number, default: 0 },
+    assignedRole: { type: String, default: null },
   },
   { _id: false }
 );

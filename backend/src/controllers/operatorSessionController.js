@@ -12,8 +12,9 @@ class OperatorSessionController {
   });
 
   signIn = asyncHandler(async (req, res) => {
-    const { deviceId, cafeId, operatorUserId, pin, cafePin, rememberAccess } = req.body;
-    const organisationId = req.body.organisationId || req.auth?.organisationId || 'ZAMORIN';
+    const { deviceId, cafeId, operatorUserId, pin, gatewayContextToken, cafePin, rememberAccess } = req.body || {};
+    const organisationId = req.body?.organisationId || req.auth?.organisationId || 'ZAMORIN';
+    const token = gatewayContextToken || req.headers['x-gateway-context-token'];
 
     const result = await operatorSessionService.signInOperator({
       organisationId,
@@ -21,7 +22,7 @@ class OperatorSessionController {
       cafeId,
       operatorUserId,
       pin,
-      cafePin,
+      gatewayContextToken: token,
       rememberAccess: Boolean(rememberAccess),
       clientIp: req.ip,
       userAgent: req.headers['user-agent'],

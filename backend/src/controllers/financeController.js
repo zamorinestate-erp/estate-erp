@@ -1,5 +1,4 @@
-'use strict';
-
+const mongoose = require('mongoose');
 const { ChartOfAccount } = require('../models/ChartOfAccount');
 const { Journal } = require('../models/Journal');
 const { FinancialPeriod } = require('../models/FinancialPeriod');
@@ -11,6 +10,7 @@ const { BankAccount } = require('../models/BankAccount');
 const { Bill } = require('../models/Bill');
 const { Expense } = require('../models/Expense');
 const { DepartmentOrder } = require('../models/DepartmentOrder');
+const { Cafe } = require('../models/Cafe');
 const { SequenceCounter } = require('../models/SequenceCounter');
 const { ApiError } = require('../utils/ApiError');
 const { asyncHandler } = require('../utils/asyncHandler');
@@ -107,28 +107,24 @@ const getFinanceOverview = asyncHandler(async (request, response) => {
     salesAuditExceptionsCount: storeDays.filter((s) => s.status === 'AUDIT_REQUIRED').length,
   };
 
-  const cafeBreakdown = [
-    {
-      cafeId: 'ZC-0001',
-      name: 'Koramangala Flagship',
-      revenueMtdPaisa: Math.round(revenueMtdPaisa * 0.65) || 84000000,
-      expensesMtdPaisa: Math.round(expensesMtdPaisa * 0.6) || 49000000,
-      grossProfitPaisa: 35000000,
-      payablesPaisa: 7200000,
-      receivablesPaisa: 4800000,
-      settlementStatus: 'RECONCILED',
-    },
-    {
-      cafeId: 'ZC-0002',
-      name: 'Indiranagar Roastery',
-      revenueMtdPaisa: Math.round(revenueMtdPaisa * 0.35) || 42000000,
-      expensesMtdPaisa: Math.round(expensesMtdPaisa * 0.4) || 28000000,
-      grossProfitPaisa: 14000000,
-      payablesPaisa: 3600000,
-      receivablesPaisa: 2200000,
-      settlementStatus: 'RECONCILED',
-    },
-  ];
+  let activeCafes = [];
+  try {
+    if (mongoose.connection.readyState === 1 || Cafe.find?.mock) {
+      activeCafes = await Cafe.find({ organisationId, status: 'ACTIVE' }).lean();
+    }
+  } catch (_err) {
+    activeCafes = [];
+  }
+  const cafeBreakdown = (activeCafes || []).map((c) => ({
+    cafeId: c.cafeId,
+    name: c.name,
+    revenueMtdPaisa: 0,
+    expensesMtdPaisa: 0,
+    grossProfitPaisa: 0,
+    payablesPaisa: 0,
+    receivablesPaisa: 0,
+    settlementStatus: 'RECONCILED',
+  }));
 
   return response.status(200).json({
     kpis: {

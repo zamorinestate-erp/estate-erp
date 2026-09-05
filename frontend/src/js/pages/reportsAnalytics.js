@@ -780,15 +780,11 @@ async function renderWorkforceSubtab(root, container) {
   if (!cachedWorkforce || !cachedWorkforce.workforceMetrics) {
     cachedWorkforce = {
       workforceMetrics: {
-        labourCostPctOfSales: 22.0,
-        salesPerLabourHour: 845,
-        overtimeHours: 14.5,
+        labourCostPctOfSales: 0,
+        salesPerLabourHour: 0,
+        overtimeHours: 0,
       },
-      exceptions: [
-        { employeeName: 'Staff Member', cafe: 'Main Outlet', type: 'Late Clock-In (>15m)', minutes: 22, status: 'RESOLVED' },
-        { employeeName: 'Shift Supervisor', cafe: 'Branch Outlet', type: 'Overtime (>2h)', minutes: 135, status: 'PENDING_APPROVAL' },
-        { employeeName: 'Kitchen Prep', cafe: 'Main Outlet', type: 'Missed Break Punch', minutes: null, status: 'RESOLVED' },
-      ],
+      exceptions: [],
     };
   }
 
@@ -803,20 +799,23 @@ async function renderWorkforceSubtab(root, container) {
 
       <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:10px;">
         <div class="card" style="padding:10px;background:var(--surface-sunken);">
-          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;">Labour Cost % of Sales</div>
-          <div style="font-size:16px;font-weight:800;color:var(--mint, #10b981);margin-top:2px;">${workforceMetrics?.labourCostPctOfSales || 22}%</div>
+          <div style="font-size:10px;color:var(--muted);text-transform:uppercase;">Labour Cost Ratio</div>
+          <div style="font-size:16px;font-weight:800;color:var(--ink);margin-top:2px;">${workforceMetrics?.labourCostPctOfSales || 0}%</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:2px;">Target: &lt;24% of Gross Sales</div>
         </div>
         <div class="card" style="padding:10px;background:var(--surface-sunken);">
           <div style="font-size:10px;color:var(--muted);text-transform:uppercase;">Sales / Labour Hour</div>
-          <div style="font-size:16px;font-weight:800;color:var(--ink);margin-top:2px;">₹${workforceMetrics?.salesPerLabourHour || 845}</div>
+          <div style="font-size:16px;font-weight:800;color:var(--ink);margin-top:2px;">₹${workforceMetrics?.salesPerLabourHour || 0}</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:2px;">Portfolio productivity rate</div>
         </div>
         <div class="card" style="padding:10px;background:var(--surface-sunken);">
           <div style="font-size:10px;color:var(--muted);text-transform:uppercase;">Overtime Hours</div>
-          <div style="font-size:16px;font-weight:800;color:var(--amber, #f59e0b);margin-top:2px;">${workforceMetrics?.overtimeHours || 14.5} hrs</div>
+          <div style="font-size:16px;font-weight:800;color:var(--ink);margin-top:2px;">${workforceMetrics?.overtimeHours || 0} hrs</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:2px;">Current billing period</div>
         </div>
       </div>
 
-      <div class="card" style="padding:12px;background:var(--surface-sunken);min-width:0;box-sizing:border-box;">
+      <div>
         <h4 style="font-size:12px;font-weight:700;color:var(--ink);margin:0 0 8px 0;">Attendance Exceptions Log</h4>
         <div style="width:100%;overflow-x:auto;min-width:0;box-sizing:border-box;">
           <table class="glass-table" style="width:100%;font-size:12px;">
@@ -830,7 +829,7 @@ async function renderWorkforceSubtab(root, container) {
               </tr>
             </thead>
             <tbody>
-              ${(exceptions || []).map((e) => `
+              ${(exceptions || []).length > 0 ? (exceptions || []).map((e) => `
                 <tr>
                   <td><strong>${e.employeeName}</strong></td>
                   <td style="color:var(--muted);">${e.cafe}</td>
@@ -838,7 +837,11 @@ async function renderWorkforceSubtab(root, container) {
                   <td>${e.minutes ? `${e.minutes} mins` : '—'}</td>
                   <td><span class="badge ${e.status === 'RESOLVED' ? 'success' : 'warning'}" style="font-size:9px;">${e.status}</span></td>
                 </tr>
-              `).join('')}
+              `).join('') : `
+                <tr>
+                  <td colspan="5" style="text-align:center;padding:16px;color:var(--muted);">No attendance exceptions recorded</td>
+                </tr>
+              `}
             </tbody>
           </table>
         </div>
@@ -1007,17 +1010,13 @@ async function renderProcurementSubtab(root, container) {
   } catch (_) {}
 
   if (!cachedProcurement || !cachedProcurement.spendSummary) {
+    // Awaiting API data — seed with zero-state to avoid rendering fake supplier names
     cachedProcurement = {
       spendSummary: {
-        totalPoCommitments: 184500,
-        invoicedNotReceivedINR: 1,
+        totalPoCommitments: 0,
+        invoicedNotReceivedINR: 0,
       },
-      supplierSpend: [
-        { supplier: 'Malabar Estate Roasters', spend: 84500, poCount: 4, leadTimeDays: 2 },
-        { supplier: 'Nilgiri Dairy Co-op', spend: 42000, poCount: 8, leadTimeDays: 1 },
-        { supplier: 'EcoPackaging Solutions', spend: 28000, poCount: 2, leadTimeDays: 4 },
-        { supplier: 'Spice Coast Syrups', spend: 30000, poCount: 3, leadTimeDays: 3 },
-      ],
+      supplierSpend: [],
     };
   }
 
@@ -1143,14 +1142,11 @@ async function renderQualitySubtab(root, container) {
   if (!cachedQuality || !cachedQuality.qualityMetrics) {
     cachedQuality = {
       qualityMetrics: {
-        checklistCompletionRatePct: 98.4,
+        checklistCompletionRatePct: 100,
         temperatureExcursionsCount: 0,
         activeQualityHoldsCount: 0,
       },
-      recentIncidents: [
-        { ref: 'CAPA-2026-08-01', cafe: 'Main Outlet', title: 'Milk Refrigerator Sensor Calibration Check', status: 'RESOLVED' },
-        { ref: 'AUD-2026-08-14', cafe: 'Branch Outlet', title: 'Routine Monthly FSSAI Hygiene Self-Audit (Score: 96/100)', status: 'RESOLVED' },
-      ],
+      recentIncidents: [],
     };
   }
 
@@ -1166,7 +1162,7 @@ async function renderQualitySubtab(root, container) {
       <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:10px;">
         <div class="card" style="padding:10px;background:var(--surface-sunken);">
           <div style="font-size:10px;color:var(--muted);text-transform:uppercase;">Checklist Compliance</div>
-          <div style="font-size:16px;font-weight:800;color:var(--mint, #10b981);margin-top:2px;">${qualityMetrics?.checklistCompletionRatePct || 98.4}%</div>
+          <div style="font-size:16px;font-weight:800;color:var(--mint, #10b981);margin-top:2px;">${qualityMetrics?.checklistCompletionRatePct || 100}%</div>
         </div>
         <div class="card" style="padding:10px;background:var(--surface-sunken);">
           <div style="font-size:10px;color:var(--muted);text-transform:uppercase;">Temperature Excursions</div>
@@ -1191,14 +1187,18 @@ async function renderQualitySubtab(root, container) {
               </tr>
             </thead>
             <tbody>
-              ${(recentIncidents || []).map((i) => `
+              ${(recentIncidents || []).length > 0 ? (recentIncidents || []).map((i) => `
                 <tr>
                   <td><strong>${i.ref}</strong></td>
                   <td style="color:var(--muted);">${i.cafe}</td>
                   <td>${i.title}</td>
                   <td><span class="badge ${i.status === 'RESOLVED' ? 'success' : 'warning'}" style="font-size:9px;">${i.status}</span></td>
                 </tr>
-              `).join('')}
+              `).join('') : `
+                <tr>
+                  <td colspan="4" style="text-align:center;padding:16px;color:var(--muted);">No quality incidents or CAPA audits recorded</td>
+                </tr>
+              `}
             </tbody>
           </table>
         </div>
@@ -1260,11 +1260,8 @@ async function renderPortfolioSubtab(root, container) {
 
   if (!cachedPortfolio || !cachedPortfolio.portfolio) {
     cachedPortfolio = {
-      overallLikeForLikeGrowthPct: 11.4,
-      portfolio: [
-        { name: 'Main Outlet', cafeId: 'ZC-0001', category: 'MATURE', operatingDays: 365, netSales: 215420, priorYearNetSales: 192800, likeForLikeGrowthPct: 11.7, labourCostPct: 21.5, marginPct: 70.5 },
-        { name: 'Branch Outlet', cafeId: 'ZC-0002', category: 'MATURE', operatingDays: 310, netSales: 127430, priorYearNetSales: 115200, likeForLikeGrowthPct: 10.6, labourCostPct: 22.8, marginPct: 69.2 },
-      ],
+      overallLikeForLikeGrowthPct: 0,
+      portfolio: [],
     };
   }
 
@@ -1295,7 +1292,8 @@ async function renderPortfolioSubtab(root, container) {
             </tr>
           </thead>
           <tbody>
-            ${(portfolio || []).map((p) => `
+            ${portfolio && portfolio.length > 0
+              ? portfolio.map((p) => `
               <tr>
                 <td><strong>${p.name}</strong> (${p.cafeId})</td>
                 <td><span class="badge ${p.category === 'MATURE' ? 'success' : 'warning'}" style="font-size:9px;">${p.category}</span></td>
@@ -1306,7 +1304,8 @@ async function renderPortfolioSubtab(root, container) {
                 <td>${p.labourCostPct}%</td>
                 <td>${p.marginPct}%</td>
               </tr>
-            `).join('')}
+            `).join('')
+              : '<tr><td colspan="8" style="padding: 24px; text-align: center; color: var(--muted); font-size: 13px;">No portfolio comparative locations available yet.</td></tr>'}
           </tbody>
         </table>
       </div>
@@ -1493,8 +1492,7 @@ function renderExplorerSubtab(root, container) {
             <tr><th>Café Scope</th><th>Net Sales</th><th>Share %</th></tr>
           </thead>
           <tbody>
-            <tr><td>Main Outlet (ZC-0001)</td><td>₹2,15,420.00</td><td>62.8%</td></tr>
-            <tr><td>Branch Outlet (ZC-0002)</td><td>₹1,27,430.00</td><td>37.2%</td></tr>
+            <tr><td colspan="3" style="padding: 16px; text-align: center; color: var(--muted); font-size: 12px;">No net sales recorded across active cafés for this custom period.</td></tr>
           </tbody>
         </table>
       `;
@@ -1696,33 +1694,8 @@ async function renderExportsSubtab(root, container) {
     if (res?.data?.jobs) cachedJobs = res.data.jobs;
   } catch (_) {}
 
-  if (!cachedJobs || cachedJobs.length === 0) {
-    cachedJobs = [
-      {
-        jobId: 'EXP-20260831-001',
-        reportId: 'Daily Sales & Operations Summary',
-        format: 'PDF',
-        scope: 'All Cafés — Global Portfolio',
-        createdAt: new Date().toISOString(),
-        status: 'READY',
-      },
-      {
-        jobId: 'EXP-20260831-002',
-        reportId: 'Executive P&L and Operating Cash Flow',
-        format: 'CSV',
-        scope: 'All Cafés — Global Portfolio',
-        createdAt: new Date().toISOString(),
-        status: 'READY',
-      },
-      {
-        jobId: 'EXP-20260830-001',
-        reportId: 'Inventory Movement & Valuation',
-        format: 'XLSX',
-        scope: 'Main Outlet',
-        createdAt: new Date(Date.now() - 86400000).toISOString(),
-        status: 'READY',
-      },
-    ];
+  if (!cachedJobs) {
+    cachedJobs = [];
   }
 
   container.innerHTML = `
@@ -1749,7 +1722,7 @@ async function renderExportsSubtab(root, container) {
             </tr>
           </thead>
           <tbody>
-            ${cachedJobs.map((j) => `
+            ${(cachedJobs || []).length > 0 ? (cachedJobs || []).map((j) => `
               <tr>
                 <td style="font-family:var(--font-mono);font-weight:700;">${j.jobId}</td>
                 <td><strong>${j.reportId}</strong></td>
@@ -1763,7 +1736,11 @@ async function renderExportsSubtab(root, container) {
                   </button>
                 </td>
               </tr>
-            `).join('')}
+            `).join('') : `
+              <tr>
+                <td colspan="7" style="text-align:center;padding:16px;color:var(--muted);">No reports exported yet. Click "+ New Export" to generate an official document.</td>
+              </tr>
+            `}
           </tbody>
         </table>
       </div>

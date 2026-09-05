@@ -69,11 +69,13 @@ function escHtml(str) {
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+import { getCanonicalDeviceId } from '../apiClient.js';
+
 function getDeviceContext() {
   try {
     const cafeName = localStorage.getItem('zamorin_bound_cafe_name') || 'Cafe Operations';
     const cafeId   = localStorage.getItem('zamorin_bound_cafe_id') || '';
-    const deviceId = localStorage.getItem('zamorin_device_id') || '';
+    const deviceId = getCanonicalDeviceId() || '';
     return { cafeName, cafeId, deviceId };
   } catch {
     return { cafeName: 'Cafe Operations', cafeId: '', deviceId: '' };

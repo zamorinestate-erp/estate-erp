@@ -16,7 +16,13 @@ let liveStaffingRequests = [];
 let liveSkills = [];
 let liveDocuments = [];
 let liveIntegrity = null;
+let liveCafes = [];
 let isLoadingData = false;
+
+function escapeHtml(str) {
+  if (!str) return "";
+  return String(str).replace(/[&<>"']/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[m]);
+}
 
 let searchQuery = "";
 let selectedCafe = "ALL";
@@ -203,11 +209,7 @@ function renderOverviewSubpanel() {
     criticalVacancies: 1,
     documentsMissing: 2,
   };
-  const cafes = liveOverview?.cafeWorkforce || [
-    { cafeId: "ZC-0001", name: "Main Outlet", totalHeadcount: 14, approvedPositions: 16, capacityGap: 2, openPositions: 1, vacancies: 1, frozenPositions: 1, probation: 2, crossTrained: 6 },
-    { cafeId: "ZC-0002", name: "Branch Outlet", totalHeadcount: 11, approvedPositions: 12, capacityGap: 1, openPositions: 1, vacancies: 1, frozenPositions: 0, probation: 1, crossTrained: 4 },
-    { cafeId: "ZC-0003", name: "Calicut Heritage Flagship", totalHeadcount: 9, approvedPositions: 10, capacityGap: 1, openPositions: 1, vacancies: 1, frozenPositions: 0, probation: 1, crossTrained: 3 },
-  ];
+  const cafes = liveOverview?.cafeWorkforce || [];
 
   const workforceTiles = [
     { id: "directory", icon: "👥", title: "Employee Directory", subtitle: "Active staff directory, 360 profiles & contacts", badge: `${kpis.activeEmployees} Staff`, badgeType: "accent" },
@@ -357,12 +359,7 @@ function renderOverviewSubpanel() {
 
 // ─── 2. EMPLOYEE DIRECTORY & SEARCH ──────────────────────────────────────────
 function renderDirectorySubpanel() {
-  let filtered = liveEmployees.length > 0 ? [...liveEmployees] : [
-    { userId: "AD-0003", name: "Operations Admin", preferredName: "", role: "CAFE_ADMIN", designation: "General Store Manager", department: "Management", primaryCafeId: "ZC-0001", employmentType: "Full Time", workerType: "PERMANENT", employmentStatus: "ACTIVE", joiningDate: "2024-01-15", email: "ravi@zamorin.cafe" },
-    { userId: "ST-0004", name: "Senior Barista", preferredName: "", role: "STAFF", designation: "Senior Head Barista", department: "Barista", primaryCafeId: "ZC-0001", employmentType: "Full Time", workerType: "PERMANENT", employmentStatus: "ACTIVE", joiningDate: "2024-03-01", email: "priya@zamorin.cafe" },
-    { userId: "ST-0005", name: "Arjun Das", preferredName: "Arjun", role: "STAFF", designation: "Sous Chef", department: "Kitchen", primaryCafeId: "ZC-0002", employmentType: "Full Time", workerType: "PERMANENT", employmentStatus: "ACTIVE", joiningDate: "2024-04-10", email: "arjun@zamorin.cafe" },
-    { userId: "ST-0006", name: "Floor Lead", preferredName: "", role: "STAFF", designation: "Floor Lead / Cashier", department: "Service", primaryCafeId: "ZC-0003", employmentType: "Full Time", workerType: "PERMANENT", employmentStatus: "PROBATION", joiningDate: "2026-06-15", email: "ananya@zamorin.cafe" },
-  ];
+  let filtered = [...liveEmployees];
 
   if (searchQuery) {
     const q = searchQuery.toLowerCase().trim();
@@ -397,9 +394,7 @@ function renderDirectorySubpanel() {
         <div style="display:flex; gap:10px; flex-wrap:wrap;">
           <select id="cafe-filter-select" style="padding:8px 12px; border:1px solid rgba(0,0,0,0.12); border-radius:8px; font-size:13px;">
             <option value="ALL" ${selectedCafe === 'ALL' ? 'selected' : ''}>All Cafés</option>
-            <option value="ZC-0001" ${selectedCafe === 'ZC-0001' ? 'selected' : ''}>Main Outlet</option>
-            <option value="ZC-0002" ${selectedCafe === 'ZC-0002' ? 'selected' : ''}>Branch Outlet</option>
-            <option value="ZC-0003" ${selectedCafe === 'ZC-0003' ? 'selected' : ''}>Calicut Heritage Flagship</option>
+            ${liveCafes.map(c => `<option value="${escapeHtml(c.cafeId)}" ${selectedCafe === c.cafeId ? 'selected' : ''}>${escapeHtml(c.name || c.cafeId)}</option>`).join('')}
           </select>
           <select id="dept-filter-select" style="padding:8px 12px; border:1px solid rgba(0,0,0,0.12); border-radius:8px; font-size:13px;">
             <option value="ALL" ${selectedDept === 'ALL' ? 'selected' : ''}>All Departments</option>
@@ -445,7 +440,7 @@ function renderDirectorySubpanel() {
                 </td>
                 <td style="padding:12px 14px; font-weight:500;">${emp.designation || 'Staff'}</td>
                 <td style="padding:12px 14px; color:var(--muted);">${emp.department || 'Operations'}</td>
-                <td style="padding:12px 14px;"><span class="badge-tag badge-neutral" style="font-size:11.5px; font-weight:600;">${emp.primaryCafeId || 'ZC-0001'}</span></td>
+                <td style="padding:12px 14px;"><span class="badge-tag badge-neutral" style="font-size:11.5px; font-weight:600;">${emp.primaryCafeId || '—'}</span></td>
                 <td style="padding:12px 14px; font-size:12px;">${emp.workerType || 'PERMANENT'}</td>
                 <td style="padding:12px 14px;">
                   <span class="badge-tag ${emp.role === 'MASTER' ? 'badge-accent' : emp.role === 'OWNER' ? 'badge-accent' : 'badge-neutral'}" style="font-size:11px; font-weight:700;">
@@ -479,13 +474,7 @@ function renderDirectorySubpanel() {
 
 // ─── 3. POSITIONS & ORGANISATION STRUCTURE ─────────────────────────────────────
 function renderPositionsSubpanel() {
-  const positions = livePositions.length > 0 ? livePositions : [
-    { positionId: "POS-001-01", positionTitle: "General Store Manager", department: "Management", cafeId: "ZC-0001", approvedCapacity: 1, status: "FILLED", isCritical: true },
-    { positionId: "POS-001-02", positionTitle: "Senior Head Barista", department: "Barista", cafeId: "ZC-0001", approvedCapacity: 2, status: "FILLED", isCritical: true },
-    { positionId: "POS-001-03", positionTitle: "Junior Barista", department: "Barista", cafeId: "ZC-0001", approvedCapacity: 4, status: "OPEN", isCritical: false },
-    { positionId: "POS-002-01", positionTitle: "Sous Chef", department: "Kitchen", cafeId: "ZC-0002", approvedCapacity: 2, status: "FILLED", isCritical: false },
-    { positionId: "POS-003-01", positionTitle: "Floor Lead / Cashier", department: "Service", cafeId: "ZC-0003", approvedCapacity: 3, status: "OPEN", isCritical: false },
-  ];
+  const positions = [...livePositions];
 
   return `
     <div style="display:flex; flex-direction:column; gap:20px;">
@@ -537,10 +526,7 @@ function renderPositionsSubpanel() {
 
 // ─── 4. WORKFORCE PLANNING & STAFFING REQUESTS ────────────────────────────────
 function renderStaffingSubpanel() {
-  const requests = liveStaffingRequests.length > 0 ? liveStaffingRequests : [
-    { requestId: "SR-2026-001", cafeId: "ZC-0001", department: "Barista", positionTitle: "Junior Barista", headcountRequired: 2, fteRequired: 2.0, desiredDate: "2026-09-01", reason: "EXPANSION", status: "APPROVED" },
-    { requestId: "SR-2026-002", cafeId: "ZC-0003", department: "Service", positionTitle: "Floor Lead", headcountRequired: 1, fteRequired: 1.0, desiredDate: "2026-09-15", reason: "REPLACEMENT", status: "SUBMITTED" },
-  ];
+  const requests = liveStaffingRequests;
 
   return `
     <div style="display:flex; flex-direction:column; gap:20px;">
@@ -566,7 +552,7 @@ function renderStaffingSubpanel() {
             </tr>
           </thead>
           <tbody>
-            ${requests.map(r => `
+            ${requests && requests.length > 0 ? requests.map(r => `
               <tr style="border-bottom:1px solid rgba(0,0,0,0.04);">
                 <td style="padding:12px 14px; font-weight:600; color:var(--gold,#b45309);">${r.requestId}</td>
                 <td style="padding:12px 14px;"><span class="badge-tag" style="background:#f1f5f9; color:#334155;">${r.cafeId}</span></td>
@@ -583,7 +569,7 @@ function renderStaffingSubpanel() {
                   </span>
                 </td>
               </tr>
-            `).join('')}
+            `).join('') : '<tr><td colspan="7" style="padding: 24px; text-align: center; color: var(--muted); font-size: 13px;">No open staffing requisitions found.</td></tr>'}
           </tbody>
         </table>
       </div>
@@ -599,22 +585,8 @@ function renderOnboardingSubpanel() {
         <h3 style="font-size:16px; font-weight:700; margin:0 0 4px; color:var(--ink);">Active Preboarding &amp; Onboarding Checklists</h3>
         <p style="font-size:12.5px; color:var(--muted); margin:0 0 16px;">Readiness verification before and during the first 90 days of employment.</p>
 
-        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:16px;">
-          <div class="card" style="background:var(--surface-sunken, rgba(0,0,0,0.02)); border:1px solid var(--line); border-radius:var(--radius-sm, 8px); padding:16px;">
-            <div style="display:flex; justify-content:space-between; align-items:flex-start;">
-              <div>
-                <div style="font-weight:700; color:var(--ink); font-size:13.5px;">Floor Lead</div>
-                <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">ST-0006 · Floor Lead (Calicut)</div>
-              </div>
-              <span class="badge-tag badge-warning" style="font-weight:700;">Probation Review Due</span>
-            </div>
-            <div style="margin-top:14px; font-size:12px; display:flex; flex-direction:column; gap:6px; color:var(--ink);">
-              <div>✅ Documents Signed (8/8)</div>
-              <div>✅ Food Safety Induction (FoSTaC) Complete</div>
-              <div style="color:var(--warning); font-weight:600;">⚠ 90-Day Manager Evaluation Pending</div>
-            </div>
-            <button class="btn btn-ghost btn-sm open-probation-modal-btn" data-user-id="ST-0006" style="margin-top:14px; width:100%; font-size:12px; font-weight:600; justify-content:center;">Complete Probation Review →</button>
-          </div>
+        <div style="padding:24px; text-align:center; color:var(--muted); font-size:13px; background:var(--surface-sunken); border-radius:8px;">
+          No staff members currently in preboarding or probation evaluation window.
         </div>
       </div>
     </div>
@@ -640,7 +612,7 @@ function renderSkillsSubpanel() {
         ${liveSkills.map(sk => `
           <div class="card" style="background:var(--surface-sunken, rgba(0,0,0,0.02)); border:1px solid var(--line); border-radius:var(--radius-sm, 8px); padding:16px;">
             <div style="font-weight:700; color:var(--ink); font-size:13.5px;">${sk.employeeName} (${sk.userId})</div>
-            <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">${sk.designation || 'Staff'} — ${sk.cafeName || 'ZC-0001'}</div>
+            <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">${sk.designation || 'Staff'} — ${sk.cafeName || '—'}</div>
             <div style="margin-top:12px; display:flex; flex-wrap:wrap; gap:6px;">
               ${(sk.skills || []).map(s => `
                 <span class="badge-tag ${s.proficiency === 'Expert' || s.proficiency === 'Certified' ? 'badge-success' : s.status === 'IN_PROGRESS' ? 'badge-warning' : 'badge-accent'}" style="font-weight:600;">
@@ -764,18 +736,20 @@ async function fetchWorkforceData() {
   if (isLoadingData) return;
   isLoadingData = true;
   try {
-    const [ov, emp, pos, stf, itg] = await Promise.all([
+    const [ov, emp, pos, stf, itg, cf] = await Promise.allSettled([
       apiGet("/employees/overview"),
       apiGet("/employees"),
       apiGet("/employees/positions"),
       apiGet("/employees/staffing-requests"),
       apiGet("/employees/integrity"),
+      apiGet("/cafes"),
     ]);
-    liveOverview = ov?.data;
-    liveEmployees = emp?.data?.employees || [];
-    livePositions = pos?.data?.positions || [];
-    liveStaffingRequests = stf?.data?.staffingRequests || [];
-    liveIntegrity = itg?.data;
+    liveOverview = ov.status === "fulfilled" ? ov.value?.data : null;
+    liveEmployees = emp.status === "fulfilled" ? (emp.value?.data?.employees || []) : [];
+    livePositions = pos.status === "fulfilled" ? (pos.value?.data?.positions || []) : [];
+    liveStaffingRequests = stf.status === "fulfilled" ? (stf.value?.data?.staffingRequests || []) : [];
+    liveIntegrity = itg.status === "fulfilled" ? itg.value?.data : null;
+    liveCafes = cf.status === "fulfilled" ? (cf.value?.data?.cafes || []) : [];
   } catch (err) {
     // Fallback gracefully
   } finally {
@@ -1059,9 +1033,7 @@ function openOnboardingWizard() {
           <div>
             <label style="font-size:12px; font-weight:600; display:block; margin-bottom:4px;">Primary Café Location *</label>
             <select id="ob-cafe" style="width:100%; padding:8px 12px; border:1px solid rgba(0,0,0,0.15); border-radius:6px; font-size:13px;">
-              <option value="ZC-0001">Main Outlet</option>
-              <option value="ZC-0002">Branch Outlet</option>
-              <option value="ZC-0003">Calicut Heritage Flagship</option>
+              ${liveCafes.length > 0 ? liveCafes.map(c => `<option value="${escapeHtml(c.cafeId)}">${escapeHtml(c.name || c.cafeId)}</option>`).join('') : '<option value="">No active cafés</option>'}
             </select>
           </div>
           <div>
@@ -1150,9 +1122,7 @@ function openStaffingRequestModal() {
         <div>
           <label style="font-size:12px; font-weight:600; display:block; margin-bottom:4px;">Target Café *</label>
           <select id="sr-cafe" style="width:100%; padding:8px 12px; border:1px solid rgba(0,0,0,0.15); border-radius:6px; font-size:13px;">
-            <option value="ZC-0001">Main Outlet</option>
-            <option value="ZC-0002">Branch Outlet</option>
-            <option value="ZC-0003">Calicut Heritage Flagship</option>
+            ${liveCafes.length > 0 ? liveCafes.map(c => `<option value="${escapeHtml(c.cafeId)}">${escapeHtml(c.name || c.cafeId)}</option>`).join('') : '<option value="">No active cafés</option>'}
           </select>
         </div>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
@@ -1256,9 +1226,7 @@ function openCreatePositionModal() {
           <div>
             <label style="font-size:12px; font-weight:600; display:block; margin-bottom:4px;">Location *</label>
             <select id="cp-cafe" style="width:100%; padding:8px 12px; border:1px solid rgba(0,0,0,0.15); border-radius:6px; font-size:13px;">
-              <option value="ZC-0001">Main Outlet</option>
-              <option value="ZC-0002">Branch Outlet</option>
-              <option value="ZC-0003">Calicut Heritage Flagship</option>
+              ${liveCafes.length > 0 ? liveCafes.map(c => `<option value="${escapeHtml(c.cafeId)}">${escapeHtml(c.name || c.cafeId)}</option>`).join('') : '<option value="">No active cafés</option>'}
             </select>
           </div>
         </div>
@@ -1334,9 +1302,7 @@ function openTransferModal(userId) {
         <div>
           <label style="font-size:12px; font-weight:600; display:block; margin-bottom:4px;">Destination Café *</label>
           <select id="tr-cafe" style="width:100%; padding:8px 12px; border:1px solid rgba(0,0,0,0.15); border-radius:6px; font-size:13px;">
-            <option value="ZC-0001">Main Outlet</option>
-            <option value="ZC-0002">Branch Outlet</option>
-            <option value="ZC-0003">Calicut Heritage Flagship</option>
+            ${liveCafes.length > 0 ? liveCafes.map(c => `<option value="${escapeHtml(c.cafeId)}">${escapeHtml(c.name || c.cafeId)}</option>`).join('') : '<option value="">No active cafés</option>'}
           </select>
         </div>
         <div>
@@ -1505,7 +1471,7 @@ function openVerifySkillModal() {
         userId,
         employeeName: liveEmployees.find(e => e.userId === userId)?.name || userId,
         designation: liveEmployees.find(e => e.userId === userId)?.designation || "Staff Member",
-        cafeName: "Main Outlet",
+        cafeName: liveEmployees.find(e => e.userId === userId)?.cafeName || "—",
         skills: []
       };
       liveSkills.unshift(existingEmp);
@@ -1579,7 +1545,7 @@ function openAssignTrainingModal() {
         userId,
         employeeName: liveEmployees.find(e => e.userId === userId)?.name || userId,
         designation: liveEmployees.find(e => e.userId === userId)?.designation || "Staff Member",
-        cafeName: "Main Outlet",
+        cafeName: liveEmployees.find(e => e.userId === userId)?.cafeName || "—",
         skills: []
       };
       liveSkills.unshift(existingEmp);
@@ -1706,19 +1672,19 @@ function openEmployee360Drawer(userId) {
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; font-size:13px;">
           <div style="background:#fff; border:1px solid rgba(0,0,0,0.06); padding:12px; border-radius:8px;">
             <div style="color:var(--muted); font-size:11px;">Employment Type</div>
-            <div style="font-weight:600;" id="e360-type">Full Time (Permanent)</div>
+            <div style="font-weight:600;" id="e360-type">Loading...</div>
           </div>
           <div style="background:#fff; border:1px solid rgba(0,0,0,0.06); padding:12px; border-radius:8px;">
             <div style="color:var(--muted); font-size:11px;">Primary Location</div>
-            <div style="font-weight:600;" id="e360-loc">Main Outlet</div>
+            <div style="font-weight:600;" id="e360-loc">Loading...</div>
           </div>
           <div style="background:#fff; border:1px solid rgba(0,0,0,0.06); padding:12px; border-radius:8px;">
             <div style="color:var(--muted); font-size:11px;">Department &amp; Title</div>
-            <div style="font-weight:600;" id="e360-dept">Barista Operations</div>
+            <div style="font-weight:600;" id="e360-dept">Loading...</div>
           </div>
           <div style="background:#fff; border:1px solid rgba(0,0,0,0.06); padding:12px; border-radius:8px;">
             <div style="color:var(--muted); font-size:11px;">System Access</div>
-            <div style="font-weight:600;" id="e360-role">STAFF</div>
+            <div style="font-weight:600;" id="e360-role">Loading...</div>
           </div>
         </div>
 
@@ -1744,7 +1710,7 @@ function openEmployee360Drawer(userId) {
       document.getElementById("e360-name").textContent = prof.name || prof.identity?.name || userId;
       document.getElementById("e360-sub").textContent = `${prof.userId} · ${prof.email} · Status: ${prof.employmentStatus || 'ACTIVE'}`;
       document.getElementById("e360-type").textContent = `${prof.workerType || 'PERMANENT'} (${prof.employmentType || 'Full Time'})`;
-      document.getElementById("e360-loc").textContent = prof.primaryCafeId || 'ZC-0001';
+      document.getElementById("e360-loc").textContent = prof.primaryCafeId || '—';
       document.getElementById("e360-dept").textContent = `${prof.department || 'Operations'} — ${prof.designation || 'Staff'}`;
       document.getElementById("e360-role").textContent = prof.role || 'STAFF';
     }
