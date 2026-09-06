@@ -9,5 +9,7 @@
   "stylelint.enable": false,
   "html.validate.scripts": false,
   "html.validate.styles": false,
-  "css.validate": false
+  "css.validate": false,
+  "vscode-edge-devtools.webhint": false,
+  "vscode-edge-devtools.webhintInstallNotification": false
 }
