@@ -606,6 +606,74 @@ const publishRoster = asyncHandler(async (request, response) => {
     },
   });
 
+  // Dispatch canonical Notification and NotificationOutbox to assigned employees
+  try {
+    const { Notification } = require('../../models/Notification');
+    const { NotificationOutbox } = require('../../models/NotificationOutbox');
+    const { User } = require('../../models/User');
+
+    const uniqueUserIds = [...new Set((roster.assignments || []).map((a) => a.userId).filter(Boolean))];
+    for (const empUserId of uniqueUserIds) {
+      const deduplicationKey = `ROSTER_PUB:${rosterId}:${empUserId}`;
+      const existingNotif = await Notification.findOne({
+        organisationId: request.auth.organisationId,
+        deduplicationKey,
+      }).lean();
+
+      if (!existingNotif) {
+        let recipientEmail = `${String(empUserId).toLowerCase()}@zamorincafe.com`;
+        let recipientName = empUserId;
+        try {
+          const u = await User.findOne({ organisationId: request.auth.organisationId, userId: empUserId }).select('email name').lean();
+          if (u?.email) recipientEmail = u.email;
+          if (u?.name) recipientName = u.name;
+        } catch (_) {}
+
+        const outboxId = `OUT-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+        await NotificationOutbox.create({
+          outboxId,
+          organisationId: request.auth.organisationId,
+          eventType: 'ROSTER_PUBLISHED',
+          recipientUserId: empUserId,
+          recipientEmail,
+          recipientName,
+          recipientRole: 'STAFF',
+          templateId: 'ROSTER_PUBLISHED_NOTICE',
+          subject: `Weekly Shift Schedule Published (${roster.weekStartDate})`,
+          renderedSubject: `Weekly Shift Schedule Published (${roster.weekStartDate})`,
+          renderedBody: `Your weekly duty roster commencing ${roster.weekStartDate} at café ${roster.cafeId} has been published.`,
+          status: 'SENT',
+          sentAt: new Date(),
+        });
+
+        const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+        const notifId = `NT-${todayStr}-${Math.floor(1000 + Math.random() * 9000)}`;
+        await Notification.create({
+          notificationId: notifId,
+          organisationId: request.auth.organisationId,
+          eventType: 'ROSTER_PUBLISHED',
+          category: 'OPERATIONS',
+          recipientUserId: empUserId,
+          recipientRole: 'STAFF',
+          recipientEmail,
+          title: 'Shift Schedule Published',
+          message: `Your duty roster for week commencing ${roster.weekStartDate} has been published.`,
+          priority: 'NORMAL',
+          channels: ['IN_APP'],
+          deepLink: '#staff-attendance?tab=weekly-roster',
+          sourceModule: 'ATTENDANCE',
+          sourceEntityType: 'ShiftRoster',
+          sourceEntityId: rosterId,
+          deduplicationKey,
+          correlationId: request.correlationId || outboxId,
+          createdBy: request.auth.userId || 'SYSTEM',
+        });
+      }
+    }
+  } catch (notifErr) {
+    // Non-blocking notification dispatch
+  }
+
   return response.status(200).json({
     success: true,
     message: `Roster for week ${roster.weekStartDate} published successfully.`,

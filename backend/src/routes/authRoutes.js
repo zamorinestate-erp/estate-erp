@@ -21,6 +21,7 @@ const {
   getSessions,
   getCurrentUser,
   revokeSessionById,
+  revokeOtherSessions,
   listTrustedDevices,
   revokeTrustedDevice,
   revokeAllTrustedDevices,
@@ -156,6 +157,12 @@ router.delete(
   '/sessions/:sessionId',
   authenticate,
   revokeSessionById
+);
+
+router.post(
+  '/sessions/revoke-others',
+  authenticate,
+  revokeOtherSessions
 );
 
 module.exports = router;

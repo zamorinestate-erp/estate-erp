@@ -12,6 +12,13 @@ const {
 } = require('../controllers/payrollController');
 
 const {
+  createSelfPayrollQuery,
+  listSelfPayrollQueries,
+  listOrgPayrollQueries,
+  reviewPayrollQuery,
+} = require('../controllers/payrollQueryController');
+
+const {
   listPayrollRuns,
   getPayrollRun,
   listPayrollRunPayslips,
@@ -67,6 +74,26 @@ router.get(
 router.get(
   '/me/payslips/:payslipId',
   getMyPayslip
+);
+
+router.post(
+  '/me/queries',
+  createSelfPayrollQuery
+);
+
+router.get(
+  '/me/queries',
+  listSelfPayrollQueries
+);
+
+router.get(
+  '/queries',
+  listOrgPayrollQueries
+);
+
+router.patch(
+  '/queries/:queryId',
+  reviewPayrollQuery
 );
 
 router.get(

@@ -10,6 +10,7 @@ import { ApiClientError, apiGet, apiPost } from "../apiClient.js";
 import { emptyState, skeleton, showToast } from "../components.js";
 import { icon } from "../icons.js";
 import { state } from "../state.js";
+import { setupModalA11y } from "../utils/modalA11y.js";
 
 let activeTab = "overview"; // 'overview' | 'facilities' | 'repayments' | 'requests' | 'policy' | 'statement'
 let loadedData = null;
@@ -201,10 +202,13 @@ function renderOverviewTab(data) {
       body: "You have no active loans or salary advances. Use the buttons above to submit a new request.",
     });
   }
+  const activeLoan = activeFacility;
+  const pendingLoans = loans.filter((l) => ["SUBMITTED", "PENDING", "UNDER_REVIEW"].includes(l.status));
   const disbursed = activeFacility.principalPaise || activeFacility.requestedAmountPaise || 0;
   const repaid = activeFacility.totalRepaidPaise || 0;
   const progressPct = disbursed > 0 ? Math.min(100, Math.round((repaid / disbursed) * 1000) / 10) : 0;
   const facilityId = activeFacility.loanAdvanceId || activeFacility.id || "—";
+  const currentMonthPeriod = new Date().toLocaleDateString("en-IN", { month: "long", year: "numeric" });
 
   return `
     <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(340px, 1fr)); gap:20px; margin-bottom:24px;">
@@ -281,7 +285,7 @@ function renderOverviewTab(data) {
           <div style="padding:12px 14px; background:var(--bg-surface-2); border-radius:var(--radius-md); font-size:12.5px;">
             <div class="flex justify-between items-center">
               <span>Payroll Period:</span>
-              <strong style="color:var(--text-primary);">August 2026</strong>
+              <strong style="color:var(--text-primary);">${currentMonthPeriod}</strong>
             </div>
             <div class="flex justify-between items-center" style="margin-top:4px;">
               <span>Scheduled Deduction:</span>
@@ -723,15 +727,17 @@ export function wireStaffLoansAdvances(root) {
     container.querySelectorAll(".btn-withdraw-loan").forEach((btn) => {
       btn.onclick = async () => {
         const loanId = btn.dataset.loanId;
-        const target = (loadedData?.loanAdvances || []).find(l => l.id === loanId || l.loanAdvanceId === loanId);
-        if (target) {
-          target.status = "WITHDRAWN";
-        }
         try {
-          await apiPost(`/loan-advances/me/requests/${loanId}/withdraw`).catch(() => null);
-        } catch {}
-        showToast(`Request ${loanId} withdrawn successfully ✓`, "mint");
-        loadData();
+          await apiPost(`/loan-advances/me/requests/${loanId}/withdraw`);
+          const target = (loadedData?.loanAdvances || []).find(l => l.id === loanId || l.loanAdvanceId === loanId);
+          if (target) {
+            target.status = "WITHDRAWN";
+          }
+          showToast(`Request ${loanId} withdrawn successfully ✓`, "mint");
+          loadData();
+        } catch (err) {
+          showToast(err.message || "Failed to withdraw loan request", "coral");
+        }
       };
     });
 
@@ -779,8 +785,8 @@ function openRequestLoanModal(onSuccess) {
   modal.innerHTML = `
     <div class="card" style="width:100%; max-width:480px; padding:24px; background:var(--bg-surface-1); border-radius:var(--radius-lg); box-shadow:var(--shadow-lg);">
       <div class="flex items-center justify-between" style="margin-bottom:16px;">
-        <div style="font-size:17px; font-weight:800; color:var(--text-primary);">Apply for Employee Loan</div>
-        <button class="btn btn-xs btn-ghost" id="rlmodal-close" style="font-size:16px;">✕</button>
+        <div id="rlmodal-title" style="font-size:17px; font-weight:800; color:var(--text-primary);">Apply for Employee Loan</div>
+        <button class="btn btn-xs btn-ghost" id="rlmodal-close" style="font-size:16px;" aria-label="Close loan application modal">✕</button>
       </div>
 
       <form id="rlmodal-form" onsubmit="return false;">
@@ -828,7 +834,11 @@ function openRequestLoanModal(onSuccess) {
   `;
 
   document.body.appendChild(modal);
-  const close = () => modal.remove();
+  const close = () => {
+    cleanupA11y();
+    modal.remove();
+  };
+  const cleanupA11y = setupModalA11y(modal, { onClose: close, titleId: "rlmodal-title" });
   modal.querySelector("#rlmodal-close")?.addEventListener("click", close);
   modal.querySelector("#rlmodal-cancel")?.addEventListener("click", close);
 
@@ -853,10 +863,8 @@ function openRequestLoanModal(onSuccess) {
       close();
       showToast("Loan request submitted successfully ✓", "mint");
       if (onSuccess) onSuccess();
-    } catch {
-      close();
-      showToast("Loan request submitted for review ✓", "mint");
-      if (onSuccess) onSuccess();
+    } catch (err) {
+      showToast(err.message || "Failed to submit loan request", "coral");
     }
   });
 }
@@ -874,8 +882,8 @@ function openRequestAdvanceModal(onSuccess) {
   modal.innerHTML = `
     <div class="card" style="width:100%; max-width:460px; padding:24px; background:var(--bg-surface-1); border-radius:var(--radius-lg); box-shadow:var(--shadow-lg);">
       <div class="flex items-center justify-between" style="margin-bottom:16px;">
-        <div style="font-size:17px; font-weight:800; color:var(--text-primary);">Request Salary Advance</div>
-        <button class="btn btn-xs btn-ghost" id="ramodal-close" style="font-size:16px;">✕</button>
+        <div id="ramodal-title" style="font-size:17px; font-weight:800; color:var(--text-primary);">Request Salary Advance</div>
+        <button class="btn btn-xs btn-ghost" id="ramodal-close" style="font-size:16px;" aria-label="Close advance request modal">✕</button>
       </div>
 
       <form id="ramodal-form" onsubmit="return false;">
@@ -905,7 +913,11 @@ function openRequestAdvanceModal(onSuccess) {
   `;
 
   document.body.appendChild(modal);
-  const close = () => modal.remove();
+  const close = () => {
+    cleanupA11y();
+    modal.remove();
+  };
+  const cleanupA11y = setupModalA11y(modal, { onClose: close, titleId: "ramodal-title" });
   modal.querySelector("#ramodal-close")?.addEventListener("click", close);
   modal.querySelector("#ramodal-cancel")?.addEventListener("click", close);
 
@@ -919,17 +931,20 @@ function openRequestAdvanceModal(onSuccess) {
     }
 
     try {
-      await apiPost("/loan-advances/me/requests/advance", {
+      const res = await apiPost("/loan-advances/me/requests/advance", {
         requestedAmount: amt,
         reason,
       });
       close();
-      openLoanReceiptModal({ id: "ADV-2026-0003", type: "Salary Advance", amount: amt * 100 });
+      const advance = res?.data?.loanAdvance || res?.data || {};
+      openLoanReceiptModal({
+        id: advance.loanAdvanceId || advance.id || "ADV-NEW",
+        type: "Salary Advance",
+        amount: (advance.requestedAmount ?? amt) * 100,
+      });
       if (onSuccess) onSuccess();
-    } catch {
-      close();
-      openLoanReceiptModal({ id: "ADV-2026-0003", type: "Salary Advance", amount: amt * 100 });
-      if (onSuccess) onSuccess();
+    } catch (err) {
+      showToast(err.message || "Failed to submit advance request", "coral");
     }
   });
 }
@@ -947,7 +962,7 @@ function openLoanReceiptModal(item) {
   modal.innerHTML = `
     <div class="card" style="width:100%; max-width:440px; padding:26px; background:var(--bg-surface-1); border-radius:var(--radius-lg); text-align:center;">
       <div style="font-size:42px; margin-bottom:12px;">✅</div>
-      <div style="font-size:18px; font-weight:800; color:var(--text-primary); margin-bottom:4px;">Request Submitted</div>
+      <div id="lrmodal-title" style="font-size:18px; font-weight:800; color:var(--text-primary); margin-bottom:4px;">Request Submitted</div>
       <div style="font-size:13px; color:var(--text-muted); margin-bottom:18px;">Your financial request has been submitted for governance review.</div>
 
       <div style="padding:14px; background:var(--bg-surface-2); border-radius:var(--radius-md); text-align:left; font-size:12.5px; display:flex; flex-direction:column; gap:8px; margin-bottom:20px;">
@@ -962,7 +977,12 @@ function openLoanReceiptModal(item) {
   `;
 
   document.body.appendChild(modal);
-  modal.querySelector("#loan-receipt-done")?.addEventListener("click", () => modal.remove());
+  const closeReceipt = () => {
+    cleanupA11y();
+    modal.remove();
+  };
+  const cleanupA11y = setupModalA11y(modal, { onClose: closeReceipt, titleId: "lrmodal-title" });
+  modal.querySelector("#loan-receipt-done")?.addEventListener("click", closeReceipt);
 }
 
 // ── MODALS: LOAN 360 MODAL ────────────────────────────────────────────────────
@@ -982,8 +1002,8 @@ function openLoan360Modal(loanId) {
   modal.innerHTML = `
     <div class="card" style="width:100%; max-width:520px; padding:24px; background:var(--bg-surface-1); border-radius:var(--radius-lg); box-shadow:var(--shadow-lg);">
       <div class="flex items-center justify-between" style="margin-bottom:14px;">
-        <div style="font-size:17px; font-weight:800; color:var(--text-primary);">Facility 360 Details</div>
-        <button class="btn btn-xs btn-ghost" id="l360-close" style="font-size:16px;">✕</button>
+        <div id="l360-title" style="font-size:17px; font-weight:800; color:var(--text-primary);">Facility 360 Details</div>
+        <button class="btn btn-xs btn-ghost" id="l360-close" style="font-size:16px;" aria-label="Close facility details">✕</button>
       </div>
 
       <div style="font-size:13px; font-family:monospace; font-weight:700; color:var(--brand-gold); margin-bottom:14px;">
@@ -1020,7 +1040,11 @@ function openLoan360Modal(loanId) {
   `;
 
   document.body.appendChild(modal);
-  const close = () => modal.remove();
+  const close = () => {
+    cleanupA11y();
+    modal.remove();
+  };
+  const cleanupA11y = setupModalA11y(modal, { onClose: close, titleId: "l360-title" });
   modal.querySelector("#l360-close")?.addEventListener("click", close);
   modal.querySelector("#l360-done")?.addEventListener("click", close);
 }
@@ -1034,6 +1058,7 @@ function openSettlementModal(loanId) {
   const item = loans.find(l => (l.loanAdvanceId === loanId || l.id === loanId)) || loans[0];
   if (!item) return;
   const payoff = item.outstandingPrincipalPaise || 0;
+  const effectiveLoanId = item.loanAdvanceId || loanId;
 
   const modal = document.createElement("div");
   modal.id = "settle-quote-modal";
@@ -1043,12 +1068,12 @@ function openSettlementModal(loanId) {
   modal.innerHTML = `
     <div class="card" style="width:100%; max-width:460px; padding:24px; background:var(--bg-surface-1); border-radius:var(--radius-lg);">
       <div class="flex items-center justify-between" style="margin-bottom:14px;">
-        <div style="font-size:17px; font-weight:800; color:var(--text-primary);">Early Settlement Quote</div>
-        <button class="btn btn-xs btn-ghost" id="sq-close" style="font-size:16px;">✕</button>
+        <div id="settle-title" style="font-size:17px; font-weight:800; color:var(--text-primary);">Early Settlement Quote</div>
+        <button class="btn btn-xs btn-ghost" id="sq-close" style="font-size:16px;" aria-label="Close settlement modal">✕</button>
       </div>
 
       <div style="font-size:12.5px; color:var(--text-secondary); margin-bottom:14px;">
-        Full early payoff quote for loan <strong style="font-family:monospace; color:var(--brand-gold);">${loanId}</strong>.
+        Full early payoff quote for loan <strong style="font-family:monospace; color:var(--brand-gold);">${effectiveLoanId}</strong>.
       </div>
 
       <div style="padding:14px; background:var(--bg-surface-2); border-radius:var(--radius-md); font-size:12.5px; display:flex; flex-direction:column; gap:8px; margin-bottom:18px;">
@@ -1056,7 +1081,7 @@ function openSettlementModal(loanId) {
         <div class="flex justify-between"><span>Prepayment Fee:</span><strong style="color:var(--color-accent-mint);">₹0.00 (Zero Fee)</strong></div>
         <div class="flex justify-between" style="padding-top:6px; border-top:1px solid var(--border-subtle); font-size:14px;">
           <span>Total Settlement Payoff:</span>
-          <strong style="color:var(--brand-gold);">${amount(payoff)}</strong>
+          <strong id="sq-payoff-val" style="color:var(--brand-gold);">${amount(payoff)}</strong>
         </div>
       </div>
 
@@ -1068,13 +1093,42 @@ function openSettlementModal(loanId) {
   `;
 
   document.body.appendChild(modal);
-  const close = () => modal.remove();
+  const close = () => {
+    cleanupA11y();
+    modal.remove();
+  };
+  const cleanupA11y = setupModalA11y(modal, { onClose: close, titleId: "settle-title" });
   modal.querySelector("#sq-close")?.addEventListener("click", close);
   modal.querySelector("#sq-cancel")?.addEventListener("click", close);
 
-  modal.querySelector("#sq-submit")?.addEventListener("click", () => {
-    close();
-    showToast("Early settlement request submitted for finance processing ✓", "mint");
+  // Fetch authoritative quote in background
+  apiGet(`/loan-advances/me/loans/${effectiveLoanId}/settlement-quote`).then((res) => {
+    const q = res?.data?.quote;
+    if (q) {
+      const pVal = modal.querySelector("#sq-payoff-val");
+      if (pVal && q.settlementPayoffPaise !== undefined) {
+        pVal.textContent = amount(q.settlementPayoffPaise);
+      }
+    }
+  }).catch(() => {});
+
+  modal.querySelector("#sq-submit")?.addEventListener("click", async () => {
+    const submitBtn = modal.querySelector("#sq-submit");
+    try {
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Submitting...";
+      await apiPost(`/loan-advances/me/loans/${effectiveLoanId}/settlement-request`, {
+        settlementAmountPaise: payoff,
+        paymentSource: "DIRECT_DEPOSIT",
+        reason: "Early settlement payoff requested by employee.",
+      });
+      close();
+      showToast("Early settlement request submitted for finance processing ✓", "mint");
+    } catch (err) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Submit Settlement Request";
+      showToast(err.message || "Failed to submit early settlement request", "coral");
+    }
   });
 }
 
@@ -1091,8 +1145,8 @@ function openDefermentModal(loanId, onDone) {
   modal.innerHTML = `
     <div class="card" style="width:100%; max-width:460px; padding:24px; background:var(--bg-surface-1); border-radius:var(--radius-lg);">
       <div class="flex items-center justify-between" style="margin-bottom:14px;">
-        <div style="font-size:17px; font-weight:800; color:var(--text-primary);">Request Repayment Deferment</div>
-        <button class="btn btn-xs btn-ghost" id="def-close" style="font-size:16px;">✕</button>
+        <div id="defer-title" style="font-size:17px; font-weight:800; color:var(--text-primary);">Request Repayment Deferment</div>
+        <button class="btn btn-xs btn-ghost" id="def-close" style="font-size:16px;" aria-label="Close deferment modal">✕</button>
       </div>
 
       <div style="font-size:12.5px; color:var(--text-secondary); margin-bottom:14px;">
@@ -1112,7 +1166,11 @@ function openDefermentModal(loanId, onDone) {
   `;
 
   document.body.appendChild(modal);
-  const close = () => modal.remove();
+  const close = () => {
+    cleanupA11y();
+    modal.remove();
+  };
+  const cleanupA11y = setupModalA11y(modal, { onClose: close, titleId: "defer-title" });
   modal.querySelector("#def-close")?.addEventListener("click", close);
   modal.querySelector("#def-cancel")?.addEventListener("click", close);
 
@@ -1122,19 +1180,33 @@ function openDefermentModal(loanId, onDone) {
       showToast("Please provide a reason for the deferment request.", "amber");
       return;
     }
+    const submitBtn = modal.querySelector("#def-submit");
     try {
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Submitting...";
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth() + 1;
+      const nextMonth = currentMonth === 12 ? 1 : currentMonth + 1;
+      const nextYear = currentMonth === 12 ? currentYear + 1 : currentYear;
+      const resumeMonth = nextMonth === 12 ? 1 : nextMonth + 1;
+      const resumeYear = nextMonth === 12 ? nextYear + 1 : nextYear;
+
+      const fromPeriod = `${nextYear}-${String(nextMonth).padStart(2, "0")}`;
+      const resumePeriod = `${resumeYear}-${String(resumeMonth).padStart(2, "0")}`;
+
       await apiPost(`/loan-advances/me/loans/${loanId}/pause`, {
-        fromPeriod: "2026-09",
-        resumePeriod: "2026-10",
+        fromPeriod,
+        resumePeriod,
         reason,
       });
       close();
       showToast("Repayment deferment request submitted for review ✓", "mint");
       if (onDone) onDone();
-    } catch {
-      close();
-      showToast("Repayment deferment request submitted for review ✓", "mint");
-      if (onDone) onDone();
+    } catch (err) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Submit Deferment Request";
+      showToast(err.message || "Failed to submit deferment request", "coral");
     }
   });
 }

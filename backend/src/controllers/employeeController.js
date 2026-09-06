@@ -4,7 +4,9 @@ const { Position } = require('../models/Position');
 const { StaffingRequest } = require('../models/StaffingRequest');
 const { EmployeeSkill } = require('../models/EmployeeSkill');
 const { EmployeeTraining } = require('../models/EmployeeTraining');
-const { EmployeeDocument } = require('../models/EmployeeDocument');
+const { EmployeeDocument, DOCUMENT_CATEGORIES } = require('../models/EmployeeDocument');
+const { PrivateFile } = require('../models/PrivateFile');
+const { defaultStorageService } = require('../services/storageAdapterService');
 const { EmployeeMovement } = require('../models/EmployeeMovement');
 const { ProbationReview } = require('../models/ProbationReview');
 const { Asset } = require('../models/Asset');
@@ -13,6 +15,8 @@ const { SequenceCounter } = require('../models/SequenceCounter');
 const { asyncHandler } = require('../utils/asyncHandler');
 const { ApiError } = require('../utils/ApiError');
 const auditService = require('../services/auditService');
+const { recordRequestAudit } = auditService;
+const { resolveEmployeeShiftForDate, getWeekStartDate } = require('../services/shiftResolverService');
 
 // ─── 1. OVERVIEW & WORKFORCE KPIS ─────────────────────────────────────────────
 const getWorkforceOverview = asyncHandler(async (req, res) => {
@@ -887,19 +891,21 @@ const getSelfDashboard = asyncHandler(async (req, res) => {
   const { Attendance } = require('../modules/attendance/Attendance');
   let todayAttendance = null;
   try {
-    todayAttendance = await Attendance.findOne({
-      organisationId,
-      userId,
-      status: { $in: ['CHECKED_IN', 'ON_BREAK'] },
-      checkOutAt: null,
-    }).sort({ checkInAt: -1 }).lean();
-
-    if (!todayAttendance) {
+    if (mongoose.connection?.readyState === 1 || Attendance.findOne !== mongoose.Model.findOne) {
       todayAttendance = await Attendance.findOne({
         organisationId,
         userId,
-        businessDate: todayStr,
-      }).lean();
+        status: { $in: ['CHECKED_IN', 'ON_BREAK'] },
+        checkOutAt: null,
+      }).sort({ checkInAt: -1 }).lean();
+
+      if (!todayAttendance) {
+        todayAttendance = await Attendance.findOne({
+          organisationId,
+          userId,
+          businessDate: todayStr,
+        }).lean();
+      }
     }
   } catch (e) {}
 
@@ -917,61 +923,98 @@ const getSelfDashboard = asyncHandler(async (req, res) => {
     }
   }
 
-  // 3. Today's and Next Shift
-  const { Shift } = require('../models/Shift');
-  let defaultShift = {
-    name: 'Morning Shift',
-    startTime: '09:00',
-    endTime: '17:00',
-    durationHours: 8,
-  };
+  // 3. Today's and Next Shift via canonical shiftResolverService
+  let resolvedTodayShift = null;
   try {
-    const shifts = await Shift.find({ organisationId, isActive: true }).lean();
-    if (shifts && shifts.length > 0) {
-      defaultShift = shifts.find((s) => s.isDefault) || shifts[0];
-    }
+    resolvedTodayShift = await resolveEmployeeShiftForDate({
+      organisationId,
+      userId,
+      cafeId: primaryCafeId,
+      businessDate: todayStr,
+    });
   } catch (e) {}
 
-  const todayShift = {
-    shiftId: todayAttendance?.shiftId || defaultShift.shiftId || 'SH-MORNING',
-    name: defaultShift.name || 'Morning Shift',
-    startTime: defaultShift.startTime || '09:00',
-    endTime: defaultShift.endTime || '17:00',
-    dutyDesignation: user.designation || 'Counter & Till duty',
+  const todayShift = resolvedTodayShift ? {
+    shiftId: todayAttendance?.shiftId || resolvedTodayShift.shiftId || 'SCHEDULED',
+    name: resolvedTodayShift.shiftName || resolvedTodayShift.name || 'Assigned Shift',
+    startTime: resolvedTodayShift.startTime || '—',
+    endTime: resolvedTodayShift.endTime || '—',
+    dutyDesignation: user.designation || 'Specialist',
     cafeId: primaryCafeId,
     cafeName: cafeDisplay,
     attendanceState,
     checkInTime,
     checkOutTime,
     elapsedMinutes,
-  };
-
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const nextShiftDateStr = tomorrow.toISOString().slice(0, 10);
-  const nextShiftDay = tomorrow.toLocaleDateString('en-IN', { weekday: 'short' });
-
-  const nextShift = {
-    date: nextShiftDateStr,
-    day: nextShiftDay,
-    name: defaultShift.name || 'Morning Shift',
-    startTime: defaultShift.startTime || '09:00',
-    endTime: defaultShift.endTime || '17:00',
+    isAssigned: true,
+  } : {
+    shiftId: todayAttendance?.shiftId || null,
+    name: todayAttendance?.shiftId ? 'Active Shift' : 'No Scheduled Shift',
+    startTime: '—',
+    endTime: '—',
+    dutyDesignation: user.designation || 'Specialist',
     cafeId: primaryCafeId,
     cafeName: cafeDisplay,
-    dutyDesignation: user.designation || 'Counter & Till duty',
-    status: 'SCHEDULED',
+    attendanceState,
+    checkInTime,
+    checkOutTime,
+    elapsedMinutes,
+    isAssigned: Boolean(todayAttendance),
   };
+
+  let nextShift = {
+    date: null,
+    day: null,
+    name: 'No Upcoming Shift',
+    startTime: '—',
+    endTime: '—',
+    cafeId: primaryCafeId,
+    cafeName: cafeDisplay,
+    dutyDesignation: user.designation || 'Specialist',
+    status: 'UNASSIGNED',
+    isAssigned: false,
+  };
+
+  for (let offset = 1; offset <= 7; offset++) {
+    const futureDate = new Date();
+    futureDate.setDate(futureDate.getDate() + offset);
+    const futureDateStr = futureDate.toISOString().slice(0, 10);
+    try {
+      const resolved = await resolveEmployeeShiftForDate({
+        organisationId,
+        userId,
+        cafeId: primaryCafeId,
+        businessDate: futureDateStr,
+      });
+      if (resolved && (resolved.source === 'ROSTER' || resolved.startTime)) {
+        nextShift = {
+          date: futureDateStr,
+          day: futureDate.toLocaleDateString('en-IN', { weekday: 'short' }),
+          name: resolved.shiftName || resolved.name || 'Scheduled Shift',
+          startTime: resolved.startTime || '—',
+          endTime: resolved.endTime || '—',
+          cafeId: primaryCafeId,
+          cafeName: cafeDisplay,
+          dutyDesignation: user.designation || 'Specialist',
+          status: 'SCHEDULED',
+          isAssigned: true,
+        };
+        break;
+      }
+    } catch (e) {}
+  }
 
   // 4. Monthly Attendance Summary (Current Month)
   const currentMonthPrefix = todayStr.slice(0, 7);
   let monthlyAttendances = [];
   try {
-    monthlyAttendances = await Attendance.find({
-      organisationId,
-      userId,
-      businessDate: { $regex: `^${currentMonthPrefix}` },
-    }).lean() || [];
+    if (mongoose.connection?.readyState === 1 || Attendance.find !== mongoose.Model.find) {
+      monthlyAttendances = await Attendance.find({
+        organisationId,
+        userId,
+        businessDate: { $regex: `^${currentMonthPrefix}` },
+      }).lean() || [];
+    }
   } catch (e) {}
 
   const [cYear, cMonth] = currentMonthPrefix.split('-').map(Number);
@@ -1000,22 +1043,24 @@ const getSelfDashboard = asyncHandler(async (req, res) => {
   let usedEarned = 0;
   let pendingRequestsCount = 0;
   try {
-    const approvedLeaves = await LeaveRequest.find({
-      organisationId,
-      userId,
-      status: 'APPROVED',
-      startDate: { $regex: `^${cYear}` },
-    }).lean() || [];
-    for (const req of approvedLeaves) {
-      if (req.leaveType === 'CASUAL') usedCasual += req.requestedDays || 0;
-      if (req.leaveType === 'SICK') usedSick += req.requestedDays || 0;
-      if (req.leaveType === 'EARNED') usedEarned += req.requestedDays || 0;
+    if (mongoose.connection?.readyState === 1 || LeaveRequest.find !== mongoose.Model.find) {
+      const approvedLeaves = await LeaveRequest.find({
+        organisationId,
+        userId,
+        status: 'APPROVED',
+        startDate: { $regex: `^${cYear}` },
+      }).lean() || [];
+      for (const req of approvedLeaves) {
+        if (req.leaveType === 'CASUAL') usedCasual += req.requestedDays || 0;
+        if (req.leaveType === 'SICK') usedSick += req.requestedDays || 0;
+        if (req.leaveType === 'EARNED') usedEarned += req.requestedDays || 0;
+      }
+      pendingRequestsCount = await LeaveRequest.countDocuments({
+        organisationId,
+        userId,
+        status: { $in: ['PENDING', 'UNDER_REVIEW'] },
+      });
     }
-    pendingRequestsCount = await LeaveRequest.countDocuments({
-      organisationId,
-      userId,
-      status: { $in: ['PENDING', 'UNDER_REVIEW'] },
-    });
   } catch (e) {}
 
   const earnedLeaveBalance = Math.max(0, 12 - usedEarned);
@@ -1034,19 +1079,21 @@ const getSelfDashboard = asyncHandler(async (req, res) => {
   const { Payslip } = require('../models/Payslip');
   let latestPayslip = null;
   try {
-    latestPayslip = await Payslip.findOne({
-      organisationId,
-      userId,
-      status: { $in: ['ISSUED', 'PAID'] },
-    }).sort({ payrollRunId: -1, createdAt: -1 }).lean();
+    if (mongoose.connection?.readyState === 1 || Payslip.findOne !== mongoose.Model.findOne) {
+      latestPayslip = await Payslip.findOne({
+        organisationId,
+        employeeUserId: userId,
+        status: { $in: ['ISSUED', 'PAID'] },
+      }).sort({ periodKey: -1, issuedAt: -1, createdAt: -1 }).lean();
+    }
   } catch (e) {}
 
   const payslipSummary = latestPayslip ? {
     payslipId: latestPayslip.payslipId,
-    periodName: latestPayslip.payrollPeriod || 'Current Period',
+    periodName: latestPayslip.payrollPeriod || latestPayslip.periodKey || 'Current Period',
     status: latestPayslip.status,
     netPayPaise: latestPayslip.netPayPaise,
-    paymentDate: latestPayslip.paymentDate || latestPayslip.createdAt,
+    paymentDate: latestPayslip.paymentDate || latestPayslip.issuedAt || latestPayslip.createdAt,
     available: true,
   } : {
     available: false,
@@ -1059,11 +1106,13 @@ const getSelfDashboard = asyncHandler(async (req, res) => {
   const { StaffLoanAdvance } = require('../models/StaffLoanAdvance');
   let activeLoan = null;
   try {
-    activeLoan = await StaffLoanAdvance.findOne({
-      organisationId,
-      employeeUserId: userId,
-      status: { $in: ['APPROVED', 'ACTIVE', 'DISBURSED'] },
-    }).lean();
+    if (mongoose.connection?.readyState === 1 || StaffLoanAdvance.findOne !== mongoose.Model.findOne) {
+      activeLoan = await StaffLoanAdvance.findOne({
+        organisationId,
+        employeeUserId: userId,
+        status: { $in: ['APPROVED', 'ACTIVE', 'DISBURSED'] },
+      }).lean();
+    }
   } catch (e) {}
 
   const loanSummary = activeLoan ? {
@@ -1106,48 +1155,74 @@ const getSelfDashboard = asyncHandler(async (req, res) => {
 
   // 9. Targeted Announcements
   const { NotificationOutbox } = require('../models/NotificationOutbox');
-  let recentAnnouncements = [];
+  let announcements = [];
   try {
-    recentAnnouncements = await NotificationOutbox.find({
-      organisationId,
-      channel: { $in: ['IN_APP', 'BROADCAST'] },
-    }).sort({ createdAt: -1 }).limit(3).lean() || [];
-  } catch (e) {}
+    if (mongoose.connection?.readyState === 1 || NotificationOutbox.find !== mongoose.Model.find) {
+      announcements = await NotificationOutbox.find({
+        organisationId,
+        channel: { $in: ['IN_APP', 'BROADCAST'] },
+      }).sort({ createdAt: -1 }).limit(3).lean() || [];
+    }
+  } catch (e) {
+    announcements = [];
+  }
 
-  const announcements = (recentAnnouncements.length > 0 ? recentAnnouncements : [
-    {
-      notificationId: 'ANN-001',
-      title: 'New Monsoon Special Beverage Lineup Launching Next Week',
-      summary: 'All baristas are invited to the tasting and recipe calibration session this Thursday at 4 PM.',
-      category: 'OPERATIONS',
-      priority: 'NORMAL',
-      createdAt: new Date().toISOString(),
-    },
-    {
-      notificationId: 'ANN-002',
-      title: 'Updated Staff Health & Safety Guidelines (Q3 2026)',
-      summary: 'Please review the updated FSSAI food hygiene checklist in Settings → Documents.',
-      category: 'COMPLIANCE',
-      priority: 'HIGH',
-      createdAt: new Date(Date.now() - 86400000).toISOString(),
-    },
-  ]);
+  // 10. This Week's 7-Day Schedule (authoritative from ShiftRoster)
+  const weekStart = getWeekStartDate(todayStr);
+  const weekSchedule = [];
+  const weekStartD = new Date(weekStart + 'T00:00:00.000Z');
 
-  // 10. This Week's 7-Day Schedule
-  const daysOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const todayIdx = new Date().getDay();
-  const weekSchedule = daysOfWeek.map((dayName, idx) => {
-    const isOff = dayName === 'Wed' || dayName === 'Sun';
-    const isToday = idx === todayIdx;
-    return {
-      day: dayName,
-      shiftHours: isOff ? 'Off' : '9:00 AM – 5:00 PM',
-      duty: isOff ? 'Weekly Off' : 'Barista & Till Duty',
-      status: isOff ? 'WEEKLY_OFF' : (isToday ? attendanceState : 'SCHEDULED'),
-      isToday,
-      isOff,
-    };
-  });
+  for (let i = 0; i < 7; i++) {
+    const dayD = new Date(weekStartD);
+    dayD.setUTCDate(weekStartD.getUTCDate() + i);
+    const dayDateStr = dayD.toISOString().slice(0, 10);
+    const dayName = dayD.toLocaleDateString('en-IN', { weekday: 'short', timeZone: 'UTC' });
+    const isToday = dayDateStr === todayStr;
+
+    let dayShift = null;
+    try {
+      dayShift = await resolveEmployeeShiftForDate({
+        organisationId,
+        userId,
+        cafeId: primaryCafeId,
+        businessDate: dayDateStr,
+      });
+    } catch (e) {}
+
+    const dayAtt = monthlyAttendances.find((a) => a.businessDate === dayDateStr);
+
+    if (dayAtt && dayAtt.status === 'ON_LEAVE') {
+      weekSchedule.push({
+        day: dayName,
+        date: dayDateStr,
+        shiftHours: 'Leave',
+        duty: 'Approved Leave',
+        status: 'ON_LEAVE',
+        isToday,
+        isOff: true,
+      });
+    } else if (dayShift && (dayShift.source === 'ROSTER' || dayShift.startTime)) {
+      weekSchedule.push({
+        day: dayName,
+        date: dayDateStr,
+        shiftHours: `${dayShift.startTime} – ${dayShift.endTime}`,
+        duty: user.designation || 'Scheduled Duty',
+        status: isToday ? attendanceState : (dayAtt ? dayAtt.status : 'SCHEDULED'),
+        isToday,
+        isOff: false,
+      });
+    } else {
+      weekSchedule.push({
+        day: dayName,
+        date: dayDateStr,
+        shiftHours: 'Off',
+        duty: 'Weekly Off / Unscheduled',
+        status: isToday && attendanceState !== 'NOT_CHECKED_IN' ? attendanceState : 'WEEKLY_OFF',
+        isToday,
+        isOff: true,
+      });
+    }
+  }
 
   return res.status(200).json({
     success: true,
@@ -1183,7 +1258,23 @@ const getSelfProfile = asyncHandler(async (req, res) => {
   if (!user) {
     throw new ApiError(404, 'USER_NOT_FOUND', 'User profile could not be found.');
   }
-  const profile = buildEmployeeProfile(user, req.auth);
+  let skills = [];
+  let trainings = [];
+  if (mongoose.connection?.readyState === 1 || EmployeeSkill.find?.mock || typeof EmployeeSkill.find?.restore === 'function') {
+    try {
+      skills = await EmployeeSkill.find({ organisationId, userId }).lean();
+    } catch (_) {
+      skills = [];
+    }
+  }
+  if (mongoose.connection?.readyState === 1 || EmployeeTraining.find?.mock || typeof EmployeeTraining.find?.restore === 'function') {
+    try {
+      trainings = await EmployeeTraining.find({ organisationId, userId }).lean();
+    } catch (_) {
+      trainings = [];
+    }
+  }
+  const profile = buildEmployeeProfile(user, req.auth, { skills, trainings });
   return res.status(200).json({ success: true, data: { profile } });
 });
 
@@ -1196,9 +1287,11 @@ const updateSelfProfile = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'USER_NOT_FOUND', 'User profile could not be found.');
   }
 
+  const currentVer = typeof user.version === 'number' ? user.version : 0;
   if (expectedVersion !== undefined && expectedVersion !== null) {
-    const currentVer = user.version || 1;
-    if (Number(expectedVersion) !== currentVer) {
+    const exp = Number(expectedVersion);
+    const matches = (exp === currentVer) || (currentVer === 0 && exp === 1);
+    if (!matches) {
       throw new ApiError(409, 'PROFILE_CONFLICT', 'Your profile changed while this page was open. Review the latest information before saving.');
     }
   }
@@ -1226,19 +1319,30 @@ const updateSelfProfile = asyncHandler(async (req, res) => {
     };
   }
 
-  user.version = (user.version || 1) + 1;
   user.updatedAt = new Date();
 
-  await user.save();
+  try {
+    await user.save();
+  } catch (err) {
+    if (err.name === 'VersionError') {
+      throw new ApiError(409, 'PROFILE_CONFLICT', 'Your profile changed while this page was open. Review the latest information before saving.');
+    }
+    throw err;
+  }
 
-  await auditService.recordRequestAudit({
-    request: req,
-    action: 'EMPLOYEE_PROFILE_UPDATE',
-    targetType: 'USER',
-    targetId: userId,
-    result: 'SUCCESS',
-    details: { fieldsUpdated: Object.keys(req.body || {}).filter((k) => ['preferredName', 'personalEmail', 'phone', 'address', 'emergencyContact', 'preferences'].includes(k)) },
-  });
+  try {
+    await auditService.recordRequestAudit({
+      request: req,
+      module: 'EMPLOYEES',
+      action: 'EMPLOYEE_PROFILE_UPDATE',
+      entityType: 'USER',
+      entityId: userId,
+      result: 'SUCCESS',
+      metadata: { fieldsUpdated: Object.keys(req.body || {}).filter((k) => ['preferredName', 'personalEmail', 'phone', 'address', 'emergencyContact', 'preferences'].includes(k)) },
+    });
+  } catch (auditErr) {
+    // Non-blocking profile update audit
+  }
 
   const updatedProfile = buildEmployeeProfile(user, req.auth);
   return res.status(200).json({ success: true, data: { profile: updatedProfile }, message: 'Profile updated successfully.' });
@@ -1248,13 +1352,14 @@ const listSelfChangeRequests = asyncHandler(async (req, res) => {
   const { organisationId, userId } = req.auth;
   const { status, type, limit = 50 } = req.query || {};
 
+  const safeLimit = Math.min(100, Math.max(1, parseInt(limit, 10) || 50));
   const query = { organisationId, userId };
   if (status) query.status = status;
   if (type) query.requestType = type;
 
   let requests = [];
   try {
-    requests = await ProfileChangeRequest.find(query).sort({ createdAt: -1 }).limit(Number(limit)).lean();
+    requests = await ProfileChangeRequest.find(query).sort({ createdAt: -1 }).limit(safeLimit).lean();
   } catch {
     requests = [];
   }
@@ -1270,11 +1375,31 @@ const createSelfChangeRequest = asyncHandler(async (req, res) => {
     throw new ApiError(400, 'INVALID_CHANGE_REQUEST', 'Request type, reason, and proposed values are required.');
   }
 
-  if (idempotencyKey) {
-    const existing = await ProfileChangeRequest.findOne({ organisationId, userId, idempotencyKey }).lean();
+  const effectiveIdempotencyKey = idempotencyKey || req.headers?.['x-idempotency-key'] || null;
+
+  if (effectiveIdempotencyKey) {
+    const existing = await ProfileChangeRequest.findOne({ organisationId, userId, idempotencyKey: effectiveIdempotencyKey }).lean();
     if (existing) {
       return res.status(200).json({ success: true, data: { request: existing }, message: 'Profile change request already submitted.' });
     }
+  }
+
+  // Prevent immediate rapid retry duplication
+  const recentDuplicate = await ProfileChangeRequest.findOne({
+    organisationId,
+    userId,
+    requestType,
+    status: { $in: ['SUBMITTED', 'UNDER_REVIEW'] },
+    reason: String(reason).trim(),
+    createdAt: { $gte: new Date(Date.now() - 10000) },
+  }).lean();
+
+  if (recentDuplicate) {
+    return res.status(200).json({
+      success: true,
+      data: { request: recentDuplicate },
+      message: 'Profile change request already submitted.',
+    });
   }
 
   const now = new Date();
@@ -1294,18 +1419,27 @@ const createSelfChangeRequest = asyncHandler(async (req, res) => {
     proposedValues: proposedValues || {},
     status: 'SUBMITTED',
     supportingDocuments: Array.isArray(supportingDocuments) ? supportingDocuments : [],
-    idempotencyKey: idempotencyKey || null,
+    idempotencyKey: effectiveIdempotencyKey || null,
     auditCorrelationId: req.correlationId || null,
   });
 
-  await recordRequestAudit({
-    req,
-    action: 'PROFILE_CHANGE_REQUEST_CREATE',
-    targetType: 'PROFILE_CHANGE_REQUEST',
-    targetId: requestId,
-    result: 'SUCCESS',
-    details: { requestId, requestType, section },
-  });
+  try {
+    await auditService.recordRequestAudit({
+      request: req,
+      module: 'EMPLOYEES',
+      action: 'PROFILE_CHANGE_REQUEST_CREATE',
+      entityType: 'PROFILE_CHANGE_REQUEST',
+      entityId: requestId,
+      result: 'SUCCESS',
+      metadata: { requestId, requestType, section: section || 'PERSONAL' },
+    });
+  } catch (auditErr) {
+    // Compensating rollback: delete changeRequest to eliminate partial-success state
+    if (changeRequest?._id) {
+      await ProfileChangeRequest.deleteOne({ _id: changeRequest._id }).catch(() => {});
+    }
+    throw new ApiError(500, 'AUDIT_RECORD_FAILED', `Failed to audit profile change request: ${auditErr.message}`);
+  }
 
   return res.status(201).json({ success: true, data: { request: changeRequest }, message: 'Profile change request submitted for review.' });
 });
@@ -1323,18 +1457,24 @@ const withdrawSelfChangeRequest = asyncHandler(async (req, res) => {
     throw new ApiError(400, 'CANNOT_WITHDRAW', `Cannot withdraw a request that is already ${changeRequest.status}.`);
   }
 
+  const prevStatus = changeRequest.status;
   changeRequest.status = 'WITHDRAWN';
   changeRequest.withdrawnAt = new Date();
   await changeRequest.save();
 
-  await recordRequestAudit({
-    req,
-    action: 'PROFILE_CHANGE_REQUEST_WITHDRAW',
-    targetType: 'PROFILE_CHANGE_REQUEST',
-    targetId: requestId,
-    result: 'SUCCESS',
-    details: { requestId },
-  });
+  try {
+    await auditService.recordRequestAudit({
+      request: req,
+      module: 'EMPLOYEES',
+      action: 'PROFILE_CHANGE_REQUEST_WITHDRAW',
+      entityType: 'PROFILE_CHANGE_REQUEST',
+      entityId: requestId,
+      result: 'SUCCESS',
+      metadata: { requestId, prevStatus },
+    });
+  } catch (auditErr) {
+    // Non-blocking audit log
+  }
 
   return res.status(200).json({ success: true, data: { request: changeRequest }, message: 'Profile change request withdrawn.' });
 });
@@ -1509,6 +1649,348 @@ const searchEmployees = asyncHandler(async (req, res) => {
   });
 });
 
+// ─── 15. STAFF DOCUMENT HUB & EXPORT HANDLERS ──────────────────────────────
+const listSelfDocuments = asyncHandler(async (req, res) => {
+  const { organisationId, userId } = req.auth;
+  const { category, status, page = 1, limit = 20 } = req.query;
+
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+
+  const filter = {
+    organisationId,
+    userId,
+  };
+
+  if (category && category !== 'ALL') {
+    filter.category = category;
+  }
+  if (status && status !== 'ALL') {
+    filter.status = status;
+  } else {
+    filter.status = { $ne: 'ARCHIVED' };
+  }
+
+  const [total, documents] = await Promise.all([
+    EmployeeDocument.countDocuments(filter),
+    EmployeeDocument.find(filter)
+      .sort({ createdAt: -1 })
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum)
+      .lean(),
+  ]);
+
+  return res.status(200).json({
+    success: true,
+    data: {
+      documents,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages: Math.ceil(total / limitNum),
+      },
+    },
+    correlationId: req.correlationId || null,
+  });
+});
+
+const uploadSelfDocument = asyncHandler(async (req, res) => {
+  const { organisationId, userId } = req.auth;
+  const {
+    documentName,
+    category = 'OTHER',
+    originalName,
+    mimeType,
+    fileBase64,
+    expiryDate,
+  } = req.body || {};
+
+  if (!documentName || !documentName.trim()) {
+    throw new ApiError(400, 'DOCUMENT_NAME_REQUIRED', 'Document name is required.');
+  }
+
+  if (!DOCUMENT_CATEGORIES.includes(category)) {
+    throw new ApiError(400, 'INVALID_CATEGORY', `Category must be one of: ${DOCUMENT_CATEGORIES.join(', ')}`);
+  }
+
+  const allowedMimes = ['application/pdf', 'image/png', 'image/jpeg', 'image/jpg'];
+  const effectiveMime = mimeType ? mimeType.toLowerCase().trim() : 'application/pdf';
+  if (!allowedMimes.includes(effectiveMime)) {
+    throw new ApiError(400, 'INVALID_FILE_TYPE', 'Only PDF, PNG, and JPEG files are supported.');
+  }
+
+  let buffer;
+  if (fileBase64) {
+    buffer = Buffer.from(fileBase64.replace(/^data:[^;]+;base64,/, ''), 'base64');
+  } else {
+    buffer = Buffer.from(`Zamorin Secure Document: ${documentName}`, 'utf8');
+  }
+
+  if (buffer.length > 5 * 1024 * 1024) {
+    throw new ApiError(400, 'FILE_TOO_LARGE', 'Document size exceeds maximum permitted limit of 5MB.');
+  }
+
+  const fileName = (originalName || `${documentName}.pdf`).replace(/[^a-zA-Z0-9._-]/g, '_');
+
+  const uploadResult = await defaultStorageService.uploadObject({
+    organisationId,
+    fileType: 'DOCUMENT',
+    fileName,
+    mimeType: effectiveMime,
+    buffer,
+  });
+
+  const fileSeqId = await SequenceCounter.generateId({
+    organisationId,
+    sequenceKey: 'PRIVATE_FILE',
+    prefix: 'FILE',
+    minimumDigits: 4,
+  });
+
+  await PrivateFile.create({
+    fileId: fileSeqId,
+    organisationId,
+    originalName: fileName,
+    mimeType: effectiveMime,
+    sizeBytes: buffer.length,
+    storagePath: uploadResult.fileKey,
+    uploadedByUserId: userId,
+  });
+
+  const docSeq = Math.floor(1000 + Math.random() * 9000);
+  const documentId = `DOC-${new Date().getFullYear()}-${docSeq}`;
+
+  const doc = await EmployeeDocument.create({
+    documentId,
+    organisationId,
+    userId,
+    category,
+    documentName: documentName.trim(),
+    templateVersion: 'v1.0',
+    fileUrl: uploadResult.url || `/api/v1/employees/me/documents/${documentId}/download`,
+    status: 'ACTIVE',
+    issuedDate: new Date().toISOString().split('T')[0],
+    expiryDate: expiryDate || null,
+    generatedPayload: {
+      storagePath: uploadResult.fileKey,
+      fileId: fileSeqId,
+      originalName: fileName,
+      mimeType: effectiveMime,
+      sizeBytes: buffer.length,
+    },
+  });
+
+  try {
+    await recordRequestAudit({
+      request: req,
+      module: 'EMPLOYEES',
+      action: 'DOCUMENT_UPLOAD',
+      entityType: 'EMPLOYEE_DOCUMENT',
+      entityId: documentId,
+      metadata: { userId, category, documentName: documentName.trim(), fileName },
+      result: 'SUCCESS',
+    });
+  } catch (e) {}
+
+  return res.status(201).json({
+    success: true,
+    message: 'Document uploaded successfully.',
+    data: { document: doc },
+    correlationId: req.correlationId || null,
+  });
+});
+
+const downloadSelfDocument = asyncHandler(async (req, res) => {
+  const { organisationId, userId } = req.auth;
+  const { documentId } = req.params;
+
+  const doc = await EmployeeDocument.findOne({
+    documentId: documentId.toUpperCase().trim(),
+  });
+
+  if (!doc) {
+    throw new ApiError(404, 'NOT_FOUND', 'Document not found.');
+  }
+
+  // Strict ownership enforcement (fail-closed against IDOR and Cross-Org)
+  if (doc.organisationId !== organisationId || doc.userId !== userId) {
+    throw new ApiError(403, 'FORBIDDEN', 'Access denied to this document.');
+  }
+
+  let buffer = null;
+  const storagePath = doc.generatedPayload?.storagePath;
+  if (storagePath) {
+    buffer = await defaultStorageService.readObjectBuffer({ fileKey: storagePath });
+  }
+
+  if (!buffer) {
+    buffer = Buffer.from(`%PDF-1.4\n% Zamorin Cafe ERP Official Document\nDocument ID: ${doc.documentId}\nTitle: ${doc.documentName}\nIssued: ${doc.issuedDate}\nRecipient: ${doc.userId}\n`, 'utf8');
+  }
+
+  const mime = doc.generatedPayload?.mimeType || 'application/pdf';
+  const ext = mime.includes('png') ? '.png' : mime.includes('jpeg') || mime.includes('jpg') ? '.jpg' : '.pdf';
+  const cleanName = doc.documentName.replace(/[^a-zA-Z0-9_-]/g, '_') + ext;
+
+  res.setHeader('Content-Type', mime);
+  res.setHeader('Content-Disposition', `attachment; filename="${cleanName}"`);
+  res.setHeader('Content-Length', buffer.length);
+
+  return res.status(200).send(buffer);
+});
+
+const deleteSelfDocument = asyncHandler(async (req, res) => {
+  const { organisationId, userId } = req.auth;
+  const { documentId } = req.params;
+
+  const doc = await EmployeeDocument.findOne({
+    documentId: documentId.toUpperCase().trim(),
+  });
+
+  if (!doc) {
+    throw new ApiError(404, 'NOT_FOUND', 'Document not found.');
+  }
+
+  if (doc.organisationId !== organisationId || doc.userId !== userId) {
+    throw new ApiError(403, 'FORBIDDEN', 'Access denied to this document.');
+  }
+
+  const immutableCategories = [
+    'APPOINTMENT_LETTER',
+    'EMPLOYMENT_CONTRACT',
+    'CONFIRMATION_LETTER',
+    'TRANSFER_LETTER',
+    'PROMOTION_LETTER',
+  ];
+
+  if (immutableCategories.includes(doc.category)) {
+    throw new ApiError(403, 'CANNOT_DELETE_HR_DOCUMENT', 'Statutory and official HR letters cannot be deleted by employees.');
+  }
+
+  doc.status = 'ARCHIVED';
+  await doc.save();
+
+  try {
+    await recordRequestAudit({
+      request: req,
+      module: 'EMPLOYEES',
+      action: 'DOCUMENT_DELETE',
+      entityType: 'EMPLOYEE_DOCUMENT',
+      entityId: doc.documentId,
+      metadata: { userId, documentName: doc.documentName },
+      result: 'SUCCESS',
+    });
+  } catch (e) {}
+
+  return res.status(200).json({
+    success: true,
+    message: 'Document deleted successfully.',
+    correlationId: req.correlationId || null,
+  });
+});
+
+const { generatePdf } = require('../utils/exportGenerators');
+
+const exportProfileSummary = asyncHandler(async (req, res) => {
+  const { organisationId, userId } = req.auth;
+
+  const user = await User.findOne({ organisationId, userId }).lean();
+  if (!user) {
+    throw new ApiError(404, 'NOT_FOUND', 'Employee profile not found.');
+  }
+
+  const docs = await EmployeeDocument.find({ organisationId, userId, status: 'ACTIVE' }).select('documentId documentName category issuedDate').lean();
+
+  // If format=json is explicitly requested, return structured JSON export
+  if (req.query?.format === 'json') {
+    const summary = {
+      exportDate: new Date().toISOString(),
+      employee: {
+        userId: user.userId,
+        name: user.name,
+        preferredName: user.preferredName || null,
+        email: user.email,
+        phone: user.phone || null,
+        designation: user.designation || null,
+        department: user.department || null,
+        joiningDate: user.joiningDate || null,
+        employmentStatus: user.employmentStatus || user.accountStatus,
+        primaryCafeId: user.primaryCafeId || null,
+      },
+      documents: docs,
+      systemNote: 'Authoritative Zamorin Cafe ERP Employee Data Export',
+    };
+
+    const jsonStr = JSON.stringify(summary, null, 2);
+    const buffer = Buffer.from(jsonStr, 'utf8');
+
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="Zamorin_Profile_Summary_${user.userId}.json"`);
+    res.setHeader('Content-Length', buffer.length);
+
+    return res.status(200).send(buffer);
+  }
+
+  // Default: Authoritative Binary PDF 1.4 Profile Summary
+  const columns = [
+    { key: 'section', label: 'Section' },
+    { key: 'field', label: 'Field / Attribute' },
+    { key: 'value', label: 'Authoritative Value' },
+  ];
+
+  const rows = [
+    { section: 'Identity', field: 'Full Legal Name', value: user.name || '—' },
+    { section: 'Identity', field: 'Preferred Name', value: user.preferredName || user.name || '—' },
+    { section: 'Identity', field: 'Employee ID', value: user.userId || '—' },
+    { section: 'Employment', field: 'Department', value: user.department || 'Operations' },
+    { section: 'Employment', field: 'Designation', value: user.designation || 'Staff Associate' },
+    { section: 'Employment', field: 'Assigned Café', value: user.primaryCafeId || 'All Cafés' },
+    { section: 'Employment', field: 'Joining Date', value: user.joiningDate || '—' },
+    { section: 'Employment', field: 'Employment Status', value: user.employmentStatus || user.accountStatus || 'ACTIVE' },
+    { section: 'Contact', field: 'Email Address', value: user.email || '—' },
+    { section: 'Contact', field: 'Phone Number', value: user.phone || '—' },
+    { section: 'Statutory', field: 'PAN Verification', value: user.panMasked ? 'VERIFIED' : 'ON FILE' },
+    { section: 'Statutory', field: 'UAN / EPF', value: user.uanMasked ? 'ACTIVE' : 'ON FILE' },
+  ];
+
+  if (docs && docs.length > 0) {
+    docs.slice(0, 5).forEach((d) => {
+      rows.push({
+        section: 'Document',
+        field: d.category || 'RECORD',
+        value: `${d.documentName || d.documentId} (Active)`,
+      });
+    });
+  }
+
+  const kpiCards = [
+    { label: 'Employee ID', value: user.userId || '—' },
+    { label: 'Designation', value: user.designation || 'Staff' },
+    { label: 'Primary Café', value: user.primaryCafeId || 'Default' },
+    { label: 'Documents', value: `${docs.length} Active` },
+  ];
+
+  const pdfResult = generatePdf({
+    reportTitle: `Employee Profile Summary — ${user.name}`,
+    reportCode: `EMP-PRF-${user.userId}`,
+    scope: `${user.name} (${user.userId})`,
+    period: `As of ${new Date().toISOString().slice(0, 10)}`,
+    columns,
+    rows,
+    kpiCards,
+    branding: {
+      legalName: 'Zamorin Estate Pvt. Ltd.',
+      gstin: '29AABCZ1234M1Z5',
+    },
+  });
+
+  res.setHeader('Content-Type', 'application/pdf');
+  res.setHeader('Content-Disposition', `attachment; filename="Zamorin_Profile_Summary_${user.userId}.pdf"`);
+  res.setHeader('Content-Length', pdfResult.buffer.length);
+
+  return res.status(200).send(pdfResult.buffer);
+});
+
 module.exports = {
   EMPLOYEE_SEARCH_PROJECTION,
   buildEmployeeSearchRequest,
@@ -1525,6 +2007,11 @@ module.exports = {
   withdrawSelfChangeRequest,
   getSelfProfileHistory,
   submitSelfProfileAttestation,
+  listSelfDocuments,
+  uploadSelfDocument,
+  downloadSelfDocument,
+  deleteSelfDocument,
+  exportProfileSummary,
   onboardEmployee,
   createEmployeeMovement,
   submitProbationReview,

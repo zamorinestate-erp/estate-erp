@@ -559,7 +559,7 @@ const withdrawLeave = asyncHandler(async (request, response) => {
 const cancelLeave = asyncHandler(async (request, response) => {
   const { organisationId, userId } = request.auth;
   const { leaveId: rawLid } = request.params;
-  const { reason = '' } = request.body || {};
+  const reason = request.body?.cancellationReason || request.body?.reason || '';
   const leaveId = normalizeIdentifier(rawLid);
 
   const leave = await LeaveRequest.findOne({

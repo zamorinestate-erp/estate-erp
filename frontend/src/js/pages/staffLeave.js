@@ -10,6 +10,7 @@ import { state } from "../state.js";
 import { showToast } from "../components.js";
 import { icon } from "../icons.js";
 import { apiGet, apiPost } from "../apiClient.js";
+import { setupModalA11y } from "../utils/modalA11y.js";
 
 let activeTab = "OVERVIEW"; // 'OVERVIEW' | 'CALENDAR' | 'REQUESTS' | 'BALANCES' | 'STATEMENT'
 let selectedDurationUnit = "FULL_DAY";
@@ -213,19 +214,19 @@ function renderOverviewTab() {
               <div id="leave-calc-preview-box" style="padding:12px 14px; background:var(--bg-surface-2); border-radius:var(--radius-md); border:1px solid var(--border-subtle); font-size:12.5px;">
                 <div class="flex justify-between items-center" style="margin-bottom:4px;">
                   <span style="color:var(--text-secondary);">Total Calendar Days:</span>
-                  <strong style="color:var(--text-primary);">1 Day</strong>
+                  <strong id="calc-preview-cal-days" style="color:var(--text-primary);">1 Day</strong>
                 </div>
                 <div class="flex justify-between items-center" style="margin-bottom:4px;">
                   <span style="color:var(--text-secondary);">Weekly Offs Excluded:</span>
-                  <span style="color:var(--text-muted);">0 Days</span>
+                  <span id="calc-preview-weekly-offs" style="color:var(--text-muted);">0 Days</span>
                 </div>
                 <div class="flex justify-between items-center" style="margin-bottom:6px; padding-top:4px; border-top:1px solid var(--border-subtle);">
                   <span style="font-weight:700; color:var(--text-primary);">Leave Days Charged:</span>
-                  <strong style="font-size:14px; color:var(--brand-gold);">1.0 Day</strong>
+                  <strong id="calc-preview-charged-days" style="font-size:14px; color:var(--brand-gold);">1.0 Day</strong>
                 </div>
                 <div class="flex justify-between items-center" style="font-size:11.5px; color:var(--color-accent-mint);">
                   <span>Projected Balance After:</span>
-                  <strong>${Math.max(0, (cachedBalances.totalAvailable || 0) - 1).toFixed(1)} Days Available</strong>
+                  <strong id="calc-preview-projected-bal">${Math.max(0, (cachedBalances.totalAvailable || 0) - 1).toFixed(1)} Days Available</strong>
                 </div>
               </div>
 
@@ -382,25 +383,49 @@ function renderCalendarTab() {
 }
 
 function renderLeaveCalendarDays() {
+  const [yearStr, monthStr] = currentCalendarMonth.split("-");
+  const year = parseInt(yearStr, 10);
+  const month = parseInt(monthStr, 10);
+
+  const firstDayObj = new Date(Date.UTC(year, month - 1, 1));
+  const startDayOfWeek = (firstDayObj.getUTCDay() + 6) % 7; // Convert Sun=0..Sat=6 to Mon=0..Sun=6
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+
   let html = "";
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < startDayOfWeek; i++) {
     html += `<div style="opacity:0.2; padding:12px 6px; background:var(--bg-surface-2); border-radius:var(--radius-sm);"></div>`;
   }
 
-  for (let d = 1; d <= 31; d++) {
+  for (let d = 1; d <= daysInMonth; d++) {
     const dayStr = String(d).padStart(2, "0");
-    const dateKey = `2026-08-${dayStr}`;
+    const dateKey = `${currentCalendarMonth}-${dayStr}`;
     let badgeColor = "transparent";
     let tooltip = "";
 
-    if (d === 15) {
-      badgeColor = "var(--color-accent-coral)"; // Independence Day
+    const req = cachedRequests.find((r) => {
+      const s = r.startDate || r.dates;
+      const e = r.endDate || r.startDate || r.dates;
+      return s && e && dateKey >= s && dateKey <= e;
+    });
+
+    const dayOfWeek = (new Date(Date.UTC(year, month - 1, d)).getUTCDay() + 6) % 7;
+
+    if (req) {
+      if (req.status === "APPROVED") {
+        badgeColor = "var(--color-accent-mint)";
+        tooltip = `${req.type} (Approved)`;
+      } else if (req.status === "PENDING") {
+        badgeColor = "var(--brand-gold)";
+        tooltip = `${req.type} (Pending)`;
+      }
+    } else if (d === 15 && month === 8) {
+      badgeColor = "var(--color-accent-coral)";
       tooltip = "Independence Day (Holiday)";
-    } else if (d === 29) {
-      badgeColor = "var(--brand-gold)"; // Pending leave
-      tooltip = "Casual Leave (Pending)";
-    } else if (d % 7 === 2) {
-      badgeColor = "var(--text-muted)"; // Weekly off (Tue)
+    } else if (d === 2 && month === 10) {
+      badgeColor = "var(--color-accent-coral)";
+      tooltip = "Gandhi Jayanti (Holiday)";
+    } else if (dayOfWeek === 1) { // Tuesday weekly off
+      badgeColor = "var(--text-muted)";
       tooltip = "Rostered Weekly Off";
     }
 
@@ -633,7 +658,20 @@ export function wireStaffLeave(root) {
         cachedTypes = typesRes.data.types;
       }
       if (reqRes?.data?.leaves) {
-        cachedRequests = reqRes.data.leaves;
+        cachedRequests = reqRes.data.leaves.map(l => ({
+          id: l.leaveId || l.id,
+          type: l.leaveType || l.type,
+          dates: l.startDate === l.endDate ? l.startDate : `${l.startDate} to ${l.endDate}`,
+          days: l.daysCharged ?? l.days ?? 1,
+          status: l.status,
+          submitted: l.createdAt ? new Date(l.createdAt).toLocaleDateString() : (l.submitted || "Recent"),
+          canWithdraw: l.status === "PENDING",
+          canCancel: l.status === "APPROVED",
+          reason: l.reason,
+          startDate: l.startDate,
+          endDate: l.endDate,
+          requestedDays: l.daysCharged ?? l.days ?? 1
+        }));
       }
 
       refreshTabContent();
@@ -649,6 +687,44 @@ export function wireStaffLeave(root) {
   }
 
   function bindTabInteractions(container) {
+    async function updateLeaveCalculationPreview() {
+      const typeSelect = container.querySelector("#leave-type-select");
+      const leaveType = typeSelect ? typeSelect.value : "CASUAL";
+      const startDate = container.querySelector("#leave-start-date")?.value;
+      const endDate = container.querySelector("#leave-end-date")?.value || startDate;
+      if (!startDate) return;
+
+      try {
+        const res = await apiPost("/leave/calculate", {
+          leaveType,
+          startDate,
+          endDate: endDate || startDate,
+          durationUnit: selectedDurationUnit,
+        });
+        if (res?.data) {
+          const { totalChargeableDays, calendarDays, weeklyOffsExcluded, projectedBalance } = res.data;
+          const calDaysEl = container.querySelector("#calc-preview-cal-days");
+          if (calDaysEl) calDaysEl.textContent = `${calendarDays} ${calendarDays === 1 ? "Day" : "Days"}`;
+
+          const weeklyEl = container.querySelector("#calc-preview-weekly-offs");
+          if (weeklyEl) weeklyEl.textContent = `${weeklyOffsExcluded} ${weeklyOffsExcluded === 1 ? "Day" : "Days"}`;
+
+          const chargedEl = container.querySelector("#calc-preview-charged-days");
+          if (chargedEl) chargedEl.textContent = `${totalChargeableDays.toFixed(1)} ${totalChargeableDays === 1 ? "Day" : "Days"}`;
+
+          const projEl = container.querySelector("#calc-preview-projected-bal");
+          if (projEl) projEl.textContent = `${projectedBalance.toFixed(1)} Days Available`;
+        }
+      } catch (err) {
+        const s = new Date(startDate);
+        const e = new Date(endDate);
+        const diffDays = Math.max(1, Math.round((e - s) / 86400000) + 1);
+        const charged = selectedDurationUnit === "FULL_DAY" ? diffDays : 0.5;
+        const chargedEl = container.querySelector("#calc-preview-charged-days");
+        if (chargedEl) chargedEl.textContent = `${charged.toFixed(1)} ${charged === 1 ? "Day" : "Days"}`;
+      }
+    }
+
     // Duration unit selector
     container.querySelectorAll("#btn-unit-full, #btn-unit-first, #btn-unit-second").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -661,58 +737,76 @@ export function wireStaffLeave(root) {
           if (r) r.checked = (b.id === btn.id);
         });
 
-        // Update calculation preview box
-        const previewDaysCharged = container.querySelector("#leave-calc-preview-box strong[style*='color:var(--brand-gold)']");
-        if (previewDaysCharged) {
-          previewDaysCharged.textContent = unit === "FULL_DAY" ? "2.0 Days" : "0.5 Days";
-        }
+        updateLeaveCalculationPreview();
       });
     });
+
+    container.querySelector("#leave-start-date")?.addEventListener("change", () => {
+      const startVal = container.querySelector("#leave-start-date").value;
+      const endInput = container.querySelector("#leave-end-date");
+      if (endInput && !endInput.value) {
+        endInput.value = startVal;
+      }
+      updateLeaveCalculationPreview();
+    });
+
+    container.querySelector("#leave-end-date")?.addEventListener("change", updateLeaveCalculationPreview);
+    container.querySelector("#leave-type-select")?.addEventListener("change", updateLeaveCalculationPreview);
 
     // Apply leave submission
     container.querySelector("#btn-submit-leave")?.addEventListener("click", async () => {
       const typeSelect = container.querySelector("#leave-type-select");
       const type = typeSelect ? typeSelect.value : "CASUAL";
       const typeName = typeSelect ? typeSelect.options[typeSelect.selectedIndex].text.split("(")[0].trim() : "Casual Leave";
-      const startDate = container.querySelector("#leave-start-date")?.value || "2026-08-24";
+      const startDate = container.querySelector("#leave-start-date")?.value;
       const endDate = container.querySelector("#leave-end-date")?.value || startDate;
       const reason = container.querySelector("#leave-reason-input")?.value?.trim();
 
+      if (!startDate) {
+        showToast("Please select a start date.", "amber");
+        return;
+      }
       if (!reason) {
         showToast("Please provide a mandatory reason for leave.", "amber");
         return;
       }
 
-      let requestedDays = selectedDurationUnit === "FULL_DAY" ? 2.0 : 0.5;
-      const newLeaveId = `LR-${startDate.replace(/-/g, "")}-${String(cachedRequests.length + 1).padStart(3, "0")}`;
-      const newLeave = {
-        id: newLeaveId,
-        type: typeName,
-        dates: startDate === endDate ? startDate : `${startDate} to ${endDate}`,
-        days: requestedDays,
-        status: "PENDING",
-        submitted: "Just now",
-        canWithdraw: true,
-        canCancel: false,
-        reason: reason,
-        startDate,
-        endDate,
-        requestedDays
-      };
-      cachedRequests.unshift(newLeave);
+      const submitBtn = container.querySelector("#btn-submit-leave");
+      if (submitBtn) submitBtn.disabled = true;
 
       try {
-        await apiPost("/leave/requests", {
+        const res = await apiPost("/leave/requests", {
           leaveType: type,
           startDate,
           endDate,
           reason,
           durationUnit: selectedDurationUnit
-        }).catch(() => null);
-      } catch {}
+        });
 
-      openLeaveReceiptModal(newLeave);
-      refreshTabContent();
+        const created = res?.data?.leave || res?.data || {};
+        const newLeave = {
+          id: created.leaveId || created.id || `LR-${startDate.replace(/-/g, "")}`,
+          type: typeName,
+          dates: startDate === endDate ? startDate : `${startDate} to ${endDate}`,
+          days: created.daysCharged ?? (selectedDurationUnit === "FULL_DAY" ? 1.0 : 0.5),
+          status: created.status || "PENDING",
+          submitted: "Just now",
+          canWithdraw: true,
+          canCancel: false,
+          reason: reason,
+          startDate,
+          endDate,
+          requestedDays: created.daysCharged ?? (selectedDurationUnit === "FULL_DAY" ? 1.0 : 0.5)
+        };
+        cachedRequests.unshift(newLeave);
+        openLeaveReceiptModal(newLeave);
+        refreshTabContent();
+        showToast("Leave request submitted successfully ✓", "mint");
+      } catch (err) {
+        showToast(err.message || "Failed to submit leave request", "coral");
+      } finally {
+        if (submitBtn) submitBtn.disabled = false;
+      }
     });
 
     // Status filter
@@ -732,17 +826,19 @@ export function wireStaffLeave(root) {
     container.querySelectorAll(".btn-withdraw-request").forEach((btn) => {
       btn.addEventListener("click", async () => {
         const leaveId = btn.dataset.leaveId;
-        const target = cachedRequests.find(r => r.id === leaveId);
-        if (target) {
-          target.status = "WITHDRAWN";
-          target.canWithdraw = false;
-          target.canCancel = false;
-        }
         try {
-          await apiPost(`/leave/requests/${leaveId}/withdraw`).catch(() => null);
-        } catch {}
-        showToast(`Leave request ${leaveId} withdrawn successfully ✓`, "mint");
-        refreshTabContent();
+          await apiPost(`/leave/requests/${leaveId}/withdraw`);
+          const target = cachedRequests.find(r => r.id === leaveId);
+          if (target) {
+            target.status = "WITHDRAWN";
+            target.canWithdraw = false;
+            target.canCancel = false;
+          }
+          showToast(`Leave request ${leaveId} withdrawn successfully ✓`, "mint");
+          refreshTabContent();
+        } catch (err) {
+          showToast(err.message || "Failed to withdraw leave request", "coral");
+        }
       });
     });
 
@@ -838,7 +934,7 @@ function openLeaveReceiptModal(leave) {
   modal.innerHTML = `
     <div class="card" style="width:100%; max-width:440px; padding:26px; background:var(--bg-surface-1); border-radius:var(--radius-lg); box-shadow:var(--shadow-lg); text-align:center;">
       <div style="font-size:42px; margin-bottom:12px;">✅</div>
-      <div style="font-size:18px; font-weight:800; color:var(--text-primary); margin-bottom:4px;">
+      <div id="receipt-modal-title" style="font-size:18px; font-weight:800; color:var(--text-primary); margin-bottom:4px;">
         Leave Request Submitted
       </div>
       <div style="font-size:13px; color:var(--text-muted); margin-bottom:18px;">
@@ -860,7 +956,12 @@ function openLeaveReceiptModal(leave) {
   `;
 
   document.body.appendChild(modal);
-  modal.querySelector("#leave-receipt-done-btn")?.addEventListener("click", () => modal.remove());
+  const closeReceipt = () => {
+    cleanupA11y();
+    modal.remove();
+  };
+  const cleanupA11y = setupModalA11y(modal, { onClose: closeReceipt, titleId: "receipt-modal-title" });
+  modal.querySelector("#leave-receipt-done-btn")?.addEventListener("click", closeReceipt);
 }
 
 function openLeaveDetailModal(leaveInput) {
@@ -884,10 +985,10 @@ function openLeaveDetailModal(leaveInput) {
   modal.innerHTML = `
     <div class="card" style="width:100%; max-width:480px; padding:24px; background:var(--bg-surface-1); border-radius:var(--radius-lg); box-shadow:var(--shadow-lg);">
       <div class="flex items-center justify-between" style="margin-bottom:14px;">
-        <div style="font-size:16px; font-weight:800; color:var(--text-primary);">
+        <div id="ldmodal-title" style="font-size:16px; font-weight:800; color:var(--text-primary);">
           Leave Request Details
         </div>
-        <button class="btn btn-xs btn-ghost" id="ldmodal-close-btn" style="font-size:16px;">✕</button>
+        <button class="btn btn-xs btn-ghost" id="ldmodal-close-btn" style="font-size:16px;" aria-label="Close details modal">✕</button>
       </div>
 
       <div style="font-size:13px; font-family:monospace; font-weight:700; color:var(--brand-gold); margin-bottom:14px;">
@@ -916,7 +1017,11 @@ function openLeaveDetailModal(leaveInput) {
   `;
 
   document.body.appendChild(modal);
-  const close = () => modal.remove();
+  const close = () => {
+    cleanupA11y();
+    modal.remove();
+  };
+  const cleanupA11y = setupModalA11y(modal, { onClose: close, titleId: "ldmodal-title" });
   modal.querySelector("#ldmodal-close-btn")?.addEventListener("click", close);
   modal.querySelector("#ldmodal-done-btn")?.addEventListener("click", close);
 }
@@ -934,10 +1039,10 @@ function openCancelLeaveModal(leaveId, onDone) {
   modal.innerHTML = `
     <div class="card" style="width:100%; max-width:460px; padding:24px; background:var(--bg-surface-1); border-radius:var(--radius-lg); box-shadow:var(--shadow-lg);">
       <div class="flex items-center justify-between" style="margin-bottom:14px;">
-        <div style="font-size:16px; font-weight:800; color:var(--text-primary);">
+        <div id="lcmodal-title" style="font-size:16px; font-weight:800; color:var(--text-primary);">
           Request Leave Cancellation
         </div>
-        <button class="btn btn-xs btn-ghost" id="lcmodal-close-btn" style="font-size:16px;">✕</button>
+        <button class="btn btn-xs btn-ghost" id="lcmodal-close-btn" style="font-size:16px;" aria-label="Close cancellation modal">✕</button>
       </div>
 
       <div style="font-size:12.5px; color:var(--text-secondary); margin-bottom:14px;">
@@ -959,7 +1064,11 @@ function openCancelLeaveModal(leaveId, onDone) {
   `;
 
   document.body.appendChild(modal);
-  const close = () => modal.remove();
+  const close = () => {
+    cleanupA11y();
+    modal.remove();
+  };
+  const cleanupA11y = setupModalA11y(modal, { onClose: close, titleId: "lcmodal-title" });
   modal.querySelector("#lcmodal-close-btn")?.addEventListener("click", close);
   modal.querySelector("#lcmodal-cancel-btn")?.addEventListener("click", close);
 
@@ -971,31 +1080,46 @@ function openCancelLeaveModal(leaveId, onDone) {
     }
 
     try {
-      await apiPost(`/leave/requests/${leaveId}/cancel`, { reason });
+      await apiPost(`/leave/requests/${leaveId}/cancel`, {
+        cancellationReason: reason,
+        reason: reason
+      });
       close();
       showToast("Cancellation requested for administrative approval ✓", "mint");
       if (onDone) onDone();
-    } catch {
-      close();
-      showToast("Cancellation requested for administrative approval ✓", "mint");
-      if (onDone) onDone();
+    } catch (err) {
+      showToast(err.message || "Failed to cancel leave request", "coral");
     }
   });
 }
 
 // ── EXPORT CSV UTILITY ───────────────────────────────────────────────────────
 function exportLeaveCsv() {
-  const csvContent = "data:text/csv;charset=utf-8," + [
-    "RequestID,LeaveType,StartDate,EndDate,DaysCharged,Status",
-    "LR-20260829-001,Casual Leave,2026-08-29,2026-08-29,1.0,Pending",
-    "LR-20260910-001,Casual Leave,2026-09-10,2026-09-11,2.0,Approved",
-    "LR-20260710-001,Casual Leave,2026-07-10,2026-07-11,2.0,Approved",
-  ].join("\n");
+  const rows = [
+    ["Request ID", "Leave Type", "Start Date", "End Date", "Days Charged", "Status", "Reason"].join(","),
+  ];
 
-  const encodedUri = encodeURI(csvContent);
+  if (cachedRequests.length === 0) {
+    rows.push("No leave requests found,,,,,,");
+  } else {
+    for (const r of cachedRequests) {
+      const escapedReason = `"${String(r.reason || '').replace(/"/g, '""')}"`;
+      rows.push([
+        r.id || "",
+        `"${String(r.type || '').replace(/"/g, '""')}"`,
+        r.startDate || r.dates || "",
+        r.endDate || r.startDate || r.dates || "",
+        r.days ?? 1,
+        r.status || "",
+        escapedReason,
+      ].join(","));
+    }
+  }
+
+  const csvContent = "data:text/csv;charset=utf-8," + encodeURIComponent(rows.join("\n"));
   const link = document.createElement("a");
-  link.setAttribute("href", encodedUri);
-  link.setAttribute("download", "Zamorin_Leave_History_2026.csv");
+  link.setAttribute("href", csvContent);
+  link.setAttribute("download", `Zamorin_Leave_History_${new Date().toISOString().slice(0, 10)}.csv`);
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);

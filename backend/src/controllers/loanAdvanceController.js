@@ -324,6 +324,66 @@ const getMySettlementQuote = asyncHandler(async (request, response) => {
   return response.status(200).json({ success: true, data: quote });
 });
 
+const requestEarlySettlement = asyncHandler(async (request, response) => {
+  assertNotNormalMaster(request);
+  const { organisationId, userId } = request.auth;
+  const { loanAdvanceId } = request.params;
+  const { paymentReference = '', notes = '', paymentMode = 'BANK_TRANSFER' } = request.body || {};
+
+  const loan = await StaffLoanAdvance.findOne({ organisationId, loanAdvanceId, employeeUserId: userId });
+  if (!loan) throw new ApiError(404, 'LOAN_NOT_FOUND', `Loan ${loanAdvanceId} not found.`);
+
+  if (loan.status !== 'ACTIVE' && loan.status !== 'IN_REPAYMENT') {
+    throw new ApiError(400, 'INVALID_STATUS_FOR_SETTLEMENT', `Only active or in-repayment loans can be settled early. Current status: ${loan.status}`);
+  }
+
+  const quote = await LoanAdvanceService.generateSettlementQuote({ organisationId, loanAdvanceId });
+  const settlementAmountPaise = quote.settlementAmountPaise || ((loan.outstandingPrincipalPaise || 0) + (loan.arrearsPaise || 0));
+
+  loan.settlementDetails = {
+    isSettled: false,
+    settlementRequested: true,
+    settlementRequestedAt: new Date(),
+    settlementQuotePaise: settlementAmountPaise,
+    paymentRef: paymentReference,
+    paymentMode,
+    notes,
+  };
+  loan.updatedByUserId = userId;
+  await loan.save();
+
+  if (paymentReference) {
+    const count = await LoanTransaction.countDocuments({ organisationId });
+    const transactionId = `TXN-LN-${String(count + 1).padStart(4, '0')}`;
+    await LoanTransaction.create({
+      transactionId,
+      organisationId,
+      loanAdvanceId,
+      employeeUserId: userId,
+      transactionType: 'SETTLEMENT',
+      amountPaise: settlementAmountPaise,
+      principalDeltaPaise: -settlementAmountPaise,
+      balanceAfterPaise: 0,
+      paymentReference,
+      notes: notes || 'Employee early settlement request pending verification',
+      status: 'AWAITING_VERIFICATION',
+      performedByUserId: userId,
+      postedAt: new Date(),
+    });
+  }
+
+  return response.status(200).json({
+    success: true,
+    message: 'Early settlement request submitted successfully. Pending Primary Master verification.',
+    data: {
+      loanAdvanceId,
+      settlementAmountPaise,
+      settlementQuote: quote,
+    },
+    correlationId: request.correlationId || null,
+  });
+});
+
 // ── 2. Primary Master Administrative Endpoints ───────────────────────────────
 
 const listOrgLoans = asyncHandler(async (request, response) => {
@@ -506,6 +566,116 @@ const postLoanSettlement = asyncHandler(async (request, response) => {
   return response.status(200).json({ success: true, message: 'Loan settled and closed with No-Due certificate.', data: { loan } });
 });
 
+const decideRepaymentPause = asyncHandler(async (request, response) => {
+  assertNotNormalMaster(request);
+  const { organisationId, userId } = request.auth;
+  const { loanAdvanceId } = request.params;
+  const { decision, decisionNotes = '' } = request.body || {};
+
+  const targetDecision = String(decision || '').toUpperCase().trim();
+  if (!['APPROVE', 'REJECT'].includes(targetDecision)) {
+    throw new ApiError(400, 'INVALID_DECISION', 'Decision must be APPROVE or REJECT.');
+  }
+
+  const loan = await StaffLoanAdvance.findOne({ organisationId, loanAdvanceId });
+  if (!loan) throw new ApiError(404, 'LOAN_NOT_FOUND', `Loan ${loanAdvanceId} not found.`);
+
+  if (!loan.pauseDetails || !loan.pauseDetails.pauseFromPeriod) {
+    throw new ApiError(400, 'NO_PAUSE_REQUESTED', `No pending repayment pause request on loan ${loanAdvanceId}.`);
+  }
+
+  // Idempotency check: if decision already recorded
+  if (loan.pauseDetails.approvedAt || loan.pauseDetails.rejectedAt) {
+    return response.status(409).json({
+      success: false,
+      message: 'Repayment pause request has already been decided.',
+      data: { loan },
+    });
+  }
+
+  if (targetDecision === 'APPROVE') {
+    loan.pauseDetails.isPaused = true;
+    loan.pauseDetails.approvedByUserId = userId;
+    loan.pauseDetails.approvedAt = new Date();
+    loan.pauseDetails.notes = decisionNotes;
+  } else {
+    loan.pauseDetails.isPaused = false;
+    loan.pauseDetails.rejectedAt = new Date();
+    loan.pauseDetails.rejectionReason = decisionNotes;
+  }
+  loan.updatedByUserId = userId;
+  await loan.save();
+
+  // Dispatch canonical Notification and NotificationOutbox
+  try {
+    const { Notification } = require('../models/Notification');
+    const { NotificationOutbox } = require('../models/NotificationOutbox');
+    const { User } = require('../models/User');
+
+    const eventType = targetDecision === 'APPROVE' ? 'LOAN_DEFERMENT_APPROVED' : 'LOAN_DEFERMENT_REJECTED';
+    let recipientEmail = `${String(loan.employeeUserId).toLowerCase()}@zamorincafe.com`;
+    let recipientName = loan.employeeName || loan.employeeUserId;
+    try {
+      const u = await User.findOne({ organisationId, userId: loan.employeeUserId }).select('email name').lean();
+      if (u?.email) recipientEmail = u.email;
+      if (u?.name) recipientName = u.name;
+    } catch (_) {}
+
+    const deduplicationKey = `LOAN_DEFER:${loanAdvanceId}:${targetDecision}`;
+    const existingNotif = await Notification.findOne({ organisationId, deduplicationKey }).lean();
+
+    if (!existingNotif) {
+      const outboxId = `OUT-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+      await NotificationOutbox.create({
+        outboxId,
+        organisationId,
+        eventType,
+        recipientUserId: loan.employeeUserId,
+        recipientEmail,
+        recipientName,
+        recipientRole: 'STAFF',
+        templateId: 'LOAN_DEFERMENT_STATUS_UPDATE',
+        subject: `Repayment Deferment ${targetDecision === 'APPROVE' ? 'Approved' : 'Rejected'} (${loanAdvanceId})`,
+        renderedSubject: `Repayment Deferment ${targetDecision === 'APPROVE' ? 'Approved' : 'Rejected'} (${loanAdvanceId})`,
+        renderedBody: `Your request to pause loan repayment from ${loan.pauseDetails.pauseFromPeriod} has been ${targetDecision === 'APPROVE' ? 'approved' : 'rejected'}.${decisionNotes ? ' Notes: ' + decisionNotes : ''}`,
+        status: 'SENT',
+        sentAt: new Date(),
+      });
+
+      const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      const notifId = `NT-${todayStr}-${Math.floor(1000 + Math.random() * 9000)}`;
+      await Notification.create({
+        notificationId: notifId,
+        organisationId,
+        eventType,
+        category: 'FINANCE',
+        recipientUserId: loan.employeeUserId,
+        recipientRole: 'STAFF',
+        recipientEmail,
+        title: `Loan Deferment ${targetDecision === 'APPROVE' ? 'Approved' : 'Rejected'}`,
+        message: `Your repayment deferment request for ${loanAdvanceId} has been ${targetDecision.toLowerCase()}d.`,
+        priority: 'NORMAL',
+        channels: ['IN_APP'],
+        deepLink: '#staff-loans-advances',
+        sourceModule: 'LOANS_ADVANCES',
+        sourceEntityType: 'StaffLoanAdvance',
+        sourceEntityId: loanAdvanceId,
+        deduplicationKey,
+        correlationId: request.correlationId || outboxId,
+        createdBy: userId,
+      });
+    }
+  } catch (notifErr) {
+    // Non-blocking notification dispatch
+  }
+
+  return response.status(200).json({
+    success: true,
+    message: `Repayment pause request ${targetDecision === 'APPROVE' ? 'approved' : 'rejected'} successfully.`,
+    data: { loan },
+  });
+});
+
 const getLoanIntegrityAudit = asyncHandler(async (request, response) => {
   requirePrimaryMaster(request);
   const { organisationId } = request.auth;
@@ -521,7 +691,9 @@ module.exports = {
   withdrawMyRequest,
   reportManualRepayment,
   requestRepaymentPause,
+  decideRepaymentPause,
   getMySettlementQuote,
+  requestEarlySettlement,
   listOrgLoans,
   approveLoan,
   disburseLoan,

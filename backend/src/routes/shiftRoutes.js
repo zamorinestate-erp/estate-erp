@@ -12,9 +12,26 @@ const {
   activateShift,
 } = require('../controllers/shiftController');
 
+const {
+  createSelfShiftChangeRequest,
+  listSelfShiftChangeRequests,
+  getMyShiftsSchedule,
+  listOrgShiftChangeRequests,
+  reviewShiftChangeRequest,
+} = require('../controllers/shiftChangeController');
+
 const { authenticate } = require('../middleware/authenticate');
 
 router.use(authenticate);
+
+// Self-service schedule & requests (must precede /:shiftId)
+router.get('/me/requests', listSelfShiftChangeRequests);
+router.post('/me/requests', createSelfShiftChangeRequest);
+router.get('/me/schedule', getMyShiftsSchedule);
+
+// Manager/Org shift change requests
+router.get('/requests', listOrgShiftChangeRequests);
+router.patch('/requests/:requestId', reviewShiftChangeRequest);
 
 router.get('/', listShifts);
 router.get('/:shiftId', getShift);

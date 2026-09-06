@@ -40,6 +40,13 @@ const {
   createDelegation,
   revokeDelegation,
   getDiagnostics,
+  submitSupportTicket,
+  listMySupportTickets,
+  listManageSupportTickets,
+  getManageSupportTicket,
+  updateManageSupportTicket,
+  addSupportTicketReply,
+  addEmployeeSupportTicketReply,
 } = require('../controllers/settingsController');
 
 const router = express.Router();
@@ -91,8 +98,17 @@ router.post('/privacy/requests', submitPrivacyRequest);
 router.get('/privacy/requests', listMyPrivacyRequests);
 router.get('/privacy/notice', getPrivacyNotice);
 
-// ── Help & Diagnostics ────────────────────────────────────────────────────────
+// ── Help & Support ────────────────────────────────────────────────────────────
 router.get('/diagnostics', getDiagnostics);
+router.post('/support/tickets', submitSupportTicket);
+router.get('/support/tickets', listMySupportTickets);
+router.post('/support/tickets/:caseId/reply', addEmployeeSupportTicketReply);
+
+// Management Support Queue (Master, Owner, Cafe Admin)
+router.get('/support/manage/tickets', listManageSupportTickets);
+router.get('/support/manage/tickets/:caseId', getManageSupportTicket);
+router.patch('/support/manage/tickets/:caseId', updateManageSupportTicket);
+router.post('/support/manage/tickets/:caseId/reply', addSupportTicketReply);
 
 // ── Organisation Identity (Restricted) ────────────────────────────────────────
 const {

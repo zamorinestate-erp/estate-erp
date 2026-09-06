@@ -9,6 +9,7 @@
 import { ApiClientError, apiGet, apiPatch, apiPost } from "../apiClient.js";
 import { skeleton, showToast } from "../components.js";
 import { state } from "../state.js";
+import { setupModalA11y } from "../utils/modalA11y.js";
 
 let activeRequest = null;
 let currentProfileData = null;
@@ -602,15 +603,15 @@ function renderSkillsTab(p) {
             Verified Skills & Qualifications
           </div>
           <div class="flex-col gap-sm">
-            ${skills.map((s) => `
+            ${skills.length ? skills.map((s) => `
               <div style="padding:10px 14px;background:var(--surface-sunken);border:1px solid var(--line);border-radius:10px;">
                 <div class="flex justify-between items-center">
                   <span style="color:var(--ink);font-size:13px;font-weight:600;">${esc(s.name)}</span>
                   <span class="pill pill-mint" style="font-size:10px;">${esc(s.level)}</span>
                 </div>
-                <div style="color:var(--muted);" style="font-size:11px;margin-top:3px;">Verified by: ${esc(s.verifiedBy)} on ${esc(s.verifiedAt)}</div>
+                <div style="color:var(--muted);font-size:11px;margin-top:3px;">Verified by: ${esc(s.verifiedBy)} on ${esc(s.verifiedAt)}</div>
               </div>
-            `).join("")}
+            `).join("") : `<div style="padding:16px;text-align:center;color:var(--muted);font-size:12.5px;">No verified skills or qualifications recorded.</div>`}
           </div>
         </div>
 
@@ -619,15 +620,15 @@ function renderSkillsTab(p) {
             Mandatory & Completed Training
           </div>
           <div class="flex-col gap-sm">
-            ${training.map((t) => `
+            ${training.length ? training.map((t) => `
               <div style="padding:10px 14px;background:var(--surface-sunken);border:1px solid var(--line);border-radius:10px;">
                 <div class="flex justify-between items-center">
                   <span style="color:var(--ink);font-size:13px;font-weight:600;">${esc(t.course)}</span>
                   <span class="pill pill-mint" style="font-size:10px;">${esc(t.status)} (${esc(t.score)})</span>
                 </div>
-                <div style="color:var(--muted);" style="font-size:11px;margin-top:3px;">Completed: ${esc(t.completedAt)}</div>
+                <div style="color:var(--muted);font-size:11px;margin-top:3px;">Completed: ${esc(t.completedAt)}</div>
               </div>
-            `).join("")}
+            `).join("") : `<div style="padding:16px;text-align:center;color:var(--muted);font-size:12.5px;">No training certifications recorded yet.</div>`}
           </div>
         </div>
       </div>
@@ -647,13 +648,13 @@ function renderAssetsTab(p) {
         </div>
 
         <div class="flex-col gap-sm">
-          ${assets.map((a) => `
+          ${assets.length ? assets.map((a) => `
             <div class="flex justify-between items-center" style="padding:12px 16px;background:var(--surface-sunken);border:1px solid var(--line);border-radius:12px;gap:12px;flex-wrap:wrap;">
               <div class="flex items-center" style="gap:12px;">
                 <div style="font-size:22px;">🏷️</div>
                 <div>
                   <div style="color:var(--ink);font-size:13.5px;font-weight:600;">${esc(a.name)}</div>
-                  <div style="color:var(--muted);" style="font-size:11.5px;margin-top:2px;">
+                  <div style="color:var(--muted);font-size:11.5px;margin-top:2px;">
                     Asset Code: <code>${esc(a.assetId)}</code> · Condition: ${esc(a.condition)} · Assigned: ${esc(a.assignedDate)}
                   </div>
                 </div>
@@ -663,7 +664,7 @@ function renderAssetsTab(p) {
                 <button type="button" class="btn btn-ghost" data-action="report-inaccuracy" style="font-size:11.5px;padding:6px 10px;">Report Issue</button>
               </div>
             </div>
-          `).join("")}
+          `).join("") : `<div style="padding:20px;text-align:center;color:var(--muted);font-size:13px;">No company assets or equipment currently assigned.</div>`}
         </div>
       </div>
     </div>
@@ -908,11 +909,11 @@ function renderEditModal(p) {
   const em = c.emergencyContact || {};
 
   return `
-    <div class="modal-backdrop" id="edit-profile-modal-backdrop" style="position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:999;display:flex;align-items:center;justify-content:center;padding:16px;">
+    <div class="modal-backdrop" id="edit-profile-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="edit-profile-modal-title" style="position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:999;display:flex;align-items:center;justify-content:center;padding:16px;">
       <div class="glass card-elevated" style="width:100%;max-width:540px;max-height:90vh;overflow-y:auto;background:rgba(18,22,30,0.98);border:1px solid rgba(255,255,255,0.2);border-radius:16px;padding:24px;">
         <div class="flex justify-between items-center" style="margin-bottom:18px;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:12px;">
-          <div style="color:var(--ink);font-size:17px;font-weight:700;" class="font-display">Edit Personal Profile</div>
-          <button type="button" class="btn btn-ghost" data-close-modal style="font-size:16px;padding:4px 8px;">✕</button>
+          <div id="edit-profile-modal-title" style="color:var(--ink);font-size:17px;font-weight:700;" class="font-display">Edit Personal Profile</div>
+          <button type="button" class="btn btn-ghost" data-close-modal aria-label="Close edit profile dialog" style="font-size:16px;padding:4px 8px;">✕</button>
         </div>
 
         <form id="edit-profile-form" class="flex-col gap-md">
@@ -958,11 +959,11 @@ function renderEditModal(p) {
 
 function renderReportInaccuracyModal(p) {
   return `
-    <div class="modal-backdrop" id="report-modal-backdrop" style="position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:999;display:flex;align-items:center;justify-content:center;padding:16px;">
+    <div class="modal-backdrop" id="report-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="report-inaccuracy-modal-title" style="position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:999;display:flex;align-items:center;justify-content:center;padding:16px;">
       <div class="glass card-elevated" style="width:100%;max-width:520px;background:rgba(18,22,30,0.98);border:1px solid rgba(255,255,255,0.2);border-radius:16px;padding:24px;">
         <div class="flex justify-between items-center" style="margin-bottom:16px;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:12px;">
-          <div style="color:var(--ink);font-size:16px;font-weight:700;" class="font-display">Report Incorrect Information</div>
-          <button type="button" class="btn btn-ghost" data-close-modal style="font-size:16px;padding:4px 8px;">✕</button>
+          <div id="report-inaccuracy-modal-title" style="color:var(--ink);font-size:16px;font-weight:700;" class="font-display">Report Incorrect Information</div>
+          <button type="button" class="btn btn-ghost" data-close-modal aria-label="Close report inaccuracy dialog" style="font-size:16px;padding:4px 8px;">✕</button>
         </div>
 
         <form id="report-inaccuracy-form" class="flex-col gap-md">
@@ -1003,11 +1004,11 @@ function renderDiagnosticsModal(p) {
   const sec = p.securitySummary || {};
 
   return `
-    <div class="modal-backdrop" id="diag-modal-backdrop" style="position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:999;display:flex;align-items:center;justify-content:center;padding:16px;">
+    <div class="modal-backdrop" id="diag-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="diagnostics-modal-title" style="position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:999;display:flex;align-items:center;justify-content:center;padding:16px;">
       <div class="glass card-elevated" style="width:100%;max-width:480px;background:rgba(18,22,30,0.98);border:1px solid rgba(255,255,255,0.2);border-radius:16px;padding:24px;">
         <div class="flex justify-between items-center" style="margin-bottom:16px;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:12px;">
-          <div style="color:var(--ink);font-size:16px;font-weight:700;" class="font-display">Profile Diagnostics</div>
-          <button type="button" class="btn btn-ghost" data-close-modal style="font-size:16px;padding:4px 8px;">✕</button>
+          <div id="diagnostics-modal-title" style="color:var(--ink);font-size:16px;font-weight:700;" class="font-display">Profile Diagnostics</div>
+          <button type="button" class="btn btn-ghost" data-close-modal aria-label="Close diagnostics dialog" style="font-size:16px;padding:4px 8px;">✕</button>
         </div>
 
         <div class="flex-col gap-sm" style="font-size:12.5px;">
@@ -1162,9 +1163,21 @@ function wireTabEvents(root) {
       modalHost.innerHTML = renderEditModal(currentProfileData);
       document.body.appendChild(modalHost);
 
+      const modalEl = modalHost.querySelector("#edit-profile-modal-backdrop");
+      const cleanupA11y = setupModalA11y(modalEl, {
+        onClose: () => {
+          cleanupA11y();
+          modalHost.remove();
+        },
+        titleId: "edit-profile-modal-title",
+      });
+
       modalHost.querySelectorAll("[data-close-modal], #edit-profile-modal-backdrop").forEach((close) => {
         close.addEventListener("click", (e) => {
-          if (e.target === close) modalHost.remove();
+          if (e.target === close) {
+            cleanupA11y();
+            modalHost.remove();
+          }
         });
       });
 
@@ -1196,17 +1209,9 @@ function wireTabEvents(root) {
             expectedVersion: currentProfileData.identity?.version || 1,
           };
 
-          try {
-            await apiPatch("/employees/me", payload);
-          } catch {
-            // Local update for preview responsiveness
-            currentProfileData.identity.preferredName = preferredName;
-            currentProfileData.contact.personalEmail = personalEmail;
-            currentProfileData.contact.phone = phone;
-            currentProfileData.contact.address = address;
-            currentProfileData.contact.emergencyContact = emergencyContact;
-          }
+          await apiPatch("/employees/me", payload);
 
+          cleanupA11y();
           modalHost.remove();
           showToast("Profile updated successfully.", "mint");
           loadProfile(root);
@@ -1225,9 +1230,21 @@ function wireTabEvents(root) {
       modalHost.innerHTML = renderReportInaccuracyModal(currentProfileData);
       document.body.appendChild(modalHost);
 
+      const modalEl = modalHost.querySelector("#report-modal-backdrop");
+      const cleanupA11y = setupModalA11y(modalEl, {
+        onClose: () => {
+          cleanupA11y();
+          modalHost.remove();
+        },
+        titleId: "report-inaccuracy-modal-title",
+      });
+
       modalHost.querySelectorAll("[data-close-modal], #report-modal-backdrop").forEach((close) => {
         close.addEventListener("click", (e) => {
-          if (e.target === close) modalHost.remove();
+          if (e.target === close) {
+            cleanupA11y();
+            modalHost.remove();
+          }
         });
       });
 
@@ -1247,10 +1264,9 @@ function wireTabEvents(root) {
             proposedValues: { correctedValue: proposed },
           };
 
-          try {
-            await apiPost("/employees/me/change-requests", payload);
-          } catch {}
+          await apiPost("/employees/me/change-requests", payload);
 
+          cleanupA11y();
           modalHost.remove();
           showToast("Change request submitted for review.", "mint");
           loadProfile(root);
@@ -1269,9 +1285,21 @@ function wireTabEvents(root) {
       modalHost.innerHTML = renderDiagnosticsModal(currentProfileData || {});
       document.body.appendChild(modalHost);
 
+      const modalEl = modalHost.querySelector("#diag-modal-backdrop");
+      const cleanupA11y = setupModalA11y(modalEl, {
+        onClose: () => {
+          cleanupA11y();
+          modalHost.remove();
+        },
+        titleId: "diagnostics-modal-title",
+      });
+
       modalHost.querySelectorAll("[data-close-modal], #diag-modal-backdrop").forEach((close) => {
         close.addEventListener("click", (e) => {
-          if (e.target === close) modalHost.remove();
+          if (e.target === close) {
+            cleanupA11y();
+            modalHost.remove();
+          }
         });
       });
     });
@@ -1282,31 +1310,63 @@ function wireTabEvents(root) {
     btn.addEventListener("click", async () => {
       try {
         await apiPost("/employees/me/attestation", { confirmedSections: ["ALL"] });
-      } catch {}
-      showToast("Profile accuracy attested. Thank you!", "mint");
+        showToast("Profile accuracy attested. Thank you!", "mint");
+      } catch (err) {
+        showToast(err.message || "Failed to attest profile", "coral");
+      }
     });
   });
 
   // Download Summary Action
   root.querySelectorAll("[data-action='download-summary']").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      showToast("Personal profile summary archive downloaded.", "mint");
+    btn.addEventListener("click", async () => {
+      try {
+        btn.disabled = true;
+        const res = await fetch("/api/v1/employees/me/profile-summary/export", {
+          credentials: "include",
+          headers: { Accept: "application/pdf, application/json" },
+        });
+        if (!res.ok) throw new Error("Failed to export profile summary.");
+        const blob = await res.blob();
+        const downloadUrl = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = downloadUrl;
+        a.download = `Profile_Summary_${new Date().toISOString().slice(0, 10)}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(downloadUrl);
+        showToast("Personal profile summary PDF downloaded.", "mint");
+      } catch (err) {
+        showToast(err.message || "Failed to download summary.", "coral");
+      } finally {
+        btn.disabled = false;
+      }
     });
   });
 
   // Sign out other sessions
-  root.querySelector("[data-signout-others]")?.addEventListener("click", () => {
-    showToast("All other active sessions have been signed out.", "mint");
+  root.querySelector("[data-signout-others]")?.addEventListener("click", async (e) => {
+    const btn = e.currentTarget;
+    try {
+      btn.disabled = true;
+      await apiPost("/auth/sessions/revoke-others", {});
+      showToast("All other active sessions have been signed out.", "mint");
+    } catch (err) {
+      showToast(err.message || "Failed to sign out other sessions.", "coral");
+    } finally {
+      btn.disabled = false;
+    }
   });
 
   // Change password prompt
   root.querySelector("[data-change-password-prompt]")?.addEventListener("click", () => {
-    showToast("Redirecting to secure password change portal...", "neutral");
+    location.hash = "#settings/security";
   });
 
-  // Upload modal trigger
+  // Upload modal trigger -> navigates to Document Hub
   root.querySelector("[data-open-upload-modal]")?.addEventListener("click", () => {
-    showToast("Secure document upload portal ready.", "neutral");
+    location.hash = "#staff-documents";
   });
 
   // Action items resolution
@@ -1319,17 +1379,51 @@ function wireTabEvents(root) {
 
   // Download document
   root.querySelectorAll("[data-view-doc]").forEach((btn) => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", async () => {
       const docId = btn.dataset.viewDoc;
-      showToast(`Downloading verified statutory document ${docId}.`, "mint");
+      try {
+        btn.disabled = true;
+        const res = await fetch(`/api/v1/employees/me/documents/${docId}/download`, {
+          credentials: "include",
+        });
+        if (!res.ok) throw new Error("Document download failed.");
+        const blob = await res.blob();
+        const contentDisp = res.headers.get("Content-Disposition") || "";
+        let filename = `document-${docId}`;
+        const match = contentDisp.match(/filename="?([^"]+)"?/);
+        if (match && match[1]) filename = match[1];
+
+        const downloadUrl = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = downloadUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(downloadUrl);
+        showToast(`Downloaded document ${docId}.`, "mint");
+      } catch (err) {
+        showToast(err.message || "Download failed.", "coral");
+      } finally {
+        btn.disabled = false;
+      }
     });
   });
 
   // Withdraw request
   root.querySelectorAll("[data-withdraw-request]").forEach((btn) => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", async () => {
       const reqId = btn.dataset.withdrawRequest;
-      showToast(`Change request ${reqId} withdrawn.`, "mint");
+      if (!confirm(`Are you sure you want to withdraw request ${reqId}?`)) return;
+      try {
+        btn.disabled = true;
+        await apiPost(`/employees/me/change-requests/${reqId}/withdraw`, {});
+        showToast(`Change request ${reqId} withdrawn successfully.`, "mint");
+        loadProfile(root);
+      } catch (err) {
+        showToast(err.message || "Failed to withdraw request.", "coral");
+        btn.disabled = false;
+      }
     });
   });
 }

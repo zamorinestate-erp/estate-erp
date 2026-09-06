@@ -55,13 +55,13 @@ router.get(
 // Pre-spend Requests
 router.get(
   '/requests',
-  authorize('EXPENSE:READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN', 'STAFF'] }),
+  authorize('EXPENSE:READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
   listExpenseRequests
 );
 
 router.post(
   '/requests',
-  authorize('EXPENSE:WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN', 'STAFF'] }),
+  authorize('EXPENSE:WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
   createExpenseRequest
 );
 
@@ -117,25 +117,25 @@ router
     listExpenses
   )
   .post(
-    authorize('EXPENSE:WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN', 'STAFF'] }),
+    authorize('EXPENSE:WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
     createExpense
   );
 
 router.get(
   '/:expenseId',
-  authorize('EXPENSE:READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN', 'STAFF'] }),
+  authorize('EXPENSE:READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
   getExpense
 );
 
 router.patch(
   '/:expenseId',
-  authorize('EXPENSE:WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN', 'STAFF'] }),
+  authorize('EXPENSE:WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
   updateExpense
 );
 
 router.post(
   '/:expenseId/submit',
-  authorize('EXPENSE:WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN', 'STAFF'] }),
+  authorize('EXPENSE:WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
   submitExpense
 );
 

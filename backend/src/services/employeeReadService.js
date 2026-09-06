@@ -524,7 +524,7 @@ function buildBaseEmployeeProfile(value) {
       isPrimaryMaster: value.isPrimaryMaster === true,
       createdAt: value.createdAt || null,
       updatedAt: value.updatedAt || null,
-      version: value.version || 1,
+      version: typeof value.version === 'number' ? value.version : 0,
     },
 
     personal: {
@@ -621,7 +621,8 @@ function buildBaseEmployeeProfile(value) {
 
 function buildEmployeeProfile(
   employee,
-  auth
+  auth,
+  options = {}
 ) {
   const value =
     assertEmployeeProfileAccess(
@@ -636,6 +637,47 @@ function buildEmployeeProfile(
     profile.availability.loansAndAdvances =
       'SELF_SERVICE_INTEGRATED';
   }
+
+  const skillsList = Array.isArray(options.skills) ? options.skills : [];
+  const trainingsList = Array.isArray(options.trainings) ? options.trainings : [];
+
+  profile.skills = skillsList.map((s) => {
+    const sName = s.skillName || s.name || '';
+    const sLevel = s.proficiency || s.proficiencyLevel || s.level || 'COMPETENT';
+    return {
+      skillId: s.skillId,
+      skillName: sName,
+      name: sName,
+      category: s.category || 'BARISTA',
+      proficiency: sLevel,
+      level: sLevel,
+      verifiedBy: s.verifiedBy || 'Cafe Management',
+      verifiedAt: s.verifiedAt ? (typeof s.verifiedAt === 'string' ? s.verifiedAt : new Date(s.verifiedAt).toISOString().split('T')[0]) : 'Verified',
+      validUntil: s.validUntil || null,
+      evidenceUrl: s.evidenceUrl || '',
+    };
+  });
+
+  profile.training = trainingsList.map((t) => {
+    const tTitle = t.trainingTitle || t.course || '';
+    return {
+      trainingId: t.trainingId,
+      trainingTitle: tTitle,
+      course: tTitle,
+      provider: t.provider || 'Zamorin Academy',
+      recurrence: t.recurrence || 'ONE_TIME',
+      status: t.status || 'ASSIGNED',
+      score: t.score || (t.status === 'COMPLETED' ? 'Passed' : t.status),
+      assignedDate: t.assignedDate,
+      dueDate: t.dueDate,
+      completedAt: t.completedAt ? (typeof t.completedAt === 'string' ? t.completedAt : new Date(t.completedAt).toISOString().split('T')[0]) : (t.status === 'COMPLETED' ? 'Completed' : 'Pending'),
+      verifiedBy: t.verifiedBy || null,
+      validUntil: t.validUntil || null,
+      certificateRef: t.certificateRef || '',
+    };
+  });
+
+  profile.assets = [];
 
   if (auth.role === 'MASTER') {
     profile.identity.previousNames =

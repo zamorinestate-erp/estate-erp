@@ -32,6 +32,7 @@ const SUPPORT_STATUSES = [
   'IN_PROGRESS',
   'WAITING_INTERNAL',
   'WAITING_EXTERNAL',
+  'WAITING_FOR_EMPLOYEE',
   'RESOLVED',
   'CLOSED',
 ];
@@ -179,6 +180,42 @@ const supportCaseSchema = new mongoose.Schema(
       maxlength: 2000,
       default: '',
     },
+
+    responses: [
+      {
+        responseId: {
+          type: String,
+          required: true,
+        },
+        authorUserId: {
+          type: String,
+          required: true,
+          trim: true,
+          uppercase: true,
+        },
+        authorRole: {
+          type: String,
+          required: true,
+          trim: true,
+          uppercase: true,
+        },
+        message: {
+          type: String,
+          required: true,
+          trim: true,
+          maxlength: 5000,
+        },
+        visibility: {
+          type: String,
+          enum: ['PUBLIC', 'INTERNAL'],
+          default: 'PUBLIC',
+        },
+        createdAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
   },
   {
     timestamps: true,
@@ -188,6 +225,7 @@ const supportCaseSchema = new mongoose.Schema(
 
 supportCaseSchema.index({ caseId: 1 }, { unique: true });
 supportCaseSchema.index({ organisationId: 1, status: 1 });
+supportCaseSchema.index({ organisationId: 1, cafeId: 1, status: 1 });
 supportCaseSchema.index({ organisationId: 1, gmailThreadId: 1 });
 supportCaseSchema.index({ senderEmail: 1, createdAt: -1 });
 

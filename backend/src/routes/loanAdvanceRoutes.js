@@ -17,7 +17,9 @@ const {
   withdrawMyRequest,
   reportManualRepayment,
   requestRepaymentPause,
+  decideRepaymentPause,
   getMySettlementQuote,
+  requestEarlySettlement,
   listOrgLoans,
   approveLoan,
   disburseLoan,
@@ -104,6 +106,15 @@ router.get(
   getMySettlementQuote
 );
 
+router.post(
+  '/me/loans/:loanAdvanceId/settlement-request',
+  authorize('LOAN_ADVANCE_WRITE_SELF', {
+    allowedRoles: ['STAFF', 'CAFE_ADMIN', 'OWNER', 'MASTER'],
+    targetUserIdResolver: (req) => req.auth?.userId,
+  }),
+  requestEarlySettlement
+);
+
 // ── 2. Primary Master Organisation-Wide Administration ──────────────────────
 
 router.get(
@@ -122,6 +133,12 @@ router.post(
   '/admin/loans/:loanAdvanceId/disburse',
   authorize('LOAN_ADVANCE_ADMIN', { allowedRoles: ['MASTER'], requirePrimaryMaster: true }),
   disburseLoan
+);
+
+router.post(
+  '/admin/loans/:loanAdvanceId/pause-decision',
+  authorize('LOAN_ADVANCE_ADMIN', { allowedRoles: ['MASTER', 'OWNER'] }),
+  decideRepaymentPause
 );
 
 router.post(

@@ -233,13 +233,22 @@ const staffLoanAdvanceSchema = new mongoose.Schema(
       resumePeriod: { type: String, default: null },
       pauseReason: { type: String, default: null },
       approvedByUserId: { type: String, default: null },
+      approvedAt: { type: Date, default: null },
+      rejectedAt: { type: Date, default: null },
+      notes: { type: String, default: null },
+      rejectionReason: { type: String, default: null },
     },
 
     settlementDetails: {
       isSettled: { type: Boolean, default: false },
+      settlementRequested: { type: Boolean, default: false },
+      settlementRequestedAt: { type: Date, default: null },
+      settlementQuotePaise: { type: Number, default: 0 },
       settledAmountPaise: { type: Number, default: 0 },
       settledAt: { type: Date, default: null },
       paymentRef: { type: String, default: null },
+      paymentMode: { type: String, default: null },
+      notes: { type: String, default: null },
       noDueCertificateGenerated: { type: Boolean, default: false },
     },
 

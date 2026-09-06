@@ -38,6 +38,7 @@ import { renderStaffAttendance, wireStaffAttendance } from "./modules/attendance
 import { renderStaffLeave, wireStaffLeave } from "./pages/staffLeave.js";
 import { renderStaffPayslips, wireStaffPayslips } from "./pages/staffPayslips.js";
 import { renderStaffLoansAdvances, wireStaffLoansAdvances } from "./pages/staffLoansAdvances.js";
+import { renderStaffDocuments, wireStaffDocuments } from "./pages/staffDocuments.js";
 import { renderPayrollManagement, wirePayrollManagement, setPayrollActiveTab } from "./pages/payrollManagement.js";
 import { renderAnnouncements, wireAnnouncements } from "./pages/announcements.js";
 import { renderNotAvailable, renderNotBuiltYet } from "./pages/notAvailable.js";
@@ -290,7 +291,8 @@ async function renderPage() {
   }
 
   // Universal Module Base Route and Subroute Parsing
-  const [baseRoute, ...subSegments] = (route || "").split("/");
+  const [routePath] = (route || "").split("?");
+  const [baseRoute, ...subSegments] = routePath.split("/");
   const subroute = subSegments.join("/");
 
   switch (baseRoute) {
@@ -429,6 +431,10 @@ async function renderPage() {
       break;
 
     case "employee-profile":
+    case "profile":
+    case "my-profile":
+    case "employment":
+    case "my-employment":
       content.innerHTML = renderEmployeeProfile();
       wireEmployeeProfile(content);
       break;
@@ -522,6 +528,11 @@ async function renderPage() {
     case "staff-loans-advances":
       content.innerHTML = renderStaffLoansAdvances();
       wireStaffLoansAdvances(content);
+      break;
+
+    case "staff-documents":
+      content.innerHTML = renderStaffDocuments();
+      wireStaffDocuments(content);
       break;
 
     case "announcements":

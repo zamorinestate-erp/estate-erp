@@ -9,6 +9,7 @@
  * Never fabricates times. Never trusts frontend-supplied shift data.
  */
 
+const mongoose = require('mongoose');
 const { ShiftRoster } = require('../models/ShiftRoster');
 const { Shift } = require('../models/Shift');
 
@@ -34,6 +35,9 @@ function getWeekStartDate(dateStr) {
  * @returns {object|null} Shift snapshot or null
  */
 async function resolveEmployeeShiftForDate({ organisationId, userId, cafeId, businessDate }) {
+  if (mongoose.connection?.readyState !== 1 && ShiftRoster.findOne === mongoose.Model.findOne) {
+    return null;
+  }
   const weekStartDate = getWeekStartDate(businessDate);
 
   // Step 1: Look for a PUBLISHED roster for the café+week

@@ -26,6 +26,9 @@ const {
 } = require('../services/auditService');
 
 const { LeaveRequest } = require('../models/LeaveRequest');
+const { Notification } = require('../models/Notification');
+const { NotificationOutbox } = require('../models/NotificationOutbox');
+const { User } = require('../models/User');
 const { reconcileLeaveToAttendance } = require('../services/leaveReconciliationService');
 
 function normalizeId(value) {
@@ -159,24 +162,91 @@ const decideApproval = asyncHandler(async (request, response) => {
 
   await approval.save();
 
-  if (approval.entityType === 'LEAVE' || approval.entityType === 'LEAVE_REQUEST') {
+  if (approval.entityType === 'LEAVE' || approval.entityType === 'LEAVE_REQUEST' || approval.entityType === 'LEAVE_CANCELLATION') {
     try {
       const leaveRequest = await LeaveRequest.findOne({
         organisationId: request.auth.organisationId,
         $or: [{ leaveId: approval.entityId }, { requestId: approval.entityId }],
       });
       if (leaveRequest) {
-        leaveRequest.status = targetDecision;
-        leaveRequest.approvedBy = request.auth.userId;
-        leaveRequest.approvedAt = new Date();
+        const isCancellation = approval.entityType === 'LEAVE_CANCELLATION';
+        if (isCancellation) {
+          leaveRequest.status = targetDecision === 'APPROVED' ? 'CANCELLED' : 'APPROVED';
+          leaveRequest.cancellationDecision = targetDecision;
+          leaveRequest.cancellationDecidedBy = request.auth.userId;
+          leaveRequest.cancellationDecidedAt = new Date();
+        } else {
+          leaveRequest.status = targetDecision;
+          leaveRequest.approvedBy = request.auth.userId;
+          leaveRequest.approvedAt = new Date();
+        }
         leaveRequest.decisionReason = typeof reason === 'string' ? reason.trim() : '';
         await leaveRequest.save();
 
-        await reconcileLeaveToAttendance({
+        const reconcileAction = isCancellation
+          ? (targetDecision === 'APPROVED' ? 'CANCEL' : 'NONE')
+          : (targetDecision === 'APPROVED' ? 'APPROVE' : 'REJECT');
+
+        if (reconcileAction !== 'NONE') {
+          await reconcileLeaveToAttendance({
+            organisationId: request.auth.organisationId,
+            leaveRequest,
+            action: reconcileAction,
+            actorUserId: request.auth.userId,
+          });
+        }
+
+        // Emit Employee Notification
+        const eventType = isCancellation
+          ? (targetDecision === 'APPROVED' ? 'LEAVE_CANCELLATION_APPROVED' : 'LEAVE_CANCELLATION_REJECTED')
+          : (targetDecision === 'APPROVED' ? 'LEAVE_APPROVED' : 'LEAVE_REJECTED');
+
+        const empUser = await User.findOne({
           organisationId: request.auth.organisationId,
-          leaveRequest,
-          action: targetDecision === 'APPROVED' ? 'APPROVE' : 'REJECT',
-          actorUserId: request.auth.userId,
+          userId: leaveRequest.userId,
+        }).select('email name').lean();
+
+        const recipientEmail = empUser?.email || `${String(leaveRequest.userId).toLowerCase()}@zamorincafe.com`;
+        const recipientName = empUser?.name || leaveRequest.userId;
+
+        const outboxId = `OUT-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+        await NotificationOutbox.create({
+          outboxId,
+          organisationId: request.auth.organisationId,
+          eventType,
+          recipientUserId: leaveRequest.userId,
+          recipientEmail,
+          recipientName,
+          recipientRole: 'STAFF',
+          templateId: 'LEAVE_STATUS_UPDATE',
+          subject: `Leave Request ${leaveRequest.leaveId || approval.entityId}: ${isCancellation ? 'Cancellation ' + targetDecision : targetDecision}`,
+          renderedSubject: `Leave Request ${leaveRequest.leaveId || approval.entityId}: ${isCancellation ? 'Cancellation ' + targetDecision : targetDecision}`,
+          renderedBody: `Your leave request (${leaveRequest.startDate} to ${leaveRequest.endDate}) has been updated: ${targetDecision}.${leaveRequest.decisionReason ? ' Reason: ' + leaveRequest.decisionReason : ''}`,
+          status: 'SENT',
+          sentAt: new Date(),
+        });
+
+        const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+        const notifId = `NT-${todayStr}-${Math.floor(1000 + Math.random() * 9000)}`;
+        await Notification.create({
+          notificationId: notifId,
+          organisationId: request.auth.organisationId,
+          eventType,
+          category: 'OPERATIONS',
+          recipientUserId: leaveRequest.userId,
+          recipientRole: 'STAFF',
+          recipientEmail,
+          title: `Leave ${isCancellation ? 'Cancellation ' : ''}${targetDecision}`,
+          message: `Your leave request for ${leaveRequest.startDate} to ${leaveRequest.endDate} was ${targetDecision.toLowerCase()}.`,
+          priority: 'NORMAL',
+          channels: ['IN_APP'],
+          deepLink: `#staff-leave?requestId=${leaveRequest.leaveId || approval.entityId}`,
+          sourceModule: 'LEAVE',
+          sourceEntityType: approval.entityType,
+          sourceEntityId: leaveRequest.leaveId || approval.entityId,
+          deduplicationKey: `${leaveRequest.leaveId || approval.entityId}:${targetDecision}:${Date.now()}`,
+          correlationId: request.correlationId || outboxId,
+          createdBy: request.auth.userId || 'SYSTEM',
         });
       }
     } catch (_) {}

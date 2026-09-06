@@ -151,7 +151,6 @@ export const PRIMARY_MASTER_ONLY_ROUTES = new Set([
   'passbook',
   'ledger',
   'payroll',
-  'staff-loans-advances',
   'revenue-share',
   'org-identity',
   'organisation-identity',
@@ -167,9 +166,11 @@ const IMPLICIT_ROUTES_ALL = new Set([
   'staff-leave',
   'staff-payslips',
   'staff-loans-advances',
+  'staff-documents',
   'staff-settings',
   'staff-home',
   'announcements',
+  'employee-profile',
 ]);
 
 // Implicit routes specific to CAFE_ADMIN — auth-context pages (not sidebar items)
@@ -184,7 +185,8 @@ const IMPLICIT_ROUTES_CAFE_ADMIN = new Set([
 
 // ─── Route allowlist check ─────────────────────────────────────────────────────
 export function isRouteAllowed(role, rawRoute, isPrimaryMaster = false) {
-  const route = (rawRoute || '').replace(/^#/, '');
+  const cleanRoute = (rawRoute || '').replace(/^#/, '');
+  const route = cleanRoute.split('?')[0];
   // Implicit routes allowed for all authenticated roles
   if (IMPLICIT_ROUTES_ALL.has(route)) return true;
 
@@ -197,7 +199,13 @@ export function isRouteAllowed(role, rawRoute, isPrimaryMaster = false) {
   if (role === ROLES.CAFE_ADMIN && IMPLICIT_ROUTES_CAFE_ADMIN.has(route)) return true;
 
   // Settings subroutes and universal profile/employment aliases
-  if (route === "profile" || route === "my-profile" || route === "employment" || route === "my-employment") {
+  if (
+    route === "employee-profile" ||
+    route === "profile" ||
+    route === "my-profile" ||
+    route === "employment" ||
+    route === "my-employment"
+  ) {
     return true;
   }
 
@@ -224,7 +232,8 @@ export function isRouteAllowed(role, rawRoute, isPrimaryMaster = false) {
     items = navConfig.items;
   }
 
-  const baseRoute = route ? route.split("/")[0] : "";
+  const pathOnly = route ? route.split("?")[0] : "";
+  const baseRoute = pathOnly ? pathOnly.split("/")[0] : "";
   const routeAliases = {
     'devices': 'cafe-ops-devices',
     'cafe-ops-devices': 'devices',
@@ -240,7 +249,7 @@ export function isRouteAllowed(role, rawRoute, isPrimaryMaster = false) {
   if (
     role === ROLES.MASTER &&
     !isPrimaryMaster &&
-    (PRIMARY_MASTER_ONLY_ROUTES.has(route) || PRIMARY_MASTER_ONLY_ROUTES.has(baseRoute))
+    (PRIMARY_MASTER_ONLY_ROUTES.has(pathOnly) || PRIMARY_MASTER_ONLY_ROUTES.has(route) || PRIMARY_MASTER_ONLY_ROUTES.has(baseRoute))
   ) {
     return false;
   }
@@ -249,8 +258,10 @@ export function isRouteAllowed(role, rawRoute, isPrimaryMaster = false) {
 
   // Check direct route match or base module match or alias match
   return Boolean(
+    allowed.includes(pathOnly) ||
     allowed.includes(route) ||
     (baseRoute && allowed.includes(baseRoute)) ||
+    (routeAliases[pathOnly] && allowed.includes(routeAliases[pathOnly])) ||
     (routeAliases[route] && allowed.includes(routeAliases[route])) ||
     (routeAliases[baseRoute] && allowed.includes(routeAliases[baseRoute]))
   );

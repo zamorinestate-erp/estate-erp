@@ -995,6 +995,525 @@ async function getDiagnostics(req, res) {
   });
 }
 
+/**
+ * POST /api/v1/settings/support/tickets
+ * Self-service: Submit an in-app support case / ticket.
+ */
+async function submitSupportTicket(req, res) {
+  const user = req.user || req.auth || {};
+  const { userId, organisationId, primaryCafeId, email } = user;
+  const { category = 'GENERAL_INQUIRY', severity = 'NORMAL', summary, description } = req.body || {};
+
+  if (!summary || !String(summary).trim()) {
+    throw new ApiError(400, 'SUMMARY_REQUIRED', 'A brief summary of the issue is required.');
+  }
+
+  if (!description || !String(description).trim()) {
+    throw new ApiError(400, 'DESCRIPTION_REQUIRED', 'A detailed description of the issue is required.');
+  }
+
+  const { SupportCase, SUPPORT_CATEGORIES, SUPPORT_SEVERITIES } = require('../models/SupportCase');
+
+  const validCategory = SUPPORT_CATEGORIES.includes(category) ? category : 'GENERAL_INQUIRY';
+  const validSeverity = SUPPORT_SEVERITIES.includes(severity) ? severity : 'NORMAL';
+
+  const year = new Date().getFullYear();
+  const randSeq = Math.floor(1000 + Math.random() * 9000);
+  const caseId = `CASE-${year}-${randSeq}`;
+
+  const senderEmail = email || `${String(userId).toLowerCase()}@zamorincafe.com`;
+
+  const supportCase = await SupportCase.create({
+    caseId,
+    organisationId,
+    cafeId: primaryCafeId || null,
+    category: validCategory,
+    severity: validSeverity,
+    status: 'OPEN',
+    source: 'IN_APP',
+    reportedByUserId: userId,
+    senderEmail,
+    summary: String(summary).trim().slice(0, 300),
+    description: String(description).trim().slice(0, 5000),
+  });
+
+  try {
+    await auditService.log({
+      organisationId,
+      action: 'SETTINGS_SUPPORT_TICKET_SUBMITTED',
+      performedByUserId: userId,
+      metadata: { caseId, category: validCategory, severity: validSeverity },
+    });
+  } catch (e) {}
+
+  res.status(201).json({
+    success: true,
+    message: 'Support ticket submitted successfully.',
+    data: { ticket: supportCase },
+  });
+}
+
+/**
+ * GET /api/v1/settings/support/tickets
+ * Self-service: List the authenticated user's support tickets.
+ */
+async function listMySupportTickets(req, res) {
+  const user = req.user || req.auth || {};
+  const { userId, organisationId } = user;
+  const { SupportCase } = require('../models/SupportCase');
+
+  const rawTickets = await SupportCase.find({
+    organisationId,
+    reportedByUserId: userId,
+  })
+    .sort({ createdAt: -1 })
+    .limit(50)
+    .lean();
+
+  const tickets = rawTickets.map((t) => {
+    if (t.responses && Array.isArray(t.responses)) {
+      t.responses = t.responses.filter((r) => r.visibility !== 'INTERNAL');
+    }
+    return t;
+  });
+
+  res.status(200).json({
+    success: true,
+    data: { tickets },
+  });
+}
+
+/**
+ * GET /api/v1/settings/support/manage/tickets
+ * Management Queue: List support cases with tenant and role scoping.
+ */
+async function listManageSupportTickets(req, res) {
+  const user = req.user || req.auth || {};
+  const { userId, organisationId, role, assignedCafeIds = [], primaryCafeId } = user;
+
+  if (!['MASTER', 'OWNER', 'CAFE_ADMIN'].includes(role)) {
+    throw new ApiError(403, 'PERMISSION_DENIED', 'Only management roles can view the support queue.');
+  }
+
+  const { SupportCase } = require('../models/SupportCase');
+
+  const filter = { organisationId };
+
+  if (role === 'CAFE_ADMIN') {
+    const validCafes = [...(assignedCafeIds || [])];
+    if (primaryCafeId && !validCafes.includes(primaryCafeId)) {
+      validCafes.push(primaryCafeId);
+    }
+    filter.cafeId = { $in: validCafes };
+  }
+
+  const { status, category, severity, search, page = 1, limit = 20 } = req.query;
+
+  if (status && status !== 'ALL') {
+    filter.status = status;
+  }
+  if (category && category !== 'ALL') {
+    filter.category = category;
+  }
+  if (severity && severity !== 'ALL') {
+    filter.severity = severity;
+  }
+  if (search && search.trim()) {
+    const term = search.trim();
+    filter.$or = [
+      { caseId: { $regex: term, $options: 'i' } },
+      { summary: { $regex: term, $options: 'i' } },
+      { reportedByUserId: { $regex: term, $options: 'i' } },
+      { senderEmail: { $regex: term, $options: 'i' } },
+    ];
+  }
+
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+
+  const [total, tickets] = await Promise.all([
+    SupportCase.countDocuments(filter),
+    SupportCase.find(filter)
+      .sort({ createdAt: -1 })
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum)
+      .lean(),
+  ]);
+
+  res.status(200).json({
+    success: true,
+    data: {
+      tickets,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages: Math.ceil(total / limitNum),
+      },
+    },
+  });
+}
+
+/**
+ * GET /api/v1/settings/support/manage/tickets/:caseId
+ * Management Queue: Get single support case details.
+ */
+async function getManageSupportTicket(req, res) {
+  const user = req.user || req.auth || {};
+  const { userId, organisationId, role, assignedCafeIds = [], primaryCafeId } = user;
+
+  if (!['MASTER', 'OWNER', 'CAFE_ADMIN'].includes(role)) {
+    throw new ApiError(403, 'PERMISSION_DENIED', 'Only management roles can view support cases.');
+  }
+
+  const caseId = req.params.caseId?.trim().toUpperCase();
+  const { SupportCase } = require('../models/SupportCase');
+
+  const ticket = await SupportCase.findOne({ organisationId, caseId }).lean();
+  if (!ticket) {
+    throw new ApiError(404, 'NOT_FOUND', `Support case ${caseId} not found.`);
+  }
+
+  if (role === 'CAFE_ADMIN') {
+    const validCafes = [...(assignedCafeIds || [])];
+    if (primaryCafeId && !validCafes.includes(primaryCafeId)) {
+      validCafes.push(primaryCafeId);
+    }
+    if (!validCafes.includes(ticket.cafeId)) {
+      throw new ApiError(403, 'CAFE_ACCESS_DENIED', 'Access denied to support case outside your assigned cafe.');
+    }
+  }
+
+  res.status(200).json({
+    success: true,
+    data: { ticket },
+  });
+}
+
+/**
+ * PATCH /api/v1/settings/support/manage/tickets/:caseId
+ * Management Queue: Update support case status and assignment with lifecycle validation.
+ */
+async function updateManageSupportTicket(req, res) {
+  const user = req.user || req.auth || {};
+  const { userId, organisationId, role, assignedCafeIds = [], primaryCafeId } = user;
+
+  if (!['MASTER', 'OWNER', 'CAFE_ADMIN'].includes(role)) {
+    throw new ApiError(403, 'PERMISSION_DENIED', 'Only management roles can update support cases.');
+  }
+
+  const caseId = req.params.caseId?.trim().toUpperCase();
+  const { SupportCase } = require('../models/SupportCase');
+  const { Notification } = require('../models/Notification');
+  const { NotificationOutbox } = require('../models/NotificationOutbox');
+
+  const ticket = await SupportCase.findOne({ organisationId, caseId });
+  if (!ticket) {
+    throw new ApiError(404, 'NOT_FOUND', `Support case ${caseId} not found.`);
+  }
+
+  if (role === 'CAFE_ADMIN') {
+    const validCafes = [...(assignedCafeIds || [])];
+    if (primaryCafeId && !validCafes.includes(primaryCafeId)) {
+      validCafes.push(primaryCafeId);
+    }
+    if (!validCafes.includes(ticket.cafeId)) {
+      throw new ApiError(403, 'CAFE_ACCESS_DENIED', 'Access denied to support case outside your assigned cafe.');
+    }
+  }
+
+  const { status, assignedToUserId, resolutionSummary } = req.body || {};
+
+  // Lifecycle state transition validation
+  if (status && status !== ticket.status) {
+    const ALLOWED_TRANSITIONS = {
+      OPEN: ['IN_PROGRESS', 'CLOSED'],
+      ACKNOWLEDGED: ['IN_PROGRESS', 'CLOSED'],
+      IN_PROGRESS: ['WAITING_FOR_EMPLOYEE', 'WAITING_INTERNAL', 'WAITING_EXTERNAL', 'RESOLVED', 'CLOSED'],
+      WAITING_FOR_EMPLOYEE: ['IN_PROGRESS', 'RESOLVED', 'CLOSED'],
+      WAITING_INTERNAL: ['IN_PROGRESS', 'RESOLVED', 'CLOSED'],
+      WAITING_EXTERNAL: ['IN_PROGRESS', 'RESOLVED', 'CLOSED'],
+      RESOLVED: ['CLOSED', 'IN_PROGRESS'],
+      CLOSED: ['IN_PROGRESS'],
+    };
+
+    const allowed = ALLOWED_TRANSITIONS[ticket.status] || [];
+    if (!allowed.includes(status)) {
+      throw new ApiError(400, 'INVALID_STATUS_TRANSITION', `Cannot transition support case from ${ticket.status} to ${status}. Allowed: ${allowed.join(', ')}`);
+    }
+
+    ticket.status = status;
+
+    if (status === 'IN_PROGRESS' && !ticket.acknowledgedAt) {
+      ticket.acknowledgedAt = new Date();
+    }
+    if (status === 'RESOLVED') {
+      ticket.resolvedAt = new Date();
+      if (resolutionSummary) ticket.resolutionSummary = String(resolutionSummary).trim().slice(0, 2000);
+    }
+    if (status === 'CLOSED') {
+      ticket.closedAt = new Date();
+    }
+
+    // Emit Employee Notification for status change
+    if (ticket.reportedByUserId) {
+      try {
+        const emp = await User.findOne({ organisationId, userId: ticket.reportedByUserId }).select('email name').lean();
+        if (emp) {
+          const outboxId = `OUT-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+          await NotificationOutbox.create({
+            outboxId,
+            organisationId,
+            eventType: 'SUPPORT_CASE_UPDATE',
+            recipientUserId: ticket.reportedByUserId,
+            recipientEmail: emp.email,
+            recipientName: emp.name,
+            recipientRole: 'STAFF',
+            templateId: 'SUPPORT_CASE_STATUS',
+            subject: `Support Case ${ticket.caseId} updated: ${status}`,
+            renderedSubject: `Support Case ${ticket.caseId} updated: ${status}`,
+            renderedBody: `Your support ticket "${ticket.summary}" has been updated to ${status}.${resolutionSummary ? ' Resolution: ' + resolutionSummary : ''}`,
+            status: 'SENT',
+            sentAt: new Date(),
+          });
+
+          const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+          const notifId = `NT-${todayStr}-${Math.floor(1000 + Math.random() * 9000)}`;
+          await Notification.create({
+            notificationId: notifId,
+            organisationId,
+            eventType: 'SUPPORT_CASE_UPDATE',
+            category: 'OPERATIONS',
+            recipientUserId: ticket.reportedByUserId,
+            recipientRole: 'STAFF',
+            recipientEmail: emp.email,
+            title: `Support Ticket ${ticket.caseId} ${status}`,
+            message: `Status updated to ${status}.${resolutionSummary ? ' ' + resolutionSummary : ''}`,
+            priority: 'NORMAL',
+            channels: ['IN_APP'],
+            deepLink: `#staff-settings?section=help&ticketId=${ticket.caseId}`,
+            sourceModule: 'SETTINGS',
+            sourceEntityType: 'SUPPORT_CASE',
+            sourceEntityId: ticket.caseId,
+            deduplicationKey: `${ticket.caseId}:${status}:${Date.now()}`,
+            correlationId: req.correlationId || outboxId,
+            createdBy: userId || 'SYSTEM',
+          });
+        }
+      } catch (notifErr) {}
+    }
+  }
+
+  if (assignedToUserId !== undefined) {
+    ticket.assignedToUserId = assignedToUserId ? String(assignedToUserId).trim().toUpperCase() : null;
+  }
+  if (resolutionSummary && !ticket.resolvedAt) {
+    ticket.resolutionSummary = String(resolutionSummary).trim().slice(0, 2000);
+  }
+
+  await ticket.save();
+
+  try {
+    await auditService.log({
+      organisationId,
+      action: 'SUPPORT_CASE_STATUS_CHANGED',
+      performedByUserId: userId,
+      metadata: { caseId: ticket.caseId, status: ticket.status, assignedToUserId: ticket.assignedToUserId },
+    });
+  } catch (e) {}
+
+  res.status(200).json({
+    success: true,
+    message: `Support case ${caseId} updated successfully.`,
+    data: { ticket },
+  });
+}
+
+/**
+ * POST /api/v1/settings/support/manage/tickets/:caseId/reply
+ * Management Queue: Add response to support case.
+ */
+async function addSupportTicketReply(req, res) {
+  const user = req.user || req.auth || {};
+  const { userId, organisationId, role, assignedCafeIds = [], primaryCafeId } = user;
+
+  if (!['MASTER', 'OWNER', 'CAFE_ADMIN'].includes(role)) {
+    throw new ApiError(403, 'PERMISSION_DENIED', 'Only management roles can reply to support cases.');
+  }
+
+  const caseId = req.params.caseId?.trim().toUpperCase();
+  const { message, visibility = 'PUBLIC', setStatusWaiting = true } = req.body || {};
+
+  if (!message || !String(message).trim()) {
+    throw new ApiError(400, 'MESSAGE_REQUIRED', 'Reply message is required.');
+  }
+
+  const { SupportCase } = require('../models/SupportCase');
+  const { Notification } = require('../models/Notification');
+  const { NotificationOutbox } = require('../models/NotificationOutbox');
+
+  const ticket = await SupportCase.findOne({ organisationId, caseId });
+  if (!ticket) {
+    throw new ApiError(404, 'NOT_FOUND', `Support case ${caseId} not found.`);
+  }
+
+  if (role === 'CAFE_ADMIN') {
+    const validCafes = [...(assignedCafeIds || [])];
+    if (primaryCafeId && !validCafes.includes(primaryCafeId)) {
+      validCafes.push(primaryCafeId);
+    }
+    if (!validCafes.includes(ticket.cafeId)) {
+      throw new ApiError(403, 'CAFE_ACCESS_DENIED', 'Access denied to support case outside your assigned cafe.');
+    }
+  }
+
+  const responseId = `RSP-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+  const validVis = visibility === 'INTERNAL' ? 'INTERNAL' : 'PUBLIC';
+
+  ticket.responses = ticket.responses || [];
+  ticket.responses.push({
+    responseId,
+    authorUserId: userId,
+    authorRole: role,
+    message: String(message).trim().slice(0, 5000),
+    visibility: validVis,
+    createdAt: new Date(),
+  });
+
+  if (validVis === 'PUBLIC' && setStatusWaiting) {
+    ticket.status = 'WAITING_FOR_EMPLOYEE';
+  }
+
+  await ticket.save();
+
+  if (validVis === 'PUBLIC' && ticket.reportedByUserId) {
+    try {
+      const emp = await User.findOne({ organisationId, userId: ticket.reportedByUserId }).select('email name').lean();
+      if (emp) {
+        const outboxId = `OUT-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+        await NotificationOutbox.create({
+          outboxId,
+          organisationId,
+          eventType: 'SUPPORT_CASE_REPLY',
+          recipientUserId: ticket.reportedByUserId,
+          recipientEmail: emp.email,
+          recipientName: emp.name,
+          recipientRole: 'STAFF',
+          templateId: 'SUPPORT_CASE_MESSAGE',
+          subject: `New message on Support Case ${ticket.caseId}`,
+          renderedSubject: `New message on Support Case ${ticket.caseId}`,
+          renderedBody: `Support team replied to your case "${ticket.summary}":\n\n${message.trim()}`,
+          status: 'SENT',
+          sentAt: new Date(),
+        });
+
+        const todayStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+        const notifId = `NT-${todayStr}-${Math.floor(1000 + Math.random() * 9000)}`;
+        await Notification.create({
+          notificationId: notifId,
+          organisationId,
+          eventType: 'SUPPORT_CASE_REPLY',
+          category: 'OPERATIONS',
+          recipientUserId: ticket.reportedByUserId,
+          recipientRole: 'STAFF',
+          recipientEmail: emp.email,
+          title: `New message on Support Case ${ticket.caseId}`,
+          message: `${String(message).trim().slice(0, 120)}...`,
+          priority: 'NORMAL',
+          channels: ['IN_APP'],
+          deepLink: `#staff-settings?section=help&ticketId=${ticket.caseId}`,
+          sourceModule: 'SETTINGS',
+          sourceEntityType: 'SUPPORT_CASE',
+          sourceEntityId: ticket.caseId,
+          deduplicationKey: `${ticket.caseId}:REPLY:${Date.now()}`,
+          correlationId: req.correlationId || outboxId,
+          createdBy: userId || 'SYSTEM',
+        });
+      }
+    } catch (notifErr) {}
+  }
+
+  try {
+    await auditService.log({
+      organisationId,
+      action: 'SUPPORT_CASE_RESPONSE',
+      performedByUserId: userId,
+      metadata: { caseId: ticket.caseId, responseId, visibility: validVis },
+    });
+  } catch (e) {}
+
+  res.status(201).json({
+    success: true,
+    message: 'Reply added successfully.',
+    data: { ticket },
+  });
+}
+
+/**
+ * POST /api/v1/settings/support/tickets/:caseId/reply
+ * Self-service: Employee replies to their own ticket.
+ */
+async function addEmployeeSupportTicketReply(req, res) {
+  const user = req.user || req.auth || {};
+  const { userId, organisationId } = user;
+
+  const caseId = req.params.caseId?.trim().toUpperCase();
+  const { message } = req.body || {};
+
+  if (!message || !String(message).trim()) {
+    throw new ApiError(400, 'MESSAGE_REQUIRED', 'Reply message is required.');
+  }
+
+  const { SupportCase } = require('../models/SupportCase');
+
+  const ticket = await SupportCase.findOne({
+    organisationId,
+    caseId,
+    reportedByUserId: userId,
+  });
+
+  if (!ticket) {
+    throw new ApiError(404, 'NOT_FOUND', `Support ticket ${caseId} not found.`);
+  }
+
+  if (ticket.status === 'CLOSED') {
+    throw new ApiError(400, 'TICKET_CLOSED', 'Cannot reply to a closed support ticket.');
+  }
+
+  const responseId = `RSP-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+  ticket.responses = ticket.responses || [];
+  ticket.responses.push({
+    responseId,
+    authorUserId: userId,
+    authorRole: 'STAFF',
+    message: String(message).trim().slice(0, 5000),
+    visibility: 'PUBLIC',
+    createdAt: new Date(),
+  });
+
+  if (ticket.status === 'WAITING_FOR_EMPLOYEE' || ticket.status === 'WAITING_EXTERNAL') {
+    ticket.status = 'IN_PROGRESS';
+  }
+
+  await ticket.save();
+
+  try {
+    await auditService.log({
+      organisationId,
+      action: 'SUPPORT_CASE_EMPLOYEE_REPLY',
+      performedByUserId: userId,
+      metadata: { caseId: ticket.caseId, responseId },
+    });
+  } catch (e) {}
+
+  res.status(201).json({
+    success: true,
+    message: 'Your reply has been submitted.',
+    data: { ticket },
+  });
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // DELEGATION & COVERAGE (P2)
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1167,6 +1686,13 @@ module.exports = {
   createDelegation,
   revokeDelegation,
   getDiagnostics,
+  submitSupportTicket,
+  listMySupportTickets,
+  listManageSupportTickets,
+  getManageSupportTicket,
+  updateManageSupportTicket,
+  addSupportTicketReply,
+  addEmployeeSupportTicketReply,
 };
 
 

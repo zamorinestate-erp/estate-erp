@@ -23,13 +23,15 @@ import {
 } from "../../utils/cameraGeo.js";
 import { openAttendanceEvidenceViewer } from "./attendanceEvidenceViewer.js";
 import { CANONICAL_ZAMORIN_COMPANY_LOGO_SVG } from "../../utils/qrCodeGen.js";
+import { setupModalA11y } from "../../utils/modalA11y.js";
 
-let activeTab = "TODAY"; // 'TODAY' | 'CALENDAR' | 'TIMECARD' | 'CORRECTIONS' | 'ATTESTATION'
+let activeTab = "TODAY"; // 'TODAY' | 'ROSTER' | 'CALENDAR' | 'TIMECARD' | 'CORRECTIONS' | 'ATTESTATION'
 let clockTimer = null;
 let currentMonth = new Date().toISOString().slice(0, 7);
 let serverTimeOffset = 0;
 let cachedToday = null;
 let cachedShift = null;
+let cachedSchedule = [];
 let cachedHistory = [];
 let cachedSummary = null;
 let cachedCorrections = [];
@@ -47,6 +49,7 @@ export function renderStaffAttendance() {
       <div class="card" style="padding:8px 12px; margin-bottom:20px; background:var(--bg-surface-1); border-radius:var(--radius-lg); box-shadow:var(--shadow-sm);">
         <div class="flex items-center gap-xs flex-wrap" id="attendance-nav-tabs">
           ${renderNavTab("TODAY", "Today's Shift & Punch ⏱️")}
+          ${renderNavTab("ROSTER", "Weekly Roster 🗓️")}
           ${renderNavTab("CALENDAR", "Monthly Calendar 📅")}
           ${renderNavTab("TIMECARD", "Timecard & History 📋")}
           ${renderNavTab("CORRECTIONS", "Corrections & Issues ⚡")}
@@ -72,7 +75,7 @@ function renderHeader() {
       <div>
         <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
           <h1 style="font-size:24px; font-weight:700; margin:0; color:var(--ink);">My Attendance &amp; Shifts</h1>
-          <span class="badge" style="background:rgba(180,83,9,0.12); color:#b45309; font-weight:600; font-size:12px; padding:4px 10px; border-radius:12px; white-space:nowrap;">EMP-SCR-002</span>
+          <span class="badge" style="background:rgba(180,83,9,0.12); color:#b45309; font-weight:600; font-size:12px; padding:4px 10px; border-radius:12px; white-space:nowrap;">EMP-SCR-003</span>
         </div>
         <p style="font-size:13px; color:var(--muted); margin:4px 0 0;">${state.user?.primaryCafeName || state.user?.primaryCafeId || "Zamorin Operations"} · Employee Attendance &amp; Shifts Self-Service</p>
       </div>
@@ -110,6 +113,8 @@ function renderActiveTabContent() {
   switch (activeTab) {
     case "TODAY":
       return renderTodayTab();
+    case "ROSTER":
+      return renderWeeklyRosterTab();
     case "CALENDAR":
       return renderCalendarTab();
     case "TIMECARD":
@@ -345,6 +350,132 @@ function renderRecentHistoryRows() {
   `).join("");
 }
 
+
+// ── 1B. WEEKLY ROSTER TAB ───────────────────────────────────────────────────
+function renderWeeklyRosterTab() {
+  const schedule = cachedSchedule || [];
+  const cafeName = state.user?.primaryCafeName || state.user?.primaryCafeId || "Primary Café Outlet";
+
+  // Calculate stats
+  const totalAssigned = schedule.filter(s => !s.isWeeklyOff).length;
+  const weeklyOffs = schedule.filter(s => s.isWeeklyOff).length;
+
+  let scheduleCardsHtml = "";
+  if (schedule.length === 0) {
+    scheduleCardsHtml = `
+      <div class="card" style="padding:40px 24px; text-align:center; background:var(--bg-surface-1); border-radius:var(--radius-lg); border:1px dashed var(--border-subtle); grid-column:1/-1;">
+        <div style="font-size:36px; margin-bottom:12px;">🗓️</div>
+        <div style="font-size:16px; font-weight:700; color:var(--text-primary); margin-bottom:6px;">
+          No Published Roster for Current Period
+        </div>
+        <div style="font-size:13px; color:var(--text-muted); max-width:480px; margin:0 auto 20px; line-height:1.5;">
+          Management has not yet published the weekly shift roster for your assigned outlet. As soon as the roster is published, your duty times will appear here.
+        </div>
+        <button class="btn btn-sm btn-primary" id="btn-open-shift-change" type="button" style="font-weight:600;">
+          + Submit Shift Request / Availability
+        </button>
+      </div>
+    `;
+  } else {
+    scheduleCardsHtml = schedule.map((item) => {
+      const isOff = Boolean(item.isWeeklyOff);
+      const isOvernight = Boolean(item.isOvernight);
+      let dateObj;
+      try {
+        dateObj = new Date(item.date);
+        if (isNaN(dateObj.getTime())) dateObj = new Date();
+      } catch {
+        dateObj = new Date();
+      }
+      const weekdayStr = dateObj.toLocaleDateString("en-IN", { weekday: "long" });
+      const formattedDate = dateObj.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+      const timeDisplay = isOff
+        ? "Weekly Off"
+        : (item.startTime && item.endTime ? `${item.startTime} – ${item.endTime}` : (item.shiftName || "Standard Shift"));
+
+      return `
+        <div class="card" style="padding:18px 20px; background:var(--bg-surface-1); border-radius:var(--radius-lg); border:1px solid var(--border-subtle); box-shadow:var(--shadow-xs); display:flex; flex-direction:column; justify-content:space-between; gap:12px;">
+          <div>
+            <div class="flex items-center justify-between" style="margin-bottom:8px;">
+              <span style="font-size:12px; font-weight:700; color:var(--text-secondary); text-transform:uppercase; letter-spacing:0.04em;">
+                ${weekdayStr}
+              </span>
+              ${isOff
+                ? `<span class="badge" style="background:rgba(107,114,128,0.12); color:#6b7280; font-size:11px; font-weight:700; padding:2px 8px; border-radius:10px;">WEEKLY OFF</span>`
+                : `<span class="badge badge-mint" style="font-size:11px; font-weight:700; padding:2px 8px; border-radius:10px;">SCHEDULED</span>`
+              }
+            </div>
+
+            <div style="font-size:14px; font-weight:800; color:var(--text-primary); margin-bottom:4px;">
+              ${formattedDate}
+            </div>
+
+            <div style="font-size:15px; font-weight:700; color:${isOff ? 'var(--text-muted)' : 'var(--brand-gold, #b45309)'}; margin-bottom:6px;">
+              ${timeDisplay}
+            </div>
+
+            <div class="flex items-center gap-xs flex-wrap" style="font-size:12px; color:var(--text-muted);">
+              <span>📍 ${item.cafeId || cafeName}</span>
+              ${isOvernight ? `<span class="badge" style="background:rgba(99,102,241,0.12); color:#6366f1; font-size:10.5px; font-weight:600; padding:2px 6px; border-radius:6px;">🌙 Overnight</span>` : ''}
+              ${item.shiftName && !isOff ? `<span style="color:var(--text-secondary);">(${item.shiftName})</span>` : ''}
+            </div>
+          </div>
+
+          <div style="border-top:1px solid var(--border-subtle); padding-top:10px; display:flex; justify-content:flex-end;">
+            <button class="btn btn-xs btn-ghost btn-trigger-shift-change" type="button" data-shift-date="${item.date}" data-shift-name="${item.shiftName || ''}" style="font-size:11.5px; font-weight:600; color:var(--brand-gold);">
+              Request Shift Change →
+            </button>
+          </div>
+        </div>
+      `;
+    }).join("");
+  }
+
+  return `
+    <div style="margin-bottom:24px;">
+      <!-- Roster Header Banner -->
+      <div class="card" style="padding:20px 24px; background:var(--bg-surface-1); border-radius:var(--radius-lg); box-shadow:var(--shadow-sm); border:1px solid var(--border-subtle); margin-bottom:20px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px;">
+        <div>
+          <div style="font-size:18px; font-weight:800; color:var(--text-primary); margin-bottom:4px;">
+            Weekly Shift Schedule &amp; Assigned Roster
+          </div>
+          <div style="font-size:13px; color:var(--text-muted);">
+            Authoritative published roster for ${cafeName} · View your upcoming duty shifts and submit change requests.
+          </div>
+        </div>
+        <div class="flex items-center gap-sm">
+          <button class="btn btn-sm btn-secondary" id="btn-refresh-roster" type="button" style="font-size:12px; font-weight:600;">
+            ${icon("refresh", 13)} Refresh Roster
+          </button>
+          <button class="btn btn-sm btn-primary" id="btn-open-shift-change" type="button" style="font-weight:700; font-size:12px;">
+            + Request Shift Change
+          </button>
+        </div>
+      </div>
+
+      <!-- Stat Badges Strip -->
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:14px; margin-bottom:20px;">
+        <div class="card" style="padding:14px 18px; background:var(--bg-surface-1); border-radius:var(--radius-md); border:1px solid var(--border-subtle);">
+          <div style="font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase;">Scheduled Shifts</div>
+          <div style="font-size:22px; font-weight:800; color:var(--text-primary); margin-top:2px;">${totalAssigned} Days</div>
+        </div>
+        <div class="card" style="padding:14px 18px; background:var(--bg-surface-1); border-radius:var(--radius-md); border:1px solid var(--border-subtle);">
+          <div style="font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase;">Scheduled Rest / Off</div>
+          <div style="font-size:22px; font-weight:800; color:#6b7280; margin-top:2px;">${weeklyOffs} Days</div>
+        </div>
+        <div class="card" style="padding:14px 18px; background:var(--bg-surface-1); border-radius:var(--radius-md); border:1px solid var(--border-subtle);">
+          <div style="font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase;">Operating Outlet</div>
+          <div style="font-size:15px; font-weight:700; color:var(--text-primary); margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${cafeName}</div>
+        </div>
+      </div>
+
+      <!-- Schedule Cards Grid -->
+      <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:16px;" id="roster-cards-container">
+        ${scheduleCardsHtml}
+      </div>
+    </div>
+  `;
+}
 
 // ── 2. CALENDAR TAB ──────────────────────────────────────────────────────────
 function renderCalendarTab() {
@@ -761,13 +892,14 @@ export function wireStaffAttendance(root) {
     }
   }, 1000);
 
-  // 2. Fetch server time & today's status
+  // 2. Fetch server time, today's status & weekly roster
   async function loadInitialData() {
     try {
-      const [timeRes, todayRes, historyRes] = await Promise.all([
+      const [timeRes, todayRes, historyRes, scheduleRes] = await Promise.all([
         apiGet("/attendance/server-time").catch(() => null),
         apiGet("/attendance/today").catch(() => null),
         apiGet(`/attendance/history?month=${currentMonth}`).catch(() => null),
+        apiGet("/shifts/me/schedule").catch(() => null),
       ]);
 
       if (timeRes?.data?.utc) {
@@ -780,6 +912,9 @@ export function wireStaffAttendance(root) {
       if (historyRes?.data) {
         cachedHistory = historyRes.data.records || [];
         cachedSummary = historyRes.data.summary;
+      }
+      if (scheduleRes?.data?.schedule) {
+        cachedSchedule = scheduleRes.data.schedule || [];
       }
 
       refreshTabContent();
@@ -940,6 +1075,22 @@ export function wireStaffAttendance(root) {
     container.querySelector("#chk-shift-reminder")?.addEventListener("change", (e) => {
       showToast(e.target.checked ? "Shift reminder enabled." : "Shift reminder disabled.", "info");
     });
+
+    // Roster tab interactions
+    container.querySelector("#btn-refresh-roster")?.addEventListener("click", async () => {
+      await loadInitialData();
+      showToast("Weekly roster refreshed ✓", "mint");
+    });
+
+    container.querySelectorAll("#btn-open-shift-change, .btn-trigger-shift-change").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const date = btn.dataset.shiftDate;
+        const shiftName = btn.dataset.shiftName;
+        openShiftChangeModal(() => {
+          loadInitialData();
+        }, { requestedDate: date, currentShift: shiftName });
+      });
+    });
   }
 
   function updateNavTabs() {
@@ -971,6 +1122,13 @@ export function wireStaffAttendance(root) {
     }
   });
 
+  // 5. Query param / Hash deep-link check
+  const currentHash = typeof window !== "undefined" ? window.location.hash : "";
+  if (currentHash.includes("tab=weekly-roster") || currentHash.includes("tab=roster")) {
+    activeTab = "ROSTER";
+    updateNavTabs();
+  }
+
   loadInitialData();
 }
 
@@ -996,6 +1154,7 @@ export function openVerificationModal(flowType, onDoneCallback) {
   modal.className = "modal-backdrop flex items-center justify-center";
   modal.style.cssText = "position:fixed; inset:0; background:rgba(0,0,0,0.82); z-index:1050; padding:16px; backdrop-filter:blur(4px);";
 
+  let cleanupA11y = () => {};
   const cleanup = () => {
     if (qrScannerCancel) {
       try { qrScannerCancel(); } catch (_) {}
@@ -1010,16 +1169,17 @@ export function openVerificationModal(flowType, onDoneCallback) {
 
   const close = () => {
     cleanup();
+    cleanupA11y();
     modal.remove();
   };
 
   modal.innerHTML = `
     <div class="card" style="width:100%; max-width:500px; padding:22px; background:var(--bg-surface-1, #18181b); border-radius:var(--radius-lg, 12px); box-shadow:var(--shadow-lg); border:1px solid var(--border-subtle, #27272a); color:var(--text-primary, #f4f4f5);">
       <div class="flex items-center justify-between" style="margin-bottom:14px;">
-        <div style="font-size:16px; font-weight:800; color:var(--text-primary, #f4f4f5); display:flex; align-items:center; gap:8px;">
+        <div id="verif-modal-title" style="font-size:16px; font-weight:800; color:var(--text-primary, #f4f4f5); display:flex; align-items:center; gap:8px;">
           <span>${isCheckIn ? "⏱️ Secure Shift Check-In" : "⏱️ Secure Shift Check-Out"}</span>
         </div>
-        <button class="btn btn-xs btn-ghost" id="vmodal-close-btn" style="font-size:16px; cursor:pointer;" type="button">✕</button>
+        <button class="btn btn-xs btn-ghost" id="vmodal-close-btn" style="font-size:16px; cursor:pointer;" type="button" aria-label="Close verification dialog">✕</button>
       </div>
 
       <!-- Verification Steps Track -->
@@ -1092,6 +1252,7 @@ export function openVerificationModal(flowType, onDoneCallback) {
   `;
 
   document.body.appendChild(modal);
+  cleanupA11y = setupModalA11y(modal, { onClose: close, titleId: "verif-modal-title" });
 
   const videoEl = modal.querySelector("#vmodal-video");
   const previewEl = modal.querySelector("#vmodal-preview");
@@ -1338,6 +1499,11 @@ export function openVerificationModal(flowType, onDoneCallback) {
   // ── STEP 4: UPLOAD EVIDENCE & COMMIT AUTHORITATIVE PUNCH ─────────────────────
   async function submitAuthoritativePunch() {
     clearError();
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      showError("Network connection required. Offline punch caching is strictly prohibited for statutory audit integrity. Please verify internet connectivity and retry.");
+      showToast("Network connection required for attendance punches.", "coral");
+      return;
+    }
     btnAction.disabled = true;
     btnCancel.disabled = true;
     showLoading("Uploading encrypted selfie evidence...");
@@ -1417,7 +1583,7 @@ function openPunchReceiptModal(flowType, attendance) {
           ${CANONICAL_ZAMORIN_COMPANY_LOGO_SVG}
         </div>
       </div>
-      <div style="font-size:18px; font-weight:800; color:var(--text-primary); margin-bottom:4px;">
+      <div id="receipt-modal-title" style="font-size:18px; font-weight:800; color:var(--text-primary); margin-bottom:4px;">
         ${flowType === "CHECK_IN" ? "Check-In Recorded Successfully" : "Check-Out Recorded Successfully"}
       </div>
       <div style="font-size:13px; color:var(--text-muted); margin-bottom:18px;">
@@ -1438,7 +1604,12 @@ function openPunchReceiptModal(flowType, attendance) {
   `;
 
   document.body.appendChild(modal);
-  modal.querySelector("#receipt-done-btn")?.addEventListener("click", () => modal.remove());
+  const closeReceipt = () => {
+    cleanupA11y();
+    modal.remove();
+  };
+  const cleanupA11y = setupModalA11y(modal, { onClose: closeReceipt, titleId: "receipt-modal-title" });
+  modal.querySelector("#receipt-done-btn")?.addEventListener("click", closeReceipt);
 }
 
 // ── CORRECTION REQUEST MODAL (WITH SUPPORTING ATTACHMENT) ─────────────────────
@@ -1457,10 +1628,10 @@ function openCorrectionModal(onDoneCallback, prefill = {}) {
   modal.innerHTML = `
     <div class="card" style="width:100%; max-width:500px; padding:24px; background:var(--bg-surface-1); border-radius:var(--radius-lg); box-shadow:var(--shadow-lg);">
       <div class="flex items-center justify-between" style="margin-bottom:16px;">
-        <div style="font-size:16px; font-weight:800; color:var(--text-primary);">
+        <div id="corr-modal-title" style="font-size:16px; font-weight:800; color:var(--text-primary);">
           Request Attendance Correction
         </div>
-        <button class="btn btn-xs btn-ghost" id="cmodal-close-btn" style="font-size:16px;">✕</button>
+        <button class="btn btn-xs btn-ghost" id="cmodal-close-btn" style="font-size:16px;" aria-label="Close correction modal">✕</button>
       </div>
 
       <div style="font-size:12.5px; color:var(--text-secondary); margin-bottom:16px;">
@@ -1517,7 +1688,12 @@ function openCorrectionModal(onDoneCallback, prefill = {}) {
 
   document.body.appendChild(modal);
 
-  const close = () => modal.remove();
+  const close = () => {
+    cleanupA11y();
+    modal.remove();
+  };
+  const cleanupA11y = setupModalA11y(modal, { onClose: close, titleId: "corr-modal-title" });
+
   modal.querySelector("#cmodal-close-btn")?.addEventListener("click", close);
   modal.querySelector("#cmodal-cancel-btn")?.addEventListener("click", close);
 
@@ -1568,6 +1744,151 @@ function openCorrectionModal(onDoneCallback, prefill = {}) {
   });
 }
 
+// ── SHIFT CHANGE REQUEST MODAL ────────────────────────────────────────────────
+function openShiftChangeModal(onDoneCallback, prefill = {}) {
+  let existing = document.getElementById("staff-shift-change-modal");
+  if (existing) existing.remove();
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const defaultDate = prefill?.requestedDate || todayStr;
+  const defaultCurrentShift = prefill?.currentShift || "Morning Shift (09:00 – 17:00)";
+
+  const modal = document.createElement("div");
+  modal.id = "staff-shift-change-modal";
+  modal.className = "modal-backdrop flex items-center justify-center";
+  modal.style.cssText = "position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:1050; padding:16px;";
+
+  modal.innerHTML = `
+    <div class="card" style="width:100%; max-width:500px; padding:24px; background:var(--bg-surface-1); border-radius:var(--radius-lg); box-shadow:var(--shadow-lg);">
+      <div class="flex items-center justify-between" style="margin-bottom:16px;">
+        <div id="shift-change-modal-title" style="font-size:16px; font-weight:800; color:var(--text-primary);">
+          Request Shift Change / Swap
+        </div>
+        <button class="btn btn-xs btn-ghost" id="scmodal-close-btn" style="font-size:16px;" aria-label="Close dialog">✕</button>
+      </div>
+
+      <div style="font-size:12.5px; color:var(--text-secondary); margin-bottom:16px;">
+        Submit a shift adjustment, timing change, or swap request to café management.
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:12px; margin-bottom:18px;">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+          <div>
+            <label style="font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:4px; display:block;">
+              Requested Date *
+            </label>
+            <input type="date" id="sc-date-input" class="input" style="width:100%;" value="${defaultDate}" />
+          </div>
+          <div>
+            <label style="font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:4px; display:block;">
+              End Date (Optional)
+            </label>
+            <input type="date" id="sc-enddate-input" class="input" style="width:100%;" />
+          </div>
+        </div>
+
+        <div>
+          <label style="font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:4px; display:block;">
+            Currently Assigned Shift
+          </label>
+          <input type="text" id="sc-curr-input" class="input" style="width:100%;" value="${defaultCurrentShift}" />
+        </div>
+
+        <div>
+          <label style="font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:4px; display:block;">
+            Requested Shift / Timing *
+          </label>
+          <select id="sc-target-input" class="input" style="width:100%;">
+            <option value="MORNING">Morning Duty Shift (07:00 – 15:30)</option>
+            <option value="AFTERNOON">Standard Afternoon Shift (11:00 – 19:30)</option>
+            <option value="EVENING">Evening Rush Shift (14:30 – 23:00)</option>
+            <option value="NIGHT">Closing / Night Shift (16:00 – 00:30)</option>
+            <option value="WEEKLY_OFF_SWAP">Swap Weekly Off Day</option>
+          </select>
+        </div>
+
+        <div>
+          <label style="font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:4px; display:block;">
+            Reason for Request *
+          </label>
+          <textarea id="sc-reason-input" class="input" rows="3" placeholder="Provide reason for shift change (e.g. personal exam, transit scheduling)..." style="width:100%; resize:none;"></textarea>
+        </div>
+
+        <div>
+          <label style="font-size:12px; font-weight:600; color:var(--text-secondary); margin-bottom:4px; display:block;">
+            Additional Notes (Optional)
+          </label>
+          <input type="text" id="sc-notes-input" class="input" placeholder="Any additional coordination details..." style="width:100%;" />
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-sm">
+        <button class="btn btn-secondary" id="scmodal-cancel-btn">Cancel</button>
+        <button class="btn btn-primary" id="scmodal-submit-btn" style="font-weight:700;">
+          Submit Request
+        </button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  const close = () => {
+    cleanupA11y();
+    modal.remove();
+  };
+
+  const cleanupA11y = setupModalA11y(modal, {
+    onClose: close,
+    titleId: "shift-change-modal-title",
+  });
+
+  modal.querySelector("#scmodal-close-btn")?.addEventListener("click", close);
+  modal.querySelector("#scmodal-cancel-btn")?.addEventListener("click", close);
+
+  modal.querySelector("#scmodal-submit-btn")?.addEventListener("click", async () => {
+    const reason = modal.querySelector("#sc-reason-input").value.trim();
+    if (!reason) {
+      showToast("Please provide a reason for the shift change request.", "coral");
+      return;
+    }
+
+    const requestedDate = modal.querySelector("#sc-date-input").value;
+    if (!requestedDate) {
+      showToast("Please specify the requested date.", "coral");
+      return;
+    }
+
+    const endDate = modal.querySelector("#sc-enddate-input").value || null;
+    const currentShift = modal.querySelector("#sc-curr-input").value.trim();
+    const requestedShift = modal.querySelector("#sc-target-input").value;
+    const notes = modal.querySelector("#sc-notes-input").value.trim();
+
+    const submitBtn = modal.querySelector("#scmodal-submit-btn");
+    submitBtn.disabled = true;
+    submitBtn.innerText = "Submitting...";
+
+    try {
+      await apiPost("/shifts/me/requests", {
+        requestedDate,
+        endDate,
+        currentShift,
+        requestedShift,
+        reason,
+        notes,
+      });
+
+      close();
+      showToast("Shift change request submitted successfully ✓", "mint");
+      if (onDoneCallback) onDoneCallback();
+    } catch (err) {
+      submitBtn.disabled = false;
+      submitBtn.innerText = "Submit Request";
+      showToast(err?.message || "Failed to submit shift change request.", "coral");
+    }
+  });
+}
+
 // ── DISCREPANCY REPORTING MODAL ──────────────────────────────────────────────
 function openDiscrepancyModal(onDoneCallback) {
   let existing = document.getElementById("discrepancy-modal");
@@ -1581,10 +1902,10 @@ function openDiscrepancyModal(onDoneCallback) {
   modal.innerHTML = `
     <div class="card" style="width:100%; max-width:480px; padding:24px; background:var(--bg-surface-1); border-radius:var(--radius-lg); box-shadow:var(--shadow-lg);">
       <div class="flex items-center justify-between" style="margin-bottom:16px;">
-        <div style="font-size:16px; font-weight:800; color:var(--text-primary);">
+        <div id="discrepancy-modal-title" style="font-size:16px; font-weight:800; color:var(--text-primary);">
           Report Attendance Discrepancy
         </div>
-        <button class="btn btn-xs btn-ghost" id="dmodal-close-btn" style="font-size:16px;">✕</button>
+        <button class="btn btn-xs btn-ghost" id="dmodal-close-btn" style="font-size:16px;" aria-label="Close discrepancy modal">✕</button>
       </div>
 
       <div style="font-size:12.5px; color:var(--text-secondary); margin-bottom:16px;">
@@ -1623,7 +1944,11 @@ function openDiscrepancyModal(onDoneCallback) {
 
   document.body.appendChild(modal);
 
-  const close = () => modal.remove();
+  const close = () => {
+    cleanupA11y();
+    modal.remove();
+  };
+  const cleanupA11y = setupModalA11y(modal, { onClose: close, titleId: "discrepancy-modal-title" });
   modal.querySelector("#dmodal-close-btn")?.addEventListener("click", close);
   modal.querySelector("#dmodal-cancel-btn")?.addEventListener("click", close);
 
@@ -1671,10 +1996,10 @@ function openDayDrilldownModal(dateStr, record) {
   modal.innerHTML = `
     <div class="card" style="width:100%; max-width:480px; padding:24px; background:var(--bg-surface-1); border-radius:var(--radius-lg); box-shadow:var(--shadow-lg);">
       <div class="flex items-center justify-between" style="margin-bottom:14px;">
-        <div style="font-size:16px; font-weight:800; color:var(--text-primary);">
+        <div id="drilldown-modal-title" style="font-size:16px; font-weight:800; color:var(--text-primary);">
           Attendance Day Breakdown
         </div>
-        <button class="btn btn-xs btn-ghost" id="ddmodal-close-btn" style="font-size:16px;">✕</button>
+        <button class="btn btn-xs btn-ghost" id="ddmodal-close-btn" style="font-size:16px;" aria-label="Close breakdown modal">✕</button>
       </div>
 
       <div style="font-size:14px; font-weight:700; color:var(--brand-gold); margin-bottom:16px;">
@@ -1722,7 +2047,11 @@ function openDayDrilldownModal(dateStr, record) {
 
   document.body.appendChild(modal);
 
-  const close = () => modal.remove();
+  const close = () => {
+    cleanupA11y();
+    modal.remove();
+  };
+  const cleanupA11y = setupModalA11y(modal, { onClose: close, titleId: "drilldown-modal-title" });
   modal.querySelector("#ddmodal-close-btn")?.addEventListener("click", close);
   modal.querySelector("#ddmodal-done-btn")?.addEventListener("click", close);
   modal.querySelector("#ddmodal-corr-btn")?.addEventListener("click", () => {

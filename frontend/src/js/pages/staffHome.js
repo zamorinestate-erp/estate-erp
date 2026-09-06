@@ -8,10 +8,11 @@
 import { state } from "../state.js";
 import { navigate } from "../router.js";
 import { icon } from "../icons.js";
-import { apiGet, apiPost } from "../apiClient.js";
+import { apiGet, apiPost, API_BASE_URL, getAccessToken } from "../apiClient.js";
 import { showToast } from "../components.js";
 import { setSettingsActiveSection } from "./settingsShared.js";
 import { openVerificationModal } from "../modules/attendance/staffAttendance.js";
+import { setupModalA11y } from "../utils/modalA11y.js";
 
 const PRIVACY_MODE_KEY = "zamorin-staff-privacy-mode";
 
@@ -185,7 +186,7 @@ function renderDashboardBody(data) {
     ctaHtml = `
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
         <div style="font-size:13px; color:var(--muted);">
-          Checked in at <strong style="color:var(--ink);">${formatTimeOnly(todayShift.checkInTime) || "09:00 AM"}</strong> · <strong style="color:var(--ink);">${todayShift.elapsedMinutes || 45} mins</strong> worked today
+          Checked in at <strong style="color:var(--ink);">${todayShift.checkInTime ? formatTimeOnly(todayShift.checkInTime) : "—"}</strong> · <strong style="color:var(--ink);">${todayShift.elapsedMinutes ?? 0} mins</strong> worked today
         </div>
         <button class="btn btn-secondary" id="btn-staff-checkout" type="button" style="min-width:130px; font-weight:700;">
           ${icon("attendance", 16)} Check Out
@@ -211,7 +212,7 @@ function renderDashboardBody(data) {
     ctaHtml = `
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
         <div style="font-size:13px; color:var(--muted);">
-          Scheduled: <strong style="color:var(--ink);">${todayShift.startTime || "09:00 AM"} – ${todayShift.endTime || "05:00 PM"}</strong>
+          Scheduled: <strong style="color:var(--ink);">${todayShift.startTime && todayShift.endTime && todayShift.startTime !== "—" ? `${todayShift.startTime} – ${todayShift.endTime}` : (todayShift.name || "No Scheduled Shift")}</strong>
         </div>
         <button class="btn btn-primary" id="btn-staff-checkin" type="button" style="min-width:150px; font-weight:700;">
           ${icon("attendance", 16)} Check In Now
@@ -230,7 +231,7 @@ function renderDashboardBody(data) {
       </div>
 
       <div style="font-size:22px; font-weight:800; color:var(--ink); font-family:var(--font-heading); margin-bottom:4px;">
-        ${todayShift.startTime || "09:00 AM"} – ${todayShift.endTime || "05:00 PM"}
+        ${todayShift.startTime && todayShift.endTime && todayShift.startTime !== "—" ? `${todayShift.startTime} – ${todayShift.endTime}` : (todayShift.name || "No Scheduled Shift")}
       </div>
       <div style="font-size:13px; color:var(--muted); margin-bottom:16px;">
         ${todayShift.dutyDesignation || "Duty Shift"} · ${todayShift.cafeName || emp.cafeName || state.user?.primaryCafeName || "Assigned Outlet"}
@@ -286,13 +287,13 @@ function renderDashboardBody(data) {
             <span>🗓️</span>
             <span>MY NEXT SHIFT</span>
           </div>
-          <span class="badge-tag" style="background:var(--surface-sunken); color:var(--ink); font-size:11px; font-weight:600; padding:2px 8px; border-radius:6px;">${nextShift.day || "Tomorrow"}</span>
+          <span class="badge-tag" style="background:var(--surface-sunken); color:var(--ink); font-size:11px; font-weight:600; padding:2px 8px; border-radius:6px;">${nextShift.day || "None"}</span>
         </div>
         <div style="font-size:20px; font-weight:800; color:var(--ink); font-family:var(--font-heading); margin-bottom:2px;">
-          ${nextShift.startTime || "09:00 AM"} – ${nextShift.endTime || "05:00 PM"}
+          ${nextShift.startTime && nextShift.endTime && nextShift.startTime !== "—" ? `${nextShift.startTime} – ${nextShift.endTime}` : (nextShift.name || "No Upcoming Shift")}
         </div>
         <div style="font-size:12.5px; color:var(--muted); margin-bottom:12px;">
-          ${nextShift.dutyDesignation || "Counter & Till duty"} · ${nextShift.date || "Scheduled"}
+          ${nextShift.dutyDesignation || "Duty Shift"} · ${nextShift.date || "Unscheduled"}
         </div>
         <button class="btn btn-sm btn-ghost btn-block" data-scroll-target="roster-section" style="justify-content:center;">
           View Full Weekly Schedule ↓
@@ -307,7 +308,7 @@ function renderDashboardBody(data) {
       id: "att",
       icon: "⏱️",
       title: "My Attendance",
-      subtitle: `${attSummary.presentDays || 21} days present · ${attSummary.lateDays || 1} late`,
+      subtitle: `${attSummary.presentDays ?? 0} days present · ${attSummary.lateDays ?? 0} late`,
       badge: "This Month",
       badgeType: "",
       target: "staff-attendance"
@@ -316,8 +317,8 @@ function renderDashboardBody(data) {
       id: "leave",
       icon: "🌴",
       title: "My Leave",
-      subtitle: `${leaveSummary.totalAvailableDays || 22.5} days balance · Apply →`,
-      badge: `${leaveSummary.casualLeaveBalance || 4.5}d Casual`,
+      subtitle: `${leaveSummary.totalAvailableDays ?? 0} days balance · Apply →`,
+      badge: `${leaveSummary.casualLeaveBalance ?? 0}d Casual`,
       badgeType: "accent",
       target: "staff-leave"
     },
@@ -325,9 +326,9 @@ function renderDashboardBody(data) {
       id: "payslip",
       icon: "📄",
       title: "Latest Payslip",
-      subtitle: `${payslip.periodName || "June 2026"} · ${formatPaise(payslip.netPayPaise, true)}`,
-      badge: payslip.status || "Ready",
-      badgeType: "success",
+      subtitle: payslip.available ? `${payslip.periodName || "Current Period"} · ${formatPaise(payslip.netPayPaise, true)}` : "No published payslip available",
+      badge: payslip.available ? (payslip.status || "Ready") : "None",
+      badgeType: payslip.available ? "success" : "",
       settingsSection: "employment"
     },
     {
@@ -343,7 +344,7 @@ function renderDashboardBody(data) {
       id: "ot",
       icon: "⚡",
       title: "My Overtime",
-      subtitle: `${attSummary.overtimeHours || 4.5} hrs logged this month →`,
+      subtitle: `${attSummary.overtimeHours ?? 0} hrs logged this month →`,
       badge: "Tracked",
       badgeType: "",
       target: "staff-attendance"
@@ -440,7 +441,7 @@ function renderDashboardBody(data) {
           <div style="font-size:11.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.04em;">
             THIS WEEK'S SCHEDULE
           </div>
-          <button class="btn btn-xs btn-secondary" data-nav-target="staff-attendance" style="font-weight:600;">Full Roster →</button>
+          <button class="btn btn-xs btn-secondary" data-nav-target="staff-attendance?tab=weekly-roster" style="font-weight:600;">Full Roster →</button>
         </div>
         <div style="display:flex; flex-direction:column; gap:12px; padding:4px 0 10px 0;">
           ${weekDayCardsHtml}
@@ -613,6 +614,14 @@ export function wireStaffHome(root) {
       });
     }
 
+    // 11. Document Upload Modal
+    const uploadDocBtn = container.querySelector("#btn-upload-document");
+    if (uploadDocBtn) {
+      uploadDocBtn.addEventListener("click", () => {
+        openDocumentUploadModal(emp);
+      });
+    }
+
     // 12. Employee Switcher (Primary Master / Multi-Staff Switcher)
     const empSwitcher = container.querySelector("#staff-employee-switcher");
     if (empSwitcher) {
@@ -679,8 +688,8 @@ function openReportProblemModal(emp) {
   modal.innerHTML = `
     <div class="card" style="width:100%; max-width:480px; padding:24px; background:var(--bg-surface-1); border-radius:var(--radius-lg); box-shadow:var(--shadow-lg);">
       <div class="flex items-center justify-between" style="margin-bottom:16px;">
-        <div style="font-size:16px; font-weight:700; color:var(--text-primary);">❓ Report a Problem / Request Support</div>
-        <button class="btn btn-sm btn-ghost" id="modal-close-btn" style="padding:4px 8px;">✕</button>
+        <div id="problem-modal-title" style="font-size:16px; font-weight:700; color:var(--text-primary);">❓ Report a Problem / Request Support</div>
+        <button class="btn btn-sm btn-ghost" id="modal-close-btn" style="padding:4px 8px;" aria-label="Close problem modal">✕</button>
       </div>
 
       <div style="font-size:12.5px; color:var(--text-muted); margin-bottom:16px;">
@@ -719,18 +728,47 @@ function openReportProblemModal(emp) {
 
   document.body.appendChild(modal);
 
-  const close = () => modal.remove();
+  const close = () => {
+    cleanupA11y();
+    modal.remove();
+  };
+  const cleanupA11y = setupModalA11y(modal, { onClose: close, titleId: "problem-modal-title" });
   modal.querySelector("#modal-close-btn")?.addEventListener("click", close);
   modal.querySelector("#modal-cancel-btn")?.addEventListener("click", close);
 
-  modal.querySelector("#modal-submit-btn")?.addEventListener("click", () => {
+  modal.querySelector("#modal-submit-btn")?.addEventListener("click", async () => {
     const desc = modal.querySelector("#problem-description")?.value.trim();
     if (!desc) {
       showToast("Please enter a description of the issue.");
       return;
     }
-    close();
-    showToast("Support ticket submitted to café management.");
+    const cat = modal.querySelector("#problem-category")?.value || "OTHER";
+    const categoryMap = {
+      ATTENDANCE: "ATTENDANCE_ISSUE",
+      SCHEDULE: "ATTENDANCE_ISSUE",
+      LEAVE: "GENERAL_INQUIRY",
+      PAYSLIP: "BILLING_QUERY",
+      TECHNICAL: "BUG_REPORT",
+      OTHER: "GENERAL_INQUIRY",
+    };
+    const mappedCategory = categoryMap[cat] || "GENERAL_INQUIRY";
+    const submitBtn = modal.querySelector("#modal-submit-btn");
+
+    try {
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Submitting...";
+      await apiPost("/settings/support/tickets", {
+        category: mappedCategory,
+        summary: desc.slice(0, 100),
+        description: desc,
+      });
+      close();
+      showToast("Support ticket submitted to café management.");
+    } catch (err) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Submit Ticket";
+      showToast(err.message || "Failed to submit support ticket.");
+    }
   });
 }
 
@@ -747,8 +785,8 @@ function openScheduleRequestModal(emp) {
   modal.innerHTML = `
     <div class="card" style="width:100%; max-width:480px; padding:24px; background:var(--bg-surface-1); border-radius:var(--radius-lg); box-shadow:var(--shadow-lg);">
       <div class="flex items-center justify-between" style="margin-bottom:16px;">
-        <div style="font-size:16px; font-weight:700; color:var(--text-primary);">🗓️ Submit Schedule / Availability Request</div>
-        <button class="btn btn-sm btn-ghost" id="sched-close-btn" style="padding:4px 8px;">✕</button>
+        <div id="sched-modal-title" style="font-size:16px; font-weight:700; color:var(--text-primary);">🗓️ Submit Schedule / Availability Request</div>
+        <button class="btn btn-sm btn-ghost" id="sched-close-btn" style="padding:4px 8px;" aria-label="Close schedule request modal">✕</button>
       </div>
 
       <div style="font-size:12.5px; color:var(--text-muted); margin-bottom:16px;">
@@ -796,18 +834,41 @@ function openScheduleRequestModal(emp) {
 
   document.body.appendChild(modal);
 
-  const close = () => modal.remove();
+  const close = () => {
+    cleanupA11y();
+    modal.remove();
+  };
+  const cleanupA11y = setupModalA11y(modal, { onClose: close, titleId: "sched-modal-title" });
   modal.querySelector("#sched-close-btn")?.addEventListener("click", close);
   modal.querySelector("#sched-cancel-btn")?.addEventListener("click", close);
 
-  modal.querySelector("#sched-submit-btn")?.addEventListener("click", () => {
+  modal.querySelector("#sched-submit-btn")?.addEventListener("click", async () => {
     const reason = modal.querySelector("#sched-req-reason")?.value.trim();
     if (!reason) {
       showToast("Please provide a reason for the schedule request.");
       return;
     }
-    close();
-    showToast("Schedule request submitted for management review.");
+    const reqType = modal.querySelector("#sched-req-type")?.value;
+    const reqDate = modal.querySelector("#sched-req-date")?.value;
+    const prefTime = modal.querySelector("#sched-pref-time")?.value;
+    const submitBtn = modal.querySelector("#sched-submit-btn");
+
+    try {
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Submitting...";
+      await apiPost("/shifts/me/requests", {
+        requestedDate: reqDate,
+        requestedShift: prefTime || "MORNING",
+        currentShift: "STANDARD",
+        reason: `[${reqType}] ${reason}`,
+      });
+      close();
+      showToast("Schedule request submitted for management review.");
+    } catch (err) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Submit Request";
+      showToast(err.message || "Failed to submit schedule request.");
+    }
   });
 }
 
@@ -824,10 +885,10 @@ function openTimecardReviewModal(emp, attSummary) {
   const currentMonthName = new Date().toLocaleDateString("en-IN", { month: "long", year: "numeric" });
 
   modal.innerHTML = `
-    <div class="card" style="width:100%; max-width:520px; padding:24px; background:var(--bg-surface-1); border-radius:var(--radius-lg); box-shadow:var(--shadow-lg);">
+    <div class="card" style="width:100%; max-width:540px; padding:24px; background:var(--bg-surface-1); border-radius:var(--radius-lg); box-shadow:var(--shadow-lg); max-height:90vh; overflow-y:auto;">
       <div class="flex items-center justify-between" style="margin-bottom:16px;">
-        <div style="font-size:16px; font-weight:700; color:var(--text-primary);">📋 Monthly Timecard Review — ${currentMonthName}</div>
-        <button class="btn btn-sm btn-ghost" id="tc-close-btn" style="padding:4px 8px;">✕</button>
+        <div id="tc-modal-title" style="font-size:16px; font-weight:700; color:var(--text-primary);">📋 Monthly Timecard Review &amp; Attestation — ${currentMonthName}</div>
+        <button class="btn btn-sm btn-ghost" id="tc-close-btn" style="padding:4px 8px;" aria-label="Close timecard modal">✕</button>
       </div>
 
       <div style="font-size:12.5px; color:var(--text-muted); margin-bottom:16px;">
@@ -837,15 +898,15 @@ function openTimecardReviewModal(emp, attSummary) {
       <div style="background:var(--bg-surface-2); padding:14px; border-radius:var(--radius-md); margin-bottom:16px; display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; text-align:center;">
         <div>
           <div style="font-size:11px; color:var(--text-muted);">PRESENT DAYS</div>
-          <div style="font-size:18px; font-weight:700; color:var(--color-accent-mint);">${attSummary.presentDays || 22}</div>
+          <div style="font-size:18px; font-weight:700; color:var(--color-accent-mint);">${attSummary.presentDays ?? 0}</div>
         </div>
         <div>
           <div style="font-size:11px; color:var(--text-muted);">LATE ARRIVALS</div>
-          <div style="font-size:18px; font-weight:700; color:var(--brand-gold);">${attSummary.lateDays || 1}</div>
+          <div style="font-size:18px; font-weight:700; color:var(--brand-gold);">${attSummary.lateDays ?? 0}</div>
         </div>
         <div>
           <div style="font-size:11px; color:var(--text-muted);">OVERTIME HRS</div>
-          <div style="font-size:18px; font-weight:700; color:var(--text-primary);">${attSummary.overtimeHours || 3.5}h</div>
+          <div style="font-size:18px; font-weight:700; color:var(--text-primary);">${attSummary.overtimeHours ?? 0}h</div>
         </div>
       </div>
 
@@ -868,23 +929,57 @@ function openTimecardReviewModal(emp, attSummary) {
 
   document.body.appendChild(modal);
 
-  const close = () => modal.remove();
+  const close = () => {
+    cleanupA11y();
+    modal.remove();
+  };
+  const cleanupA11y = setupModalA11y(modal, { onClose: close, titleId: "tc-modal-title" });
   modal.querySelector("#tc-close-btn")?.addEventListener("click", close);
   modal.querySelector("#tc-cancel-btn")?.addEventListener("click", close);
 
-  modal.querySelector("#tc-acknowledge-btn")?.addEventListener("click", () => {
-    close();
-    showToast("Timecard acknowledged successfully for payroll.");
+  modal.querySelector("#tc-acknowledge-btn")?.addEventListener("click", async () => {
+    const submitBtn = modal.querySelector("#tc-acknowledge-btn");
+    try {
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Acknowledging...";
+      const currentMonth = new Date().toISOString().slice(0, 7);
+      await apiPost("/attendance/attestation", {
+        month: currentMonth,
+        decision: "CONFIRM_REVIEWED",
+        remarks: "Acknowledged via monthly timecard review modal.",
+      });
+      close();
+      showToast("Timecard acknowledged successfully for payroll.");
+    } catch (err) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Acknowledge Timecard ✓";
+      showToast(err.message || "Failed to acknowledge timecard.");
+    }
   });
 
-  modal.querySelector("#tc-report-discrepancy-btn")?.addEventListener("click", () => {
+  modal.querySelector("#tc-report-discrepancy-btn")?.addEventListener("click", async () => {
     const notes = modal.querySelector("#tc-discrepancy-notes")?.value.trim();
     if (!notes) {
       showToast("Please enter discrepancy details in the notes box.");
       return;
     }
-    close();
-    showToast("Timecard discrepancy submitted for review.");
+    const submitBtn = modal.querySelector("#tc-report-discrepancy-btn");
+    try {
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Reporting...";
+      const todayDate = new Date().toISOString().slice(0, 10);
+      await apiPost("/attendance/corrections", {
+        businessDate: todayDate,
+        issueType: "TIME_ADJUSTMENT",
+        reason: notes,
+      });
+      close();
+      showToast("Timecard discrepancy submitted for review.");
+    } catch (err) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "⚠️ Report Discrepancy";
+      showToast(err.message || "Failed to submit discrepancy report.");
+    }
   });
 }
 
@@ -901,8 +996,8 @@ function openSalaryAdvanceModal(emp) {
   modal.innerHTML = `
     <div class="card" style="width:100%; max-width:480px; padding:24px; background:var(--bg-surface-1); border-radius:var(--radius-lg); box-shadow:var(--shadow-lg);">
       <div class="flex items-center justify-between" style="margin-bottom:16px;">
-        <div style="font-size:16px; font-weight:700; color:var(--text-primary);">💰 Request Salary Advance / Loan</div>
-        <button class="btn btn-sm btn-ghost" id="adv-close-btn" style="padding:4px 8px;">✕</button>
+        <div id="adv-modal-title" style="font-size:16px; font-weight:700; color:var(--text-primary);">💰 Request Salary Advance / Loan</div>
+        <button class="btn btn-sm btn-ghost" id="adv-close-btn" style="padding:4px 8px;" aria-label="Close advance modal">✕</button>
       </div>
 
       <div style="font-size:12.5px; color:var(--text-muted); margin-bottom:16px;">
@@ -947,11 +1042,15 @@ function openSalaryAdvanceModal(emp) {
 
   document.body.appendChild(modal);
 
-  const close = () => modal.remove();
+  const close = () => {
+    cleanupA11y();
+    modal.remove();
+  };
+  const cleanupA11y = setupModalA11y(modal, { onClose: close, titleId: "adv-modal-title" });
   modal.querySelector("#adv-close-btn")?.addEventListener("click", close);
   modal.querySelector("#adv-cancel-btn")?.addEventListener("click", close);
 
-  modal.querySelector("#adv-submit-btn")?.addEventListener("click", () => {
+  modal.querySelector("#adv-submit-btn")?.addEventListener("click", async () => {
     const amt = modal.querySelector("#adv-amount")?.value;
     const reason = modal.querySelector("#adv-reason")?.value.trim();
     if (!amt || Number(amt) <= 0) {
@@ -962,8 +1061,34 @@ function openSalaryAdvanceModal(emp) {
       showToast("Please provide a reason for the request.");
       return;
     }
-    close();
-    showToast("Advance request submitted for management approval.");
+    const advType = modal.querySelector("#adv-type")?.value;
+    const instalments = parseInt(modal.querySelector("#adv-instalments")?.value || "1", 10);
+    const submitBtn = modal.querySelector("#adv-submit-btn");
+
+    try {
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Submitting...";
+      if (advType === "SALARY_ADVANCE") {
+        await apiPost("/loan-advances/me/requests/advance", {
+          requestedAmount: Number(amt),
+          requestedAmountPaise: Math.round(Number(amt) * 100),
+          reason,
+        });
+      } else {
+        await apiPost("/loan-advances/me/requests/loan", {
+          requestedAmount: Number(amt),
+          requestedAmountPaise: Math.round(Number(amt) * 100),
+          tenureMonths: instalments,
+          reason,
+        });
+      }
+      close();
+      showToast("Advance request submitted for management approval.");
+    } catch (err) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Submit Request";
+      showToast(err.message || "Failed to submit advance request.");
+    }
   });
 }
 
@@ -980,8 +1105,8 @@ function openDocumentUploadModal(emp) {
   modal.innerHTML = `
     <div class="card" style="width:100%; max-width:480px; padding:24px; background:var(--bg-surface-1); border-radius:var(--radius-lg); box-shadow:var(--shadow-lg);">
       <div class="flex items-center justify-between" style="margin-bottom:16px;">
-        <div style="font-size:16px; font-weight:700; color:var(--text-primary);">📤 Upload Employee Document / KYC</div>
-        <button class="btn btn-sm btn-ghost" id="doc-close-btn" style="padding:4px 8px;">✕</button>
+        <div id="doc-modal-title" style="font-size:16px; font-weight:700; color:var(--text-primary);">📤 Upload Employee Document / KYC</div>
+        <button class="btn btn-sm btn-ghost" id="doc-close-btn" style="padding:4px 8px;" aria-label="Close document modal">✕</button>
       </div>
 
       <div style="font-size:12.5px; color:var(--text-muted); margin-bottom:16px;">
@@ -1020,17 +1145,50 @@ function openDocumentUploadModal(emp) {
 
   document.body.appendChild(modal);
 
-  const close = () => modal.remove();
+  const close = () => {
+    cleanupA11y();
+    modal.remove();
+  };
+  const cleanupA11y = setupModalA11y(modal, { onClose: close, titleId: "doc-modal-title" });
   modal.querySelector("#doc-close-btn")?.addEventListener("click", close);
   modal.querySelector("#doc-cancel-btn")?.addEventListener("click", close);
 
-  modal.querySelector("#doc-upload-btn")?.addEventListener("click", () => {
+  modal.querySelector("#doc-upload-btn")?.addEventListener("click", async () => {
     const fileInput = modal.querySelector("#doc-file");
     if (!fileInput?.files || fileInput.files.length === 0) {
       showToast("Please choose a document file to upload.");
       return;
     }
-    close();
-    showToast("Document uploaded securely and queued for verification.");
+    const file = fileInput.files[0];
+    const category = modal.querySelector("#doc-category")?.value || "OTHER";
+    const expiry = modal.querySelector("#doc-expiry")?.value;
+    const submitBtn = modal.querySelector("#doc-upload-btn");
+
+    try {
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Uploading...";
+      const formData = new FormData();
+      formData.append("document", file);
+      formData.append("category", category);
+      if (expiry) formData.append("expiryDate", expiry);
+
+      const token = getAccessToken();
+      const res = await fetch(`${API_BASE_URL}/employees/me/documents/upload`, {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.message || "Failed to upload document.");
+      }
+      close();
+      showToast("Document uploaded securely and queued for verification.");
+    } catch (err) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Upload Document";
+      showToast(err.message || "Failed to upload document.");
+    }
   });
 }

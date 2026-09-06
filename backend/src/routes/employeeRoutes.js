@@ -27,6 +27,11 @@ const {
   withdrawSelfChangeRequest,
   getSelfProfileHistory,
   submitSelfProfileAttestation,
+  listSelfDocuments,
+  uploadSelfDocument,
+  downloadSelfDocument,
+  deleteSelfDocument,
+  exportProfileSummary,
   searchEmployees,
   getEmployeeProfile,
 } = require('../controllers/employeeController');
@@ -172,6 +177,56 @@ router.post(
     selfOnly: true,
   }),
   submitSelfProfileAttestation
+);
+
+router.get(
+  '/me/documents',
+  authorize('EMPLOYEE:READ_SELF', {
+    allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN', 'STAFF'],
+    targetUserIdResolver: (req) => req.auth?.userId,
+    selfOnly: true,
+  }),
+  listSelfDocuments
+);
+
+router.post(
+  '/me/documents/upload',
+  authorize('EMPLOYEE:WRITE_SELF', {
+    allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN', 'STAFF'],
+    targetUserIdResolver: (req) => req.auth?.userId,
+    selfOnly: true,
+  }),
+  uploadSelfDocument
+);
+
+router.get(
+  '/me/documents/:documentId/download',
+  authorize('EMPLOYEE:READ_SELF', {
+    allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN', 'STAFF'],
+    targetUserIdResolver: (req) => req.auth?.userId,
+    selfOnly: true,
+  }),
+  downloadSelfDocument
+);
+
+router.delete(
+  '/me/documents/:documentId',
+  authorize('EMPLOYEE:WRITE_SELF', {
+    allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN', 'STAFF'],
+    targetUserIdResolver: (req) => req.auth?.userId,
+    selfOnly: true,
+  }),
+  deleteSelfDocument
+);
+
+router.get(
+  '/me/profile-summary/export',
+  authorize('EMPLOYEE:READ_SELF', {
+    allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN', 'STAFF'],
+    targetUserIdResolver: (req) => req.auth?.userId,
+    selfOnly: true,
+  }),
+  exportProfileSummary
 );
 
 // 8. Individual Employee Profile (Administrative Access & Staff Self-Read)

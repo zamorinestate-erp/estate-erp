@@ -1591,6 +1591,31 @@ const revokeSessionById = asyncHandler(
   }
 );
 
+const revokeOtherSessions = asyncHandler(
+  async (request, response) => {
+    const currentSessionId = request.auth.sessionId;
+    const revokedSessionCount =
+      await revokeAllUserSessions({
+        organisationId: request.auth.organisationId,
+        userId: request.auth.userId,
+        revokedBy: request.auth.userId,
+        reason: 'LOGOUT_ALL',
+        details: 'User signed out from all other devices.',
+        excludeSessionId: currentSessionId,
+      });
+
+    return response.status(200).json({
+      success: true,
+      message: 'All other active sessions were signed out successfully.',
+      data: {
+        revokedSessionCount,
+        currentSessionId,
+      },
+      correlationId: request.correlationId || null,
+    });
+  }
+);
+
 const listTrustedDevices = asyncHandler(
   async (request, response) => {
     const user = request.user || request.auth;
@@ -1719,6 +1744,7 @@ module.exports = {
   getSessions,
   getCurrentUser,
   revokeSessionById,
+  revokeOtherSessions,
   clearAuthenticationCookies,
   listTrustedDevices,
   revokeTrustedDevice,

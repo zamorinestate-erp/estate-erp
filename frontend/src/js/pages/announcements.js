@@ -47,7 +47,7 @@ function renderHeader() {
       <div>
         <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
           <h1 style="font-size:24px; font-weight:700; margin:0; color:var(--ink);">Announcements &amp; Notices</h1>
-          <span class="badge" style="background:rgba(180,83,9,0.12); color:#b45309; font-weight:600; font-size:12px; padding:4px 10px; border-radius:12px; white-space:nowrap;">EMP-SCR-004</span>
+          <span class="badge" style="background:rgba(180,83,9,0.12); color:#b45309; font-weight:600; font-size:12px; padding:4px 10px; border-radius:12px; white-space:nowrap;">EMP-SCR-002</span>
         </div>
         <p style="font-size:13px; color:var(--muted); margin:4px 0 0;">Official Company Communications, Operating Instructions &amp; Policy Updates</p>
       </div>
@@ -712,13 +712,12 @@ function openAnnouncementDetailModal(a, onRefreshCallback) {
       try {
         await apiPatch(`/notifications/${a.notificationId}/acknowledge`, { version: a.version || 1 });
         a.acknowledgedAt = new Date().toISOString();
-        showToast("Formal compliance acknowledgement recorded successfully ✓");
+        showToast("Formal compliance acknowledgement recorded successfully ✓", "mint");
         close();
       } catch (err) {
-        // Fallback for demo seed notification
-        a.acknowledgedAt = new Date().toISOString();
-        showToast("Formal compliance acknowledgement recorded successfully ✓");
-        close();
+        ackSubmitBtn.disabled = false;
+        ackSubmitBtn.innerText = "Submit Acknowledgement";
+        showToast(err.message || "Failed to record compliance acknowledgement", "coral");
       }
     });
   }

@@ -10,12 +10,15 @@ import {
   skeleton,
   showToast,
 } from "../components.js";
+import { setupModalA11y } from "../utils/modalA11y.js";
 
 let activeListRequest = null;
 let activeDetailRequest = null;
 let activeDetailOverlay = null;
 let currentTab = "overview"; // 'overview' | 'history' | 'form_v' | 'comparison' | 'tax_documents' | 'compensation' | 'queries'
 let loadedPayslips = [];
+let loadedQueries = [];
+let isLoadingQueries = false;
 let selectedYear = "ALL";
 let selectedStatus = "ALL";
 let compareFromId = null;
@@ -224,18 +227,23 @@ function renderKPIHeader(metrics) {
   `;
 }
 
-function renderNeedsAttention() {
+function renderNeedsAttention(latest) {
+  if (!latest) return "";
+  const periodLabel = formatPeriod(latest.periodKey);
+  const pid = latest.payslipId || latest.id;
+  if (!pid) return "";
+
   return `
     <div class="card" style="padding:14px 18px; margin-bottom:18px; background:rgba(200,157,92,0.08); border:1px solid rgba(200,157,92,0.3); display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; border-radius:var(--radius-lg);">
       <div class="flex items-center gap-sm">
         <span style="font-size:20px;">🔔</span>
         <div>
-          <div style="color:var(--text-primary); font-weight:700; font-size:13.5px;">Action Centre: July 2026 Salary Statement is Published</div>
-          <div style="color:var(--text-secondary); font-size:12px; margin-top:1px;">Annual Tax Statement (Form No. 130) projection is ready for FY 2026-27.</div>
+          <div style="color:var(--text-primary); font-weight:700; font-size:13.5px;">Action Centre: ${escapeHtml(periodLabel)} Salary Statement is Published</div>
+          <div style="color:var(--text-secondary); font-size:12px; margin-top:1px;">Annual Tax Statement projection is ready for FY 2026-27.</div>
         </div>
       </div>
       <div class="flex items-center gap-sm">
-        <button class="btn btn-primary" type="button" data-view-payslip="PS-202607-00104" style="padding:7px 16px; font-size:12.5px; font-weight:700;">View Statement</button>
+        <button class="btn btn-primary" type="button" data-view-payslip="${escapeHtml(pid)}" style="padding:7px 16px; font-size:12.5px; font-weight:700;">View Statement</button>
       </div>
     </div>
   `;
@@ -301,7 +309,7 @@ function renderOverviewTab(payslips) {
 
   return `
     <div class="flex-col gap-md">
-      ${renderNeedsAttention()}
+      ${renderNeedsAttention(latest)}
 
       <!-- Prominent Latest Statement Banner with High Contrast -->
       <div class="card" style="padding:24px; border-radius:var(--radius-lg); background:linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border:1px solid rgba(200,157,92,0.35); box-shadow:var(--shadow-md); color:#ffffff;">
@@ -314,7 +322,7 @@ function renderOverviewTab(payslips) {
               ${formatPaise(latest.netPayPaise)}
             </div>
             <div style="color:#94a3b8; font-size:12.5px; margin-top:4px;">
-              Paid via Direct Credit on ${latest.paidAt ? formatDate(latest.paidAt) : "01 Aug 2026"} · Ref: <strong style="color:#e2e8f0; font-family:monospace;">${escapeHtml(latest.paymentReference || "CMS-NEFT-HDFC-982341908234")}</strong>
+              Paid via Direct Credit on ${latest.paidAt ? formatDate(latest.paidAt) : (latest.periodKey ? formatDate(latest.periodKey + "-01") : "Processed")} · Ref: <strong style="color:#e2e8f0; font-family:monospace;">${escapeHtml(latest.paymentReference || "Direct Credit")}</strong>
             </div>
           </div>
 
@@ -520,7 +528,7 @@ function renderComparisonTab(payslips) {
 
   return `
     <div class="glass" style="padding:22px;">
-      <div style="border-bottom:1px solid rgba(255,255,255,0.08);padding-bottom:14px;margin-bottom:18px;">
+      <div style="border-bottom:1px solid var(--line);padding-bottom:14px;margin-bottom:18px;">
         <div style="color:var(--color-accent-gold,#d4af37);font-size:11px;font-weight:700;text-transform:uppercase;">
           Deterministic Component Variance Engine
         </div>
@@ -542,7 +550,7 @@ function renderComparisonTab(payslips) {
       <div style="overflow-x:auto;">
         <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
           <thead>
-            <tr style="border-bottom:2px solid rgba(255,255,255,0.1);text-align:left;">
+            <tr style="border-bottom:2px solid var(--line);text-align:left;">
               <th style="padding:8px;color:#94a3b8;">Pay Component</th>
               <th style="padding:8px;color:#94a3b8;">${escapeHtml(formatPeriod(p2.periodKey))}</th>
               <th style="padding:8px;color:#94a3b8;">${escapeHtml(formatPeriod(p1.periodKey))}</th>
@@ -550,37 +558,37 @@ function renderComparisonTab(payslips) {
             </tr>
           </thead>
           <tbody>
-            <tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
+            <tr style="border-bottom:1px solid var(--line);">
               <td style="padding:8px;color:var(--ink);">Basic Salary</td>
               <td style="padding:8px;">${formatPaise(p2.earnings?.basicPayPaise)}</td>
               <td style="padding:8px;">${formatPaise(p1.earnings?.basicPayPaise)}</td>
               <td style="padding:8px;text-align:right;">${diffDisplay(diffBasic)}</td>
             </tr>
-            <tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
+            <tr style="border-bottom:1px solid var(--line);">
               <td style="padding:8px;color:var(--ink);">House Rent Allowance (HRA)</td>
               <td style="padding:8px;">${formatPaise(p2.earnings?.houseRentAllowancePaise)}</td>
               <td style="padding:8px;">${formatPaise(p1.earnings?.houseRentAllowancePaise)}</td>
               <td style="padding:8px;text-align:right;">${diffDisplay(diffHra)}</td>
             </tr>
-            <tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
+            <tr style="border-bottom:1px solid var(--line);">
               <td style="padding:8px;color:var(--ink);">Overtime Wages</td>
               <td style="padding:8px;">${formatPaise(p2.earnings?.overtimePayPaise)}</td>
               <td style="padding:8px;">${formatPaise(p1.earnings?.overtimePayPaise)}</td>
               <td style="padding:8px;text-align:right;">${diffDisplay(diffOT)}</td>
             </tr>
-            <tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
+            <tr style="border-bottom:1px solid var(--line);">
               <td style="padding:8px;color:var(--ink);">Incentive / Bonus</td>
               <td style="padding:8px;">${formatPaise(p2.earnings?.incentivePaise)}</td>
               <td style="padding:8px;">${formatPaise(p1.earnings?.incentivePaise)}</td>
               <td style="padding:8px;text-align:right;">${diffDisplay(diffIncentive)}</td>
             </tr>
-            <tr style="border-bottom:2px solid rgba(255,255,255,0.1);font-weight:700;">
+            <tr style="border-bottom:2px solid var(--line);font-weight:700;">
               <td style="padding:8px;color:#38bdf8;">Gross Earnings</td>
               <td style="padding:8px;">${formatPaise(p2.earnings?.grossPayPaise)}</td>
               <td style="padding:8px;">${formatPaise(p1.earnings?.grossPayPaise)}</td>
               <td style="padding:8px;text-align:right;">${diffDisplay(diffGross)}</td>
             </tr>
-            <tr style="border-bottom:1px solid rgba(255,255,255,0.04);">
+            <tr style="border-bottom:1px solid var(--line);">
               <td style="padding:8px;color:#f59e0b;">Total Deductions</td>
               <td style="padding:8px;">${formatPaise(p2.deductions?.totalDeductionPaise)}</td>
               <td style="padding:8px;">${formatPaise(p1.deductions?.totalDeductionPaise)}</td>
@@ -613,7 +621,7 @@ function renderFormVTab(payslips) {
 
   return `
     <div class="glass" style="padding:22px;margin-bottom:18px;">
-      <div class="flex justify-between items-start" style="gap:16px;border-bottom:1px solid rgba(255,255,255,0.1);padding-bottom:14px;margin-bottom:16px;flex-wrap:wrap;">
+      <div class="flex justify-between items-start" style="gap:16px;border-bottom:1px solid var(--line);padding-bottom:14px;margin-bottom:16px;flex-wrap:wrap;">
         <div>
           <div style="color:var(--color-accent-gold,#d4af37);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;">
             Statutory Compliance — Code on Wages 2026 — Form V / Form XIX
@@ -730,7 +738,7 @@ function renderTaxSummaryTab(metrics) {
           </div>
         </div>
 
-        <div style="border-top:1px solid rgba(255,255,255,0.08);padding-top:16px;">
+        <div style="border-top:1px solid var(--line);padding-top:16px;">
           <div style="color:var(--ink);font-size:14px;font-weight:600;margin-bottom:10px;">Available Statutory Forms & Certificates</div>
           <div class="flex-col gap-sm">
             <div class="glass" style="padding:12px;display:flex;justify-content:space-between;align-items:center;gap:12px;">
@@ -797,6 +805,15 @@ function renderCompensationTab() {
 }
 
 function renderQueriesTab() {
+  if (isLoadingQueries) {
+    return `
+      <div class="glass" style="padding:22px; text-align:center; color:var(--muted);">
+        <div style="display:inline-block; width:24px; height:24px; border:2px solid #cbd5e1; border-top-color:#6366f1; border-radius:50%; animation:spin 0.8s linear infinite;"></div>
+        <div style="margin-top:8px; font-size:12px;">Loading payroll inquiries...</div>
+      </div>
+    `;
+  }
+
   return `
     <div class="glass" style="padding:22px;">
       <div class="flex justify-between items-center" style="gap:12px;margin-bottom:18px;flex-wrap:wrap;">
@@ -815,24 +832,28 @@ function renderQueriesTab() {
       </div>
 
       <div class="flex-col gap-sm">
-        ${payrollQueries.length === 0
+        ${loadedQueries.length === 0
           ? emptyState({ title: "No active inquiries", body: "You haven't raised any payroll queries. All pay records are in order." })
-          : payrollQueries
+          : loadedQueries
               .map(
                 (q) => `
-                  <div class="glass" style="padding:14px;border-left:3px solid ${q.status === "RESOLVED" ? "#22c55e" : "#f59e0b"};">
+                  <div class="glass" style="padding:14px;border-left:3px solid ${q.status === "RESOLVED" || q.status === "CLOSED" ? "#22c55e" : "#f59e0b"};">
                     <div class="flex justify-between items-center" style="gap:12px;flex-wrap:wrap;">
                       <div>
                         <div style="color:var(--ink);font-weight:600;font-size:13.5px;">${escapeHtml(q.subject)}</div>
                         <div style="color:var(--muted);" style="font-size:11.5px;margin-top:3px;">
+                          Ticket: <strong style="color:var(--color-accent-gold,#d4af37);">${escapeHtml(q.queryId || "")}</strong> ·
                           Period: <strong>${escapeHtml(formatPeriod(q.periodKey))}</strong> ·
                           Raised: <strong>${formatDate(q.createdAt)}</strong> ·
-                          Category: <strong>${escapeHtml(q.category.replace(/_/g, " "))}</strong>
+                          Category: <strong>${escapeHtml((q.category || "").replace(/_/g, " "))}</strong>
+                        </div>
+                        <div style="color:var(--text-secondary,#475569);font-size:12px;margin-top:6px;background:rgba(0,0,0,0.03);padding:6px 10px;border-radius:6px;">
+                          ${escapeHtml(q.description || "")}
                         </div>
                       </div>
-                      <span class="pill pill-${q.status === "RESOLVED" ? "mint" : "amber"}">${escapeHtml(q.status)}</span>
+                      <span class="pill pill-${q.status === "RESOLVED" || q.status === "CLOSED" ? "mint" : "amber"}">${escapeHtml(q.status)}</span>
                     </div>
-                    ${q.response ? `<div style="background:rgba(255,255,255,0.04);padding:10px;border-radius:6px;margin-top:10px;font-size:12px;color:#cbd5e1;"><strong>HR Response:</strong> ${escapeHtml(q.response)}</div>` : ""}
+                    ${q.resolution ? `<div style="background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.2);padding:10px;border-radius:6px;margin-top:10px;font-size:12px;color:var(--ink);"><strong>HR Resolution:</strong> ${escapeHtml(q.resolution)} ${q.resolvedAt ? `<span style="color:var(--muted); font-size:11px;">(${formatDate(q.resolvedAt)})</span>` : ""}</div>` : ""}
                   </div>
                 `
               )
@@ -1137,9 +1158,16 @@ function createDetailOverlay() {
   document.body.appendChild(overlay);
   activeDetailOverlay = overlay;
 
-  overlay.querySelector("[data-close-payslip]").addEventListener("click", () => closeOverlay(overlay));
+  const cleanupA11y = setupModalA11y(overlay, { onClose: () => closeOverlay(overlay), titleId: "payslip-detail-title" });
+  overlay.querySelector("[data-close-payslip]").addEventListener("click", () => {
+    cleanupA11y();
+    closeOverlay(overlay);
+  });
   overlay.addEventListener("click", (event) => {
-    if (event.target === overlay) closeOverlay(overlay);
+    if (event.target === overlay) {
+      cleanupA11y();
+      closeOverlay(overlay);
+    }
   });
 
   return overlay;
@@ -1196,30 +1224,57 @@ async function openPayslip(payslipId) {
   }
 }
 
+async function loadPayrollQueries(root) {
+  isLoadingQueries = true;
+  try {
+    const payload = await apiGet("/payroll/me/queries");
+    loadedQueries = payload?.data?.queries || [];
+  } catch {
+    loadedQueries = [];
+  } finally {
+    isLoadingQueries = false;
+    if (currentTab === "queries" && root && root.isConnected) {
+      renderContent(root);
+    }
+  }
+}
+
 function showRaiseQueryModal(root) {
   const overlay = document.createElement("div");
   overlay.className = "dialog-overlay";
+
+  const periods = [...new Set(loadedPayslips.map((p) => p.periodKey).filter(Boolean))];
+  if (periods.length === 0) {
+    const now = new Date();
+    for (let i = 0; i < 3; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      periods.push(d.toISOString().slice(0, 7));
+    }
+  }
+
+  const periodOptions = periods
+    .map((pk) => `<option value="${escapeHtml(pk)}">${escapeHtml(formatPeriod(pk))}</option>`)
+    .join("");
+
   overlay.innerHTML = `
-    <div class="card dialog-box" role="dialog" aria-modal="true" style="max-width:540px;text-align:left;">
-      <div style="color:var(--ink);font-size:17px;font-weight:700;margin-bottom:4px;" class="font-display">
+    <div class="card dialog-box" role="dialog" aria-modal="true" aria-labelledby="raise-query-title" style="max-width:540px;text-align:left;">
+      <div id="raise-query-title" style="color:var(--ink);font-size:17px;font-weight:700;margin-bottom:4px;" class="font-display">
         Raise Payroll Inquiry
       </div>
       <div style="color:var(--muted);" style="font-size:12px;margin-bottom:16px;">
-        Submit a question or dispute regarding wages, overtime, tax deductions or attendance.
+        Submit an official question or dispute regarding wages, overtime, tax deductions or attendance.
       </div>
 
       <div class="flex-col gap-md">
         <div>
-          <label style="color:var(--muted);" style="font-size:12px;display:block;margin-bottom:4px;">Payroll Period</label>
+          <label style="color:var(--muted);font-size:12px;display:block;margin-bottom:4px;">Payroll Period *</label>
           <select class="select" id="query-period" style="width:100%;">
-            <option value="2026-07">July 2026</option>
-            <option value="2026-06">June 2026</option>
-            <option value="2026-05">May 2026</option>
+            ${periodOptions}
           </select>
         </div>
 
         <div>
-          <label style="color:var(--muted);" style="font-size:12px;display:block;margin-bottom:4px;">Inquiry Category</label>
+          <label style="color:var(--muted);font-size:12px;display:block;margin-bottom:4px;">Inquiry Category *</label>
           <select class="select" id="query-category" style="width:100%;">
             <option value="OVERTIME_DISCREPANCY">Overtime Calculation Inquiry</option>
             <option value="ATTENDANCE_MISMATCH">Attendance / Loss of Pay (LOP) Discrepancy</option>
@@ -1230,12 +1285,12 @@ function showRaiseQueryModal(root) {
         </div>
 
         <div>
-          <label style="color:var(--muted);" style="font-size:12px;display:block;margin-bottom:4px;">Subject</label>
+          <label style="color:var(--muted);font-size:12px;display:block;margin-bottom:4px;">Subject *</label>
           <input class="input" id="query-subject" type="text" placeholder="Brief summary of your question" style="width:100%;" />
         </div>
 
         <div>
-          <label style="color:var(--muted);" style="font-size:12px;display:block;margin-bottom:4px;">Detailed Description</label>
+          <label style="color:var(--muted);font-size:12px;display:block;margin-bottom:4px;">Detailed Description *</label>
           <textarea class="textarea" id="query-desc" rows="3" placeholder="Provide specific shift dates, expected hours or amount..." style="width:100%;"></textarea>
         </div>
       </div>
@@ -1249,13 +1304,20 @@ function showRaiseQueryModal(root) {
 
   document.body.appendChild(overlay);
 
-  overlay.querySelector("[data-cancel-query]").addEventListener("click", () => overlay.remove());
+  const closeQuery = () => {
+    cleanupQueryA11y();
+    overlay.remove();
+  };
+  const cleanupQueryA11y = setupModalA11y(overlay, { onClose: closeQuery, titleId: "raise-query-title" });
+
+  overlay.querySelector("[data-cancel-query]").addEventListener("click", closeQuery);
   overlay.addEventListener("click", (e) => {
-    if (e.target === overlay) overlay.remove();
+    if (e.target === overlay) closeQuery();
   });
 
-  overlay.querySelector("[data-submit-query]").addEventListener("click", () => {
+  overlay.querySelector("[data-submit-query]").addEventListener("click", async () => {
     const subject = overlay.querySelector("#query-subject").value.trim();
+    const description = overlay.querySelector("#query-desc").value.trim();
     const periodKey = overlay.querySelector("#query-period").value;
     const category = overlay.querySelector("#query-category").value;
 
@@ -1263,21 +1325,33 @@ function showRaiseQueryModal(root) {
       showToast("Please enter an inquiry subject.", "amber");
       return;
     }
+    if (!description) {
+      showToast("Please enter a detailed description.", "amber");
+      return;
+    }
 
-    payrollQueries.unshift({
-      id: `PQ-2026-${Math.floor(1000 + Math.random() * 9000)}`,
-      periodKey,
-      category,
-      subject,
-      status: "OPEN",
-      createdAt: new Date().toISOString(),
-      resolvedAt: null,
-      response: null,
-    });
+    const submitBtn = overlay.querySelector("[data-submit-query]");
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Submitting...";
 
-    overlay.remove();
-    showToast("Payroll inquiry submitted successfully. HR team notified.", "mint");
-    renderContent(root);
+    try {
+      await apiPost("/payroll/me/queries", {
+        subject,
+        description,
+        periodKey,
+        category,
+      });
+
+      overlay.remove();
+      showToast("Payroll inquiry submitted successfully. HR team notified.", "mint");
+      await loadPayrollQueries(root);
+      currentTab = "queries";
+      renderContent(root);
+    } catch (err) {
+      showToast(err.message || "Failed to submit inquiry.", "coral");
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Submit Inquiry";
+    }
   });
 }
 
@@ -1355,11 +1429,11 @@ function bindTabActions(root) {
   });
 
   root.querySelector("[data-form130-btn]")?.addEventListener("click", () => {
-    showForm130Modal();
+    showForm130Modal(root);
   });
 
   root.querySelector("[data-form16-btn]")?.addEventListener("click", () => {
-    showForm16Modal();
+    showForm16Modal(root);
   });
 
   root.querySelector("[data-epf-statement-btn]")?.addEventListener("click", () => {
@@ -1399,7 +1473,7 @@ function showTaxProjectionModal() {
   overlay.querySelectorAll("[data-close-doc]").forEach((b) => b.addEventListener("click", () => overlay.remove()));
 }
 
-function showForm130Modal() {
+function showForm130Modal(root) {
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
   overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px;";
@@ -1407,61 +1481,65 @@ function showForm130Modal() {
     <div class="card" style="background:#fff;border-radius:12px;width:100%;max-width:580px;padding:24px;box-shadow:0 12px 32px rgba(0,0,0,0.2);">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:1px solid #e2e8f0;padding-bottom:12px;margin-bottom:16px;">
         <div>
-          <h3 style="margin:0;font-size:16px;font-weight:800;color:#0f172a;">Form No. 130 TDS Certificate</h3>
-          <div style="font-size:11.5px;color:#64748b;">Statutory Deductor: Zamorin Artisan Roasters Private Limited (TAN: BLRZ12991A)</div>
+          <h3 style="margin:0;font-size:16px;font-weight:800;color:#0f172a;">Form No. 130 TDS Certificate (FY 2026-27 Framework)</h3>
+          <div style="font-size:11.5px;color:#64748b;">Statutory Deductor: Zamorin Speciality Coffee & Kitchens Pvt Ltd (TAN: BLRZ12991A)</div>
         </div>
         <button class="btn btn-sm btn-ghost" data-close-doc style="font-size:16px;">✕</button>
       </div>
 
-      <div style="font-size:12px;background:#f8fafc;padding:12px;border-radius:6px;margin-bottom:16px;">
-        <div>Assessment Year: <strong>2027-28</strong></div>
-        <div>Quarter: <strong>Q1 (Apr-Jun 2026) · Q2 (Jul-Sep 2026)</strong></div>
-        <div>Total Tax Deducted &amp; Deposited to Central Govt: <strong>₹0.00 (Nil TDS Nil Deduct)</strong></div>
+      <div style="font-size:12px;background:#f8fafc;padding:14px;border-radius:8px;margin-bottom:16px;line-height:1.6;color:#334155;">
+        <div style="margin-bottom:8px;font-weight:600;color:#0f172a;">Statutory Availability Status:</div>
+        <div>• <strong>Assessment Year:</strong> 2027-28 (Financial Year 2026-27)</div>
+        <div>• <strong>Filing Status:</strong> Periodic TDS returns deposited under TAN BLRZ12991A.</div>
+        <div style="margin-top:10px;padding:10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;color:#166534;">
+          <strong>Statutory Process:</strong> Under the Income-tax Rules 2026, formal Form No. 130 certificates are finalized after Q4 annual reconciliation. If you require interim documentation or salary confirmation for bank loans/visa, raise a Payroll Inquiry.
+        </div>
       </div>
 
       <div style="display:flex;justify-content:flex-end;gap:10px;">
         <button class="btn btn-secondary" data-close-doc>Close</button>
-        <button class="btn btn-primary" onclick="window.print()" style="background:#4f46e5;color:#fff;">🖨️ Print Form 130</button>
+        <button class="btn btn-primary" data-raise-tax-query style="background:#4f46e5;color:#fff;">Raise Inquiry</button>
       </div>
     </div>
   `;
   document.body.appendChild(overlay);
   overlay.querySelectorAll("[data-close-doc]").forEach((b) => b.addEventListener("click", () => overlay.remove()));
+  overlay.querySelector("[data-raise-tax-query]")?.addEventListener("click", () => {
+    overlay.remove();
+    showRaiseQueryModal(root);
+  });
 }
 
-function showForm16Modal() {
+function showForm16Modal(root) {
   const overlay = document.createElement("div");
   overlay.className = "modal-overlay";
   overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px;";
   overlay.innerHTML = `
-    <div class="card" style="background:#fff;border-radius:12px;width:100%;max-width:620px;padding:24px;box-shadow:0 12px 32px rgba(0,0,0,0.2);">
+    <div class="card" style="background:#fff;border-radius:12px;width:100%;max-width:580px;padding:24px;box-shadow:0 12px 32px rgba(0,0,0,0.2);">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:1px solid #e2e8f0;padding-bottom:12px;margin-bottom:16px;">
         <div>
-          <h3 style="margin:0;font-size:16px;font-weight:800;color:#0f172a;">Form 16 — Certificate of Tax Deducted at Source</h3>
-          <div style="font-size:11.5px;color:#64748b;">Under Section 203 of the Income-tax Act, 1961 for Salary Income</div>
+          <h3 style="margin:0;font-size:16px;font-weight:800;color:#0f172a;">Historical Form 16 (FY 2025-26 &amp; Earlier)</h3>
+          <div style="font-size:11.5px;color:#64748b;">Under Section 203 of the Income-tax Act, 1961</div>
         </div>
         <button class="btn btn-sm btn-ghost" data-close-doc style="font-size:16px;">✕</button>
       </div>
 
-      <div style="font-size:12px;line-height:1.7;color:#334155;margin-bottom:16px;">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;background:#f8fafc;padding:12px;border-radius:6px;margin-bottom:12px;">
-          <div>Employer TAN: <strong>BLRZ12991A</strong></div>
-          <div>Employee PAN: <strong>ABCDE1234F</strong></div>
-          <div>Period with Employer: <strong>01-Apr-2025 to 31-Mar-2026</strong></div>
-          <div>Assessment Year: <strong>2026-27</strong></div>
-        </div>
-        <div>Part A: Verification of TDS remittances with OLTAS challans confirmed.</div>
-        <div>Part B: Details of Salary paid and any other income and tax deducted.</div>
+      <div style="font-size:12px;line-height:1.7;color:#334155;margin-bottom:16px;background:#f8fafc;padding:14px;border-radius:8px;">
+        <div>Historical certificates are archived in the central accounts repository. If you require a re-issued copy for IT returns verification, please raise an inquiry below.</div>
       </div>
 
       <div style="display:flex;justify-content:flex-end;gap:10px;">
         <button class="btn btn-secondary" data-close-doc>Close</button>
-        <button class="btn btn-primary" onclick="window.print()" style="background:#4f46e5;color:#fff;">🖨️ Print Form 16</button>
+        <button class="btn btn-primary" data-raise-tax-query style="background:#4f46e5;color:#fff;">Request Duplicate Copy</button>
       </div>
     </div>
   `;
   document.body.appendChild(overlay);
   overlay.querySelectorAll("[data-close-doc]").forEach((b) => b.addEventListener("click", () => overlay.remove()));
+  overlay.querySelector("[data-raise-tax-query]")?.addEventListener("click", () => {
+    overlay.remove();
+    showRaiseQueryModal(root);
+  });
 }
 
 function showEpfPassbookModal() {
@@ -1472,24 +1550,19 @@ function showEpfPassbookModal() {
     <div class="card" style="background:#fff;border-radius:12px;width:100%;max-width:580px;padding:24px;box-shadow:0 12px 32px rgba(0,0,0,0.2);">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;border-bottom:1px solid #e2e8f0;padding-bottom:12px;margin-bottom:16px;">
         <div>
-          <h3 style="margin:0;font-size:16px;font-weight:800;color:#0f172a;">EPFO Member Passbook &amp; UAN Contribution</h3>
-          <div style="font-size:11.5px;color:#64748b;">Employees' Provident Fund Scheme 1952 · UAN: 101499201991</div>
+          <h3 style="margin:0;font-size:16px;font-weight:800;color:#0f172a;">EPFO Member Passbook &amp; UAN Portal</h3>
+          <div style="font-size:11.5px;color:#64748b;">Employees' Provident Fund Scheme 1952</div>
         </div>
         <button class="btn btn-sm btn-ghost" data-close-doc style="font-size:16px;">✕</button>
       </div>
 
-      <div style="font-size:12px;line-height:1.7;color:#334155;margin-bottom:16px;">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;background:#f8fafc;padding:12px;border-radius:6px;margin-bottom:12px;">
-          <div>Employee Share (12%): <strong>₹1,800.00 / mo</strong></div>
-          <div>Employer Share (3.67% EPF + 8.33% EPS): <strong>₹1,800.00 / mo</strong></div>
-          <div>Cumulative Balance: <strong style="color:#059669;">₹48,600.00</strong></div>
-          <div>ECR Status: <strong>Remitted &amp; Reconciled</strong></div>
-        </div>
+      <div style="font-size:12px;line-height:1.7;color:#334155;margin-bottom:16px;background:#f8fafc;padding:14px;border-radius:8px;">
+        <div>EPFO member balances, monthly interest credits, and passbook statements are maintained authoritatively on the official Government EPFO Unified Portal.</div>
+        <div style="margin-top:8px;">You can view and download your complete historical passbook by logging in with your Universal Account Number (UAN).</div>
       </div>
 
       <div style="display:flex;justify-content:flex-end;gap:10px;">
         <button class="btn btn-secondary" data-close-doc>Close</button>
-        <button class="btn btn-primary" onclick="window.print()" style="background:#4f46e5;color:#fff;">🖨️ Print Passbook Summary</button>
       </div>
     </div>
   `;
@@ -1498,6 +1571,7 @@ function showEpfPassbookModal() {
 }
 
 async function loadMyPayslips(root) {
+  loadPayrollQueries(root);
   activeListRequest?.abort();
   const requestController = new AbortController();
   activeListRequest = requestController;

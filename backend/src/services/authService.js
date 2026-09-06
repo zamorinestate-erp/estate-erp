@@ -962,13 +962,19 @@ async function revokeAllUserSessions({
   revokedBy,
   reason = 'LOGOUT_ALL',
   details = 'User signed out from all devices.',
+  excludeSessionId = null,
 }) {
-  const sessions = await Session.find({
-    organisationId:
-      normalizeIdentifier(organisationId),
+  const query = {
+    organisationId: normalizeIdentifier(organisationId),
     userId: normalizeIdentifier(userId),
     status: 'ACTIVE',
-  }).select(
+  };
+
+  if (excludeSessionId) {
+    query.sessionId = { $ne: normalizeIdentifier(excludeSessionId) };
+  }
+
+  const sessions = await Session.find(query).select(
     '+accessTokenHash +refreshTokenHash +previousRefreshTokenHashes'
   );
 

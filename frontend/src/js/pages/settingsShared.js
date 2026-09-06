@@ -29,6 +29,7 @@ import { loadSessionManagement, renderSessionManagement } from "../sessionManage
 import { apiGet, apiPatch, apiPost, apiDelete } from "../apiClient.js";
 import { renderStaffPayslips, wireStaffPayslips } from "./staffPayslips.js";
 import { renderStaffLoansAdvances, wireStaffLoansAdvances } from "./staffLoansAdvances.js";
+import { setupModalA11y } from "../utils/modalA11y.js";
 
 // ── 23 supported languages (English + 22 Eighth Schedule Indian Languages) ───
 const ALL_LANGUAGES = [
@@ -263,7 +264,6 @@ export const SETTINGS_DESTINATIONS = {
 
 // Active sub-section within Settings
 let _activeSection = "overview";
-let _employmentSubTab = "overview"; // overview | payslips | loans | documents
 let _searchQuery = "";
 let _profileData = null;
 let _delegationsData = null;
@@ -822,6 +822,9 @@ function renderEmployment() {
           <h2 class="settings-card-title">Official Employment Documents</h2>
           <div class="settings-card-subtitle">HR-issued records, appointment letters, and statutory declarations.</div>
         </div>
+        <button class="btn btn-secondary btn-sm" id="btn-goto-doc-hub" type="button" style="font-weight:600;">
+          Open Document Hub 📁 →
+        </button>
       </div>
 
       <div style="display:flex; flex-direction:column; gap:10px;">
@@ -1714,6 +1717,8 @@ function renderConnected() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function renderHelp() {
+  const isManagement = ['MASTER', 'OWNER', 'CAFE_ADMIN'].includes(state.role);
+
   const content = `
     <!-- System Status & Connectivity -->
     <div class="settings-section-card">
@@ -1739,16 +1744,49 @@ function renderHelp() {
       </div>
     </div>
 
-    <!-- Safe Support Diagnostics -->
-    <div class="settings-section-card">
+    ${isManagement ? `
+    <!-- Management Support Queue -->
+    <div class="settings-section-card" id="settings-manage-support-card">
       <div class="settings-card-header">
         <div>
-          <h2 class="settings-card-title">Support &amp; Safe Diagnostics</h2>
-          <div class="settings-card-subtitle">Generate non-sensitive system summary to assist technical support.</div>
+          <h2 class="settings-card-title">Support Management Queue</h2>
+          <div class="settings-card-subtitle">Review, reply to, and resolve employee-submitted support tickets.</div>
+        </div>
+        <div style="display:flex; gap:8px;">
+          <select id="manage-support-status-filter" class="settings-field-input" style="font-size:12px; padding:4px 8px; width:auto;">
+            <option value="ALL">All Statuses</option>
+            <option value="OPEN">Open</option>
+            <option value="IN_PROGRESS">In Progress</option>
+            <option value="WAITING_FOR_EMPLOYEE">Waiting for Employee</option>
+            <option value="RESOLVED">Resolved</option>
+            <option value="CLOSED">Closed</option>
+          </select>
         </div>
       </div>
 
-      <div class="settings-toggle-row">
+      <div id="settings-manage-tickets-container" style="display:flex; flex-direction:column; gap:8px; margin-bottom:16px;">
+        <div style="font-size:12.5px; color:var(--muted);">Loading management queue…</div>
+      </div>
+    </div>
+    ` : ''}
+
+    <!-- Safe Support Diagnostics & Support Tickets -->
+    <div class="settings-section-card">
+      <div class="settings-card-header">
+        <div>
+          <h2 class="settings-card-title">Support &amp; Issue Tickets</h2>
+          <div class="settings-card-subtitle">Submit support requests or view status of reported tickets.</div>
+        </div>
+        <button class="btn btn-primary btn-sm" id="settings-open-ticket-btn" type="button">
+          ➕ New Support Ticket
+        </button>
+      </div>
+
+      <div id="settings-my-tickets-container" style="display:flex; flex-direction:column; gap:8px; margin-bottom:16px;">
+        <div style="font-size:12.5px; color:var(--muted);">Loading recent support tickets…</div>
+      </div>
+
+      <div class="settings-toggle-row" style="border-top:1px solid var(--line); padding-top:12px;">
         <div class="settings-toggle-info">
           <div class="settings-toggle-title">Technical Support Contact</div>
           <div class="settings-toggle-desc">support@zamorincafe.com · For urgent till or access concerns, contact your administrator.</div>
@@ -2305,6 +2343,10 @@ function _wireEmployment(root) {
       }
     });
   });
+
+  root.querySelector("#btn-goto-doc-hub")?.addEventListener("click", () => {
+    navigate("staff-documents");
+  });
 }
 
 function _wireAccess(root) {
@@ -2728,14 +2770,24 @@ function _wireSecurity(root) {
 
 function _wireRecovery(root) {
   root.querySelector("#settings-lost-device-btn")?.addEventListener("click", () => {
-    confirmAction("🚨 Start Lost Device flow? This will revoke all session tokens on remote devices.", () => {
-      showToast("Remote sessions revoked. Emergency credentials activated.", "mint");
+    confirmAction("🚨 Start Lost Device flow? This will revoke all session tokens on other devices.", async () => {
+      try {
+        await apiPost("/auth/sessions/revoke-others");
+        showToast("Remote sessions revoked successfully. Emergency credentials active.", "mint");
+      } catch (err) {
+        showToast(err.message || "Failed to revoke remote sessions.", "coral");
+      }
     });
   });
 
   root.querySelector("#settings-secure-account-btn")?.addEventListener("click", () => {
-    confirmAction("🛡️ Secure account? All other active sessions will be terminated immediately.", () => {
-      showToast("All other sessions terminated. Account secured.", "mint");
+    confirmAction("🛡️ Secure account? All other active sessions will be terminated immediately.", async () => {
+      try {
+        await apiPost("/auth/sessions/revoke-others");
+        showToast("All other sessions terminated. Account secured.", "mint");
+      } catch (err) {
+        showToast(err.message || "Failed to secure account.", "coral");
+      }
     });
   });
 }
@@ -2787,23 +2839,402 @@ function _wireWorkspace(root) {
 
 async function _wireHelp(root) {
   const diagEl = root.querySelector("#settings-diagnostics-content");
-  if (!diagEl) return;
-
-  try {
-    const res = await apiGet("/settings/diagnostics");
-    const d = res?.data || {};
-    diagEl.innerHTML = `
-      <div style="color:var(--ink); font-size:13px;">App v${escHtml(d.appVersion || "2.0.0")} · Node: ${escHtml(d.environment || "production")}</div>
-      <div class="settings-field-helper" style="margin-top:2px;">Time: ${escHtml(new Date(d.serverTime || Date.now()).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }))} IST · Health: <span style="color:var(--success, #1e7a4c); font-weight:700;">CONNECTED</span></div>
-    `;
-  } catch {
-    diagEl.innerHTML = `<span style="color:var(--muted);">Diagnostics loaded (Offline preview mode)</span>`;
+  if (diagEl) {
+    try {
+      const res = await apiGet("/settings/diagnostics");
+      const d = res?.data || {};
+      diagEl.innerHTML = `
+        <div style="color:var(--ink); font-size:13px;">App v${escHtml(d.appVersion || "2.0.0")} · Node: ${escHtml(d.environment || "production")}</div>
+        <div class="settings-field-helper" style="margin-top:2px;">Time: ${escHtml(new Date(d.serverTime || Date.now()).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }))} IST · Health: <span style="color:var(--success, #1e7a4c); font-weight:700;">CONNECTED</span></div>
+      `;
+    } catch {
+      diagEl.innerHTML = `<span style="color:var(--muted);">Diagnostics loaded (Offline preview mode)</span>`;
+    }
   }
+
+  // Self-Service My Tickets
+  const ticketsContainer = root.querySelector("#settings-my-tickets-container");
+  if (ticketsContainer) {
+    try {
+      const tRes = await apiGet("/settings/support/tickets");
+      const tickets = tRes?.data?.tickets || [];
+      if (tickets.length === 0) {
+        ticketsContainer.innerHTML = `<div style="font-size:12.5px; color:var(--muted); padding:6px 0;">No active support tickets found.</div>`;
+      } else {
+        ticketsContainer.innerHTML = tickets.slice(0, 8).map((t) => `
+          <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 14px; background:var(--surface-sunken); border:1px solid var(--line); border-radius:var(--radius-sm, 6px); font-size:12.5px;">
+            <div>
+              <div style="font-weight:700; color:var(--ink);">${escHtml(t.summary || t.caseId)}</div>
+              <div class="settings-field-helper">${escHtml(t.caseId)} · ${escHtml(t.category)} · ${new Date(t.createdAt).toLocaleDateString("en-IN")}</div>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              ${(t.status === 'WAITING_FOR_EMPLOYEE' || t.status === 'OPEN' || t.status === 'IN_PROGRESS') ? `
+                <button class="btn btn-ghost btn-xs" data-reply-ticket="${escHtml(t.caseId)}" style="font-size:11px; padding:3px 8px;">💬 Reply</button>
+              ` : ''}
+              <span class="settings-status-chip ${t.status === 'CLOSED' || t.status === 'RESOLVED' ? 'success' : 'warning'}" style="font-size:10px;">${escHtml(t.status)}</span>
+            </div>
+          </div>
+        `).join("");
+
+        ticketsContainer.querySelectorAll("[data-reply-ticket]").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const cid = btn.getAttribute("data-reply-ticket");
+            const t = tickets.find((x) => x.caseId === cid);
+            if (t) openEmployeeReplyModal(t, root);
+          });
+        });
+      }
+    } catch {
+      ticketsContainer.innerHTML = `<div style="font-size:12.5px; color:var(--muted); padding:6px 0;">Support ticket history available online.</div>`;
+    }
+  }
+
+  // Management Support Queue
+  const manageContainer = root.querySelector("#settings-manage-tickets-container");
+  const manageFilter = root.querySelector("#manage-support-status-filter");
+  if (manageContainer) {
+    const loadManageTickets = async () => {
+      try {
+        const st = manageFilter?.value || "ALL";
+        const url = st !== "ALL" ? `/settings/support/manage/tickets?status=${st}` : "/settings/support/manage/tickets";
+        const res = await apiGet(url);
+        const list = res?.data?.tickets || [];
+        if (list.length === 0) {
+          manageContainer.innerHTML = `<div style="font-size:12.5px; color:var(--muted); padding:6px 0;">No support tickets in queue.</div>`;
+          return;
+        }
+        manageContainer.innerHTML = list.slice(0, 15).map((t) => `
+          <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 14px; background:var(--surface-sunken); border:1px solid var(--line); border-radius:var(--radius-sm, 6px); font-size:12.5px;">
+            <div>
+              <div style="font-weight:700; color:var(--ink);">${escHtml(t.summary || t.caseId)}</div>
+              <div class="settings-field-helper">${escHtml(t.caseId)} · By: ${escHtml(t.reportedByUserId || t.senderEmail || 'Employee')} · ${escHtml(t.category)} · ${new Date(t.createdAt).toLocaleDateString("en-IN")}</div>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <button class="btn btn-secondary btn-xs" data-manage-ticket="${escHtml(t.caseId)}" style="font-size:11px; padding:3px 8px;">Review</button>
+              <span class="settings-status-chip ${t.status === 'CLOSED' || t.status === 'RESOLVED' ? 'success' : 'warning'}" style="font-size:10px;">${escHtml(t.status)}</span>
+            </div>
+          </div>
+        `).join("");
+
+        manageContainer.querySelectorAll("[data-manage-ticket]").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            const cid = btn.getAttribute("data-manage-ticket");
+            const t = list.find((x) => x.caseId === cid);
+            if (t) openManageTicketModal(t, root);
+          });
+        });
+      } catch (err) {
+        manageContainer.innerHTML = `<div style="font-size:12.5px; color:var(--muted); padding:6px 0;">${escHtml(err.message || 'Error loading support queue.')}</div>`;
+      }
+    };
+
+    manageFilter?.addEventListener("change", loadManageTickets);
+    loadManageTickets();
+  }
+
+  root.querySelector("#settings-open-ticket-btn")?.addEventListener("click", () => {
+    openSupportTicketModal(root);
+  });
 
   root.querySelector("#settings-copy-diagnostics")?.addEventListener("click", () => {
     const text = `Zamorin ERP Diagnostics\nApp Version: 2.0.0\nTimezone: Asia/Kolkata\nRole: ${state.role}\nBrowser: ${navigator.userAgent}`;
     navigator.clipboard?.writeText(text);
     showToast("Diagnostics copied to clipboard (no secrets included).", "mint");
+  });
+}
+
+function openSupportTicketModal(root) {
+  let existing = document.getElementById("settings-ticket-modal");
+  if (existing) existing.remove();
+
+  const modal = document.createElement("div");
+  modal.id = "settings-ticket-modal";
+  modal.className = "modal-backdrop flex items-center justify-center";
+  modal.style.cssText = "position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:1060; padding:16px;";
+
+  modal.innerHTML = `
+    <div class="card" style="width:100%; max-width:480px; padding:24px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-lg);">
+      <div class="flex items-center justify-between" style="margin-bottom:14px;">
+        <div id="st-modal-title" style="font-size:16px; font-weight:700; color:var(--ink);">Submit Support Ticket</div>
+        <button class="btn btn-sm btn-ghost" id="st-close-btn" aria-label="Close ticket modal" style="padding:4px 8px;">✕</button>
+      </div>
+
+      <div style="display:flex; flex-direction:column; gap:12px; margin-bottom:18px;">
+        <div>
+          <label style="font-size:12px; font-weight:600; color:var(--ink); display:block; margin-bottom:4px;">Category</label>
+          <select id="st-category" class="form-input" style="width:100%;">
+            <option value="GENERAL_INQUIRY">General Inquiry</option>
+            <option value="ATTENDANCE_ISSUE">Attendance &amp; Clock-in Issue</option>
+            <option value="BILLING_QUERY">Payroll &amp; Billing Query</option>
+            <option value="BUG_REPORT">Bug / Application Issue</option>
+            <option value="USER_ACCESS">User Access &amp; Permissions</option>
+          </select>
+        </div>
+
+        <div>
+          <label style="font-size:12px; font-weight:600; color:var(--ink); display:block; margin-bottom:4px;">Subject / Summary</label>
+          <input type="text" id="st-summary" class="form-input" placeholder="Brief summary of the issue..." style="width:100%;" />
+        </div>
+
+        <div>
+          <label style="font-size:12px; font-weight:600; color:var(--ink); display:block; margin-bottom:4px;">Description</label>
+          <textarea id="st-description" class="form-input" rows="3" placeholder="Explain the problem in detail..." style="width:100%; resize:none;"></textarea>
+        </div>
+      </div>
+
+      <div class="flex justify-end gap-sm">
+        <button class="btn btn-secondary btn-sm" id="st-cancel-btn">Cancel</button>
+        <button class="btn btn-primary btn-sm" id="st-submit-btn">Submit Ticket</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+  const cleanupA11y = setupModalA11y(modal, {
+    onClose: () => close(),
+    titleId: "st-modal-title",
+  });
+  const close = () => {
+    cleanupA11y();
+    modal.remove();
+  };
+  modal.querySelector("#st-close-btn")?.addEventListener("click", close);
+  modal.querySelector("#st-cancel-btn")?.addEventListener("click", close);
+
+  modal.querySelector("#st-submit-btn")?.addEventListener("click", async () => {
+    const summary = modal.querySelector("#st-summary")?.value.trim();
+    const description = modal.querySelector("#st-description")?.value.trim();
+    const category = modal.querySelector("#st-category")?.value || "GENERAL_INQUIRY";
+
+    if (!summary || !description) {
+      showToast("Please provide both summary and description.", "amber");
+      return;
+    }
+
+    const submitBtn = modal.querySelector("#st-submit-btn");
+    try {
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Submitting...";
+      await apiPost("/settings/support/tickets", { category, summary, description });
+      close();
+      showToast("Support ticket created successfully.", "mint");
+      if (root) _wireHelp(root);
+    } catch (err) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Submit Ticket";
+      showToast(err.message || "Failed to submit ticket.", "coral");
+    }
+  });
+}
+
+function openEmployeeReplyModal(ticket, root) {
+  let existing = document.getElementById("employee-reply-modal");
+  if (existing) existing.remove();
+
+  const modal = document.createElement("div");
+  modal.id = "employee-reply-modal";
+  modal.className = "modal-backdrop flex items-center justify-center";
+  modal.style.cssText = "position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:1060; padding:16px;";
+
+  const msgs = (ticket.responses || []).filter((r) => r.visibility !== 'INTERNAL');
+
+  modal.innerHTML = `
+    <div class="card" style="width:100%; max-width:500px; padding:24px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-lg); max-height:85vh; display:flex; flex-direction:column;">
+      <div class="flex items-center justify-between" style="margin-bottom:12px;">
+        <div>
+          <div id="erm-modal-title" style="font-size:15px; font-weight:700; color:var(--ink);">${escHtml(ticket.caseId)}: ${escHtml(ticket.summary)}</div>
+          <div class="settings-field-helper">Status: ${escHtml(ticket.status)}</div>
+        </div>
+        <button class="btn btn-sm btn-ghost" id="erm-close-btn" aria-label="Close reply modal" style="padding:4px 8px;">✕</button>
+      </div>
+
+      <div style="flex:1; overflow-y:auto; margin-bottom:14px; display:flex; flex-direction:column; gap:8px; border:1px solid var(--line); border-radius:6px; padding:10px; background:var(--surface-sunken);">
+        <div style="font-size:12px; color:var(--ink); padding:6px; background:var(--surface); border-radius:4px;">
+          <strong>Original Issue:</strong> ${escHtml(ticket.description)}
+        </div>
+        ${msgs.map((m) => `
+          <div style="font-size:12px; padding:6px; border-radius:4px; background:${m.authorRole === 'STAFF' ? 'var(--surface)' : 'rgba(198,165,103,0.15)'};">
+            <div style="font-size:10.5px; color:var(--muted); margin-bottom:2px;">
+              <strong>${escHtml(m.authorRole)} (${escHtml(m.authorUserId)})</strong> · ${new Date(m.createdAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+            </div>
+            <div>${escHtml(m.message)}</div>
+          </div>
+        `).join("")}
+      </div>
+
+      <div style="margin-bottom:12px;">
+        <label style="font-size:12px; font-weight:600; color:var(--ink); display:block; margin-bottom:4px;">Your Reply</label>
+        <textarea id="erm-message" class="form-input" rows="3" placeholder="Type your response to support..." style="width:100%; resize:none;"></textarea>
+      </div>
+
+      <div class="flex justify-end gap-sm">
+        <button class="btn btn-secondary btn-sm" id="erm-cancel-btn">Close</button>
+        <button class="btn btn-primary btn-sm" id="erm-send-btn">Send Reply</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+  const cleanupA11y = setupModalA11y(modal, {
+    onClose: () => close(),
+    titleId: "erm-modal-title",
+  });
+  const close = () => {
+    cleanupA11y();
+    modal.remove();
+  };
+  modal.querySelector("#erm-close-btn")?.addEventListener("click", close);
+  modal.querySelector("#erm-cancel-btn")?.addEventListener("click", close);
+
+  modal.querySelector("#erm-send-btn")?.addEventListener("click", async () => {
+    const message = modal.querySelector("#erm-message")?.value.trim();
+    if (!message) {
+      showToast("Please enter a reply message.", "amber");
+      return;
+    }
+    const sendBtn = modal.querySelector("#erm-send-btn");
+    try {
+      sendBtn.disabled = true;
+      await apiPost(`/settings/support/tickets/${ticket.caseId}/reply`, { message });
+      close();
+      showToast("Reply sent successfully.", "mint");
+      if (root) _wireHelp(root);
+    } catch (err) {
+      sendBtn.disabled = false;
+      showToast(err.message || "Failed to send reply.", "coral");
+    }
+  });
+}
+
+function openManageTicketModal(ticket, root) {
+  let existing = document.getElementById("manage-ticket-modal");
+  if (existing) existing.remove();
+
+  const modal = document.createElement("div");
+  modal.id = "manage-ticket-modal";
+  modal.className = "modal-backdrop flex items-center justify-center";
+  modal.style.cssText = "position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:1060; padding:16px;";
+
+  const msgs = ticket.responses || [];
+
+  modal.innerHTML = `
+    <div class="card" style="width:100%; max-width:560px; padding:24px; background:var(--surface); border:1px solid var(--line); border-radius:var(--radius-card, 12px); box-shadow:var(--shadow-lg); max-height:90vh; display:flex; flex-direction:column;">
+      <div class="flex items-center justify-between" style="margin-bottom:12px;">
+        <div>
+          <div id="mtm-modal-title" style="font-size:15px; font-weight:700; color:var(--ink);">${escHtml(ticket.caseId)}: ${escHtml(ticket.summary)}</div>
+          <div class="settings-field-helper">Reporter: ${escHtml(ticket.reportedByUserId || ticket.senderEmail)} · Status: <span class="badge" style="font-weight:700;">${escHtml(ticket.status)}</span></div>
+        </div>
+        <button class="btn btn-sm btn-ghost" id="mtm-close-btn" aria-label="Close manage ticket modal" style="padding:4px 8px;">✕</button>
+      </div>
+
+      <div style="flex:1; overflow-y:auto; margin-bottom:14px; display:flex; flex-direction:column; gap:8px; border:1px solid var(--line); border-radius:6px; padding:10px; background:var(--surface-sunken);">
+        <div style="font-size:12px; color:var(--ink); padding:6px; background:var(--surface); border-radius:4px;">
+          <strong>Description:</strong> ${escHtml(ticket.description)}
+        </div>
+        ${msgs.map((m) => `
+          <div style="font-size:12px; padding:6px; border-radius:4px; background:${m.visibility === 'INTERNAL' ? 'rgba(239,68,68,0.12)' : (m.authorRole === 'STAFF' ? 'var(--surface)' : 'rgba(198,165,103,0.15)')};">
+            <div style="font-size:10.5px; color:var(--muted); margin-bottom:2px;">
+              <strong>${escHtml(m.authorRole)} (${escHtml(m.authorUserId)})</strong> · ${new Date(m.createdAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}
+              ${m.visibility === 'INTERNAL' ? '<span style="color:#b91c1c; font-weight:700;"> [INTERNAL NOTE]</span>' : ''}
+            </div>
+            <div>${escHtml(m.message)}</div>
+          </div>
+        `).join("")}
+      </div>
+
+      <!-- Quick Status Actions -->
+      <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid var(--line);">
+        <button class="btn btn-secondary btn-xs" id="mtm-act-progress" ${ticket.status === 'IN_PROGRESS' ? 'disabled' : ''}>Move to In Progress</button>
+        <button class="btn btn-secondary btn-xs" id="mtm-act-resolve" ${ticket.status === 'RESOLVED' || ticket.status === 'CLOSED' ? 'disabled' : ''}>Resolve Ticket</button>
+        <button class="btn btn-secondary btn-xs" id="mtm-act-close" ${ticket.status === 'CLOSED' ? 'disabled' : ''}>Close Ticket</button>
+      </div>
+
+      <!-- Reply Box -->
+      <div style="margin-bottom:12px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+          <label style="font-size:12px; font-weight:600; color:var(--ink);">Management Reply</label>
+          <label style="font-size:11.5px; color:var(--muted); display:flex; align-items:center; gap:4px;">
+            <input type="checkbox" id="mtm-internal-check" /> Internal Note (Staff cannot view)
+          </label>
+        </div>
+        <textarea id="mtm-reply-msg" class="form-input" rows="3" placeholder="Type reply or internal note..." style="width:100%; resize:none;"></textarea>
+      </div>
+
+      <div class="flex justify-end gap-sm">
+        <button class="btn btn-secondary btn-sm" id="mtm-cancel-btn">Close</button>
+        <button class="btn btn-primary btn-sm" id="mtm-send-btn">Post Response</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+  const cleanupA11y = setupModalA11y(modal, {
+    onClose: () => close(),
+    titleId: "mtm-modal-title",
+  });
+  const close = () => {
+    cleanupA11y();
+    modal.remove();
+  };
+  modal.querySelector("#mtm-close-btn")?.addEventListener("click", close);
+  modal.querySelector("#mtm-cancel-btn")?.addEventListener("click", close);
+
+  modal.querySelector("#mtm-act-progress")?.addEventListener("click", async () => {
+    try {
+      await apiPatch(`/settings/support/manage/tickets/${ticket.caseId}`, { status: "IN_PROGRESS" });
+      showToast(`Case ${ticket.caseId} moved to IN_PROGRESS.`, "mint");
+      close();
+      if (root) _wireHelp(root);
+    } catch (err) {
+      showToast(err.message || "Failed to update status.", "coral");
+    }
+  });
+
+  modal.querySelector("#mtm-act-resolve")?.addEventListener("click", async () => {
+    const resolutionSummary = prompt("Enter resolution summary:", "Resolved after review.");
+    if (resolutionSummary === null) return;
+    try {
+      await apiPatch(`/settings/support/manage/tickets/${ticket.caseId}`, { status: "RESOLVED", resolutionSummary });
+      showToast(`Case ${ticket.caseId} marked RESOLVED.`, "mint");
+      close();
+      if (root) _wireHelp(root);
+    } catch (err) {
+      showToast(err.message || "Failed to resolve ticket.", "coral");
+    }
+  });
+
+  modal.querySelector("#mtm-act-close")?.addEventListener("click", async () => {
+    try {
+      await apiPatch(`/settings/support/manage/tickets/${ticket.caseId}`, { status: "CLOSED" });
+      showToast(`Case ${ticket.caseId} closed.`, "mint");
+      close();
+      if (root) _wireHelp(root);
+    } catch (err) {
+      showToast(err.message || "Failed to close ticket.", "coral");
+    }
+  });
+
+  modal.querySelector("#mtm-send-btn")?.addEventListener("click", async () => {
+    const message = modal.querySelector("#mtm-reply-msg")?.value.trim();
+    if (!message) {
+      showToast("Please enter a reply message.", "amber");
+      return;
+    }
+    const isInternal = modal.querySelector("#mtm-internal-check")?.checked;
+    const sendBtn = modal.querySelector("#mtm-send-btn");
+    try {
+      sendBtn.disabled = true;
+      await apiPost(`/settings/support/manage/tickets/${ticket.caseId}/reply`, {
+        message,
+        visibility: isInternal ? "INTERNAL" : "PUBLIC",
+      });
+      close();
+      showToast(isInternal ? "Internal note added." : "Reply posted and employee notified.", "mint");
+      if (root) _wireHelp(root);
+    } catch (err) {
+      sendBtn.disabled = false;
+      showToast(err.message || "Failed to post reply.", "coral");
+    }
   });
 }
 
