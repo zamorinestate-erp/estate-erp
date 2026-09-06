@@ -11,5 +11,10 @@
   "html.validate.styles": false,
   "css.validate": false,
   "vscode-edge-devtools.webhint": false,
-  "vscode-edge-devtools.webhintInstallNotification": false
+  "vscode-edge-devtools.webhintInstallNotification": false,
+  "markdownlint.appliesTo": "noFiles",
+  "markdownlint.lintWorkspaceGlobs": [],
+  "markdownlint.config": {
+    "default": false
+  }
 }
