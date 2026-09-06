@@ -1,0 +1,10 @@
+{
+  "javascript.validate.enable": true,
+  "typescript.validate.enable": false,
+  "js/ts.implicitProjectConfig.checkJs": false,
+  "typescript.suggestionActions.enabled": false,
+  "javascript.suggestionActions.enabled": false,
+  "eslint.workingDirectories": [
+    "./backend"
+  ]
+}

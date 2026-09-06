@@ -34,6 +34,7 @@
     "redis": "^6.2.1"
   },
   "devDependencies": {
+    "@types/node": "^26.4.1",
     "mongodb-memory-server": "^11.2.0"
   }
 }
