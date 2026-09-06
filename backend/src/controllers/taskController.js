@@ -73,8 +73,8 @@ const listTasks = asyncHandler(async (request, response) => {
     filter.cafeId = effectiveCafe;
   } else if (cafeId && cafeId !== 'ALL') {
     filter.cafeId = normalizeId(cafeId);
-  } else if (request.auth.role === 'OWNER' && Array.isArray(request.auth.assignedCafeIds) && request.auth.assignedCafeIds.length > 0) {
-    filter.cafeId = { $in: request.auth.assignedCafeIds };
+  } else if (request.auth.role === 'OWNER') {
+    filter.cafeId = { $in: request.auth.assignedCafeIds || [] };
   }
 
   // Filters
@@ -199,8 +199,8 @@ const getTask = asyncHandler(async (request, response) => {
   }
 
   // Scoping check
-  if (request.auth.role === 'OWNER' && Array.isArray(request.auth.assignedCafeIds) && task.cafeId) {
-    if (!request.auth.assignedCafeIds.includes(task.cafeId)) {
+  if (request.auth.role === 'OWNER' && task.cafeId) {
+    if (!(request.auth.assignedCafeIds || []).includes(task.cafeId)) {
       throw new ApiError(403, 'ACCESS_DENIED', 'You do not have access to tasks in this location.');
     }
   }
@@ -241,8 +241,8 @@ const createTask = asyncHandler(async (request, response) => {
   }
 
   const targetCafeId = cafeId ? normalizeId(cafeId) : null;
-  if (request.auth.role === 'OWNER' && targetCafeId && Array.isArray(request.auth.assignedCafeIds)) {
-    if (!request.auth.assignedCafeIds.includes(targetCafeId)) {
+  if (request.auth.role === 'OWNER' && targetCafeId) {
+    if (!(request.auth.assignedCafeIds || []).includes(targetCafeId)) {
       throw new ApiError(403, 'CAFE_OUT_OF_SCOPE', 'You can only assign tasks to your authorized cafés.');
     }
   }

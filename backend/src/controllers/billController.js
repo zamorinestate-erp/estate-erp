@@ -1448,6 +1448,8 @@ const recordCashEvent = asyncHandler(async (request, response) => {
     throw new ApiError(404, 'ACTIVE_SESSION_NOT_FOUND', `Active register session ${registerSessionId} not found.`);
   }
 
+  assertCafeAccess(request, session.cafeId);
+
   const amount = Number(amountPaisa) || 0;
   session.cashEvents.push({
     eventType,
@@ -1506,6 +1508,8 @@ const closeRegisterSession = asyncHandler(async (request, response) => {
     throw new ApiError(404, 'ACTIVE_SESSION_NOT_FOUND', `Active register session ${registerSessionId} not found.`);
   }
 
+  assertCafeAccess(request, session.cafeId);
+
   const counted = Number(countedCashPaisa) || 0;
   // Calculate expected cash = opening float + cash sales + cash in - cash out - safe drops - cash refunds
   let derivedCash = session.openingFloatPaisa;
@@ -1554,10 +1558,12 @@ const closeRegisterSession = asyncHandler(async (request, response) => {
 const getRegisterSession = asyncHandler(async (request, response) => {
   const orgId = request.auth.organisationId;
   const role = request.auth.role;
-  let cafeId = request.query.cafeId ? normalizeId(request.query.cafeId) : request.auth.assignedCafeIds?.[0] || 'ZC-0001';
+  let cafeId = request.query.cafeId ? normalizeId(request.query.cafeId) : request.auth.primaryCafeId || request.auth.assignedCafeIds?.[0] || 'ZC-0001';
   if (role === 'CAFE_ADMIN') {
     cafeId = request.auth.primaryCafeId || request.auth.assignedCafeIds?.[0] || 'ZC-0001';
   }
+
+  assertCafeAccess(request, cafeId);
 
   const session = await RegisterSession.findOne({
     organisationId: orgId,

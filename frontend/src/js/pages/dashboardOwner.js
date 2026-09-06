@@ -627,6 +627,29 @@ export const DEFAULT_OWNER_DASHBOARD_DATA = {
   }
 };
 
+function hydrateCafeFilterOptions(cafes) {
+  const sel = document.getElementById("occ-cafe-filter");
+  if (!sel || !Array.isArray(cafes) || cafes.length === 0) return;
+  const existingOptions = Array.from(sel.options).map((o) => o.value);
+  const existingSet = new Set(existingOptions);
+  let needsRebuild = false;
+  for (const c of cafes) {
+    if (!existingSet.has(c.cafeId)) {
+      needsRebuild = true;
+      break;
+    }
+  }
+  if (needsRebuild) {
+    let html = '<option value="">All Cafés (Authorized Portfolio)</option>';
+    for (const c of cafes) {
+      const isSel = ownerDashboardState.selectedCafeId === c.cafeId ? 'selected' : '';
+      html += `<option value="${c.cafeId}" ${isSel}>${c.name} (${c.cafeId})</option>`;
+    }
+    sel.innerHTML = html;
+  }
+  sel.value = ownerDashboardState.selectedCafeId || '';
+}
+
 async function loadDashboardData(isBackground = false) {
   const contentEl = document.getElementById("occ-content");
   if (!contentEl) return;
@@ -650,6 +673,10 @@ async function loadDashboardData(isBackground = false) {
     const res = await apiGet(`/dashboard?${params.toString()}`);
     if (res && res.success && res.data) {
       ownerDashboardState.data = res.data;
+      if (res.data.cafePerformanceCards && res.data.cafePerformanceCards.length > 0) {
+        state.assignedCafes = res.data.cafePerformanceCards;
+        hydrateCafeFilterOptions(res.data.cafePerformanceCards);
+      }
       updateHealthStrip(res.data);
       renderDashboardBody(contentEl, res.data);
       const freshness = document.getElementById("occ-freshness");
@@ -730,7 +757,7 @@ export function renderDashboardBodyHtml(data) {
     <!-- Layer 2: Executive Business Summary (KPIs) -->
     <div class="occ-kpi-grid">
       <!-- 1. Net Completed Sales -->
-      <div class="occ-kpi-card">
+      <div class="occ-kpi-card occ-kpi-clickable" tabindex="0" role="button" aria-label="View Bills and Sales Overview" data-drill-down="bills">
         <div class="occ-kpi-header">
           <span class="occ-kpi-label">Gross Portfolio Sales</span>
           <span class="occ-kpi-icon">${icon("pos", 18)}</span>
@@ -748,7 +775,7 @@ export function renderDashboardBodyHtml(data) {
       </div>
 
       <!-- 2. Operating Expense Ratio -->
-      <div class="occ-kpi-card">
+      <div class="occ-kpi-card occ-kpi-clickable" tabindex="0" role="button" aria-label="View Finance Summary and Operating Expenses" data-drill-down="finance">
         <div class="occ-kpi-header">
           <span class="occ-kpi-label">Operating Expense Ratio</span>
           <span class="occ-kpi-icon">${icon("finance", 18)}</span>
@@ -764,7 +791,7 @@ export function renderDashboardBodyHtml(data) {
       </div>
 
       <!-- 3. Cash Drawer Variance -->
-      <div class="occ-kpi-card">
+      <div class="occ-kpi-card occ-kpi-clickable" tabindex="0" role="button" aria-label="Open Cash Drawer Management" data-drill-down="drawer-modal">
         <div class="occ-kpi-header">
           <span class="occ-kpi-label">Cash Variance & Drawers</span>
           <span class="occ-kpi-icon">${icon("pos", 18)}</span>
@@ -782,7 +809,7 @@ export function renderDashboardBodyHtml(data) {
       </div>
 
       <!-- 4. Workforce Presence & Attendance -->
-      <div class="occ-kpi-card">
+      <div class="occ-kpi-card occ-kpi-clickable" tabindex="0" role="button" aria-label="View Workforce Attendance" data-drill-down="attendance">
         <div class="occ-kpi-header">
           <span class="occ-kpi-label">Workforce on Duty</span>
           <span class="occ-kpi-icon">${icon("employees", 18)}</span>
@@ -798,7 +825,7 @@ export function renderDashboardBodyHtml(data) {
       </div>
 
       <!-- 5. Inventory Stock Risk -->
-      <div class="occ-kpi-card">
+      <div class="occ-kpi-card occ-kpi-clickable" tabindex="0" role="button" aria-label="View Inventory Reports" data-drill-down="reports">
         <div class="occ-kpi-header">
           <span class="occ-kpi-label">Stockout / Risk SKUs</span>
           <span class="occ-kpi-icon">${icon("inventory", 18)}</span>
@@ -814,7 +841,7 @@ export function renderDashboardBodyHtml(data) {
       </div>
 
       <!-- 6. Critical Business Exceptions -->
-      <div class="occ-kpi-card">
+      <div class="occ-kpi-card occ-kpi-clickable" tabindex="0" role="button" aria-label="Scroll to Management Exceptions Queue" data-drill-down="attention-section">
         <div class="occ-kpi-header">
           <span class="occ-kpi-label">Management Exceptions</span>
           <span class="occ-kpi-icon">${icon("tasks", 18)}</span>
@@ -825,7 +852,7 @@ export function renderDashboardBodyHtml(data) {
         <div class="occ-kpi-footer">
           <span>${attention.filter(a => a.severity === 'CRITICAL').length} critical</span>
           <span class="occ-dot">·</span>
-          <a href="#attention-section" class="occ-link">View Queue</a>
+          <span class="occ-link">View Queue</span>
         </div>
       </div>
     </div>
@@ -1117,11 +1144,7 @@ export function renderDashboardBodyHtml(data) {
           <span class="occ-tag">${fmtInr(financial.paymentMix?.totalPaisa || grossSalesPaisa)} Total</span>
         </div>
         <div class="occ-payment-mix-list">
-          ${(financial.paymentMix?.methods || [
-            { method: 'UPI', sharePct: 62, totalPaisa: Math.round(grossSalesPaisa * 0.62) },
-            { method: 'CASH', sharePct: 24, totalPaisa: Math.round(grossSalesPaisa * 0.24) },
-            { method: 'CARD', sharePct: 14, totalPaisa: Math.round(grossSalesPaisa * 0.14) }
-          ]).map(m => `
+          ${(financial.paymentMix?.methods && financial.paymentMix.methods.length > 0) ? financial.paymentMix.methods.map(m => `
             <div class="occ-pm-row">
               <div class="occ-pm-header">
                 <span class="font-semibold text-slate-200">${m.method}</span>
@@ -1129,7 +1152,11 @@ export function renderDashboardBodyHtml(data) {
               </div>
               <div class="occ-pace-bar mt-1"><div class="occ-pace-fill" style="width: ${m.sharePct}%"></div></div>
             </div>
-          `).join('')}
+          `).join('') : `
+            <div class="p-4 text-center text-slate-400 text-sm">
+              <span>No payment transactions recorded for selected scope.</span>
+            </div>
+          `}
         </div>
       </div>
 
@@ -1226,14 +1253,44 @@ export function renderDashboardBodyHtml(data) {
   `;
 }
 
+function resolveOwnerNavRoute(route) {
+  if (!route) return "dashboard";
+  const r = String(route).trim().toLowerCase();
+  if (r === "maintenance") return "performance";
+  if (r === "quality" || r === "department-orders") return "approvals";
+  return r;
+}
+
 function wireDashboardBodyActions(container, data) {
   if (!container) return;
   const trend = data?.revenueTrend || [];
 
+  // Wire clickable KPI cards with pointer and keyboard navigation
+  container.querySelectorAll(".occ-kpi-clickable").forEach((card) => {
+    const handleAction = () => {
+      const target = card.dataset.drillDown;
+      if (target === "drawer-modal") {
+        openCashDrawerManagement();
+      } else if (target === "attention-section") {
+        const el = document.getElementById("attention-section");
+        if (el) el.scrollIntoView({ behavior: "smooth" });
+      } else if (target) {
+        navigate(resolveOwnerNavRoute(target));
+      }
+    };
+    card.addEventListener("click", handleAction);
+    card.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        handleAction();
+      }
+    });
+  });
+
   // Wire interactive buttons inside body
   container.querySelectorAll(".occ-nav-btn").forEach(btn => {
     btn.addEventListener("click", () => {
-      const route = btn.dataset.route;
+      const route = resolveOwnerNavRoute(btn.dataset.route);
       if (route) navigate(route);
     });
   });
@@ -1267,7 +1324,7 @@ function wireDashboardBodyActions(container, data) {
       const cafeId = btn.dataset.cafeId;
       if (cafeId) {
         ownerDashboardState.selectedCafeId = cafeId;
-        const sel = document.getElementById("occ-cafe-select");
+        const sel = document.getElementById("occ-cafe-filter");
         if (sel) sel.value = cafeId;
         loadDashboardData();
         showToast(`Filtered Command Centre to ${cafeId}`, "info");
@@ -1335,7 +1392,9 @@ async function openCashDrawerManagement() {
   }
 
   try {
-    const res = await apiGet("/bills/register/session/current");
+    const targetCafe = ownerDashboardState.selectedCafeId || (state.assignedCafes?.[0]?.cafeId || state.user?.primaryCafeId || '');
+    const queryStr = targetCafe ? `?cafeId=${encodeURIComponent(targetCafe)}` : '';
+    const res = await apiGet(`/bills/register/session/current${queryStr}`);
     const currentSession = res?.data || null;
 
     content.innerHTML = `

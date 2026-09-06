@@ -197,7 +197,6 @@ function buildUserFilter(request) {
   if (cafeId) {
     if (
       request.auth.role !== 'MASTER' &&
-      request.auth.role !== 'OWNER' &&
       !request.auth.assignedCafeIds.includes(
         cafeId
       )
@@ -416,7 +415,7 @@ const createUser = asyncHandler(
       ) || null;
 
     if (
-      ['CAFE_ADMIN', 'STAFF'].includes(
+      ['OWNER', 'CAFE_ADMIN', 'STAFF'].includes(
         normalizedRole
       ) &&
       assignedCafeIds.length === 0
@@ -424,7 +423,7 @@ const createUser = asyncHandler(
       throw new ApiError(
         400,
         'CAFE_ASSIGNMENT_REQUIRED',
-        'Café Admin and Staff users require at least one café assignment.'
+        'Owner, Café Admin and Staff users require at least one café assignment.'
       );
     }
 

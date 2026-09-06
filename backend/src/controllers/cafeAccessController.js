@@ -4,7 +4,7 @@ const cafeService = require('../services/cafeService');
 const { asyncHandler } = require('../utils/asyncHandler');
 const { ApiError } = require('../utils/ApiError');
 
-function requireGovernance(req) {
+function requireGovernance(req, cafeId = null) {
   if (!req.auth || !req.auth.role) {
     throw new ApiError(401, 'UNAUTHENTICATED', 'Authentication required.');
   }
@@ -15,6 +15,22 @@ function requireGovernance(req) {
       'GOVERNANCE_ACCESS_REQUIRED',
       'Only Master and Owner roles may manage Café Operations access.'
     );
+  }
+
+  if (role === 'OWNER' && cafeId) {
+    const rawCafes = [
+      ...(Array.isArray(req.auth.assignedCafeIds) ? req.auth.assignedCafeIds : (req.auth.assignedCafeIds ? [req.auth.assignedCafeIds] : [])),
+      ...(req.auth.primaryCafeId ? [req.auth.primaryCafeId] : []),
+      ...(req.auth.cafeId ? [req.auth.cafeId] : []),
+    ];
+    const authorizedCafes = new Set(rawCafes.filter(Boolean).map((c) => String(c).trim().toUpperCase()));
+    if (!authorizedCafes.has(String(cafeId).trim().toUpperCase())) {
+      throw new ApiError(
+        403,
+        'CROSS_CAFE_RESOURCE_DENIED',
+        'Owner is not authorized for this café access management.'
+      );
+    }
   }
 }
 
@@ -37,12 +53,11 @@ const resolveGateway = asyncHandler(async (req, res) => {
 });
 
 const getAccessSummary = asyncHandler(async (req, res) => {
-  requireGovernance(req);
-
   const cafeId = (req.params.cafeId || '').trim().toUpperCase();
   if (!cafeId) {
     throw new ApiError(400, 'CAFE_ID_REQUIRED', 'Café ID is required.');
   }
+  requireGovernance(req, cafeId);
 
   const summary = await cafeService.getCafeAccessSummary(
     req.auth.organisationId,
@@ -56,9 +71,11 @@ const getAccessSummary = asyncHandler(async (req, res) => {
 });
 
 const revealPermanentPin = asyncHandler(async (req, res) => {
-  requireGovernance(req);
-
   const cafeId = (req.params.cafeId || '').trim().toUpperCase();
+  if (!cafeId) {
+    throw new ApiError(400, 'CAFE_ID_REQUIRED', 'Café ID is required.');
+  }
+  requireGovernance(req, cafeId);
   const { currentPassword } = req.body || {};
 
   const result = await cafeService.revealPermanentPin({
@@ -78,9 +95,11 @@ const revealPermanentPin = asyncHandler(async (req, res) => {
 });
 
 const rotateQr = asyncHandler(async (req, res) => {
-  requireGovernance(req);
-
   const cafeId = (req.params.cafeId || '').trim().toUpperCase();
+  if (!cafeId) {
+    throw new ApiError(400, 'CAFE_ID_REQUIRED', 'Café ID is required.');
+  }
+  requireGovernance(req, cafeId);
   const { currentPassword } = req.body || {};
 
   const result = await cafeService.rotateQrCredential({
@@ -100,9 +119,11 @@ const rotateQr = asyncHandler(async (req, res) => {
 });
 
 const rotateLink = asyncHandler(async (req, res) => {
-  requireGovernance(req);
-
   const cafeId = (req.params.cafeId || '').trim().toUpperCase();
+  if (!cafeId) {
+    throw new ApiError(400, 'CAFE_ID_REQUIRED', 'Café ID is required.');
+  }
+  requireGovernance(req, cafeId);
   const { currentPassword } = req.body || {};
 
   const result = await cafeService.rotateLinkCredential({
@@ -122,9 +143,11 @@ const rotateLink = asyncHandler(async (req, res) => {
 });
 
 const emergencyLock = asyncHandler(async (req, res) => {
-  requireGovernance(req);
-
   const cafeId = (req.params.cafeId || '').trim().toUpperCase();
+  if (!cafeId) {
+    throw new ApiError(400, 'CAFE_ID_REQUIRED', 'Café ID is required.');
+  }
+  requireGovernance(req, cafeId);
   const { reason, currentPassword } = req.body || {};
 
   const result = await cafeService.setEmergencyLock({
@@ -146,9 +169,11 @@ const emergencyLock = asyncHandler(async (req, res) => {
 });
 
 const emergencyUnlock = asyncHandler(async (req, res) => {
-  requireGovernance(req);
-
   const cafeId = (req.params.cafeId || '').trim().toUpperCase();
+  if (!cafeId) {
+    throw new ApiError(400, 'CAFE_ID_REQUIRED', 'Café ID is required.');
+  }
+  requireGovernance(req, cafeId);
   const { reason, currentPassword } = req.body || {};
 
   const result = await cafeService.setEmergencyLock({
@@ -170,9 +195,11 @@ const emergencyUnlock = asyncHandler(async (req, res) => {
 });
 
 const runAccessTest = asyncHandler(async (req, res) => {
-  requireGovernance(req);
-
   const cafeId = (req.params.cafeId || '').trim().toUpperCase();
+  if (!cafeId) {
+    throw new ApiError(400, 'CAFE_ID_REQUIRED', 'Café ID is required.');
+  }
+  requireGovernance(req, cafeId);
 
   const results = await cafeService.runAccessHealthCheck({
     organisationId: req.auth.organisationId,

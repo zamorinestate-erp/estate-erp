@@ -63,6 +63,7 @@ import { mountPublicCafeGateway, getActiveGatewayContextToken } from "./pages/ca
 import { renderCafeMasterSignIn, wireCafeMasterSignIn, resetCafeMasterSignInUi } from "./pages/cafeMasterSignIn.js";
 import { renderCafeDeviceEnroll, wireCafeDeviceEnroll, resetCafeDeviceEnrollUi } from "./pages/cafeDeviceEnroll.js";
 import { renderCafeTerminalWelcome, wireCafeTerminalWelcome } from "./pages/cafeTerminalWelcome.js";
+import { renderOrgIdentity, wireOrgIdentity } from "./pages/organisationIdentity.js";
 
 // ROLE_LABELS: display-safe generic labels used only for topbar scope chip
 // until /auth/me bootstrap provides the real user's display name.

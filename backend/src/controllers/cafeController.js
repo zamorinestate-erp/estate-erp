@@ -41,15 +41,38 @@ function requireMaster(request) {
   requireGovernanceRole(request);
 }
 
+function assertCafeAccess(request, cafeId) {
+  if (request.auth.role === 'MASTER') return;
+  const rawCafes = [
+    ...(Array.isArray(request.auth.assignedCafeIds) ? request.auth.assignedCafeIds : (request.auth.assignedCafeIds ? [request.auth.assignedCafeIds] : [])),
+    ...(request.auth.primaryCafeId ? [request.auth.primaryCafeId] : []),
+    ...(request.auth.cafeId ? [request.auth.cafeId] : []),
+  ];
+  const authorized = new Set(rawCafes.filter(Boolean).map((c) => String(c).trim().toUpperCase()));
+  if (!authorized.has(String(cafeId).trim().toUpperCase())) {
+    throw new ApiError(
+      403,
+      'CAFE_ACCESS_DENIED',
+      'You do not have access to this café.'
+    );
+  }
+}
+
 function buildCafeFilter(request) {
   const filter = {
     organisationId:
       request.auth.organisationId,
   };
 
-  if (request.auth.role !== 'MASTER' && request.auth.role !== 'OWNER') {
+  if (request.auth.role !== 'MASTER') {
+    const rawCafes = [
+      ...(Array.isArray(request.auth.assignedCafeIds) ? request.auth.assignedCafeIds : (request.auth.assignedCafeIds ? [request.auth.assignedCafeIds] : [])),
+      ...(request.auth.primaryCafeId ? [request.auth.primaryCafeId] : []),
+      ...(request.auth.cafeId ? [request.auth.cafeId] : []),
+    ];
+    const authorized = [...new Set(rawCafes.filter(Boolean).map((c) => String(c).trim().toUpperCase()))];
     filter.cafeId = {
-      $in: request.auth.assignedCafeIds || [],
+      $in: authorized,
     };
   }
 
@@ -131,25 +154,13 @@ const getCafe = asyncHandler(
         request.params.cafeId
       );
 
+    assertCafeAccess(request, cafeId);
+
     const filter = {
       organisationId:
         request.auth.organisationId,
       cafeId,
     };
-
-    if (
-      request.auth.role !== 'MASTER' &&
-      request.auth.role !== 'OWNER' &&
-      !request.auth.assignedCafeIds.includes(
-        cafeId
-      )
-    ) {
-      throw new ApiError(
-        403,
-        'CAFE_ACCESS_DENIED',
-        'You do not have access to this café.'
-      );
-    }
 
     const cafe = await Cafe.findOne(filter);
 
@@ -209,6 +220,8 @@ const updateCafe = asyncHandler(
       normalizeIdentifier(
         request.params.cafeId
       );
+
+    assertCafeAccess(request, cafeId);
 
     const protectedFields = [
       'cafeId',
@@ -280,6 +293,8 @@ const changeCafeStatus = asyncHandler(
       normalizeIdentifier(
         request.params.cafeId
       );
+
+    assertCafeAccess(request, cafeId);
 
     const status =
       normalizeIdentifier(
@@ -363,6 +378,8 @@ const archiveCafe = asyncHandler(
       normalizeIdentifier(
         request.params.cafeId
       );
+
+    assertCafeAccess(request, cafeId);
 
     const reason =
       typeof request.body?.reason ===

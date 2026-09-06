@@ -340,6 +340,20 @@ class CafeService {
       };
       await createdAccess.save(session ? { session } : {});
 
+      // If creator is OWNER, ensure newly created cafeId is in their assignedCafeIds
+      if (auth.role === 'OWNER') {
+        await User.updateOne(
+          { userId: auth.userId, organisationId },
+          { $addToSet: { assignedCafeIds: cafeId } },
+          session ? { session } : {}
+        );
+        if (Array.isArray(auth.assignedCafeIds)) {
+          if (!auth.assignedCafeIds.includes(cafeId)) {
+            auth.assignedCafeIds.push(cafeId);
+          }
+        }
+      }
+
       if (session) {
         await session.commitTransaction();
         session.endSession();

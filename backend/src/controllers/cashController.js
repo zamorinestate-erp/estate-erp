@@ -91,8 +91,22 @@ function ensureCafeAccess(
   cafeId
 ) {
   if (!cafeId) return;
+  const cleanCafe = cafeId.trim().toUpperCase();
+  const role = request?.auth?.role;
+  if (role === 'MASTER') return;
+  if (role === 'OWNER') {
+    const assignedCafeIds = (request?.auth?.assignedCafeIds || []).map((c) => String(c).trim().toUpperCase());
+    if (!assignedCafeIds.includes(cleanCafe)) {
+      throw new ApiError(
+        403,
+        'CAFE_ACCESS_DENIED',
+        'You do not have access to this café.'
+      );
+    }
+    return;
+  }
   const effectiveCafe = resolveEffectiveCafeScope(request);
-  if (effectiveCafe && effectiveCafe !== cafeId.trim().toUpperCase()) {
+  if (effectiveCafe && effectiveCafe !== cleanCafe) {
     throw new ApiError(
       403,
       'CAFE_ACCESS_DENIED',
@@ -212,8 +226,8 @@ function buildCashFilter(request) {
   if (effectiveCafe) {
     filter.cafeId = effectiveCafe;
   } else if (
-    request.auth.role ===
-    'CAFE_ADMIN'
+    request.auth.role !==
+    'MASTER'
   ) {
     filter.cafeId = {
       $in:

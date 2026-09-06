@@ -91,7 +91,11 @@ const getCustomersOverview = asyncHandler(async (request, response) => {
   let totalVisitsCount = 0;
 
   const cafeMap = {};
-  const visibleCafes = effectiveCafe ? cafes.filter((c) => c.cafeId === effectiveCafe) : cafes;
+  const visibleCafes = effectiveCafe
+    ? cafes.filter((c) => c.cafeId === effectiveCafe)
+    : (request.auth.role === 'OWNER' || request.auth.role === 'CAFE_ADMIN'
+        ? cafes.filter((c) => (request.auth.assignedCafeIds || []).includes(c.cafeId))
+        : cafes);
   for (const c of visibleCafes) {
     cafeMap[c.cafeId] = {
       cafeId: c.cafeId,

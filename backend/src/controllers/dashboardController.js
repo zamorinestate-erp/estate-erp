@@ -80,6 +80,18 @@ function resolveDateRange(period, customFrom, customTo, today) {
       const firstOfMonth = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
       return { from: firstOfMonth, to: today, label: 'This Month' };
     }
+    case 'this_quarter': {
+      const d = new Date(`${today}T00:00:00+05:30`);
+      const currentMonth = d.getMonth();
+      const qStartMonth = Math.floor(currentMonth / 3) * 3 + 1;
+      const firstOfQuarter = `${d.getFullYear()}-${String(qStartMonth).padStart(2, '0')}-01`;
+      return { from: firstOfQuarter, to: today, label: 'This Quarter' };
+    }
+    case 'this_year': {
+      const d = new Date(`${today}T00:00:00+05:30`);
+      const firstOfYear = `${d.getFullYear()}-01-01`;
+      return { from: firstOfYear, to: today, label: 'This Year' };
+    }
     case 'custom': {
       if (!customFrom || !customTo) {
         return { from: today, to: today, label: 'Today' };
@@ -112,6 +124,12 @@ function resolveComparisonRange(comparison, primary, today) {
     return { from: compFrom, to: compTo };
   }
 
+  if (comparison === 'previous_week') {
+    const compTo = subtractDays(primary.to, 7);
+    const compFrom = subtractDays(primary.from, 7);
+    return { from: compFrom, to: compTo };
+  }
+
   if (comparison === 'previous_month') {
     const d = new Date(`${today}T00:00:00+05:30`);
     d.setMonth(d.getMonth() - 1);
@@ -119,6 +137,22 @@ function resolveComparisonRange(comparison, primary, today) {
     const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0);
     const lastOfPrevMonth = getIstBusinessDate(lastDay);
     return { from: firstOfPrevMonth, to: lastOfPrevMonth };
+  }
+
+  if (comparison === 'previous_quarter') {
+    const dFrom = new Date(`${primary.from}T00:00:00+05:30`);
+    const dTo = new Date(`${primary.to}T00:00:00+05:30`);
+    dFrom.setMonth(dFrom.getMonth() - 3);
+    dTo.setMonth(dTo.getMonth() - 3);
+    return { from: getIstBusinessDate(dFrom), to: getIstBusinessDate(dTo) };
+  }
+
+  if (comparison === 'previous_year') {
+    const dFrom = new Date(`${primary.from}T00:00:00+05:30`);
+    const dTo = new Date(`${primary.to}T00:00:00+05:30`);
+    dFrom.setFullYear(dFrom.getFullYear() - 1);
+    dTo.setFullYear(dTo.getFullYear() - 1);
+    return { from: getIstBusinessDate(dFrom), to: getIstBusinessDate(dTo) };
   }
 
   return null;
@@ -129,13 +163,34 @@ function resolveComparisonRange(comparison, primary, today) {
 /**
  * Build a MongoDB cafeId filter based on actor's permitted scope.
  * Primary Master and Normal Master see ALL active cafes in the org.
- * Owner can be optionally scoped by query param.
+ * Owner can access only authorized cafes in assignedCafeIds.
  * CAFE_ADMIN sees only their assigned cafes.
  */
 function getCafeScope(auth) {
-  const { role, assignedCafeIds } = auth;
-  if (role === 'MASTER' || role === 'OWNER') return null; // no restriction → all cafes
-  return { $in: assignedCafeIds || [] };
+  const { role, assignedCafeIds, primaryCafeId, cafeId } = auth;
+  if (role === 'MASTER') return null; // no restriction → all cafes for Master
+
+  const rawCafes = [
+    ...(Array.isArray(assignedCafeIds) ? assignedCafeIds : (assignedCafeIds ? [assignedCafeIds] : [])),
+    ...(primaryCafeId ? [primaryCafeId] : []),
+    ...(cafeId ? [cafeId] : []),
+  ];
+  const authorizedCafes = [
+    ...new Set(rawCafes.filter(Boolean).map((c) => String(c).trim().toUpperCase())),
+  ];
+
+  if (role === 'OWNER') {
+    if (authorizedCafes.length === 0) {
+      throw new ApiError(
+        403,
+        'CROSS_CAFE_RESOURCE_DENIED',
+        'Owner has no authorized café assignments.'
+      );
+    }
+    return { $in: authorizedCafes };
+  }
+
+  return { $in: authorizedCafes };
 }
 
 // ─── Sales aggregation helper ─────────────────────────────────────────────────
@@ -548,15 +603,28 @@ const getDashboardData = asyncHandler(async (request, response) => {
   const today = getIstBusinessDate();
 
   // ── Parse query params ──────────────────────────────────────────────────────
-  const period = ['today', 'yesterday', '7d', '30d', 'this_month', 'custom'].includes(
-    request.query.period
-  )
+  const period = [
+    'today',
+    'yesterday',
+    '7d',
+    '30d',
+    'this_month',
+    'this_quarter',
+    'this_year',
+    'custom',
+  ].includes(request.query.period)
     ? request.query.period
     : 'today';
 
-  const comparison = ['previous_period', 'previous_month', 'target', 'none'].includes(
-    request.query.comparison
-  )
+  const comparison = [
+    'previous_period',
+    'previous_week',
+    'previous_month',
+    'previous_quarter',
+    'previous_year',
+    'target',
+    'none',
+  ].includes(request.query.comparison)
     ? request.query.comparison
     : 'previous_period';
 
@@ -567,8 +635,9 @@ const getDashboardData = asyncHandler(async (request, response) => {
 
   // Optional cafe filter from query (Master/Owner may scope down voluntarily)
   let requestedCafeIds = [];
-  if (request.query.cafeIds) {
-    requestedCafeIds = String(request.query.cafeIds)
+  const rawCafeParam = request.query.cafeIds || request.query.cafeId;
+  if (rawCafeParam) {
+    requestedCafeIds = String(rawCafeParam)
       .split(',')
       .map((c) => c.trim().toUpperCase())
       .filter(Boolean);
@@ -583,10 +652,16 @@ const getDashboardData = asyncHandler(async (request, response) => {
   let cafeScopeFilter = permittedCafeScope;
   if (requestedCafeIds.length > 0) {
     if (permittedCafeScope) {
-      // Intersect requested with permitted
       const permitted = new Set(permittedCafeScope.$in);
-      const intersected = requestedCafeIds.filter((id) => permitted.has(id));
-      cafeScopeFilter = intersected.length > 0 ? { $in: intersected } : permittedCafeScope;
+      const unauthorized = requestedCafeIds.filter((id) => !permitted.has(id));
+      if (unauthorized.length > 0) {
+        throw new ApiError(
+          403,
+          'CROSS_CAFE_RESOURCE_DENIED',
+          `Access denied to requested café(s): ${unauthorized.join(', ')}`
+        );
+      }
+      cafeScopeFilter = { $in: requestedCafeIds };
     } else {
       cafeScopeFilter = { $in: requestedCafeIds };
     }
@@ -821,7 +896,7 @@ const getDashboardData = asyncHandler(async (request, response) => {
       title: `${openMaintenanceJobs} open maintenance job(s)`,
       description: 'Facility maintenance items need resolution.',
       count: openMaintenanceJobs,
-      route: 'maintenance',
+      route: auth.role === 'OWNER' ? 'performance' : 'performance',
       cafeId: null,
     });
   }
@@ -834,7 +909,7 @@ const getDashboardData = asyncHandler(async (request, response) => {
       title: `${pendingQCItems} quality checklist(s) overdue`,
       description: 'Compliance inspections past due date without manager sign-off.',
       count: pendingQCItems,
-      route: 'quality',
+      route: auth.role === 'OWNER' ? 'approvals' : 'approvals',
       cafeId: null,
     });
   }
@@ -860,7 +935,7 @@ const getDashboardData = asyncHandler(async (request, response) => {
       title: `${pendingDeptOrders} department order(s) pending`,
       description: 'University/department orders awaiting preparation or delivery.',
       count: pendingDeptOrders,
-      route: 'department-orders',
+      route: auth.role === 'OWNER' ? 'approvals' : 'approvals',
       cafeId: null,
     });
   }
@@ -1120,7 +1195,25 @@ const listTargets = asyncHandler(async (request, response) => {
   const filter = { organisationId: orgId };
   if (granularity) filter.granularity = String(granularity).toUpperCase();
   if (periodKey) filter.periodKey = String(periodKey).trim();
-  if (cafeId) filter.cafeId = String(cafeId).trim().toUpperCase();
+
+  const permittedScope = getCafeScope(request.auth);
+  if (permittedScope) {
+    if (cafeId) {
+      const normalizedReqCafe = String(cafeId).trim().toUpperCase();
+      if (!permittedScope.$in.includes(normalizedReqCafe)) {
+        throw new ApiError(
+          403,
+          'CROSS_CAFE_RESOURCE_DENIED',
+          'Access denied to target for requested café.'
+        );
+      }
+      filter.cafeId = normalizedReqCafe;
+    } else {
+      filter.cafeId = permittedScope;
+    }
+  } else if (cafeId) {
+    filter.cafeId = String(cafeId).trim().toUpperCase();
+  }
 
   const targets = await DashboardTarget.find(filter)
     .sort({ cafeId: 1, periodKey: -1 })
@@ -1164,6 +1257,15 @@ const upsertTarget = asyncHandler(async (request, response) => {
   }
 
   const normalizedCafeId = String(cafeId).trim().toUpperCase();
+  const permittedScope = getCafeScope(request.auth);
+  if (permittedScope && !permittedScope.$in.includes(normalizedCafeId)) {
+    throw new ApiError(
+      403,
+      'CROSS_CAFE_RESOURCE_DENIED',
+      'Cannot set dashboard target for an unauthorized café.'
+    );
+  }
+
   const normalizedGranularity = String(granularity).trim().toUpperCase();
   const normalizedPeriodKey = String(periodKey).trim();
   const orgId = request.auth.organisationId;

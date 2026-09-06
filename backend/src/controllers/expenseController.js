@@ -35,8 +35,18 @@ function getIstBusinessDate(date = new Date()) {
 
 function ensureCafeAccess(request, cafeId) {
   if (!cafeId) return;
+  const cleanCafe = cafeId.trim().toUpperCase();
+  const role = request?.auth?.role;
+  if (role === 'MASTER') return;
+  if (role === 'OWNER') {
+    const assignedCafeIds = (request?.auth?.assignedCafeIds || []).map((c) => String(c).trim().toUpperCase());
+    if (!assignedCafeIds.includes(cleanCafe)) {
+      throw new ApiError(403, 'CAFE_ACCESS_DENIED', 'You do not have access to this cafe.');
+    }
+    return;
+  }
   const effectiveCafe = resolveEffectiveCafeScope(request);
-  if (effectiveCafe && effectiveCafe !== cafeId.trim().toUpperCase()) {
+  if (effectiveCafe && effectiveCafe !== cleanCafe) {
     throw new ApiError(403, 'CAFE_ACCESS_DENIED', 'You do not have access to this cafe.');
   }
 }
@@ -47,7 +57,14 @@ const getExpenseOverview = asyncHandler(async (request, response) => {
   const effectiveCafe = resolveEffectiveCafeScope(request);
   const isPrimary = request.auth.role === 'MASTER' && request.auth.isPrimaryMaster;
   const activeScopeCafe = effectiveCafe || (request.query.cafeId && request.query.cafeId !== 'ALL' ? request.query.cafeId.trim().toUpperCase() : null);
-  const cafeFilter = activeScopeCafe ? { cafeId: activeScopeCafe } : {};
+  if (activeScopeCafe) {
+    ensureCafeAccess(request, activeScopeCafe);
+  }
+  const cafeFilter = activeScopeCafe
+    ? { cafeId: activeScopeCafe }
+    : (request.auth.role === 'OWNER' || request.auth.role === 'CAFE_ADMIN'
+        ? { cafeId: { $in: request.auth.assignedCafeIds || [] } }
+        : {});
 
   const expenses = await Expense.find({ organisationId, ...cafeFilter });
 
@@ -121,10 +138,11 @@ const listExpenses = asyncHandler(async (request, response) => {
 
   const query = { organisationId };
 
-  if (request.auth.role === 'CAFE_ADMIN') {
+  if (cafeId && cafeId !== 'ALL') {
+    ensureCafeAccess(request, cafeId);
+    query.cafeId = cafeId.trim().toUpperCase();
+  } else if (request.auth.role === 'OWNER' || request.auth.role === 'CAFE_ADMIN') {
     query.cafeId = { $in: request.auth.assignedCafeIds || [] };
-  } else if (cafeId && cafeId !== 'ALL') {
-    query.cafeId = cafeId;
   }
 
   if (status && status !== 'ALL') {

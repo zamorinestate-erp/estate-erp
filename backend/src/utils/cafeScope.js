@@ -58,13 +58,63 @@ function resolveEffectiveCafeScope(request) {
   }
 
   // 2. MASTER_WORKSPACE GOVERNANCE MODE:
-  // MASTER and OWNER have global portfolio governance access
-  if (role === 'MASTER' || role === 'OWNER') {
+  // MASTER has global portfolio governance access across the organisation
+  if (role === 'MASTER') {
     return requestedCafe && requestedCafe !== 'ALL' ? requestedCafe : null;
+  }
+
+  // 2b. OWNER GOVERNANCE MODE:
+  // Strictly constrained to trusted assignedCafeIds; client-supplied cafeId can never expand authority
+  if (role === 'OWNER') {
+    const rawCafes = [
+      ...(Array.isArray(assignedCafeIds) ? assignedCafeIds : (assignedCafeIds ? [assignedCafeIds] : [])),
+      ...(request.auth.primaryCafeId ? [request.auth.primaryCafeId] : []),
+      ...(request.auth.cafeId ? [request.auth.cafeId] : []),
+    ];
+    const authorizedCafes = [
+      ...new Set(
+        rawCafes
+          .filter(Boolean)
+          .map((c) => String(c).trim().toUpperCase())
+      ),
+    ];
+
+    // Missing Owner assignment: fail closed
+    if (authorizedCafes.length === 0) {
+      throw new ApiError(
+        403,
+        'CROSS_CAFE_RESOURCE_DENIED',
+        'Owner has no authorized café assignments.'
+      );
+    }
+
+    // Case 1, 2, 3: OWNER requests a specific café
+    if (requestedCafe && requestedCafe !== 'ALL') {
+      if (!authorizedCafes.includes(requestedCafe)) {
+        throw new ApiError(
+          403,
+          'CROSS_CAFE_RESOURCE_DENIED',
+          'Cross-café access is denied. You are not authorized for the requested café.'
+        );
+      }
+      return requestedCafe;
+    }
+
+    // Case 4: OWNER requests All Cafés (or no specific cafe passed)
+    // If Owner is assigned exactly 1 cafe, return that cafe; if multiple, return null
+    // (representing multi-café governance view within their authorized set)
+    return authorizedCafes.length === 1 ? authorizedCafes[0] : null;
   }
 
   // 3. STAFF and personal device contexts
   const staffCafe = (assignedCafeIds?.[0] || '').trim().toUpperCase();
+  if (requestedCafe && requestedCafe !== 'ALL' && requestedCafe !== staffCafe) {
+    throw new ApiError(
+      403,
+      'CROSS_CAFE_RESOURCE_DENIED',
+      'Cross-café access is denied. You are not authorized for the requested café.'
+    );
+  }
   return staffCafe || null;
 }
 
@@ -73,21 +123,48 @@ function resolveEffectiveCafeScope(request) {
  * Throws a safe 404 / 403 error without enumerating foreign resource existence.
  *
  * @param {Object} resource The retrieved database document
- * @param {string|null} effectiveCafe The resolved effective café ID
+ * @param {string|Object|null} effectiveCafeOrRequest The resolved effective café ID or Express request
  * @param {string} resourceName Human-readable resource type for error messages
  */
-function assertResourceCafeOwnership(resource, effectiveCafe, resourceName = 'Resource') {
+function assertResourceCafeOwnership(resource, effectiveCafeOrRequest, resourceName = 'Resource') {
   if (!resource) {
     throw new ApiError(404, 'NOT_FOUND', `${resourceName} not found.`);
   }
 
-  if (!effectiveCafe) {
-    // Global Master/Owner view
-    return;
+  let effectiveCafe = effectiveCafeOrRequest;
+  let auth = null;
+
+  if (effectiveCafeOrRequest && typeof effectiveCafeOrRequest === 'object' && effectiveCafeOrRequest.auth) {
+    auth = effectiveCafeOrRequest.auth;
+    effectiveCafe = resolveEffectiveCafeScope(effectiveCafeOrRequest);
   }
 
   const resourceCafe = (resource.cafeId || resource.assignedCafeId || resource.outletId || '').trim().toUpperCase();
-  
+
+  // If request/auth context is provided and role is OWNER, ensure resource belongs to assigned cafés
+  if (auth && auth.role === 'OWNER') {
+    const rawCafes = [
+      ...(Array.isArray(auth.assignedCafeIds) ? auth.assignedCafeIds : (auth.assignedCafeIds ? [auth.assignedCafeIds] : [])),
+      ...(auth.primaryCafeId ? [auth.primaryCafeId] : []),
+      ...(auth.cafeId ? [auth.cafeId] : []),
+    ];
+    const authorizedCafes = [
+      ...new Set(
+        rawCafes
+          .filter(Boolean)
+          .map((c) => String(c).trim().toUpperCase())
+      ),
+    ];
+    if (resourceCafe && !authorizedCafes.includes(resourceCafe)) {
+      throw new ApiError(404, 'NOT_FOUND', `${resourceName} not found.`);
+    }
+  }
+
+  if (!effectiveCafe) {
+    // Global Master or Owner all-authorized-cafes view
+    return;
+  }
+
   // Cross-café transactions (e.g. transfers where café is either source or destination)
   if (resource.fromCafeId || resource.toCafeId) {
     const fromCafe = (resource.fromCafeId || '').trim().toUpperCase();
@@ -101,6 +178,31 @@ function assertResourceCafeOwnership(resource, effectiveCafe, resourceName = 'Re
   if (resourceCafe && resourceCafe !== effectiveCafe) {
     throw new ApiError(404, 'NOT_FOUND', `${resourceName} not found.`);
   }
+}
+
+/**
+ * Builds a safe café filter for database queries based on caller authorization.
+ *
+ * @param {Object} request Express request object containing req.auth
+ * @returns {Object} Mongoose filter object (e.g. { cafeId: '...' } or { cafeId: { $in: [...] } } or {})
+ */
+function buildEffectiveCafeFilter(request) {
+  const effectiveCafe = resolveEffectiveCafeScope(request);
+  if (effectiveCafe) {
+    return { cafeId: effectiveCafe };
+  }
+  if (request.auth?.role === 'OWNER' || request.auth?.role === 'CAFE_ADMIN') {
+    const rawCafes = [
+      ...(Array.isArray(request.auth.assignedCafeIds) ? request.auth.assignedCafeIds : (request.auth.assignedCafeIds ? [request.auth.assignedCafeIds] : [])),
+      ...(request.auth.primaryCafeId ? [request.auth.primaryCafeId] : []),
+      ...(request.auth.cafeId ? [request.auth.cafeId] : []),
+    ];
+    const authorizedCafes = [
+      ...new Set(rawCafes.filter(Boolean).map((c) => String(c).trim().toUpperCase())),
+    ];
+    return { cafeId: { $in: authorizedCafes } };
+  }
+  return {};
 }
 
 /**
@@ -127,5 +229,6 @@ function allowlistWritableFields(body, allowedFields = []) {
 module.exports = {
   resolveEffectiveCafeScope,
   assertResourceCafeOwnership,
+  buildEffectiveCafeFilter,
   allowlistWritableFields,
 };

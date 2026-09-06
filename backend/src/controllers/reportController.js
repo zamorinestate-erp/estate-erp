@@ -44,11 +44,18 @@ function validateAndParseDateFilters(request) {
 }
 
 function buildBaseFilter(request, dateFilters) {
-  const { role, organisationId, assignedCafeIds } = request.auth;
+  const { role, organisationId } = request.auth;
 
   if (role === 'STAFF') {
     throw new ApiError(403, 'ROLE_NOT_ALLOWED', 'Staff users cannot access management analytics.');
   }
+
+  const rawCafes = [
+    ...(Array.isArray(request.auth.assignedCafeIds) ? request.auth.assignedCafeIds : (request.auth.assignedCafeIds ? [request.auth.assignedCafeIds] : [])),
+    ...(request.auth.primaryCafeId ? [request.auth.primaryCafeId] : []),
+    ...(request.auth.cafeId ? [request.auth.cafeId] : []),
+  ];
+  const assignedCafeIds = [...new Set(rawCafes.filter(Boolean).map((c) => String(c).trim().toUpperCase()))];
 
   const effectiveCafe = resolveEffectiveCafeScope(request);
   const filter = { organisationId: organisationId || 'ORG-ZAMORIN-01' };
@@ -56,12 +63,12 @@ function buildBaseFilter(request, dateFilters) {
   if (effectiveCafe) {
     filter.cafeId = effectiveCafe;
   } else if (dateFilters.cafeId) {
-    if (role === 'CAFE_ADMIN' && !(assignedCafeIds || []).includes(dateFilters.cafeId)) {
+    if (role !== 'MASTER' && !assignedCafeIds.includes(dateFilters.cafeId)) {
       throw new ApiError(403, 'CAFE_ACCESS_DENIED', 'You do not have access to this cafe.');
     }
     filter.cafeId = dateFilters.cafeId;
-  } else if (role === 'CAFE_ADMIN') {
-    filter.cafeId = { $in: assignedCafeIds || [] };
+  } else if (role !== 'MASTER') {
+    filter.cafeId = { $in: assignedCafeIds };
   }
 
   return filter;

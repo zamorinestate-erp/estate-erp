@@ -1623,11 +1623,17 @@ async function seedCafeOperationsData(orgOrObj, mUserId) {
       email: 'owner@example.com',
       role: 'OWNER',
       accountStatus: 'ACTIVE',
+      primaryCafeId: 'ZC-0001',
+      assignedCafeIds: ['ZC-0001', 'ZC-0002'],
       passwordHash: defaultPasswordHash,
       isPrimaryMaster: false,
       createdBy: masterUserId,
       updatedBy: masterUserId,
     });
+  } else if (!existingOwner.assignedCafeIds || existingOwner.assignedCafeIds.length === 0) {
+    existingOwner.primaryCafeId = existingOwner.primaryCafeId || 'ZC-0001';
+    existingOwner.assignedCafeIds = ['ZC-0001', 'ZC-0002'];
+    await existingOwner.save();
   }
 
   // Admin Account (Ops)
