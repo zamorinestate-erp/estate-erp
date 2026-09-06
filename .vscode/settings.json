@@ -1,10 +1,13 @@
 {
-  "javascript.validate.enable": true,
+  "javascript.validate.enable": false,
   "typescript.validate.enable": false,
   "js/ts.implicitProjectConfig.checkJs": false,
   "typescript.suggestionActions.enabled": false,
   "javascript.suggestionActions.enabled": false,
-  "eslint.workingDirectories": [
-    "./backend"
-  ]
+  "eslint.enable": false,
+  "cSpell.enabled": false,
+  "stylelint.enable": false,
+  "html.validate.scripts": false,
+  "html.validate.styles": false,
+  "css.validate": false
 }
