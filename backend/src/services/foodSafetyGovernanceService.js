@@ -9,7 +9,7 @@
  * Food Recall Master with 8-state server validation, and CAPA Engine.
  */
 
-const { FoodSafetyRegistration, REGULATORY_STATUSES } = require('../models/FoodSafetyRegistration');
+const { FoodSafetyRegistration, REGULATORY_STATUSES, INTERNAL_COMPLIANCE_STATES } = require('../models/FoodSafetyRegistration');
 const { HygieneChecklistTemplate } = require('../models/HygieneChecklistTemplate');
 const { HygieneInspection } = require('../models/HygieneInspection');
 const { FoodRecallCase, VALID_TRANSITIONS } = require('../models/FoodRecallCase');
@@ -111,6 +111,8 @@ class FoodSafetyGovernanceService {
     newStatus,
     reason,
     performedByUserId,
+    performedByRole = 'OWNER',
+    regulatorOrderReference = null,
   }) {
     if (!REGULATORY_STATUSES.includes(newStatus)) {
       throw new ApiError(400, 'INVALID_STATUS', `Status must be one of: ${REGULATORY_STATUSES.join(', ')}`);
@@ -126,18 +128,138 @@ class FoodSafetyGovernanceService {
     }
 
     const oldStatus = reg.status;
+    if (performedByRole && performedByRole !== 'OWNER' && performedByRole !== 'MASTER') {
+      throw new ApiError(403, 'FORBIDDEN', 'Unauthorized role denied: Only OWNER or MASTER may modify official FSSAI regulatory licence status.');
+    }
+
+    if ((newStatus === 'SUSPENDED' || newStatus === 'CANCELLED') && !regulatorOrderReference) {
+      throw new ApiError(400, 'AUTHORITATIVE_REGULATOR_EVIDENCE_REQUIRED', 'Official regulatory suspension or cancellation requires verified regulator order/reference or FoSCoS notice.');
+    }
+
     reg.status = newStatus;
+    if (regulatorOrderReference) {
+      reg.regulatorOrderReference = String(regulatorOrderReference).trim();
+    }
+
     reg.auditHistory.push({
-      action: 'STATUS_CHANGE',
+      action: 'REGULATORY_STATUS_CHANGE',
       performedBy: performedByUserId || 'SYSTEM',
       performedAt: new Date(),
       previousStatus: oldStatus,
       newStatus,
-      reason: reason || 'Regulatory status update',
+      reason: reason || 'Authoritative regulator status update backed by official evidence',
     });
 
     await reg.save();
     return reg;
+  }
+
+  static async updateInternalComplianceState({
+    organisationId,
+    registrationId,
+    internalComplianceState,
+    reason,
+    performedByUserId,
+  }) {
+    if (!INTERNAL_COMPLIANCE_STATES.includes(internalComplianceState)) {
+      throw new ApiError(400, 'INVALID_COMPLIANCE_STATE', `Compliance state must be one of: ${INTERNAL_COMPLIANCE_STATES.join(', ')}`);
+    }
+
+    const reg = await FoodSafetyRegistration.findOne({
+      organisationId: organisationId.toUpperCase(),
+      registrationId: registrationId.toUpperCase(),
+    });
+
+    if (!reg) {
+      throw new ApiError(404, 'NOT_FOUND', 'Food safety registration record not found.');
+    }
+
+    const oldState = reg.internalComplianceState;
+    reg.internalComplianceState = internalComplianceState;
+    reg.auditHistory.push({
+      action: 'INTERNAL_COMPLIANCE_STATE_CHANGE',
+      performedBy: performedByUserId || 'SYSTEM',
+      performedAt: new Date(),
+      previousStatus: oldState,
+      newStatus: internalComplianceState,
+      reason: reason || 'Internal compliance state transition (FSSAI regulatory licence status remains unchanged)',
+    });
+
+    await reg.save();
+    return reg;
+  }
+
+  static getSchedule4HygieneMapping({ kindOfBusiness = 'FOOD_SERVICE_RESTAURANT_CAFE', licenceType = 'STATE_LICENSE', hasMilkProcessing = false } = {}) {
+    const kob = String(kindOfBusiness).toUpperCase();
+    if (kob.includes('PETTY') || licenceType === 'REGISTRATION') {
+      return {
+        schedule4Part: 'PART_I',
+        title: 'Schedule 4 Part I: General Hygienic and Sanitary Practices for Petty Food Business Operators applying for Registration',
+        applicable: true,
+        rationale: 'Mandatory hygiene baseline for Petty Food Business registration tier under Section 31(1)',
+      };
+    }
+    if (hasMilkProcessing && (kob.includes('MILK') || kob.includes('DAIRY'))) {
+      return {
+        schedule4Part: 'PART_III',
+        title: 'Schedule 4 Part III: Specific Hygienic and Sanitary Practices for Milk & Milk Products',
+        applicable: true,
+        rationale: 'Specific dairy processing standard applied only where dedicated commercial milk processing operations exist',
+      };
+    }
+    if (kob.includes('MANUFACTURING') || kob.includes('COMMISSARY_FACTORY')) {
+      return {
+        schedule4Part: 'PART_II',
+        title: 'Schedule 4 Part II: General Hygienic and Sanitary Practices for Food Manufacturing/Processing',
+        applicable: true,
+        rationale: 'Mandatory for centralized production commissaries exceeding food service preparation limits',
+      };
+    }
+    // Default for Zamorin café & restaurant operations
+    return {
+      schedule4Part: 'PART_V',
+      title: 'Schedule 4 Part V: Specific Hygienic and Sanitary Practices for Catering / Food Service Establishments',
+      applicable: true,
+      rationale: 'Primary statutory food service and restaurant hygiene baseline for Zamorin Café operations',
+    };
+  }
+
+  static calculateSupervisoryRatio({ foodHandlersCount = 0, licenceType = 'STATE_LICENSE', certifiedSupervisorsCount = 0 } = {}) {
+    if (licenceType === 'REGISTRATION') {
+      return {
+        licenceType: 'REGISTRATION',
+        statutoryRatioApplies: false,
+        requiredSupervisors: 0,
+        currentSupervisors: certifiedSupervisorsCount,
+        compliant: true,
+        rationale: 'Registration-class Petty FBOs are encouraged to undergo basic FoSTaC, but mandatory 1:25 statutory quota applies to State/Central Licences.',
+      };
+    }
+
+    if (foodHandlersCount <= 0) {
+      return {
+        licenceType,
+        statutoryRatioApplies: true,
+        requiredSupervisors: 0,
+        currentSupervisors: certifiedSupervisorsCount,
+        compliant: true,
+        rationale: 'Premises has zero active food handlers registered.',
+      };
+    }
+
+    const requiredSupervisors = Math.ceil(foodHandlersCount / 25);
+    const compliant = certifiedSupervisorsCount >= requiredSupervisors;
+
+    return {
+      licenceType,
+      statutoryRatioApplies: true,
+      foodHandlersCount,
+      requiredSupervisors,
+      currentSupervisors: certifiedSupervisorsCount,
+      compliant,
+      ratioRule: '1 trained and certified Food Safety Supervisor per 25 food handlers or part thereof per premises',
+      source: 'FSSAI FoSTaC Standardized Operational Guidelines (Procedure dated 5 August 2026)',
+    };
   }
 
   static async listLicences({ organisationId, cafeId = null, status = null }) {
@@ -318,6 +440,25 @@ class FoodSafetyGovernanceService {
         },
       ],
     });
+
+    if (criticalFail || anyFail) {
+      await FoodSafetyRegistration.updateOne(
+        { organisationId: cleanOrg, cafeId: cleanCafe, status: 'ACTIVE' },
+        {
+          $set: {
+            internalComplianceState: criticalFail ? 'SERIOUS_NONCOMPLIANCE' : 'ACTION_REQUIRED',
+          },
+          $push: {
+            auditHistory: {
+              action: 'INSPECTION_COMPLIANCE_FLAG',
+              performedBy: inspectedByUserId,
+              performedAt: new Date(),
+              reason: `Internal hygiene failure detected: ${overallResult}. Legal FSSAI licence status remains ACTIVE.`,
+            },
+          },
+        }
+      );
+    }
 
     return inspection;
   }
@@ -939,6 +1080,21 @@ class FoodSafetyGovernanceService {
         },
       ],
     });
+
+    await FoodSafetyRegistration.updateOne(
+      { organisationId: organisationId.toUpperCase(), cafeId: cafeId.toUpperCase(), status: 'ACTIVE' },
+      {
+        $set: { internalComplianceState: 'ACTION_REQUIRED' },
+        $push: {
+          auditHistory: {
+            action: 'CAPA_INITIATED',
+            performedBy: performedByUserId || 'SYSTEM',
+            performedAt: new Date(),
+            reason: `CAPA ${capaId} initiated. Internal compliance state updated to ACTION_REQUIRED. Regulatory licence remains ACTIVE.`,
+          },
+        },
+      }
+    );
 
     return capa;
   }

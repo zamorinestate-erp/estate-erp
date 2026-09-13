@@ -31,6 +31,14 @@ const REGULATORY_STATUSES = [
   'UNDER_REVIEW',
 ];
 
+const INTERNAL_COMPLIANCE_STATES = [
+  'COMPLIANT',
+  'ACTION_REQUIRED',
+  'SERIOUS_NONCOMPLIANCE',
+  'ESCALATED',
+  'REGULATORY_RISK',
+];
+
 const foodSafetyRegistrationSchema = new mongoose.Schema(
   {
     registrationId: {
@@ -113,6 +121,17 @@ const foodSafetyRegistrationSchema = new mongoose.Schema(
       default: 'ACTIVE',
       index: true,
     },
+    internalComplianceState: {
+      type: String,
+      enum: INTERNAL_COMPLIANCE_STATES,
+      default: 'COMPLIANT',
+      index: true,
+    },
+    regulatorOrderReference: {
+      type: String,
+      trim: true,
+      default: null,
+    },
     responsiblePerson: {
       type: String,
       required: true,
@@ -179,4 +198,5 @@ module.exports = {
   REGISTRATION_TYPES,
   REGULATORY_REGIMES,
   REGULATORY_STATUSES,
+  INTERNAL_COMPLIANCE_STATES,
 };

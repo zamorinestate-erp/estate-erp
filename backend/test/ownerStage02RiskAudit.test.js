@@ -864,5 +864,11 @@ test('STAGE 02 — Owner Risk, Internal Audit & Fraud Control Centre Suite', asy
       assert.ok(rule.effectiveDate, 'Effective date is required');
       assert.equal(typeof rule.enabled, 'boolean', 'Enabled flag must be boolean');
     });
+
+    const rule11 = rules.find((r) => r.ruleId === 'ANO-RULE-011');
+    assert.ok(rule11, 'ANO-RULE-011 must exist');
+    assert.ok(rule11.authoritativeSource.includes('AuditEvent'), 'Rule 11 must be backed by authentic AuditEvent source');
+    assert.ok(!rule11.description.includes('MFA'), 'Rule 11 must not reference phantom MFA bypass');
+    assert.ok(!rule11.threshold.includes('MFA'), 'Rule 11 threshold must not reference MFA bypass');
   });
 });

@@ -34,6 +34,23 @@ const TEMPLATE_CLASSIFICATIONS = [
   'CAFE_SPECIFIC',
 ];
 
+const SCHEDULE_4_PARTS = [
+  'PART_I',   // Petty food business operators applying for registration
+  'PART_II',  // Manufacturing / processing / packaging / storage / distribution
+  'PART_III', // Milk and milk products (dedicated dairy only)
+  'PART_IV',  // Slaughterhouse / meat processing
+  'PART_V',   // Catering / food service establishments (Zamorin Café primary baseline)
+  'NOT_APPLICABLE',
+];
+
+const KINDS_OF_BUSINESS = [
+  'FOOD_SERVICE_RESTAURANT_CAFE',
+  'PETTY_FOOD_BUSINESS',
+  'MANUFACTURING_PROCESSING',
+  'MILK_PROCESSING',
+  'CATERING',
+];
+
 const CHECKLIST_FREQUENCIES = [
   'DAILY_OPENING',
   'DAILY_CLOSING',
@@ -112,6 +129,16 @@ const hygieneChecklistTemplateSchema = new mongoose.Schema(
       enum: TEMPLATE_CLASSIFICATIONS,
       default: 'STATUTORY_SCHEDULE_4',
     },
+    schedule4Part: {
+      type: String,
+      enum: SCHEDULE_4_PARTS,
+      default: 'PART_V',
+    },
+    kindOfBusiness: {
+      type: String,
+      enum: KINDS_OF_BUSINESS,
+      default: 'FOOD_SERVICE_RESTAURANT_CAFE',
+    },
     applicableCafes: {
       type: [String],
       default: [], // Empty array indicates estate-wide (all cafes)
@@ -179,6 +206,8 @@ module.exports = {
   HygieneChecklistTemplate,
   CHECKLIST_DOMAINS,
   TEMPLATE_CLASSIFICATIONS,
+  SCHEDULE_4_PARTS,
+  KINDS_OF_BUSINESS,
   CHECKLIST_FREQUENCIES,
   QUESTION_RESPONSE_TYPES,
 };

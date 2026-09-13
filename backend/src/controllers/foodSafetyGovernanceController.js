@@ -114,9 +114,9 @@ const registerLicence = asyncHandler(async (req, res) => {
 });
 
 const updateLicenceStatus = asyncHandler(async (req, res) => {
-  const { organisationId, userId } = req.auth;
+  const { organisationId, userId, role } = req.auth;
   const { registrationId } = req.params;
-  const { newStatus, reason } = req.body || {};
+  const { newStatus, reason, regulatorOrderReference } = req.body || {};
 
   const registration = await FoodSafetyGovernanceService.updateLicenceStatus({
     organisationId,
@@ -124,6 +124,8 @@ const updateLicenceStatus = asyncHandler(async (req, res) => {
     newStatus,
     reason,
     performedByUserId: userId,
+    performedByRole: role,
+    regulatorOrderReference,
   });
 
   await recordRequestAudit({

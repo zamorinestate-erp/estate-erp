@@ -802,4 +802,192 @@ test('STAGE 01 — Food Safety, Hygiene, Recall & Traceability Centre Suite', as
     assert.ok(overview.capas.total >= 1);
     assert.ok(overview.traceability.openGapsCount >= 1);
   });
+
+  // ── 8. Regulatory Status Separation & Evidence-Backed Transitions ─────────────
+  await t.test('8.1: Case A: Internal hygiene failure alerts internal state; FSSAI regulatory status remains ACTIVE', async () => {
+    // Ensure active licence exists for test
+    await FoodSafetyRegistration.updateOne(
+      { organisationId: 'ORG-ZAMORIN', cafeId: 'ZC-0001' },
+      { $set: { status: 'ACTIVE', internalComplianceState: 'COMPLIANT' } }
+    );
+
+    // Execute critical fail inspection with required evidence attachment
+    await FoodSafetyGovernanceService.submitHygieneInspection({
+      organisationId: 'ORG-ZAMORIN',
+      cafeId: 'ZC-0001',
+      templateId: 'TPL-DAILY-KITCHEN',
+      inspectedByUserId: 'USR-ADMIN-01',
+      responses: [
+        { questionId: 'Q1', response: 'FAIL', notes: 'Critical sanitation failure', evidenceAttachmentId: 'ATT-HYG-001' },
+      ],
+    });
+
+    const reg = await FoodSafetyRegistration.findOne({
+      organisationId: 'ORG-ZAMORIN',
+      cafeId: 'ZC-0001',
+    });
+
+    assert.ok(reg);
+    assert.equal(reg.status, 'ACTIVE', 'Legal FSSAI status must remain ACTIVE');
+    assert.equal(reg.internalComplianceState, 'SERIOUS_NONCOMPLIANCE', 'Internal compliance state must be flagged');
+  });
+
+  await t.test('8.2: Case B: Overdue/High Risk CAPA updates internal compliance state; legal FSSAI status remains ACTIVE', async () => {
+    await FoodSafetyGovernanceService.createCapa({
+      organisationId: 'ORG-ZAMORIN',
+      cafeId: 'ZC-0001',
+      source: 'INTERNAL_AUDIT',
+      sourceReferenceId: 'AUD-001',
+      title: 'High priority cold storage temperature excursion',
+      findingDescription: 'Freezer temperature exceeded threshold for 3 hours',
+      rootCauseCategory: 'EQUIPMENT_FAILURE',
+      rootCauseAnalysis: 'Compressor thermal overload relay tripped.',
+      rootCauseConfirmedByHuman: true,
+      correctiveActionPlan: 'Replaced thermal relay.',
+      preventiveActionPlan: 'Added secondary temperature sensor alarm.',
+      assignedOwnerUserId: 'USR-ADMIN-01',
+      dueDate: new Date(Date.now() + 86400000),
+      performedByUserId: 'USR-OWNER-01',
+    });
+
+    const reg = await FoodSafetyRegistration.findOne({
+      organisationId: 'ORG-ZAMORIN',
+      cafeId: 'ZC-0001',
+    });
+
+    assert.ok(reg);
+    assert.equal(reg.status, 'ACTIVE', 'Legal regulatory licence status must remain ACTIVE');
+    assert.equal(reg.internalComplianceState, 'ACTION_REQUIRED', 'Internal compliance state must reflect action required');
+  });
+
+  await t.test('8.3: Case C: Verified regulator suspension evidence allows authorized transition to SUSPENDED', async () => {
+    const reg = await FoodSafetyRegistration.findOne({
+      organisationId: 'ORG-ZAMORIN',
+      cafeId: 'ZC-0001',
+    });
+
+    const updated = await FoodSafetyGovernanceService.updateLicenceStatus({
+      organisationId: 'ORG-ZAMORIN',
+      registrationId: reg.registrationId,
+      newStatus: 'SUSPENDED',
+      reason: 'Official regulatory notice received from FSSAI Designated Officer',
+      performedByUserId: 'USR-OWNER-01',
+      performedByRole: 'OWNER',
+      regulatorOrderReference: 'FSSAI-DO-KZD-2026-4412',
+    });
+
+    assert.equal(updated.status, 'SUSPENDED');
+    assert.equal(updated.regulatorOrderReference, 'FSSAI-DO-KZD-2026-4412');
+
+    // Restore to ACTIVE for remaining tests
+    await FoodSafetyGovernanceService.updateLicenceStatus({
+      organisationId: 'ORG-ZAMORIN',
+      registrationId: reg.registrationId,
+      newStatus: 'ACTIVE',
+      reason: 'Reinstated upon submission of compliance report',
+      performedByUserId: 'USR-OWNER-01',
+      performedByRole: 'OWNER',
+    });
+  });
+
+  await t.test('8.4: Case D: Unauthorized user or missing regulator evidence is strictly rejected', async () => {
+    const reg = await FoodSafetyRegistration.findOne({
+      organisationId: 'ORG-ZAMORIN',
+      cafeId: 'ZC-0001',
+    });
+
+    // 1. Missing regulator evidence for SUSPENDED
+    await assert.rejects(
+      async () => {
+        await FoodSafetyGovernanceService.updateLicenceStatus({
+          organisationId: 'ORG-ZAMORIN',
+          registrationId: reg.registrationId,
+          newStatus: 'SUSPENDED',
+          reason: 'No evidence provided',
+          performedByUserId: 'USR-OWNER-01',
+          performedByRole: 'OWNER',
+          regulatorOrderReference: null,
+        });
+      },
+      (err) => err.code === 'AUTHORITATIVE_REGULATOR_EVIDENCE_REQUIRED'
+    );
+
+    // 2. Unauthorized role (STAFF)
+    await assert.rejects(
+      async () => {
+        await FoodSafetyGovernanceService.updateLicenceStatus({
+          organisationId: 'ORG-ZAMORIN',
+          registrationId: reg.registrationId,
+          newStatus: 'SUSPENDED',
+          reason: 'Unauthorized attempt',
+          performedByUserId: 'USR-STAFF-01',
+          performedByRole: 'STAFF',
+          regulatorOrderReference: 'REF-FAKE',
+        });
+      },
+      (err) => err.code === 'FORBIDDEN'
+    );
+  });
+
+  // ── 9. Schedule 4 Hygiene Checklist Mapping ──────────────────────────────────
+  await t.test('9.1: Schedule 4 hygiene mapping selects Part V for café and rejects Part III when milk processing is absent', () => {
+    // Restaurant / Café
+    const cafeMapping = FoodSafetyGovernanceService.getSchedule4HygieneMapping({
+      kindOfBusiness: 'FOOD_SERVICE_RESTAURANT_CAFE',
+      licenceType: 'STATE_LICENSE',
+      hasMilkProcessing: false,
+    });
+    assert.equal(cafeMapping.schedule4Part, 'PART_V', 'Café must map to Part V');
+
+    // Petty FBO
+    const pettyMapping = FoodSafetyGovernanceService.getSchedule4HygieneMapping({
+      kindOfBusiness: 'PETTY_FOOD_BUSINESS',
+      licenceType: 'REGISTRATION',
+      hasMilkProcessing: false,
+    });
+    assert.equal(pettyMapping.schedule4Part, 'PART_I', 'Petty FBO must map to Part I');
+
+    // Manufacturing
+    const mfgMapping = FoodSafetyGovernanceService.getSchedule4HygieneMapping({
+      kindOfBusiness: 'MANUFACTURING_PROCESSING',
+      licenceType: 'STATE_LICENSE',
+      hasMilkProcessing: false,
+    });
+    assert.equal(mfgMapping.schedule4Part, 'PART_II', 'Manufacturing must map to Part II');
+
+    // Milk processing absent: verify Part III is NOT returned
+    assert.notEqual(cafeMapping.schedule4Part, 'PART_III', 'General café must never falsely receive Part III');
+  });
+
+  // ── 10. FoSTaC Supervisor Quota Calculation ──────────────────────────────────
+  await t.test('10.1: FoSTaC supervisor ratio applies 1:25 to Licences and exempts Registration class', () => {
+    // 1. State Licence with 35 handlers -> requires 2 supervisors
+    const r1 = FoodSafetyGovernanceService.calculateSupervisoryRatio({
+      foodHandlersCount: 35,
+      licenceType: 'STATE_LICENSE',
+      certifiedSupervisorsCount: 2,
+    });
+    assert.equal(r1.statutoryRatioApplies, true);
+    assert.equal(r1.requiredSupervisors, 2);
+    assert.equal(r1.compliant, true);
+
+    // 2. Zero food handlers -> requires 0
+    const r2 = FoodSafetyGovernanceService.calculateSupervisoryRatio({
+      foodHandlersCount: 0,
+      licenceType: 'STATE_LICENSE',
+      certifiedSupervisorsCount: 0,
+    });
+    assert.equal(r2.requiredSupervisors, 0);
+    assert.equal(r2.compliant, true);
+
+    // 3. Petty Registration -> statutory ratio does not apply
+    const r3 = FoodSafetyGovernanceService.calculateSupervisoryRatio({
+      foodHandlersCount: 15,
+      licenceType: 'REGISTRATION',
+      certifiedSupervisorsCount: 0,
+    });
+    assert.equal(r3.statutoryRatioApplies, false);
+    assert.equal(r3.requiredSupervisors, 0);
+    assert.equal(r3.compliant, true);
+  });
 });
