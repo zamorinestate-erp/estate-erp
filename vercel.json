@@ -35,6 +35,14 @@
       "dest": "/frontend/manifest.json"
     },
     {
+      "src": "/windows-app-web-link",
+      "dest": "/frontend/windows-app-web-link",
+      "headers": {
+        "Content-Type": "application/json",
+        "Cache-Control": "public, max-age=3600"
+      }
+    },
+    {
       "src": "/.well-known/(.*)",
       "dest": "/frontend/.well-known/$1",
       "headers": {
