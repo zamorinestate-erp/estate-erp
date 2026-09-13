@@ -65,6 +65,8 @@ router.get('/:billId', getBill);
 
 // POS Sale Creation & Settlement
 router.post('/', createBill);
+router.post('/commit', require('../controllers/posController').commitOrder);
+router.post('/preview', require('../controllers/posController').previewOrder);
 router.post('/offline-sync', syncOfflineBills);
 router.post('/:billId/split', splitBill);
 

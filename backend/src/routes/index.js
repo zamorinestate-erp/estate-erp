@@ -137,6 +137,9 @@ const universalQrRoutes =
 const hardwareRoutes =
   require('./hardwareRoutes');
 
+const posRoutes =
+  require('./posRoutes');
+
 const router = express.Router();
 
 router.use(
@@ -406,6 +409,11 @@ router.use(
 router.use(
   '/hardware',
   hardwareRoutes
+);
+
+router.use(
+  '/pos',
+  posRoutes
 );
 
 router.use(
