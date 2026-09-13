@@ -126,11 +126,177 @@ export function runDeploymentReadinessCheck({ targetEnv = process.env.NODE_ENV |
   };
 }
 
+// ─── PRODUCTION SECRETS VALIDATION MODE ─────────────────────────────────────
+// Usage: node scripts/check_deploy_readiness.mjs --validate-production-config
+//
+// IMPORTANT: This mode checks secrets from the CURRENT process.env.
+// When run locally (without Render env vars set), all secrets will be MISSING.
+// This mode produces meaningful results only when executed ON the Render
+// deployment (e.g. via `render exec` or a one-off job with the production
+// environment injected).
+//
+// Output: PRODUCTION_SECRETS_VALIDATED or PRODUCTION_SECRETS_NOT_VALIDATED
+
+const PRODUCTION_SECRET_SPECS = [
+  {
+    key: 'MONGODB_URI',
+    isSecret: true,
+    description: 'MongoDB Atlas connection string',
+    validate: (val) => typeof val === 'string' && (val.startsWith('mongodb://') || val.startsWith('mongodb+srv://')),
+  },
+  {
+    key: 'JWT_ACCESS_SECRET',
+    isSecret: true,
+    description: 'HMAC access token secret (min 32 chars)',
+    validate: (val) => typeof val === 'string' && val.trim().length >= 32 && !val.includes('placeholder'),
+  },
+  {
+    key: 'MFA_ENCRYPTION_KEY',
+    isSecret: true,
+    description: 'AES-256-GCM MFA key (64-char hex)',
+    validate: (val) => typeof val === 'string' && /^[0-9a-fA-F]{64}$/.test(val.trim()),
+  },
+  {
+    key: 'INITIAL_MASTER_EMAIL',
+    isSecret: true,
+    description: 'Bootstrap master admin email',
+    validate: (val) => typeof val === 'string' && val.includes('@') && val.length >= 5,
+  },
+  {
+    key: 'INITIAL_MASTER_PASSWORD',
+    isSecret: true,
+    description: 'Bootstrap master admin password (min 15 chars)',
+    validate: (val) => typeof val === 'string' && val.trim().length >= 15,
+  },
+  {
+    key: 'CLOUDINARY_CLOUD_NAME',
+    isSecret: false,
+    description: 'Cloudinary cloud name for private storage',
+    validate: (val) => typeof val === 'string' && val.trim().length > 0,
+  },
+  {
+    key: 'CLOUDINARY_API_KEY',
+    isSecret: true,
+    description: 'Cloudinary API key',
+    validate: (val) => typeof val === 'string' && val.trim().length >= 5,
+  },
+  {
+    key: 'CLOUDINARY_API_SECRET',
+    isSecret: true,
+    description: 'Cloudinary API secret',
+    validate: (val) => typeof val === 'string' && val.trim().length >= 10,
+  },
+  {
+    key: 'ALLOWED_ORIGINS',
+    isSecret: false,
+    description: 'Authorised CORS origins (must not contain *)',
+    validate: (val) => typeof val === 'string' && !val.includes('*') && val.includes('https://'),
+  },
+  {
+    key: 'DOCUMENT_STORAGE_DRIVER',
+    isSecret: false,
+    description: 'Document storage driver',
+    validate: (val) => ['RENDER_PERSISTENT_DISK', 'PRIVATE_OBJECT_STORAGE'].includes(val),
+  },
+  {
+    key: 'DOCUMENT_STORAGE_ROOT',
+    isSecret: false,
+    description: 'Persistent disk mount path',
+    validate: (val) => typeof val === 'string' && val.startsWith('/') && !val.startsWith('/tmp'),
+  },
+];
+
+export function validateProductionSecrets(env = process.env) {
+  const results = [];
+  let allValid = true;
+  const UNSAFE_PATTERNS = ['password', 'secret', 'placeholder', '123456', 'changeme', 'test'];
+
+  for (const spec of PRODUCTION_SECRET_SPECS) {
+    const raw = env[spec.key];
+    const isPresent = raw !== undefined && raw !== null && String(raw).trim() !== '';
+
+    let status;
+    let detail;
+
+    if (!isPresent) {
+      status = 'MISSING';
+      detail = `Required variable is absent or empty`;
+      allValid = false;
+    } else {
+      // Check for obviously unsafe/default values (without printing the value)
+      const lowerVal = String(raw).toLowerCase();
+      const isUnsafe = UNSAFE_PATTERNS.some(p => lowerVal === p || lowerVal.startsWith(p + '1'));
+      if (isUnsafe) {
+        status = 'UNSAFE';
+        detail = 'Value matches a known weak/default pattern — replace with cryptographically strong value';
+        allValid = false;
+      } else if (!spec.validate(raw)) {
+        status = 'INVALID';
+        detail = `Value fails validation for: ${spec.description}`;
+        allValid = false;
+      } else {
+        status = 'PRESENT';
+        detail = spec.isSecret ? 'Configured (Value Redacted)' : `Valid: ${raw.substring(0, 4)}…`;
+      }
+    }
+
+    results.push({
+      key: spec.key,
+      status,
+      detail,
+      description: spec.description,
+      isSecret: spec.isSecret,
+    });
+  }
+
+  const verdict = allValid
+    ? 'PRODUCTION_SECRETS_VALIDATED'
+    : 'PRODUCTION_SECRETS_NOT_VALIDATED — BLOCKING PRODUCTION GO-LIVE';
+
+  return { verdict, allValid, results, timestamp: new Date().toISOString() };
+}
+
 // ─── CLI EXECUTION ───────────────────────────────────────────────────────────
 
 function runCli() {
   const args = process.argv.slice(2);
   const isJson = args.includes('--json');
+
+  // ── Production Secrets Validation Mode ──────────────────────────────────
+  if (args.includes('--validate-production-config')) {
+    const result = validateProductionSecrets(process.env);
+
+    console.log('================================================================');
+    console.log(' ZAMORIN CAFÉ ERP — PRODUCTION SECRETS VALIDATION');
+    console.log('================================================================');
+    console.log('WARNING: Secret values are NEVER printed. Statuses only.');
+    console.log('NOTE:    Run this command on the Render deployment shell for');
+    console.log('         meaningful results (render exec or one-off job).');
+    console.log(`Timestamp: ${result.timestamp}`);
+    console.log('----------------------------------------------------------------');
+
+    result.results.forEach(r => {
+      const icon = r.status === 'PRESENT' ? '[PRESENT]'
+        : r.status === 'MISSING'  ? '[MISSING]'
+        : r.status === 'INVALID'  ? '[INVALID]'
+        : r.status === 'UNSAFE'   ? '[UNSAFE ]'
+        : '[UNKNOWN]';
+      console.log(`  ${icon} ${r.key.padEnd(30, ' ')} : ${r.detail}`);
+    });
+
+    console.log('----------------------------------------------------------------');
+    console.log(`VERDICT: ${result.verdict}`);
+    console.log('================================================================');
+
+    if (isJson) {
+      console.log(JSON.stringify(result, null, 2));
+    }
+
+    process.exit(result.allValid ? 0 : 1);
+    return;
+  }
+
+  // ── Standard Deployment Readiness Check ─────────────────────────────────
   const envIndex = args.indexOf('--target-env');
   const targetEnv = envIndex !== -1 ? args[envIndex + 1] : (process.env.NODE_ENV || 'development');
 

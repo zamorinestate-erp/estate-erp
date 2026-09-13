@@ -30,12 +30,27 @@ jobs:
         working-directory: ./backend
         run: npm run check
 
-      - name: Run Backend Regression Test Suite
+      - name: Run Cross-System Specification Suite
         working-directory: ./backend
-        run: npm test
+        run: node test/crossSystemSpecificationFinal.test.js
+
+      - name: Run Document Storage Durability Suite
+        working-directory: ./backend
+        run: node test/documentStorageDurability.test.js
+
+      - name: Run OWASP ASVS 5.0 Compliance Suite
+        working-directory: ./backend
+        run: node test/asvsCompliance.test.js
+
+      - name: Run Stage 10 Post-Release Operations Suite
+        working-directory: ./backend
+        run: node test/stage10PostReleaseOperations.test.js
 
       - name: Verify Frontend Router Imports
         run: node frontend/verifyRouterImports.mjs
 
       - name: Run Master System Verification Engine
         run: node scripts/master_system_verification.mjs
+
+      - name: Run Deployment Readiness Check
+        run: node scripts/check_deploy_readiness.mjs

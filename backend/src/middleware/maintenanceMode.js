@@ -6,10 +6,23 @@
  * ============================================================================
  * Enforces scheduled maintenance windows and read-only degraded states.
  *
- * Invariants:
- * 1. Health and liveness probes (/health, /readiness) are ALWAYS exempt.
- * 2. Primary Master (MU-0001) and Owner roles possess operational bypass rights.
- * 3. Read-only mode allows GET/HEAD while safely blocking state mutations.
+ * Bypass Rules (Stage 10 — Permission-Based, not role-blanket):
+ *
+ *   1. Health and liveness probes (/health, /readiness) are ALWAYS exempt.
+ *   2. Auth login endpoints are ALWAYS exempt so operators can authenticate.
+ *   3. PRIMARY_MASTER (MU-0001 system account) ALWAYS bypasses.
+ *   4. Any principal with the explicit permission SYSTEM_OPERATIONS_BYPASS
+ *      may bypass, regardless of role.
+ *
+ * CRITICAL: OWNER role alone does NOT automatically bypass an emergency
+ * containment state. An OWNER must be explicitly granted
+ * SYSTEM_OPERATIONS_BYPASS by a PRIMARY_MASTER to operate during maintenance.
+ * This prevents an Owner from accidentally or maliciously defeating an
+ * emergency shutdown.
+ *
+ * Read-Only Mode Bypass:
+ *   Same rules apply. Only PRIMARY_MASTER and SYSTEM_OPERATIONS_BYPASS holders
+ *   may write during read-only degraded operation.
  */
 
 class MaintenanceModeManager {
@@ -51,6 +64,35 @@ class MaintenanceModeManager {
 
 const maintenanceManager = new MaintenanceModeManager();
 
+/**
+ * Returns true if the requester is authorised to bypass maintenance/read-only
+ * containment states.
+ *
+ * Authorised identities:
+ *  - PRIMARY_MASTER system account (unconditional)
+ *  - Any principal explicitly granted the SYSTEM_OPERATIONS_BYPASS permission
+ *
+ * OWNER role alone is NOT sufficient. An OWNER must hold the
+ * SYSTEM_OPERATIONS_BYPASS permission to bypass. This permission must be
+ * granted by a PRIMARY_MASTER through an authorised operational decision.
+ *
+ * @param {object} req - Express request object
+ * @returns {boolean}
+ */
+function hasContainmentBypassAuthorisation(req) {
+  const principal = req.auth || req.user;
+  if (!principal) return false;
+
+  // PRIMARY_MASTER always bypasses (system account - cannot be revoked)
+  if (principal.role === 'PRIMARY_MASTER') return true;
+
+  // Explicit SYSTEM_OPERATIONS_BYPASS permission (granted by PRIMARY_MASTER)
+  const permissions = Array.isArray(principal.permissions) ? principal.permissions : [];
+  if (permissions.includes('SYSTEM_OPERATIONS_BYPASS')) return true;
+
+  return false;
+}
+
 function createMaintenanceMiddleware(manager = maintenanceManager) {
   return function maintenanceMiddleware(req, res, next) {
     const path = req.path || req.originalUrl || '';
@@ -72,18 +114,17 @@ function createMaintenanceMiddleware(manager = maintenanceManager) {
       return next();
     }
 
-    // 3. Check for operational bypass (MASTER / PRIMARY_MASTER / OWNER)
-    const userRole = req.auth?.role || req.user?.role;
-    const isMasterOrOwner = userRole === 'MASTER' || userRole === 'PRIMARY_MASTER' || userRole === 'OWNER';
+    // 3. Permission-based containment bypass check
+    const isAuthorisedBypass = hasContainmentBypassAuthorisation(req);
 
     const state = manager.getState();
 
     // 4. Full Maintenance Mode
     if (state.maintenanceActive) {
-      if (isMasterOrOwner) {
-        // Authorized operational bypass
+      if (isAuthorisedBypass) {
         if (typeof res.setHeader === 'function') {
           res.setHeader('X-Maintenance-Bypass', 'true');
+          res.setHeader('X-Bypass-Reason', 'SYSTEM_OPERATIONS_BYPASS_AUTHORISED');
         }
         return next();
       }
@@ -104,7 +145,7 @@ function createMaintenanceMiddleware(manager = maintenanceManager) {
     // 5. Read-Only Degraded Mode
     if (state.readOnlyActive) {
       const isMutation = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method.toUpperCase());
-      if (isMutation && !isMasterOrOwner) {
+      if (isMutation && !isAuthorisedBypass) {
         return res.status(503).json({
           success: false,
           error: {
@@ -126,4 +167,5 @@ module.exports = {
   MaintenanceModeManager,
   maintenanceManager,
   createMaintenanceMiddleware,
+  hasContainmentBypassAuthorisation,
 };

@@ -1,0 +1,88 @@
+{
+  "_comment": "GitHub Repository Ruleset — Target Configuration for main branch protection.",
+  "_note": "This file DESCRIBES the required ruleset. A repository admin must activate it via GitHub Settings → Rules → Rulesets. This file alone does not enforce protection.",
+  "_activation": "Settings → Rules → Rulesets → New ruleset → Import from JSON or configure manually per the spec below.",
+
+  "name": "Zamorin Café ERP — Main Branch Protection",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "include": ["refs/heads/main", "refs/heads/master"],
+      "exclude": []
+    }
+  },
+  "bypass_actors": [
+    {
+      "actor_type": "RepositoryRole",
+      "actor_id": 5,
+      "bypass_mode": "always",
+      "_description": "Repository admin only — no other bypass actors"
+    }
+  ],
+  "rules": [
+    {
+      "type": "pull_request",
+      "_description": "All changes must go through a pull request before merge",
+      "parameters": {
+        "required_approving_review_count": 1,
+        "dismiss_stale_reviews_on_push": true,
+        "require_code_owner_review": false,
+        "require_last_push_approval": true,
+        "required_review_thread_resolution": true
+      }
+    },
+    {
+      "type": "required_status_checks",
+      "_description": "All CI checks must pass before merge is permitted",
+      "parameters": {
+        "strict_required_status_checks_policy": true,
+        "required_status_checks": [
+          {
+            "context": "System Validation & Test Suite",
+            "_workflow": ".github/workflows/ci.yml",
+            "_covers": "Backend regression + Stage 10 suite + Frontend router + master system verification"
+          },
+          {
+            "context": "Pre-Flight Deployment Audit",
+            "_workflow": ".github/workflows/deploy-check.yml",
+            "_covers": "render.yaml, vercel.json, blueprint syntax, module integrity"
+          }
+        ]
+      }
+    },
+    {
+      "type": "non_fast_forward",
+      "_description": "Prevent force-push to main — history must remain immutable"
+    },
+    {
+      "type": "deletion",
+      "_description": "Prevent accidental deletion of the main branch"
+    },
+    {
+      "type": "required_signatures",
+      "_description": "Require signed commits on main (where plan permits)"
+    }
+  ],
+
+  "_required_status_check_matrix": {
+    "ci_yml_jobs": [
+      "Verify Backend JavaScript Syntax",
+      "Run Backend Regression Test Suite (cross-system, durability, ASVS, stage10)",
+      "Verify Frontend Router Imports",
+      "Run Master System Verification Engine"
+    ],
+    "deploy_check_yml_jobs": [
+      "Verify Blueprint & Server Syntax",
+      "Validate Router & Module Integrity"
+    ]
+  },
+
+  "_enforcement_verification": {
+    "status": "NOT_CONFIRMED — GITHUB_ADMIN_ACCESS_REQUIRED",
+    "instruction": "A repository admin must navigate to: GitHub → Repository → Settings → Rules → Rulesets → New ruleset, and configure per the spec above. The active ruleset ID should be recorded here once activated.",
+    "active_ruleset_id": null,
+    "activated_by": null,
+    "activated_at": null
+  }
+}

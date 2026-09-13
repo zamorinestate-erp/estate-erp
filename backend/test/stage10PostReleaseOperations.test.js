@@ -177,8 +177,9 @@ test('Stage 10 — Explicit Safe Post-Release Systems Test Suite', async (t) => 
     });
   });
 
-  // 7. MAINTENANCE & READ-ONLY MODES
-  await t.test('7. Maintenance Mode & Read-Only Protection', async (st) => {
+
+  // 7. MAINTENANCE & READ-ONLY MODES — Permission-Based Bypass
+  await t.test('7. Maintenance Mode & Read-Only Protection — Permission-Based Bypass', async (st) => {
     const middleware = createMaintenanceMiddleware(maintenanceManager);
 
     function executeMiddleware(req) {
@@ -195,7 +196,11 @@ test('Stage 10 — Explicit Safe Post-Release Systems Test Suite', async (t) => 
       return { statusCode, body, nextCalled, headers: res._headers };
     }
 
-    await st.test('blocks normal requests with 503 during maintenance mode', () => {
+    // Ensure clean state before tests
+    maintenanceManager.setMaintenanceMode({ enabled: false });
+    maintenanceManager.setReadOnlyMode({ enabled: false });
+
+    await st.test('blocks unauthenticated requests with 503 during maintenance mode', () => {
       maintenanceManager.setMaintenanceMode({ enabled: true, reason: 'Emergency DB maintenance' });
       const req = { path: '/api/v1/orders', method: 'GET' };
       const { statusCode, body, nextCalled } = executeMiddleware(req);
@@ -204,26 +209,49 @@ test('Stage 10 — Explicit Safe Post-Release Systems Test Suite', async (t) => 
       assert.strictEqual(nextCalled, false);
     });
 
-    await st.test('allows health probes during maintenance mode', () => {
+    await st.test('allows health probes unconditionally during maintenance mode', () => {
       maintenanceManager.setMaintenanceMode({ enabled: true });
       const req = { path: '/health/live', method: 'GET' };
       const { nextCalled } = executeMiddleware(req);
       assert.strictEqual(nextCalled, true);
     });
 
-    await st.test('allows PRIMARY_MASTER to bypass maintenance mode', () => {
+    await st.test('allows PRIMARY_MASTER unconditionally (no permission check needed)', () => {
       maintenanceManager.setMaintenanceMode({ enabled: true });
       const req = { path: '/api/v1/orders', method: 'GET', user: { role: 'PRIMARY_MASTER' } };
       const { nextCalled } = executeMiddleware(req);
       assert.strictEqual(nextCalled, true);
     });
 
-    await st.test('allows OWNER to bypass maintenance mode', () => {
+    await st.test('allows OWNER with explicit SYSTEM_OPERATIONS_BYPASS permission', () => {
       maintenanceManager.setMaintenanceMode({ enabled: true });
-      const req = { path: '/api/v1/orders', method: 'GET', user: { role: 'OWNER' } };
+      const req = {
+        path: '/api/v1/orders',
+        method: 'GET',
+        user: { role: 'OWNER', permissions: ['SYSTEM_OPERATIONS_BYPASS'] }
+      };
       const { nextCalled, headers } = executeMiddleware(req);
       assert.strictEqual(nextCalled, true);
       assert.strictEqual(headers['x-maintenance-bypass'], 'true');
+      assert.strictEqual(headers['x-bypass-reason'], 'SYSTEM_OPERATIONS_BYPASS_AUTHORISED');
+    });
+
+    await st.test('denies plain OWNER without SYSTEM_OPERATIONS_BYPASS (emergency containment)', () => {
+      maintenanceManager.setMaintenanceMode({ enabled: true });
+      // OWNER without the explicit permission — denied during emergency
+      const req = { path: '/api/v1/orders', method: 'GET', user: { role: 'OWNER', permissions: [] } };
+      const { statusCode, body, nextCalled } = executeMiddleware(req);
+      assert.strictEqual(statusCode, 503);
+      assert.strictEqual(body.error.code, 'SERVICE_MAINTENANCE_MODE');
+      assert.strictEqual(nextCalled, false, 'Plain OWNER must NOT bypass without explicit SYSTEM_OPERATIONS_BYPASS');
+    });
+
+    await st.test('denies STAFF during maintenance mode', () => {
+      maintenanceManager.setMaintenanceMode({ enabled: true });
+      const req = { path: '/api/v1/orders', method: 'GET', user: { role: 'STAFF', permissions: [] } };
+      const { statusCode, nextCalled } = executeMiddleware(req);
+      assert.strictEqual(statusCode, 503);
+      assert.strictEqual(nextCalled, false);
     });
 
     await st.test('blocks mutations with 503 during Read-Only mode while allowing GET', () => {
@@ -243,6 +271,7 @@ test('Stage 10 — Explicit Safe Post-Release Systems Test Suite', async (t) => 
       maintenanceManager.setReadOnlyMode({ enabled: false });
     });
   });
+
 
   // 8. SCHEDULED JOB REGISTRY & IDEMPOTENCY
   await t.test('8. Scheduled Job Registry & Execution Idempotency', async (st) => {

@@ -71,16 +71,32 @@ class DocumentReconciliationService {
     const utilizationPercent = Number(((totalSizeBytes / provisionedDiskCapacityBytes) * 100).toFixed(2));
 
     let alertLevel = 'NORMAL';
+    let recommendedAction = 'No action required.';
+
     if (utilizationPercent >= CAPACITY_ALERT_THRESHOLDS.CRITICAL_PERCENT) {
       alertLevel = 'CRITICAL';
+      recommendedAction =
+        'IMMEDIATE: Trip KILL_SWITCH_DOCUMENT_UPLOADS to suspend new uploads. ' +
+        'POS, billing, payroll, orders, and attendance remain fully operational. ' +
+        'Contact operations team to expand Render persistent disk (render.yaml sizeGB). ' +
+        'Reset KILL_SWITCH_DOCUMENT_UPLOADS after capacity is restored.';
     } else if (utilizationPercent >= CAPACITY_ALERT_THRESHOLDS.HIGH_PERCENT) {
       alertLevel = 'HIGH';
+      recommendedAction =
+        'URGENT: Prepare Render persistent disk expansion request. ' +
+        'Trip KILL_SWITCH_EXPORT_QUEUE to halt PDF/CSV export accumulation if needed. ' +
+        'POS, billing, payroll, and document uploads remain operational at this threshold. ' +
+        'Escalate to operations team (SEV-2 alert).';
     } else if (utilizationPercent >= CAPACITY_ALERT_THRESHOLDS.WARNING_PERCENT) {
       alertLevel = 'WARNING';
+      recommendedAction =
+        'Monitor: Investigate high-volume PDF/export generators or large document uploads. ' +
+        'No kill switch action required at this threshold. ' +
+        'Raise SEV-3 operational alert for awareness.';
     }
 
     return {
-      status: 'HEALTHY',
+      status: alertLevel === 'NORMAL' ? 'HEALTHY' : alertLevel,
       rootPath: root,
       provisionedCapacityBytes: provisionedDiskCapacityBytes,
       usedBytes: totalSizeBytes,
@@ -89,9 +105,12 @@ class DocumentReconciliationService {
       fileCount,
       alertLevel,
       thresholds: CAPACITY_ALERT_THRESHOLDS,
+      recommendedAction,
+      scopeNote: 'KILL_SWITCH_DOCUMENT_UPLOADS affects uploads only. POS/billing/payroll/attendance are never suspended by storage kill switches.',
       timestamp: new Date().toISOString(),
     };
   }
+
 
   /**
    * Reconciles MongoDB metadata with physical files on disk.
