@@ -102,7 +102,13 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Select Xcode 26+ Toolchain
+      - name: Verify Git HEAD Provenance
+        run: |
+          echo "=== Git Provenance Verification ==="
+          CI_HEAD=$(git rev-parse HEAD)
+          echo "Checked out HEAD: $CI_HEAD"
+
+      - name: Select Xcode 26+ Toolchain & Audit Environment
         run: |
           echo "=== Selecting Xcode Toolchain ==="
           if [ -d "/Applications/Xcode_26.6.app" ]; then
@@ -110,15 +116,32 @@ jobs:
           elif [ -d "/Applications/Xcode_26.app" ]; then
             sudo xcode-select -s /Applications/Xcode_26.app
           fi
+          echo "=== Host Environment ==="
+          sw_vers
+          uname -m
+          echo "=== Developer Directory ==="
+          xcode-select -p
+          echo "=== Toolchain Versions ==="
           xcodebuild -version
           swift --version
+          echo "=== Installed SDKs ==="
           xcodebuild -showsdks
+          echo "=== SDK Exact Versions ==="
+          echo "iphoneos: $(xcrun --sdk iphoneos --show-sdk-version)"
+          echo "iphonesimulator: $(xcrun --sdk iphonesimulator --show-sdk-version)"
+          echo "macosx: $(xcrun --sdk macosx --show-sdk-version)"
 
       - name: Discover Simulators & Prepare Environments
         run: |
           echo "=== Available Simulators ==="
           xcrun simctl list devices available
           mkdir -p build/artifacts
+          IPHONE_ID=$(xcrun simctl list devices available -j | jq -r '[.devices[] | .[] | select(.name | contains("iPhone"))][0].udid')
+          IPHONE_NAME=$(xcrun simctl list devices available -j | jq -r '[.devices[] | .[] | select(.name | contains("iPhone"))][0].name')
+          IPAD_ID=$(xcrun simctl list devices available -j | jq -r '[.devices[] | .[] | select(.name | contains("iPad"))][0].udid')
+          IPAD_NAME=$(xcrun simctl list devices available -j | jq -r '[.devices[] | .[] | select(.name | contains("iPad"))][0].name')
+          echo "Selected iPhone Simulator: $IPHONE_NAME ($IPHONE_ID)"
+          echo "Selected iPad Simulator: $IPAD_NAME ($IPAD_ID)"
 
       - name: Build iOS Application (iPhone Simulator)
         run: |
@@ -188,6 +211,14 @@ jobs:
           find build/ios -name "ZamorinCafeERP.app" -type d
           echo "=== Verifying macOS App Bundle ==="
           find build/macos -name "ZamorinCafeERP.app" -type d
+
+      - name: Upload Test Results & Toolchain Artifacts (.xcresult)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: apple-ci-artifacts
+          path: build/artifacts/
+          retention-days: 7
 
 
 
