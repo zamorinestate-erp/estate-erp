@@ -140,6 +140,9 @@ const hardwareRoutes =
 const posRoutes =
   require('./posRoutes');
 
+const analyticsRoutes =
+  require('./analyticsRoutes');
+
 const router = express.Router();
 
 router.use(
@@ -414,6 +417,11 @@ router.use(
 router.use(
   '/pos',
   posRoutes
+);
+
+router.use(
+  '/analytics',
+  analyticsRoutes
 );
 
 router.use(
