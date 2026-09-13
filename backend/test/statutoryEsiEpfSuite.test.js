@@ -39,8 +39,12 @@ const {
   calculateStatutoryDeductions,
 } = require('../src/services/payrollStatutoryService');
 
-const { allocateInvoiceNumber } = require('../src/services/gstTaxService');
+const zlib = require('node:zlib');
+const { generateXlsx } = require('../src/utils/exportGenerators');
+const { allocateInvoiceNumber, cancelTaxInvoice } = require('../src/services/gstTaxService');
+const { TaxInvoice } = require('../src/models/TaxInvoice');
 const { SequenceCounter } = require('../src/models/SequenceCounter');
+const auditService = require('../src/services/auditService');
 
 test('STATUTORY AUDIT — ESI Rule 50 Coverage Continuity Suite', async (t) => {
   // Contribution period resolution check
@@ -337,37 +341,321 @@ test('STATUTORY AUDIT — EPF Scheme 1952 Membership & Wage Ceiling Suite', asyn
   });
 });
 
-test('STATUTORY AUDIT — GST Invoice Sequential Concurrency Suite', async (t) => {
-  await t.test('Concurrent invoice allocations produce distinct gapless consecutive sequence numbers', async () => {
-    const orgId = 'ORG-CONCURRENCY-TEST';
-    const cafeId = 'CAFE-01';
-    const fy = '2026-27';
+test('STATUTORY AUDIT — Universal XLSX OOXML Package & Canonical MIME Validation', async (t) => {
+  const sampleColumns = [
+    { key: 'invoiceNo', label: 'Invoice No.' },
+    { key: 'customerName', label: 'Customer Name' },
+    { key: 'totalAmountPaisa', label: 'Total Amount (₹)' },
+  ];
+  const sampleRows = [
+    { invoiceNo: 'INV-001', customerName: 'Alice Smith', totalAmountPaisa: 157500 },
+    { invoiceNo: 'INV-002', customerName: 'Bob Jones', totalAmountPaisa: 245000 },
+  ];
 
-    // Mock SequenceCounter.generateId to simulate atomic counter increments
-    let counter = 100;
-    t.mock.method(SequenceCounter, 'generateId', async () => {
-      counter += 1;
-      return String(counter);
-    });
+  const xlsxResult = generateXlsx({
+    sheetName: 'Tax Invoices',
+    reportTitle: 'Statutory GST Invoices Report',
+    columns: sampleColumns,
+    rows: sampleRows,
+    branding: {
+      legalName: 'Zamorin Speciality Coffee & Kitchens Pvt. Ltd.',
+      gstin: '32AAACZ1234K1Z5',
+      period: 'FY 2026-27',
+    },
+  });
 
-    // Fire 10 parallel allocation requests simultaneously
-    const requests = Array.from({ length: 10 }, () =>
-      allocateInvoiceNumber({ organisationId: orgId, cafeId, financialYear: fy })
+  // 1. Exact canonical MIME validation
+  await t.test('XLSX-MIME-01: Canonical MIME is strictly application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', () => {
+    assert.strictEqual(
+      xlsxResult.mimeType,
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'XLSX export must return canonical OpenXML spreadsheet MIME'
+    );
+    assert.notStrictEqual(
+      xlsxResult.mimeType,
+      'application/vnd.ms-excel',
+      'Legacy application/vnd.ms-excel MUST NOT be used for .xlsx'
+    );
+    assert.ok(xlsxResult.filename.endsWith('.xlsx'), 'Filename must have .xlsx extension');
+  });
+
+  // 2. Real ZIP-based OOXML binary package validation
+  await t.test('XLSX-OOXML-02: Generated buffer is authentic ZIP-based OOXML package with valid signatures & parts', () => {
+    const buf = xlsxResult.buffer;
+    assert.ok(Buffer.isBuffer(buf), 'Export result must be a binary Buffer');
+    assert.ok(buf.length > 500, 'Buffer must be non-empty valid ZIP file');
+
+    // Check ZIP magic signature PK\x03\x04 (0x04034b50 LE)
+    assert.strictEqual(buf[0], 0x50, 'Byte 0 must be P');
+    assert.strictEqual(buf[1], 0x4B, 'Byte 1 must be K');
+    assert.strictEqual(buf[2], 0x03, 'Byte 2 must be 0x03');
+    assert.strictEqual(buf[3], 0x04, 'Byte 3 must be 0x04');
+
+    // Parse ZIP entries
+    const entries = new Map();
+    let offset = 0;
+    while (offset < buf.length - 30) {
+      const sig = buf.readUInt32LE(offset);
+      if (sig !== 0x04034b50) break;
+
+      const compression = buf.readUInt16LE(offset + 8);
+      const compSize = buf.readUInt32LE(offset + 18);
+      const nameLen = buf.readUInt16LE(offset + 26);
+      const extraLen = buf.readUInt16LE(offset + 28);
+      const name = buf.toString('utf8', offset + 30, offset + 30 + nameLen);
+      const dataOffset = offset + 30 + nameLen + extraLen;
+      const compData = buf.subarray(dataOffset, dataOffset + compSize);
+
+      let data;
+      if (compression === 8) {
+        data = zlib.inflateRawSync(compData);
+      } else {
+        data = compData;
+      }
+      entries.set(name, data.toString('utf8'));
+      offset = dataOffset + compSize;
+    }
+
+    // Must contain required OpenXML parts
+    assert.ok(entries.has('[Content_Types].xml'), 'Must contain [Content_Types].xml');
+    assert.ok(entries.has('_rels/.rels'), 'Must contain _rels/.rels');
+    assert.ok(entries.has('xl/workbook.xml'), 'Must contain xl/workbook.xml');
+    assert.ok(entries.has('xl/styles.xml'), 'Must contain xl/styles.xml');
+    assert.ok(entries.has('xl/worksheets/sheet1.xml'), 'Must contain xl/worksheets/sheet1.xml (Metadata)');
+    assert.ok(entries.has('xl/worksheets/sheet2.xml'), 'Must contain xl/worksheets/sheet2.xml (Data)');
+    assert.ok(entries.has('xl/sharedStrings.xml'), 'Must contain xl/sharedStrings.xml');
+
+    // Verify Content Types definition
+    const contentTypes = entries.get('[Content_Types].xml');
+    assert.ok(
+      contentTypes.includes('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml'),
+      'Content_Types must define main sheet part'
+    );
+    assert.ok(
+      contentTypes.includes('application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml'),
+      'Content_Types must define worksheet parts'
     );
 
-    const results = await Promise.all(requests);
+    // Verify Sheet 1 (Report Information metadata sheet)
+    const sheet1 = entries.get('xl/worksheets/sheet1.xml');
+    const sharedStrings = entries.get('xl/sharedStrings.xml');
+    assert.ok(sheet1.length > 0, 'Sheet 1 must be present');
+    assert.ok(sharedStrings.includes('Report Information') || entries.get('xl/workbook.xml').includes('Report Information'));
 
-    // Assert all 10 invoices were generated
-    assert.equal(results.length, 10);
+    // Verify Sheet 2 (Data sheet requirements from Stage 01)
+    const sheet2 = entries.get('xl/worksheets/sheet2.xml');
+    assert.ok(sheet2.includes('state="frozen"'), 'Must have freeze panes');
+    assert.ok(sheet2.includes('<autoFilter'), 'Must have AutoFilter');
+    assert.ok(sheet2.includes('<cols>'), 'Must have custom column widths');
+    assert.ok(sheet2.includes('paperSize="9"'), 'Must specify A4 paperSize (9)');
+    assert.ok(sheet2.includes('orientation="portrait"'), 'Must specify portrait orientation');
+    assert.ok(sheet2.includes('<headerFooter>'), 'Must have headerFooter definition');
+    assert.ok(sheet2.includes('&amp;P of &amp;N'), 'Must have page numbering');
 
-    // Assert all invoice numbers are strictly unique
-    const invoiceNumbers = results.map((r) => r.invoiceNumber);
-    const uniqueNumbers = new Set(invoiceNumbers);
-    assert.equal(uniqueNumbers.size, 10, 'All concurrent invoice numbers must be unique');
+    // Verify Styles (currency format ₹#,##0.00)
+    const styles = entries.get('xl/styles.xml');
+    assert.ok(styles.includes('₹#,##0.00'), 'Must include Indian Rupee currency format ₹#,##0.00');
+  });
+});
 
-    // Assert correct pattern format: INV/2026-27/CAFE01/00101 ...
-    for (const inv of invoiceNumbers) {
-      assert.match(inv, /^INV\/2026-27\/CAFE01\/\d{5}$/);
+test('STATUTORY AUDIT — GST-NUM-01 to GST-NUM-07 Invoice Number Immutability & Multi-Series Suite', async (t) => {
+  const orgId = 'ORG-STATUTORY-TEST';
+  const cafeId = 'CAFE-01';
+  const fy = '2026-27';
+
+  // In-memory store for TaxInvoice simulation
+  const invoicesDb = new Map();
+
+  t.mock.method(TaxInvoice, 'findOne', (query) => {
+    return {
+      sort: () => ({
+        select: () => ({
+          lean: async () => null,
+        }),
+      }),
+      then: (resolve) => {
+        const inv = invoicesDb.get(query.invoiceNumber);
+        if (!inv) return resolve(null);
+        return resolve({
+          ...inv,
+          save: async function () {
+            invoicesDb.set(this.invoiceNumber, this);
+            return this;
+          },
+        });
+      },
+    };
+  });
+
+  t.mock.method(auditService, 'recordAuditEvent', async () => {});
+
+  // GST-NUM-01: Concurrent creation generates unique numbers
+  await t.test('GST-NUM-01: Concurrent creation generates unique numbers', async () => {
+    let atomicCounter = 0;
+    t.mock.method(SequenceCounter, 'generateId', async () => {
+      atomicCounter += 1;
+      return String(atomicCounter);
+    });
+
+    const promises = Array.from({ length: 8 }, () =>
+      allocateInvoiceNumber({ organisationId: orgId, cafeId, financialYear: fy })
+    );
+    const results = await Promise.all(promises);
+    const numbers = results.map((r) => r.invoiceNumber);
+    const uniqueSet = new Set(numbers);
+
+    assert.strictEqual(numbers.length, 8);
+    assert.strictEqual(uniqueSet.size, 8, 'All concurrent allocations must generate unique invoice numbers');
+    for (const num of numbers) {
+      assert.match(num, /^INV\/2026-27\/CAFE01\/\d{5}$/);
     }
+  });
+
+  // GST-NUM-02: Cancelled invoice retains its allocated number
+  await t.test('GST-NUM-02: Cancelled invoice retains its allocated number and history', async () => {
+    let currentSeq = 50;
+    t.mock.method(SequenceCounter, 'generateId', async () => {
+      currentSeq += 1;
+      return String(currentSeq);
+    });
+
+    const allocated = await allocateInvoiceNumber({ organisationId: orgId, cafeId, financialYear: fy });
+    assert.strictEqual(allocated.invoiceNumber, 'INV/2026-27/CAFE01/00051');
+
+    // Store in mock DB
+    invoicesDb.set(allocated.invoiceNumber, {
+      invoiceNumber: allocated.invoiceNumber,
+      sequenceNumber: allocated.sequenceNumber,
+      organisationId: orgId,
+      cafeId,
+      financialYear: fy,
+      status: 'ISSUED',
+      taxSummary: { grandTotalPaisa: 125000 },
+    });
+
+    // Cancel invoice
+    const cancelResult = await cancelTaxInvoice({
+      invoiceNumber: allocated.invoiceNumber,
+      organisationId: orgId,
+      cafeId,
+      cancellationReason: 'Guest walked out before delivery',
+      actorUserId: 'USR-CASHIER-01',
+    });
+
+    assert.strictEqual(cancelResult.status, 'CANCELLED');
+    assert.strictEqual(cancelResult.invoiceNumber, 'INV/2026-27/CAFE01/00051', 'Must retain original allocated number');
+    const persisted = invoicesDb.get('INV/2026-27/CAFE01/00051');
+    assert.strictEqual(persisted.status, 'CANCELLED');
+    assert.strictEqual(persisted.cancellationReason, 'Guest walked out before delivery');
+    assert.ok(persisted.cancelledAt instanceof Date);
+  });
+
+  // GST-NUM-03: Next invoice receives the next valid sequence value
+  await t.test('GST-NUM-03: Next invoice receives next valid sequence value without decrement or reuse', async () => {
+    let currentSeq = 51; // previous was 51, now cancelled
+    t.mock.method(SequenceCounter, 'generateId', async () => {
+      currentSeq += 1;
+      return String(currentSeq);
+    });
+
+    const nextAllocated = await allocateInvoiceNumber({ organisationId: orgId, cafeId, financialYear: fy });
+    assert.strictEqual(nextAllocated.sequenceNumber, 52);
+    assert.strictEqual(nextAllocated.invoiceNumber, 'INV/2026-27/CAFE01/00052');
+  });
+
+  // GST-NUM-04: Cancelled number is never reassigned
+  await t.test('GST-NUM-04: Cancelled number is never reassigned or recycled to make sequence appear gapless', async () => {
+    let currentSeq = 52;
+    t.mock.method(SequenceCounter, 'generateId', async () => {
+      currentSeq += 1;
+      return String(currentSeq);
+    });
+
+    const thirdAllocated = await allocateInvoiceNumber({ organisationId: orgId, cafeId, financialYear: fy });
+    assert.strictEqual(thirdAllocated.invoiceNumber, 'INV/2026-27/CAFE01/00053');
+    assert.notStrictEqual(thirdAllocated.invoiceNumber, 'INV/2026-27/CAFE01/00051', 'Cancelled number must NEVER be reassigned');
+  });
+
+  // GST-NUM-05: Duplicate allocation under concurrency is impossible
+  await t.test('GST-NUM-05: Duplicate allocation under concurrency is impossible due to strict sequence locking', async () => {
+    const allocatedNumbers = new Set();
+    let seq = 200;
+    t.mock.method(SequenceCounter, 'generateId', async () => {
+      const val = ++seq;
+      await new Promise((resolve) => setTimeout(resolve, Math.random() * 5));
+      return String(val);
+    });
+
+    const batch = Array.from({ length: 12 }, () =>
+      allocateInvoiceNumber({ organisationId: orgId, cafeId, financialYear: fy })
+    );
+    const results = await Promise.all(batch);
+
+    for (const r of results) {
+      assert.strictEqual(allocatedNumbers.has(r.invoiceNumber), false, `Collision detected on ${r.invoiceNumber}`);
+      allocatedNumbers.add(r.invoiceNumber);
+    }
+    assert.strictEqual(allocatedNumbers.size, 12);
+  });
+
+  // GST-NUM-06: Financial-year rollover starts configured new sequence safely
+  await t.test('GST-NUM-06: Financial-year rollover starts new sequence safely and isolates FY counters', async () => {
+    const counters = {
+      'GST_INV:2026-27:CAFE-01': 999,
+      'GST_INV:2027-28:CAFE-01': 0,
+    };
+
+    t.mock.method(SequenceCounter, 'generateId', async (opts) => {
+      const k = opts.sequenceKey;
+      counters[k] = (counters[k] || 0) + 1;
+      return String(counters[k]);
+    });
+
+    const invFY1 = await allocateInvoiceNumber({ organisationId: orgId, cafeId, financialYear: '2026-27' });
+    const invFY2 = await allocateInvoiceNumber({ organisationId: orgId, cafeId, financialYear: '2027-28' });
+
+    assert.strictEqual(invFY1.invoiceNumber, 'INV/2026-27/CAFE01/01000');
+    assert.strictEqual(invFY2.invoiceNumber, 'INV/2027-28/CAFE01/00001', 'New financial year starts at 00001');
+  });
+
+  // GST-NUM-07: Multiple invoice series can be configured where business/legal configuration requires them
+  await t.test('GST-NUM-07: Multiple invoice series operate independently and remain unique for financial year', async () => {
+    const seriesCounters = {
+      'GST_INV:2026-27:CAFE-01:POS': 10,
+      'GST_INV:2026-27:CAFE-01:ONLINE': 5,
+      'GST_INV:2026-27:CAFE-01:CATERING': 1,
+    };
+
+    t.mock.method(SequenceCounter, 'generateId', async (opts) => {
+      const k = opts.sequenceKey;
+      seriesCounters[k] = (seriesCounters[k] || 0) + 1;
+      return String(seriesCounters[k]);
+    });
+
+    const posInv = await allocateInvoiceNumber({
+      organisationId: orgId,
+      cafeId,
+      financialYear: fy,
+      seriesPrefix: 'POS',
+    });
+    const onlineInv = await allocateInvoiceNumber({
+      organisationId: orgId,
+      cafeId,
+      financialYear: fy,
+      seriesPrefix: 'ONLINE',
+    });
+    const cateringInv = await allocateInvoiceNumber({
+      organisationId: orgId,
+      cafeId,
+      financialYear: fy,
+      seriesPrefix: 'CATERING',
+    });
+
+    assert.strictEqual(posInv.invoiceNumber, 'INV/2026-27/CAFE01/POS/00011');
+    assert.strictEqual(onlineInv.invoiceNumber, 'INV/2026-27/CAFE01/ONLINE/00006');
+    assert.strictEqual(cateringInv.invoiceNumber, 'INV/2026-27/CAFE01/CATERING/00002');
+    assert.strictEqual(posInv.seriesPrefix, 'POS');
+    assert.strictEqual(onlineInv.seriesPrefix, 'ONLINE');
+    assert.strictEqual(cateringInv.seriesPrefix, 'CATERING');
   });
 });

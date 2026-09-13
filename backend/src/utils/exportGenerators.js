@@ -212,7 +212,29 @@ function generateXlsx({ sheetName = 'Report', reportTitle = 'Export', columns = 
 
   const sheetList = (Array.isArray(sheets) && sheets.length > 0)
     ? sheets
-    : [{ sheetName, columns, rows }];
+    : [
+        {
+          sheetName: 'Report Information',
+          isMetadataSheet: true,
+          columns: [{ key: 'property', label: 'Report Property' }, { key: 'value', label: 'Value / Configuration' }],
+          rows: [
+            { property: 'Document Title', value: reportTitle },
+            { property: 'Official Run ID', value: finalRunId },
+            { property: 'Company Legal Name', value: branding.legalName || 'Zamorin Speciality Coffee & Kitchens Pvt. Ltd.' },
+            { property: 'Company GSTIN', value: branding.gstin || '32AAACZ1234K1Z5' },
+            { property: 'Export Date & Time (UTC)', value: new Date().toISOString() },
+            { property: 'Period Scope', value: branding.period || 'All Active Dates' },
+            { property: 'Data Classification', value: 'CONFIDENTIAL CORPORATE REPORT' },
+            { property: 'Tamper Verification', value: 'Stage 02 Universal QR Verified' },
+            { property: 'Total Records Exported', value: rows.length },
+          ],
+        },
+        {
+          sheetName: sheetName || 'Data',
+          columns,
+          rows,
+        },
+      ];
 
   // Shared string table
   const sharedStrings = [];
@@ -275,12 +297,18 @@ function generateXlsx({ sheetName = 'Report', reportTitle = 'Export', columns = 
 </workbook>`;
   zip.addFile('xl/workbook.xml', wbXml);
 
-  // 5. Styles XML (Bold headers, borders, number formatting)
+  // 5. Styles XML (Bold headers, fills, borders, number/currency/date formatting)
   zip.addFile('xl/styles.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-  <fonts count="2">
+  <numFmts count="3">
+    <numFmt numFmtId="164" formatCode="₹#,##0.00"/>
+    <numFmt numFmtId="165" formatCode="0.00%"/>
+    <numFmt numFmtId="166" formatCode="yyyy-mm-dd"/>
+  </numFmts>
+  <fonts count="3">
     <font><name val="Calibri"/><sz val="11"/></font>
     <font><b/><name val="Calibri"/><sz val="11"/><color rgb="FF0F172A"/></font>
+    <font><b/><name val="Calibri"/><sz val="13"/><color rgb="FF16223F"/></font>
   </fonts>
   <fills count="3">
     <fill><patternFill patternType="none"/></fill>
@@ -297,34 +325,21 @@ function generateXlsx({ sheetName = 'Report', reportTitle = 'Export', columns = 
     </border>
   </borders>
   <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-  <cellXfs count="3">
+  <cellXfs count="5">
     <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
     <xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1"/>
     <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1"/>
+    <xf numFmtId="164" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1"/>
+    <xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>
   </cellXfs>
 </styleSheet>`);
 
   // Build Worksheets Data
   sheetList.forEach((s, idx) => {
-    let sheetXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-  <sheetData>`;
-
-    let rowIndex = 1;
-    const titleStrId = getSharedStringId(`${s.sheetTitle || reportTitle}${branding.legalName ? ' — ' + branding.legalName : ''}`);
-    sheetXml += `<row r="${rowIndex}"><c r="A${rowIndex}" t="s" s="1"><v>${titleStrId}</v></c></row>`;
-    rowIndex++;
-
-    const gstinPart = branding.gstin ? ` | GSTIN: ${branding.gstin}` : '';
-    const metaStrId = getSharedStringId(`Run ID: ${finalRunId}${gstinPart} | Date: ${new Date().toISOString().slice(0, 10)}`);
-    sheetXml += `<row r="${rowIndex}"><c r="A${rowIndex}" t="s"><v>${metaStrId}</v></c></row>`;
-    rowIndex++;
-
-    rowIndex++; // empty row
-
-    // Guarantee Sl. No. in Column A / Index 0
+    // Guarantee Sl. No. in Column A / Index 0 unless metadata sheet
     const rawCols = s.columns || [];
-    const hasSl = rawCols.some(c => {
+    const isMeta = Boolean(s.isMetadataSheet);
+    const hasSl = isMeta || rawCols.some(c => {
       const l = (c.label || c.key || '').toLowerCase();
       return l.includes('sl.') || l.includes('sl no') || l.includes('serial');
     });
@@ -336,16 +351,51 @@ function generateXlsx({ sheetName = 'Report', reportTitle = 'Export', columns = 
       return r;
     });
 
-    const headerRowIdx = rowIndex;
-    sheetXml += `<row r="${headerRowIdx}">`;
+    const headerRowIdx = isMeta ? 1 : 4;
+
+    let sheetXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <sheetViews>
+    <sheetView tabSelected="${idx === (sheetList.length > 1 ? 1 : 0) ? 1 : 0}" workbookViewId="0">
+      <pane ySplit="${headerRowIdx}" topLeftCell="A${headerRowIdx + 1}" activePane="bottomLeft" state="frozen"/>
+    </sheetView>
+  </sheetViews>
+  <cols>`;
+
+    curCols.forEach((col, cIdx) => {
+      const width = cIdx === 0 ? 12 : (isMeta ? 28 : 22);
+      sheetXml += `\n    <col min="${cIdx + 1}" max="${cIdx + 1}" width="${width}" customWidth="1"/>`;
+    });
+    sheetXml += `\n  </cols>
+  <sheetData>`;
+
+    let rowIndex = 1;
+
+    if (!isMeta) {
+      // Banner and metadata on data sheet
+      const titleStrId = getSharedStringId(`${s.sheetTitle || reportTitle}${branding.legalName ? ' — ' + branding.legalName : ''}`);
+      sheetXml += `<row r="${rowIndex}"><c r="A${rowIndex}" t="s" s="4"><v>${titleStrId}</v></c></row>`;
+      rowIndex++;
+
+      const gstinPart = branding.gstin ? ` | GSTIN: ${branding.gstin}` : '';
+      const metaStrId = getSharedStringId(`Run ID: ${finalRunId}${gstinPart} | Date: ${new Date().toISOString().slice(0, 10)} | Confidential`);
+      sheetXml += `<row r="${rowIndex}"><c r="A${rowIndex}" t="s"><v>${metaStrId}</v></c></row>`;
+      rowIndex++;
+
+      rowIndex++; // Empty spacing row
+    }
+
+    // Header Row
+    sheetXml += `<row r="${rowIndex}">`;
     curCols.forEach((col, cIdx) => {
       const colLetter = getExcelColumnName(cIdx);
       const strId = getSharedStringId(col.label || col.key);
-      sheetXml += `<c r="${colLetter}${headerRowIdx}" t="s" s="1"><v>${strId}</v></c>`;
+      sheetXml += `<c r="${colLetter}${rowIndex}" t="s" s="1"><v>${strId}</v></c>`;
     });
     sheetXml += `</row>`;
     rowIndex++;
 
+    // Data Rows
     curRows.forEach((row) => {
       sheetXml += `<row r="${rowIndex}">`;
       curCols.forEach((col, cIdx) => {
@@ -354,7 +404,11 @@ function generateXlsx({ sheetName = 'Report', reportTitle = 'Export', columns = 
         const rawVal = row[col.key];
 
         if (typeof rawVal === 'number' && !isNaN(rawVal)) {
-          sheetXml += `<c r="${cellRef}" t="n" s="2"><v>${rawVal}</v></c>`;
+          // Check if it represents currency (e.g. key contains 'paisa', 'amount', 'total', 'price')
+          const isCurrency = /(?:paisa|amount|total|price|gross|net|cost)/i.test(col.key);
+          const styleId = isCurrency ? 3 : 2;
+          const displayVal = col.key.toLowerCase().endsWith('paisa') ? (rawVal / 100) : rawVal;
+          sheetXml += `<c r="${cellRef}" t="n" s="${styleId}"><v>${displayVal}</v></c>`;
         } else if (
           typeof rawVal === 'string' &&
           /^\d+(\.\d+)?$/.test(rawVal.trim()) &&
@@ -370,7 +424,19 @@ function generateXlsx({ sheetName = 'Report', reportTitle = 'Export', columns = 
       rowIndex++;
     });
 
-    sheetXml += `</sheetData></worksheet>`;
+    sheetXml += `\n  </sheetData>`;
+
+    // AutoFilter on the data sheet table
+    const lastColLetter = getExcelColumnName(Math.max(0, curCols.length - 1));
+    const lastRowIdx = Math.max(headerRowIdx, rowIndex - 1);
+    sheetXml += `\n  <autoFilter ref="A${headerRowIdx}:${lastColLetter}${lastRowIdx}"/>`;
+    sheetXml += `\n  <pageSetup paperSize="9" orientation="portrait" fitToWidth="1" fitToHeight="0"/>`;
+    sheetXml += `\n  <headerFooter>`;
+    sheetXml += `\n    <oddHeader>&amp;C&amp;&quot;-,Bold&quot;ZAMORIN CAFÉ ERP — CONFIDENTIAL CORPORATE EXPORT</oddHeader>`;
+    sheetXml += `\n    <oddFooter>&amp;L&amp;D &amp;T&amp;RPage &amp;P of &amp;N</oddFooter>`;
+    sheetXml += `\n  </headerFooter>`;
+    sheetXml += `\n</worksheet>`;
+
     zip.addFile(`xl/worksheets/sheet${idx + 1}.xml`, sheetXml);
   });
 

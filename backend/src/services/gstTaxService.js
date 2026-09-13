@@ -230,9 +230,14 @@ function calculateGstTaxes({ lines = [], supplyType = 'INTRA_STATE', defaultGstR
 
 /**
  * Concurrency-safe sequential invoice number allocator
+ * Strictly guarantees gapless sequential progression, supports configurable multi-series,
+ * and ensures once an invoice number is issued, it is NEVER recycled or decremented.
  */
-async function allocateInvoiceNumber({ organisationId, cafeId, financialYear }) {
-  const lockKey = `${organisationId}:${cafeId}:${financialYear}`;
+async function allocateInvoiceNumber({ organisationId, cafeId, financialYear, seriesPrefix = null }) {
+  const seriesClean = seriesPrefix ? String(seriesPrefix).replace(/[^a-zA-Z0-9]/g, '').toUpperCase() : '';
+  const lockKey = seriesClean
+    ? `${organisationId}:${cafeId}:${financialYear}:${seriesClean}`
+    : `${organisationId}:${cafeId}:${financialYear}`;
 
   while (activeSequenceLocks.has(lockKey)) {
     await activeSequenceLocks.get(lockKey);
@@ -245,7 +250,9 @@ async function allocateInvoiceNumber({ organisationId, cafeId, financialYear }) 
   activeSequenceLocks.set(lockKey, lockPromise);
 
   try {
-    const sequenceKey = `GST_INV:${financialYear}:${cafeId}`;
+    const sequenceKey = seriesClean
+      ? `GST_INV:${financialYear}:${cafeId}:${seriesClean}`
+      : `GST_INV:${financialYear}:${cafeId}`;
     let sequenceNumber;
 
     try {
@@ -258,11 +265,15 @@ async function allocateInvoiceNumber({ organisationId, cafeId, financialYear }) 
       sequenceNumber = parseInt(generated, 10);
     } catch {
       // Fallback: inspect highest existing invoice for this financial year & cafe
-      const highest = await TaxInvoice.findOne({
+      const query = {
         organisationId,
         financialYear,
         cafeId,
-      })
+      };
+      if (seriesClean) {
+        query.seriesPrefix = seriesClean;
+      }
+      const highest = await TaxInvoice.findOne(query)
         .sort({ sequenceNumber: -1 })
         .select('sequenceNumber')
         .lean();
@@ -271,16 +282,82 @@ async function allocateInvoiceNumber({ organisationId, cafeId, financialYear }) 
     }
 
     const cafeClean = String(cafeId).replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-    const invoiceNumber = `INV/${financialYear}/${cafeClean}/${String(sequenceNumber).padStart(5, '0')}`;
+    const seriesPart = seriesClean ? `${seriesClean}/` : '';
+    const invoiceNumber = `INV/${financialYear}/${cafeClean}/${seriesPart}${String(sequenceNumber).padStart(5, '0')}`;
 
     return {
       sequenceNumber,
       invoiceNumber,
+      seriesPrefix: seriesClean || null,
     };
   } finally {
     activeSequenceLocks.delete(lockKey);
     releaseLock();
   }
+}
+
+/**
+ * Void / Cancel an issued statutory GST tax invoice.
+ * Statutory rule: The allocated invoice number is PERMANENT and NEVER reused.
+ * Sequence counter is never decremented. Retains original invoice number in database.
+ */
+async function cancelTaxInvoice({ invoiceNumber, organisationId, cafeId, cancellationReason = 'Order Voided', actorUserId = 'SYSTEM' }) {
+  if (!invoiceNumber) {
+    throw new ApiError(400, 'INVOICE_NUMBER_REQUIRED', 'Invoice number is required for cancellation.');
+  }
+
+  const cleanNum = String(invoiceNumber).trim().toUpperCase();
+  const query = { invoiceNumber: cleanNum };
+  if (organisationId) query.organisationId = organisationId;
+  if (cafeId) query.cafeId = cafeId;
+
+  const inv = await TaxInvoice.findOne(query);
+  if (!inv) {
+    throw new ApiError(404, 'INVOICE_NOT_FOUND', `Invoice ${cleanNum} not found.`);
+  }
+
+  if (inv.status === 'CANCELLED') {
+    return {
+      invoiceNumber: inv.invoiceNumber,
+      status: 'CANCELLED',
+      alreadyCancelled: true,
+      sequenceNumber: inv.sequenceNumber,
+    };
+  }
+
+  inv.status = 'CANCELLED';
+  inv.cancellationReason = cancellationReason;
+  inv.cancelledAt = new Date();
+  inv.cancelledBy = actorUserId;
+  await inv.save();
+
+  await auditService.recordAuditEvent({
+    organisationId: inv.organisationId || organisationId,
+    cafeId: inv.cafeId || cafeId,
+    actorUserId,
+    actorRole: 'OPERATOR',
+    module: 'GST_INVOICING',
+    action: 'INVOICE_CANCELLED',
+    entityType: 'TAX_INVOICE',
+    entityId: inv.invoiceNumber,
+    reason: cancellationReason,
+    result: 'SUCCESS',
+    metadata: {
+      invoiceNumber: inv.invoiceNumber,
+      financialYear: inv.financialYear,
+      totalPaisa: inv.taxSummary?.grandTotalPaisa || 0,
+      status: 'CANCELLED',
+    },
+  }).catch(() => {});
+
+  return {
+    invoiceNumber: inv.invoiceNumber,
+    status: 'CANCELLED',
+    sequenceNumber: inv.sequenceNumber,
+    financialYear: inv.financialYear,
+    cancellationReason,
+    cancelledAt: inv.cancelledAt,
+  };
 }
 
 /**
@@ -733,6 +810,7 @@ module.exports = {
   numberToIndianRupeeWords,
   calculateGstTaxes,
   allocateInvoiceNumber,
+  cancelTaxInvoice,
   generateStatutoryTaxInvoice,
   renderStatutoryGstInvoicePdf,
   generateGstr1Summary,
