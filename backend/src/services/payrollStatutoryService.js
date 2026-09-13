@@ -19,9 +19,26 @@ const { ApiError } = require('../utils/ApiError');
 const auditService = require('./auditService');
 const { numberToIndianRupeeWords } = require('./gstTaxService');
 
-// Statutory Wage Ceilings in Paisa
-const EPF_WAGE_CEILING_PAISA = 1500000; // ₹15,000.00 / month
-const ESI_WAGE_CEILING_PAISA = 2100000; // ₹21,000.00 / month
+// Centrally Configured Authoritative Statutory Rules & Ceilings
+const STATUTORY_CONFIG = {
+  EPF: {
+    WAGE_CEILING_PAISA: 1500000, // ₹15,000.00 / month
+    EMPLOYEE_RATE: 0.12,          // 12%
+    EMPLOYER_PF_RATE: 0.0367,     // 3.67%
+    EMPLOYER_EPS_RATE: 0.0833,    // 8.33%
+    EPS_MAX_CONTRIBUTION_PAISA: 125000, // ₹1,250.00 max monthly EPS cap
+    EPS_MAX_AGE: 58,              // Members >= 58 yrs receive 0% EPS and 12% EPF
+  },
+  ESI: {
+    STANDARD_WAGE_CEILING_PAISA: 2100000, // ₹21,000.00 / month
+    DISABLED_WAGE_CEILING_PAISA: 2500000, // ₹25,000.00 / month for persons with disability
+    EMPLOYEE_RATE: 0.0075,                // 0.75%
+    EMPLOYER_RATE: 0.0325,                // 3.25%
+  },
+};
+
+const EPF_WAGE_CEILING_PAISA = STATUTORY_CONFIG.EPF.WAGE_CEILING_PAISA;
+const ESI_WAGE_CEILING_PAISA = STATUTORY_CONFIG.ESI.STANDARD_WAGE_CEILING_PAISA;
 
 /**
  * Calculate Attendance-Linked Basic Pay & Overtime
@@ -84,47 +101,269 @@ function calculateProfessionalTax(grossMonthlyPaise, state = 'Kerala') {
 }
 
 /**
- * Calculate Statutory Deductions (EPF, ESI, PT, TDS)
+ * Resolves the statutory ESIC Contribution Period:
+ *  - Period 1: 1st April to 30th September
+ *  - Period 2: 1st October to 31st March
+ */
+function getEsiContributionPeriod(dateOrPeriodKey) {
+  let month = 9;
+  let year = 2026;
+  if (typeof dateOrPeriodKey === 'string' && /^\d{4}-\d{2}/.test(dateOrPeriodKey)) {
+    const parts = dateOrPeriodKey.split('-');
+    year = parseInt(parts[0], 10);
+    month = parseInt(parts[1], 10);
+  } else if (dateOrPeriodKey instanceof Date) {
+    year = dateOrPeriodKey.getFullYear();
+    month = dateOrPeriodKey.getMonth() + 1;
+  }
+
+  if (month >= 4 && month <= 9) {
+    return {
+      periodName: 'APRIL_TO_SEPTEMBER',
+      startYear: year,
+      startMonth: 4,
+      endYear: year,
+      endMonth: 9,
+      periodKey: `${year}-04_to_${year}-09`,
+      isStartMonth: month === 4,
+      isEndMonth: month === 9,
+    };
+  } else {
+    const startYear = month >= 10 ? year : year - 1;
+    const endYear = startYear + 1;
+    return {
+      periodName: 'OCTOBER_TO_MARCH',
+      startYear,
+      startMonth: 10,
+      endYear,
+      endMonth: 3,
+      periodKey: `${startYear}-10_to_${endYear}-03`,
+      isStartMonth: month === 10,
+      isEndMonth: month === 3,
+    };
+  }
+}
+
+/**
+ * Statutory ESI Eligibility & Contribution Engine (ESI Act 1948, Rule 50)
+ *
+ * Implements:
+ *  - Overtime exclusion for wage ceiling eligibility determination
+ *  - Contribution period continuity: Employee covered at start of period remains covered
+ *    until the legal end of the contribution period (Sep 30 or Mar 31) even if wages rise mid-period
+ *  - Contributions payable on total gross wages (including OT and mid-period wage increments)
+ *  - Re-evaluation at contribution period rollover (April 1 / October 1)
+ */
+function evaluateEsiCoverage({
+  wageExcludingOtPaise,
+  totalGrossPaise,
+  wageAtPeriodStartPaise = null,
+  isExistingCoveredInCurrentPeriod = null,
+  isEsiCoveredEstablishment = true,
+  isEmployeeEnrolled = true,
+  hasDisability = false,
+  periodKey = '2026-09',
+}) {
+  if (!isEsiCoveredEstablishment || !isEmployeeEnrolled) {
+    return {
+      isCovered: false,
+      reason: !isEsiCoveredEstablishment ? 'ESTABLISHMENT_NOT_COVERED' : 'EMPLOYEE_NOT_ENROLLED',
+      employeeContributionPaise: 0,
+      employerContributionPaise: 0,
+      basisGrossPaise: 0,
+    };
+  }
+
+  const ceiling = hasDisability
+    ? STATUTORY_CONFIG.ESI.DISABLED_WAGE_CEILING_PAISA
+    : STATUTORY_CONFIG.ESI.STANDARD_WAGE_CEILING_PAISA;
+
+  const currentWageExcludingOt = Math.max(0, Math.round(Number(wageExcludingOtPaise || 0)));
+  const currentTotalGross = Math.max(0, Math.round(Number(totalGrossPaise || currentWageExcludingOt)));
+  const contribPeriod = getEsiContributionPeriod(periodKey);
+
+  // Evaluate coverage status at start of current contribution period:
+  let coveredAtPeriodStart = false;
+  if (isExistingCoveredInCurrentPeriod !== null) {
+    coveredAtPeriodStart = Boolean(isExistingCoveredInCurrentPeriod);
+  } else if (wageAtPeriodStartPaise !== null && wageAtPeriodStartPaise !== undefined) {
+    coveredAtPeriodStart = Number(wageAtPeriodStartPaise) <= ceiling;
+  } else {
+    // If not explicitly provided, evaluate current wage excluding OT against ceiling
+    coveredAtPeriodStart = currentWageExcludingOt <= ceiling;
+  }
+
+  // Statutory Rule 50 continuity: if covered at period start, remain covered until period end
+  const isCovered = coveredAtPeriodStart || (currentWageExcludingOt <= ceiling);
+  const isContinuedCoverageMidPeriod = coveredAtPeriodStart && (currentWageExcludingOt > ceiling);
+
+  if (!isCovered) {
+    return {
+      isCovered: false,
+      reason: 'WAGES_EXCEED_CEILING_AT_PERIOD_START',
+      ceilingPaise: ceiling,
+      wageExcludingOtPaise: currentWageExcludingOt,
+      totalGrossPaise: currentTotalGross,
+      employeeContributionPaise: 0,
+      employerContributionPaise: 0,
+      basisGrossPaise: 0,
+      contributionPeriod: contribPeriod,
+    };
+  }
+
+  // Once covered, contributions (0.75% employee + 3.25% employer) are paid on TOTAL GROSS
+  const employeeContributionPaise = Math.round(currentTotalGross * STATUTORY_CONFIG.ESI.EMPLOYEE_RATE);
+  const employerContributionPaise = Math.round(currentTotalGross * STATUTORY_CONFIG.ESI.EMPLOYER_RATE);
+
+  return {
+    isCovered: true,
+    isContinuedCoverageMidPeriod,
+    reason: isContinuedCoverageMidPeriod ? 'COVERED_CONTINUED_UNTIL_PERIOD_END' : 'COVERED_WITHIN_CEILING',
+    ceilingPaise: ceiling,
+    wageExcludingOtPaise: currentWageExcludingOt,
+    totalGrossPaise: currentTotalGross,
+    basisGrossPaise: currentTotalGross,
+    employeeContributionPaise,
+    employerContributionPaise,
+    totalContributionPaise: employeeContributionPaise + employerContributionPaise,
+    contributionPeriod: contribPeriod,
+  };
+}
+
+/**
+ * Statutory EPF Membership & Wage Ceiling Engine (EPF Scheme 1952)
+ *
+ * Implements:
+ *  - Wage base: Basic + DA + Retaining Allowance
+ *  - Existing members remain covered even if wages exceed ₹15,000 ceiling
+ *  - Fresh employees joining with wages > ₹15,000 are excluded unless voluntary higher agreement exists
+ *  - EPS cap ₹1,250/month (8.33% of max ₹15k) and age >= 58 EPS-to-EPF divert
+ */
+function evaluateEpfCoverage({
+  basicPayPaise,
+  dearnessAllowancePaise = 0,
+  retainingAllowancePaise = 0,
+  isExistingMember = true,
+  hasUan = true,
+  voluntaryHigherPf = false,
+  voluntaryPfPaise = 0,
+  employeeAge = 30,
+  isEpfApplicable = true,
+}) {
+  if (!isEpfApplicable) {
+    return {
+      isApplicable: false,
+      reason: 'NOT_APPLICABLE',
+      employeeContributionPaise: 0,
+      employerPfPaise: 0,
+      employerEpsPaise: 0,
+      employerTotalPaise: 0,
+    };
+  }
+
+  const basic = Math.max(0, Math.round(Number(basicPayPaise || 0)));
+  const da = Math.max(0, Math.round(Number(dearnessAllowancePaise || 0)));
+  const retaining = Math.max(0, Math.round(Number(retainingAllowancePaise || 0)));
+  const epfWages = basic + da + retaining;
+  const ceiling = STATUTORY_CONFIG.EPF.WAGE_CEILING_PAISA;
+
+  const isFresh = !isExistingMember && !hasUan;
+  if (isFresh && epfWages > ceiling && !voluntaryHigherPf) {
+    return {
+      isApplicable: false,
+      isExcludedEmployee: true,
+      reason: 'EXCLUDED_EMPLOYEE_FRESH_ABOVE_CEILING',
+      epfWagesPaise: epfWages,
+      ceilingPaise: ceiling,
+      employeeContributionPaise: 0,
+      employerPfPaise: 0,
+      employerEpsPaise: 0,
+      employerTotalPaise: 0,
+    };
+  }
+
+  const epfBase = voluntaryHigherPf ? epfWages : Math.min(epfWages, ceiling);
+  const employeeContributionPaise = Math.round(epfBase * STATUTORY_CONFIG.EPF.EMPLOYEE_RATE) + Math.max(0, Math.round(Number(voluntaryPfPaise || 0)));
+
+  let employerEpsPaise = 0;
+  let employerPfPaise = 0;
+
+  if (employeeAge >= STATUTORY_CONFIG.EPF.EPS_MAX_AGE) {
+    employerEpsPaise = 0;
+    employerPfPaise = Math.round(epfBase * STATUTORY_CONFIG.EPF.EMPLOYEE_RATE);
+  } else {
+    const epsBase = Math.min(epfWages, ceiling);
+    employerEpsPaise = Math.min(STATUTORY_CONFIG.EPF.EPS_MAX_CONTRIBUTION_PAISA, Math.round(epsBase * STATUTORY_CONFIG.EPF.EMPLOYER_EPS_RATE));
+    employerPfPaise = Math.round(epfBase * STATUTORY_CONFIG.EPF.EMPLOYEE_RATE) - employerEpsPaise;
+  }
+
+  return {
+    isApplicable: true,
+    isExistingMember: Boolean(isExistingMember || hasUan),
+    voluntaryHigherPf: Boolean(voluntaryHigherPf),
+    epfWagesPaise: epfWages,
+    epfBasePaise: epfBase,
+    employeeContributionPaise,
+    employerEpsPaise,
+    employerPfPaise,
+    employerTotalPaise: employerEpsPaise + employerPfPaise,
+  };
+}
+
+/**
+ * Unified Statutory Deductions Computation
  */
 function calculateStatutoryDeductions({
   basicPayPaise,
   grossPayPaise,
+  overtimePayPaise = 0,
+  dearnessAllowancePaise = 0,
+  retainingAllowancePaise = 0,
   isEpfApplicable = true,
-  isEsiApplicable = true,
-  state = 'Kerala',
+  isExistingEpfMember = true,
+  hasUan = true,
+  voluntaryHigherPf = false,
   voluntaryPfPaise = 0,
+  employeeAge = 30,
+  isEsiApplicable = true,
+  isEsiCoveredEstablishment = true,
+  isEmployeeEsiEnrolled = true,
+  wageAtPeriodStartPaise = null,
+  isExistingCoveredInCurrentPeriod = null,
+  hasDisability = false,
+  periodKey = '2026-09',
+  state = 'Kerala',
   incomeTaxTdsPaise = 0,
 }) {
   const basic = Math.max(0, Math.round(Number(basicPayPaise || 0)));
   const gross = Math.max(0, Math.round(Number(grossPayPaise || 0)));
+  const overtime = Math.max(0, Math.round(Number(overtimePayPaise || 0)));
+  const wageExcludingOt = Math.max(0, gross - overtime);
 
-  // 1. EPF Calculation
-  let epfEmployeePaise = 0;
-  let epfEmployerPfPaise = 0;
-  let epfEmployerEpsPaise = 0;
-  let epfEmployerTotalPaise = 0;
+  // 1. EPF Engine
+  const epfResult = evaluateEpfCoverage({
+    basicPayPaise: basic,
+    dearnessAllowancePaise,
+    retainingAllowancePaise,
+    isExistingMember: isExistingEpfMember,
+    hasUan,
+    voluntaryHigherPf,
+    voluntaryPfPaise,
+    employeeAge,
+    isEpfApplicable,
+  });
 
-  if (isEpfApplicable && basic > 0) {
-    const epfBase = Math.min(basic, EPF_WAGE_CEILING_PAISA);
-    epfEmployeePaise = Math.round(epfBase * 0.12) + Math.max(0, Math.round(Number(voluntaryPfPaise || 0)));
-    epfEmployerEpsPaise = Math.round(epfBase * 0.0833); // 8.33% EPS
-    epfEmployerPfPaise = Math.round(epfBase * 0.0367); // 3.67% PF
-    epfEmployerTotalPaise = epfEmployerEpsPaise + epfEmployerPfPaise;
-  }
-
-  // 2. ESI Calculation (Only if gross <= ₹21,000 / month)
-  let esiEmployeePaise = 0;
-  let esiEmployerPaise = 0;
-  let esiExemptReason = null;
-
-  if (!isEsiApplicable) {
-    esiExemptReason = 'NOT_APPLICABLE';
-  } else if (gross > ESI_WAGE_CEILING_PAISA) {
-    esiExemptReason = 'EXCEEDS_WAGE_CEILING_21000';
-  } else if (gross > 0) {
-    esiEmployeePaise = Math.round(gross * 0.0075); // 0.75%
-    esiEmployerPaise = Math.round(gross * 0.0325); // 3.25%
-  }
+  // 2. ESI Engine (Statutory Rule 50 continuity)
+  const esiResult = evaluateEsiCoverage({
+    wageExcludingOtPaise: wageExcludingOt,
+    totalGrossPaise: gross,
+    wageAtPeriodStartPaise,
+    isExistingCoveredInCurrentPeriod,
+    isEsiCoveredEstablishment,
+    isEmployeeEnrolled: isEsiApplicable && isEmployeeEsiEnrolled,
+    hasDisability,
+    periodKey,
+  });
 
   // 3. Professional Tax
   const professionalTaxPaise = calculateProfessionalTax(gross, state);
@@ -132,24 +371,30 @@ function calculateStatutoryDeductions({
   // 4. TDS
   const tdsPaise = Math.max(0, Math.round(Number(incomeTaxTdsPaise || 0)));
 
-  const totalDeductionsPaise = epfEmployeePaise + esiEmployeePaise + professionalTaxPaise + tdsPaise;
+  const totalDeductionsPaise = epfResult.employeeContributionPaise + esiResult.employeeContributionPaise + professionalTaxPaise + tdsPaise;
   const netPayablePaise = Math.max(0, gross - totalDeductionsPaise);
 
   return {
     epf: {
-      isApplicable: !!isEpfApplicable,
-      epfBasePaise: Math.min(basic, EPF_WAGE_CEILING_PAISA),
-      employeeContributionPaise: epfEmployeePaise,
-      employerEpsPaise: epfEmployerEpsPaise,
-      employerPfPaise: epfEmployerPfPaise,
-      employerTotalPaise: epfEmployerTotalPaise,
+      isApplicable: epfResult.isApplicable,
+      epfWagesPaise: epfResult.epfWagesPaise,
+      epfBasePaise: epfResult.epfBasePaise,
+      employeeContributionPaise: epfResult.employeeContributionPaise,
+      employerEpsPaise: epfResult.employerEpsPaise,
+      employerPfPaise: epfResult.employerPfPaise,
+      employerTotalPaise: epfResult.employerTotalPaise,
+      reason: epfResult.reason,
     },
     esi: {
-      isApplicable: isEsiApplicable && gross <= ESI_WAGE_CEILING_PAISA,
-      esiGrossPaise: gross,
-      exemptReason: esiExemptReason,
-      employeeContributionPaise: esiEmployeePaise,
-      employerContributionPaise: esiEmployerPaise,
+      isApplicable: esiResult.isCovered,
+      isCovered: esiResult.isCovered,
+      isContinuedCoverageMidPeriod: esiResult.isContinuedCoverageMidPeriod,
+      esiGrossPaise: esiResult.basisGrossPaise,
+      exemptReason: esiResult.isCovered ? null : (esiResult.reason === 'WAGES_EXCEED_CEILING_AT_PERIOD_START' ? 'EXCEEDS_WAGE_CEILING_21000' : esiResult.reason),
+      reason: esiResult.reason,
+      employeeContributionPaise: esiResult.employeeContributionPaise,
+      employerContributionPaise: esiResult.employerContributionPaise,
+      contributionPeriod: esiResult.contributionPeriod,
     },
     professionalTaxPaise,
     incomeTaxTdsPaise: tdsPaise,
@@ -393,8 +638,12 @@ function generateBankDisbursementSchedule({ payrollRunId, cafeId, paymentRecords
 }
 
 module.exports = {
+  STATUTORY_CONFIG,
   EPF_WAGE_CEILING_PAISA,
   ESI_WAGE_CEILING_PAISA,
+  getEsiContributionPeriod,
+  evaluateEsiCoverage,
+  evaluateEpfCoverage,
   calculateAttendancePay,
   calculateProfessionalTax,
   calculateStatutoryDeductions,
