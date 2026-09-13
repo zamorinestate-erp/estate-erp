@@ -264,7 +264,7 @@ const businessDocumentSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['UPLOADED', 'PENDING_VERIFICATION', 'VERIFIED', 'REJECTED', 'SUPERSEDED', 'ARCHIVED'],
+      enum: ['UPLOADED', 'PENDING_VERIFICATION', 'VERIFIED', 'REJECTED', 'SUPERSEDED', 'ARCHIVED', 'DISPOSED'],
       default: 'UPLOADED',
       index: true,
     },
@@ -313,12 +313,89 @@ const businessDocumentSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    retentionPolicyId: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    retentionUntil: {
+      type: Date,
+      default: null,
+      index: true,
+    },
+    statutoryRecord: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    financialRecord: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    legalHold: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    legalHoldReason: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    legalHoldPlacedAt: {
+      type: Date,
+      default: null,
+    },
+    legalHoldPlacedBy: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    dispositionEligibleAt: {
+      type: Date,
+      default: null,
+    },
+    disposedAt: {
+      type: Date,
+      default: null,
+    },
+    disposedBy: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    dispositionReason: {
+      type: String,
+      trim: true,
+      default: null,
+    },
   },
   {
     timestamps: true,
     collection: 'business_documents',
   }
 );
+
+businessDocumentSchema.pre('save', function (next) {
+  const STATUTORY_TYPES = ['SUPPLIER_INVOICE', 'TAX_INVOICE', 'GST_CERTIFICATE', 'DELIVERY_CHALLAN', 'AP_INVOICE'];
+  if (STATUTORY_TYPES.includes(this.documentType) || this.classification === 'FINANCE' || this.classification === 'COMPLIANCE') {
+    this.statutoryRecord = true;
+    if (this.classification === 'FINANCE' || (this.documentType && this.documentType.includes('INVOICE'))) {
+      this.financialRecord = true;
+    }
+  }
+
+  if (this.statutoryRecord && !this.retentionUntil) {
+    const baseDate = this.invoiceDate || this.uploadedAt || new Date();
+    // 8 years (2920 days) statutory retention under GST / Companies Act
+    const retentionDate = new Date(baseDate.getTime() + 2920 * 24 * 60 * 60 * 1000);
+    this.retentionUntil = retentionDate;
+    this.retentionPolicyId = this.retentionPolicyId || 'TAX_RECORDS';
+    this.dispositionEligibleAt = retentionDate;
+  }
+  next();
+});
 
 businessDocumentSchema.virtual('version').get(function () {
   return this.currentVersion;

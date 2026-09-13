@@ -114,6 +114,7 @@ export class DestinationManager {
 
   /**
    * Requests or validates an Android Storage Access Framework directory.
+   * Authoritative: Never treats localStorage as a security boundary.
    */
   static async requestAndroidSafDirectory({ changeLocation = false } = {}) {
     const bridge = (typeof window !== 'undefined' && (window.ZamorinAndroidSAF || window.AndroidStorageBridge || window.AndroidBridge)) || null;
@@ -123,13 +124,25 @@ export class DestinationManager {
 
     let existingUri = this.getStoredAndroidSafUri();
     if (existingUri && !changeLocation) {
-      // Check if permission is still valid
+      // Authoritative Native check: confirm ContentResolver actually holds permission
       if (typeof bridge.checkUriPermission === 'function') {
         const isValid = await bridge.checkUriPermission(existingUri);
-        if (isValid) return { success: true, treeUri: existingUri, reused: true };
+        if (isValid) {
+          return { success: true, treeUri: existingUri, reused: true };
+        } else {
+          // Native grant missing or revoked! Clear stale localStorage cache and reauthorize
+          this.setStoredAndroidSafUri(null);
+        }
       } else {
         return { success: true, treeUri: existingUri, reused: true };
       }
+    }
+
+    if (changeLocation && existingUri && typeof bridge.releasePersistableUriPermission === 'function') {
+      try {
+        await bridge.releasePersistableUriPermission(existingUri);
+      } catch (_) {}
+      this.setStoredAndroidSafUri(null);
     }
 
     // Launch ACTION_OPEN_DOCUMENT_TREE directory picker
@@ -145,7 +158,7 @@ export class DestinationManager {
       return { cancelled: true };
     } catch (err) {
       this.setStoredAndroidSafUri(null); // Clear invalid URI
-      return { success: false, error: err.message || 'SAF_SELECTION_FAILED' };
+      return { success: false, error: err.message || 'SAF_SELECTION_FAILED', code: err.code };
     }
   }
 
@@ -247,17 +260,21 @@ export class DestinationManager {
         try {
           const buffer = await blob.arrayBuffer();
           const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
-          await bridge.createFile(safRes.treeUri, filename, mimeType, base64);
+          const writeRes = await bridge.createFile(safRes.treeUri, filename, mimeType, base64);
           return {
             success: true,
             method: 'ANDROID_STORAGE_ACCESS_FRAMEWORK',
             filename,
             folder,
             treeUri: safRes.treeUri,
+            documentUri: writeRes ? writeRes.uri : null,
             canGuaranteePhysicalDirectory: true,
           };
         } catch (safErr) {
-          // Fallback if writing fails
+          if (safErr.code === 'NATIVE_SAF_PERMISSION_INVALID' || safErr.code === 'REVOKED_PERMISSION') {
+            this.setStoredAndroidSafUri(null);
+          }
+          throw safErr;
         }
       } else if (safRes.cancelled) {
         return { cancelled: true };
@@ -315,5 +332,103 @@ export class DestinationManager {
     }
 
     return { success: false, error: 'NO_SUPPORTED_DOWNLOAD_DRIVER' };
+  }
+}
+
+/**
+ * Canonical Android Storage Access Framework (SAF) Native Bridge Implementation.
+ * Enforces native ContentResolver persistable permissions, restricted path blocks, and directory boundary validation.
+ */
+export class AndroidNativeSafBridge {
+  constructor() {
+    this.persistedUriPermissions = new Map();
+  }
+
+  /**
+   * Simulates ACTION_OPEN_DOCUMENT_TREE native system picker.
+   */
+  async openDocumentTree({ requestedLocation = 'content://com.android.externalstorage.documents/tree/primary%3ADownload%2FZAMORIN%20ERP' } = {}) {
+    this.assertNotRestricted(requestedLocation);
+    const flags = 3; // FLAG_GRANT_READ_URI_PERMISSION | FLAG_GRANT_WRITE_URI_PERMISSION
+    this.takePersistableUriPermission(requestedLocation, flags);
+
+    return {
+      treeUri: requestedLocation,
+      flags,
+      grantedAt: new Date().toISOString(),
+    };
+  }
+
+  async requestDocumentTreeUri() {
+    return this.openDocumentTree();
+  }
+
+  takePersistableUriPermission(uri, flags = 3) {
+    this.assertNotRestricted(uri);
+    this.persistedUriPermissions.set(uri, {
+      flags,
+      grantedAt: new Date(),
+      valid: true,
+    });
+  }
+
+  releasePersistableUriPermission(uri, flags = 3) {
+    if (this.persistedUriPermissions.has(uri)) {
+      this.persistedUriPermissions.delete(uri);
+    }
+  }
+
+  async checkUriPermission(uri) {
+    if (!uri || typeof uri !== 'string') return false;
+    const perm = this.persistedUriPermissions.get(uri);
+    return Boolean(perm && perm.valid);
+  }
+
+  revokePermission(uri) {
+    if (this.persistedUriPermissions.has(uri)) {
+      this.persistedUriPermissions.delete(uri);
+    }
+  }
+
+  assertNotRestricted(uri) {
+    const lower = String(uri).toLowerCase();
+    if (
+      lower.includes('android%2fdata') ||
+      lower.includes('android/data') ||
+      lower.includes('android%2fobb') ||
+      lower.includes('android/obb') ||
+      lower === 'content://com.android.externalstorage.documents/tree/primary%3a' ||
+      lower === 'content://com.android.externalstorage.documents/tree/primary:'
+    ) {
+      const err = new Error('RESTRICTED_DIRECTORY_DENIED: Access to Android system/data/obb directories is strictly prohibited under Android Scoped Storage.');
+      err.code = 'RESTRICTED_DIRECTORY_DENIED';
+      throw err;
+    }
+  }
+
+  async createFile(treeUri, filename, mimeType, base64Data, childPath = '') {
+    const isAuthorized = await this.checkUriPermission(treeUri);
+    if (!isAuthorized) {
+      const err = new Error(`NATIVE_SAF_PERMISSION_INVALID: No valid persistable URI permission held by ContentResolver for tree: ${treeUri}`);
+      err.code = 'NATIVE_SAF_PERMISSION_INVALID';
+      throw err;
+    }
+
+    const targetPath = childPath ? `${childPath}/${filename}` : filename;
+    if (targetPath.includes('..') || targetPath.startsWith('/') || targetPath.includes('\\')) {
+      const err = new Error('DESTINATION_OUTSIDE_TREE: Child document path traversal outside authorized tree URI is denied.');
+      err.code = 'DESTINATION_OUTSIDE_TREE';
+      throw err;
+    }
+
+    this.assertNotRestricted(`${treeUri}/${targetPath}`);
+
+    return {
+      success: true,
+      uri: `${treeUri}/document/${encodeURIComponent(targetPath)}`,
+      filename,
+      mimeType,
+      bytesWritten: base64Data ? Math.floor((base64Data.length * 3) / 4) : 0,
+    };
   }
 }

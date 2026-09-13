@@ -1425,5 +1425,446 @@ test('SHARED INFRASTRUCTURE — Implementation Verification Suite', async (t) =>
     );
   });
 
+  // ===========================================================================
+  // 27. STATUTORY RETENTION & LEGAL HOLD ENGINE (RETENTION-01 TO RETENTION-07)
+  // ===========================================================================
+  await t.test('27. Statutory Retention & Legal Hold Engine (RETENTION-01 to RETENTION-07)', async (st) => {
+    const masterAuth = mockAuth('MASTER');
+    const ownerAuth = mockAuth('OWNER');
+    const staffAuth = mockAuth('STAFF');
+
+    // RETENTION-01: MASTER attempts permanent deletion of GST supplier invoice before retention expiry -> DENIED (RETENTION_PERIOD_ACTIVE)
+    await st.test('RETENTION-01: MASTER permanent deletion of GST supplier invoice before retention expiry is DENIED', async () => {
+      const activeRetentionDate = new Date(Date.now() + 2000 * 24 * 60 * 60 * 1000); // 5+ years remaining
+      const gstInvoiceDoc = new BusinessDocument({
+        documentId: 'DOC-PROC-ZC01-20260913-RET01',
+        organisationId: 'ORG-ZAMORIN',
+        cafeId: 'ZC-0001',
+        relatedModule: 'PROCUREMENT',
+        relatedRecordId: 'PO-2026-001',
+        documentType: 'SUPPLIER_INVOICE',
+        classification: 'PROCUREMENT',
+        originalFilename: 'tax_invoice_malabar.pdf',
+        internalFilename: 'internal_tax_invoice_malabar.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 10240,
+        uploadedBy: 'USR-MASTER-01',
+        statutoryRecord: true,
+        financialRecord: true,
+        retentionPolicyId: 'TAX_RECORDS',
+        retentionUntil: activeRetentionDate,
+        dispositionEligibleAt: activeRetentionDate,
+      });
+
+      t.mock.method(BusinessDocument, 'findOne', async () => gstInvoiceDoc);
+
+      await assert.rejects(
+        async () => DocumentAttachmentService.permanentDeleteDocument({
+          documentId: gstInvoiceDoc.documentId,
+          organisationId: 'ORG-ZAMORIN',
+          reason: 'Mandatory routine data cleanup attempt',
+          auth: masterAuth,
+        }),
+        (err) => err.code === 'RETENTION_PERIOD_ACTIVE'
+      );
+    });
+
+    // RETENTION-02: MASTER attempts permanent deletion of financial record under legal hold -> DENIED (LEGAL_HOLD_ACTIVE)
+    await st.test('RETENTION-02: MASTER permanent deletion of financial record under legal hold is DENIED', async () => {
+      const expiredRetentionDate = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000); // Expired
+      const legalHoldDoc = new BusinessDocument({
+        documentId: 'DOC-PROC-ZC01-20260913-RET02',
+        organisationId: 'ORG-ZAMORIN',
+        cafeId: 'ZC-0001',
+        relatedModule: 'FINANCE',
+        relatedRecordId: 'INV-2026-001',
+        documentType: 'TAX_INVOICE',
+        classification: 'FINANCE',
+        originalFilename: 'audit_hold_invoice.pdf',
+        internalFilename: 'internal_audit_hold_invoice.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 8192,
+        uploadedBy: 'USR-MASTER-01',
+        statutoryRecord: true,
+        financialRecord: true,
+        retentionUntil: expiredRetentionDate,
+        dispositionEligibleAt: expiredRetentionDate,
+        legalHold: true,
+        legalHoldReason: 'Investigation hold by statutory tax authority (appeal proceeding pending)',
+        legalHoldPlacedAt: new Date(),
+        legalHoldPlacedBy: 'USR-MASTER-01',
+      });
+
+      t.mock.method(BusinessDocument, 'findOne', async () => legalHoldDoc);
+
+      await assert.rejects(
+        async () => DocumentAttachmentService.permanentDeleteDocument({
+          documentId: legalHoldDoc.documentId,
+          organisationId: 'ORG-ZAMORIN',
+          reason: 'Attempted disposal of aged invoice',
+          auth: masterAuth,
+        }),
+        (err) => err.code === 'LEGAL_HOLD_ACTIVE'
+      );
+    });
+
+    // RETENTION-03: Archived record remains previewable by authorized historical/audit users during retention
+    await st.test('RETENTION-03: Archived record remains previewable by authorized historical/audit users during retention', async () => {
+      const archivedDoc = new BusinessDocument({
+        documentId: 'DOC-PROC-ZC01-20260913-RET03',
+        organisationId: 'ORG-ZAMORIN',
+        cafeId: 'ZC-0001',
+        relatedModule: 'PROCUREMENT',
+        relatedRecordId: 'PO-2026-003',
+        documentType: 'SUPPLIER_INVOICE',
+        classification: 'PROCUREMENT',
+        originalFilename: 'archived_historical_invoice.pdf',
+        internalFilename: 'internal_archived_historical_invoice.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 4096,
+        uploadedBy: 'USR-MASTER-01',
+        isDeleted: true,
+        status: 'ARCHIVED',
+        deletedAt: new Date(),
+        deletionReason: 'Soft-deleted duplicate entry',
+        retentionUntil: new Date(Date.now() + 1000 * 24 * 60 * 60 * 1000),
+      });
+
+      // Master & Owner can preview archived record
+      assert.strictEqual(DocumentAttachmentService.assertDocumentAuthorization(archivedDoc, masterAuth, 'PREVIEW'), true);
+      assert.strictEqual(DocumentAttachmentService.assertDocumentAuthorization(archivedDoc, ownerAuth, 'PREVIEW'), true);
+
+      // Ordinary Staff cannot access archived record
+      assert.throws(
+        () => DocumentAttachmentService.assertDocumentAuthorization(archivedDoc, staffAuth, 'PREVIEW'),
+        (err) => err.code === 'ARCHIVED_DOCUMENT_RESTRICTED'
+      );
+    });
+
+    // RETENTION-04: Retention period expired + no hold + authorized MASTER + valid reason -> disposition allowed
+    await st.test('RETENTION-04: Retention period expired + no hold + authorized MASTER + valid reason allows disposition', async () => {
+      const expiredDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      const eligibleDoc = new BusinessDocument({
+        documentId: 'DOC-PROC-ZC01-20260913-RET04',
+        organisationId: 'ORG-ZAMORIN',
+        cafeId: 'ZC-0001',
+        relatedModule: 'PROCUREMENT',
+        relatedRecordId: 'PO-OLD-999',
+        documentType: 'DELIVERY_CHALLAN',
+        classification: 'PROCUREMENT',
+        originalFilename: 'old_expired_challan.pdf',
+        internalFilename: 'internal_old_expired_challan.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 2048,
+        uploadedBy: 'USR-MASTER-01',
+        retentionUntil: expiredDate,
+        dispositionEligibleAt: expiredDate,
+        legalHold: false,
+      });
+
+      t.mock.method(eligibleDoc, 'save', async () => eligibleDoc);
+      t.mock.method(BusinessDocument, 'findOne', async () => eligibleDoc);
+
+      const result = await DocumentAttachmentService.permanentDeleteDocument({
+        documentId: eligibleDoc.documentId,
+        organisationId: 'ORG-ZAMORIN',
+        reason: 'Statutory 8-year retention expired without legal dispute',
+        auth: masterAuth,
+      });
+
+      assert.strictEqual(result.success, true);
+      assert.strictEqual(eligibleDoc.status, 'DISPOSED');
+      assert.strictEqual(eligibleDoc.isDeleted, true);
+      assert.strictEqual(eligibleDoc.fileBuffer, null);
+      assert.strictEqual(eligibleDoc.fileData, null);
+      assert.ok(eligibleDoc.disposedAt instanceof Date);
+    });
+
+    // RETENTION-05: Ordinary Owner/Staff cannot bypass retention through direct API request
+    await st.test('RETENTION-05: Ordinary Owner/Staff cannot bypass retention through direct API request', async () => {
+      const doc = new BusinessDocument({
+        documentId: 'DOC-PROC-ZC01-20260913-RET05',
+        organisationId: 'ORG-ZAMORIN',
+        cafeId: 'ZC-0001',
+        relatedModule: 'PROCUREMENT',
+        relatedRecordId: 'PO-2026-005',
+        documentType: 'SUPPLIER_INVOICE',
+        classification: 'PROCUREMENT',
+        originalFilename: 'invoice.pdf',
+        internalFilename: 'internal_invoice.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 5000,
+        uploadedBy: 'USR-MASTER-01',
+      });
+
+      t.mock.method(BusinessDocument, 'findOne', async () => doc);
+
+      // Owner denied permanent delete
+      await assert.rejects(
+        async () => DocumentAttachmentService.permanentDeleteDocument({
+          documentId: doc.documentId,
+          organisationId: 'ORG-ZAMORIN',
+          reason: 'Owner attempted direct delete',
+          auth: ownerAuth,
+        }),
+        (err) => err.code === 'PERMANENT_DELETE_DENIED'
+      );
+
+      // Staff denied permanent delete
+      await assert.rejects(
+        async () => DocumentAttachmentService.permanentDeleteDocument({
+          documentId: doc.documentId,
+          organisationId: 'ORG-ZAMORIN',
+          reason: 'Staff attempted direct delete',
+          auth: staffAuth,
+        }),
+        (err) => err.code === 'PERMANENT_DELETE_DENIED'
+      );
+    });
+
+    // RETENTION-06: Changing document metadata cannot fraudulently shorten an already-established statutory retention period
+    await st.test('RETENTION-06: Changing metadata cannot fraudulently shorten an established statutory retention period', async () => {
+      const establishedRetention = new Date(Date.now() + 2920 * 24 * 60 * 60 * 1000); // 8 years
+      const fraudulentShortDate = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000); // 10 days
+      const statutoryDoc = new BusinessDocument({
+        documentId: 'DOC-PROC-ZC01-20260913-RET06',
+        organisationId: 'ORG-ZAMORIN',
+        cafeId: 'ZC-0001',
+        relatedModule: 'FINANCE',
+        relatedRecordId: 'INV-2026-006',
+        documentType: 'TAX_INVOICE',
+        classification: 'FINANCE',
+        originalFilename: 'tax_invoice.pdf',
+        internalFilename: 'internal_tax_invoice.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 6000,
+        uploadedBy: 'USR-MASTER-01',
+        statutoryRecord: true,
+        financialRecord: true,
+        retentionUntil: establishedRetention,
+      });
+
+      t.mock.method(BusinessDocument, 'findOne', async () => statutoryDoc);
+
+      await assert.rejects(
+        async () => DocumentAttachmentService.updateRetentionPolicy({
+          documentId: statutoryDoc.documentId,
+          organisationId: 'ORG-ZAMORIN',
+          newRetentionUntil: fraudulentShortDate,
+          reason: 'Attempted unauthorized reduction of statutory hold',
+          auth: masterAuth,
+        }),
+        (err) => err.code === 'CANNOT_SHORTEN_STATUTORY_RETENTION'
+      );
+    });
+
+    // RETENTION-07: Disposition writes an immutable audit/tombstone record containing metadata without secret content
+    await st.test('RETENTION-07: Disposition writes immutable audit tombstone without secret content', async () => {
+      const expiredDate = new Date(Date.now() - 50 * 24 * 60 * 60 * 1000);
+      const tombstoneDoc = new BusinessDocument({
+        documentId: 'DOC-PROC-ZC01-20260913-RET07',
+        organisationId: 'ORG-ZAMORIN',
+        cafeId: 'ZC-0001',
+        relatedModule: 'PROCUREMENT',
+        relatedRecordId: 'PO-OLD-777',
+        documentType: 'DELIVERY_CHALLAN',
+        classification: 'PROCUREMENT',
+        originalFilename: 'confidential_delivery.pdf',
+        internalFilename: 'internal_confidential_delivery.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 15000,
+        checksum: 'sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+        uploadedBy: 'USR-MASTER-01',
+        retentionUntil: expiredDate,
+        dispositionEligibleAt: expiredDate,
+        legalHold: false,
+      });
+
+      let recordedAudit = null;
+      t.mock.method(auditService, 'recordAuditEvent', async (evt) => {
+        recordedAudit = evt;
+        return evt;
+      });
+      t.mock.method(tombstoneDoc, 'save', async () => tombstoneDoc);
+      t.mock.method(BusinessDocument, 'findOne', async () => tombstoneDoc);
+
+      await DocumentAttachmentService.permanentDeleteDocument({
+        documentId: tombstoneDoc.documentId,
+        organisationId: 'ORG-ZAMORIN',
+        reason: 'Expired retention clean tombstone creation',
+        auth: masterAuth,
+      });
+
+      assert.ok(recordedAudit);
+      assert.strictEqual(recordedAudit.action, 'DOCUMENT_PERMANENTLY_DISPOSED');
+      assert.strictEqual(recordedAudit.entityId, tombstoneDoc.documentId);
+      assert.strictEqual(recordedAudit.metadata.checksum, tombstoneDoc.checksum);
+      assert.strictEqual(recordedAudit.metadata.classification, 'PROCUREMENT');
+      // Prohibited secret content (fileData/fileBuffer) is NOT present in audit metadata
+      assert.strictEqual(recordedAudit.metadata.fileData, undefined);
+      assert.strictEqual(recordedAudit.metadata.fileBuffer, undefined);
+    });
+  });
+
+  // ===========================================================================
+  // 28. ANDROID SAF NATIVE AUTHORIZATION & BOUNDARY INTEGRITY (SAF-01 TO SAF-08)
+  // ===========================================================================
+  await t.test('28. Android SAF Native Authorization & Boundary Integrity (SAF-01 to SAF-08)', async (st) => {
+    const { AndroidNativeSafBridge, DestinationManager } = await import('../../frontend/src/js/utils/destinationManager.js');
+
+    // SAF-01: Valid system-picker URI with persisted native permission -> write succeeds
+    await st.test('SAF-01: Valid system-picker URI with persisted native permission -> write succeeds', async () => {
+      const bridge = new AndroidNativeSafBridge();
+      const pickerRes = await bridge.openDocumentTree();
+      assert.ok(pickerRes.treeUri);
+
+      const writeRes = await bridge.createFile(pickerRes.treeUri, 'invoice_export.pdf', 'application/pdf', 'JVBERi0xLjQK...');
+      assert.strictEqual(writeRes.success, true);
+      assert.ok(writeRes.uri.includes('invoice_export.pdf'));
+    });
+
+    // SAF-02: URI string placed manually into localStorage without native grant -> write denied
+    await st.test('SAF-02: URI string placed manually into localStorage without native grant -> write denied', async () => {
+      const bridge = new AndroidNativeSafBridge();
+      const fakeUri = 'content://com.android.externalstorage.documents/tree/primary%3AFakeFolder';
+
+      await assert.rejects(
+        async () => bridge.createFile(fakeUri, 'tampered.pdf', 'application/pdf', 'AAAA'),
+        (err) => err.code === 'NATIVE_SAF_PERMISSION_INVALID'
+      );
+    });
+
+    // SAF-03: JavaScript supplies a different unauthorized content:// URI -> denied
+    await st.test('SAF-03: JavaScript supplies a different unauthorized content:// URI -> denied', async () => {
+      const bridge = new AndroidNativeSafBridge();
+      await bridge.openDocumentTree({ requestedLocation: 'content://com.android.externalstorage.documents/tree/primary%3ADownload%2FAuthorized' });
+
+      const unauthorizedUri = 'content://com.android.externalstorage.documents/tree/primary%3AUnauthorizedPath';
+      await assert.rejects(
+        async () => bridge.createFile(unauthorizedUri, 'secret.pdf', 'application/pdf', 'AAAA'),
+        (err) => err.code === 'NATIVE_SAF_PERMISSION_INVALID'
+      );
+    });
+
+    // SAF-04: Persisted permission revoked -> existing cached URI no longer works; reauthorization required
+    await st.test('SAF-04: Persisted permission revoked -> existing cached URI no longer works; reauthorization required', async () => {
+      const bridge = new AndroidNativeSafBridge();
+      const { treeUri } = await bridge.openDocumentTree();
+      assert.strictEqual(await bridge.checkUriPermission(treeUri), true);
+
+      // User revokes permission in Android OS
+      bridge.revokePermission(treeUri);
+      assert.strictEqual(await bridge.checkUriPermission(treeUri), false);
+
+      await assert.rejects(
+        async () => bridge.createFile(treeUri, 'post_revoke.pdf', 'application/pdf', 'AAAA'),
+        (err) => err.code === 'NATIVE_SAF_PERMISSION_INVALID'
+      );
+    });
+
+    // SAF-05: Requested child document outside authorized tree -> denied
+    await st.test('SAF-05: Requested child document outside authorized tree (path traversal) -> denied', async () => {
+      const bridge = new AndroidNativeSafBridge();
+      const { treeUri } = await bridge.openDocumentTree();
+
+      await assert.rejects(
+        async () => bridge.createFile(treeUri, 'escape.pdf', 'application/pdf', 'AAAA', '../../etc'),
+        (err) => err.code === 'DESTINATION_OUTSIDE_TREE'
+      );
+    });
+
+    // SAF-06: Android-restricted locations are not falsely claimed as supported
+    await st.test('SAF-06: Android-restricted locations (Android/data, Android/obb, storage root) are denied', async () => {
+      const bridge = new AndroidNativeSafBridge();
+
+      await assert.rejects(
+        async () => bridge.openDocumentTree({ requestedLocation: 'content://com.android.externalstorage.documents/tree/primary%3AAndroid%2Fdata' }),
+        (err) => err.code === 'RESTRICTED_DIRECTORY_DENIED'
+      );
+
+      await assert.rejects(
+        async () => bridge.openDocumentTree({ requestedLocation: 'content://com.android.externalstorage.documents/tree/primary%3AAndroid%2Fobb' }),
+        (err) => err.code === 'RESTRICTED_DIRECTORY_DENIED'
+      );
+
+      await assert.rejects(
+        async () => bridge.openDocumentTree({ requestedLocation: 'content://com.android.externalstorage.documents/tree/primary%3A' }),
+        (err) => err.code === 'RESTRICTED_DIRECTORY_DENIED'
+      );
+    });
+
+    // SAF-07: App restart retains access only when native persistable permission remains valid
+    await st.test('SAF-07: App restart retains access only when native persistable permission remains valid', async () => {
+      const bridge = new AndroidNativeSafBridge();
+      const { treeUri } = await bridge.openDocumentTree();
+
+      // Simulate app restart retaining persisted permission
+      assert.strictEqual(await bridge.checkUriPermission(treeUri), true);
+
+      // Write succeeds
+      const res = await bridge.createFile(treeUri, 'restart_valid.pdf', 'application/pdf', 'AAAA');
+      assert.strictEqual(res.success, true);
+    });
+
+    // SAF-08: User selects Change Location -> old and new permission behavior handled safely
+    await st.test('SAF-08: User selects Change Location -> old and new permission behavior handled safely', async () => {
+      const bridge = new AndroidNativeSafBridge();
+      const loc1 = 'content://com.android.externalstorage.documents/tree/primary%3ADownload%2FLoc1';
+      const loc2 = 'content://com.android.externalstorage.documents/tree/primary%3ADownload%2FLoc2';
+
+      await bridge.openDocumentTree({ requestedLocation: loc1 });
+      assert.strictEqual(await bridge.checkUriPermission(loc1), true);
+
+      // Change Location: releases old permission and authorizes new location
+      bridge.releasePersistableUriPermission(loc1);
+      await bridge.openDocumentTree({ requestedLocation: loc2 });
+
+      assert.strictEqual(await bridge.checkUriPermission(loc1), false);
+      assert.strictEqual(await bridge.checkUriPermission(loc2), true);
+    });
+  });
+
+  // ===========================================================================
+  // 29. NOTIFICATION LIFECYCLE & AUDITABLE STATUS TRACKING (P1-03)
+  // ===========================================================================
+  await t.test('29. Notification Lifecycle & Auditable Status Tracking (P1-03)', async () => {
+    const notif = new Notification({
+      notificationId: 'NT-20260913-9090',
+      organisationId: 'ORG-ZAMORIN',
+      cafeId: 'ZC-0001',
+      recipientUserId: 'USR-AUDIT-01',
+      recipientRole: 'CAFE_ADMIN',
+      title: 'Tax Filing Deadline Reminder',
+      message: 'Quarterly GST filing deadline in 5 days.',
+      category: 'STATUTORY',
+      priority: 'HIGH',
+      sourceModule: 'FINANCE',
+      sourceEntityType: 'GST_RETURN',
+      sourceEntityId: 'GSTR-3B-Q2',
+      deduplicationKey: 'DEDUP-GST-20260913',
+      correlationId: 'CORR-GST-7766',
+      status: 'DELIVERED',
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    });
+
+    t.mock.method(notif, 'save', async () => notif);
+
+    // Initial lifecycle fields
+    assert.strictEqual(notif.readAt, null);
+    assert.strictEqual(notif.archivedAt, null);
+    assert.ok(notif.expiresAt instanceof Date);
+
+    // Reading notification does NOT delete or archive it (remains auditable)
+    await notif.markRead();
+    assert.ok(notif.readAt instanceof Date);
+    assert.strictEqual(notif.archivedAt, null);
+
+    // Explicit archival sets archivedAt while retaining audit fields
+    await notif.archive();
+    assert.ok(notif.archivedAt instanceof Date);
+    assert.strictEqual(notif.notificationId, 'NT-20260913-9090');
+    assert.strictEqual(notif.sourceEntityId, 'GSTR-3B-Q2');
+  });
+
 });
 

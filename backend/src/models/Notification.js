@@ -540,6 +540,12 @@ notificationSchema.methods.markActioned =
     return this.save();
   };
 
+notificationSchema.methods.archive =
+  async function archive() {
+    this.archivedAt = new Date();
+    return this.save();
+  };
+
 const Notification =
   mongoose.models.Notification ||
   mongoose.model(

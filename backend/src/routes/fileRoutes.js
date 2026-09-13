@@ -289,12 +289,13 @@ router.get(
     const doc = await BusinessDocument.findOne({
       documentId: docId,
       organisationId: orgId,
-      isDeleted: false,
     }).select('+fileBuffer');
 
     if (!doc) {
       throw new ApiError(404, 'DOCUMENT_NOT_FOUND', 'Business document not found.');
     }
+
+    DocumentAttachmentService.assertDocumentAuthorization(doc, req.auth, 'DOWNLOAD');
 
     if (req.auth.role === 'CAFE_ADMIN' && doc.cafeId && doc.cafeId !== req.auth.primaryCafeId) {
       throw new ApiError(403, 'CROSS_CAFE_DENIED', 'Unauthorized cross-café document access.');
@@ -386,6 +387,49 @@ router.delete(
   })
 );
 
+router.delete(
+  '/documents/:documentId/permanent',
+  authorize('PROCUREMENT_APPROVE', { allowedRoles: ['MASTER'] }),
+  asyncHandler(async (req, res) => {
+    const { reason } = req.body || {};
+    const result = await DocumentAttachmentService.permanentDeleteDocument({
+      documentId: req.params.documentId,
+      organisationId: req.auth.organisationId,
+      reason,
+      auth: req.auth,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result,
+    });
+  })
+);
+
+router.post(
+  '/documents/:documentId/retention-policy',
+  authorize('PROCUREMENT_APPROVE', { allowedRoles: ['MASTER'] }),
+  asyncHandler(async (req, res) => {
+    const body = req.body || {};
+    const doc = await DocumentAttachmentService.updateRetentionPolicy({
+      documentId: req.params.documentId,
+      organisationId: req.auth.organisationId,
+      newRetentionUntil: body.newRetentionUntil,
+      legalHold: body.legalHold,
+      legalHoldReason: body.legalHoldReason,
+      reason: body.reason,
+      auth: req.auth,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Retention policy successfully updated.',
+      data: doc,
+    });
+  })
+);
+
 router.get(
   '/documents/:documentId/preview',
   authorize('REPORTS_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
@@ -396,12 +440,13 @@ router.get(
     const doc = await BusinessDocument.findOne({
       documentId: docId,
       organisationId: orgId,
-      isDeleted: false,
     }).select('+fileBuffer');
 
     if (!doc) {
       throw new ApiError(404, 'DOCUMENT_NOT_FOUND', 'Business document not found.');
     }
+
+    DocumentAttachmentService.assertDocumentAuthorization(doc, req.auth, 'PREVIEW');
 
     if (req.auth.role === 'CAFE_ADMIN' && doc.cafeId && doc.cafeId !== req.auth.primaryCafeId) {
       throw new ApiError(403, 'CROSS_CAFE_DENIED', 'Unauthorized cross-café document access.');

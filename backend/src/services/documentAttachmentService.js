@@ -173,6 +173,29 @@ class DocumentAttachmentService {
       if (!isMaster) {
         throw new ApiError(403, 'PERMANENT_DELETE_DENIED', 'Permanent delete is strictly restricted to MASTER.');
       }
+      if (doc.legalHold === true) {
+        throw new ApiError(400, 'LEGAL_HOLD_ACTIVE', 'Document is under active legal or statutory hold. Permanent deletion is prohibited.');
+      }
+      let effectiveRetentionUntil = doc.retentionUntil;
+      if (!effectiveRetentionUntil && (doc.statutoryRecord || doc.financialRecord || (doc.documentType && doc.documentType.includes('INVOICE')))) {
+        effectiveRetentionUntil = new Date((doc.invoiceDate || doc.uploadedAt || new Date()).getTime() + 2920 * 24 * 60 * 60 * 1000);
+      }
+      if (effectiveRetentionUntil && new Date() < new Date(effectiveRetentionUntil)) {
+        throw new ApiError(400, 'RETENTION_PERIOD_ACTIVE', `Document retention period is active until ${new Date(effectiveRetentionUntil).toISOString().slice(0, 10)}. Permanent deletion prohibited.`);
+      }
+      if (doc.dispositionEligibleAt && new Date() < new Date(doc.dispositionEligibleAt)) {
+        throw new ApiError(400, 'RETENTION_PERIOD_ACTIVE', 'Document is not yet eligible for disposition.');
+      }
+    }
+
+    // Historical / archived preview and download checks
+    if (doc.isDeleted && act !== 'RESTORE' && act !== 'PERMANENT_DELETE') {
+      if (doc.status === 'DISPOSED') {
+        throw new ApiError(410, 'DOCUMENT_DISPOSED', 'Document content has been permanently disposed under retention policy.');
+      }
+      if (!isMaster && !isOwner) {
+        throw new ApiError(403, 'ARCHIVED_DOCUMENT_RESTRICTED', 'Archived historical records can only be accessed by authorized historical/audit users.');
+      }
     }
 
     // Quarantine guard for content access
@@ -732,6 +755,161 @@ class DocumentAttachmentService {
     }).catch(() => {});
 
     return { success: true, message: 'Document soft-deleted and archived.' };
+  }
+
+  /**
+   * Permanent deletion of a business document enforcing statutory retention & legal hold.
+   */
+  static async permanentDeleteDocument({
+    documentId,
+    organisationId,
+    reason,
+    auth,
+  }) {
+    if (!reason || reason.trim().length < 5) {
+      throw new ApiError(400, 'REASON_REQUIRED', 'A detailed reason (min 5 chars) is mandatory for permanent deletion.');
+    }
+
+    const doc = await BusinessDocument.findOne({
+      documentId: documentId.trim().toUpperCase(),
+      organisationId,
+    });
+
+    if (!doc) {
+      throw new ApiError(404, 'DOCUMENT_NOT_FOUND', 'Business document not found.');
+    }
+
+    // 1. Authorize role and verify retention / legal hold policies
+    this.assertDocumentAuthorization(doc, auth, 'PERMANENT_DELETE');
+
+    // 2. Physical cleanup of storage adapters
+    if (doc.storageKey) {
+      await documentStorageAdapter.deleteFile({ storageKey: doc.storageKey }).catch(() => {});
+    }
+    if (doc.storagePath && fs.existsSync(doc.storagePath)) {
+      await fs.promises.unlink(doc.storagePath).catch(() => {});
+    }
+    if (Array.isArray(doc.versions)) {
+      for (const v of doc.versions) {
+        if (v.storageKey) {
+          await documentStorageAdapter.deleteFile({ storageKey: v.storageKey }).catch(() => {});
+        }
+      }
+    }
+
+    // 3. Immutable audit tombstone recording (zero secret content retained)
+    await auditService.recordAuditEvent({
+      organisationId,
+      cafeId: doc.cafeId || 'GLOBAL',
+      actorUserId: auth.userId,
+      actorRole: auth.role,
+      module: 'DOCUMENT_ATTACHMENT',
+      action: 'DOCUMENT_PERMANENTLY_DISPOSED',
+      entityType: 'BUSINESS_DOCUMENT',
+      entityId: doc.documentId,
+      reason: reason.trim(),
+      result: 'SUCCESS',
+      metadata: {
+        documentId: doc.documentId,
+        classification: doc.classification,
+        documentType: doc.documentType,
+        checksum: doc.checksum,
+        originalFilename: doc.originalFilename,
+        sizeBytes: doc.sizeBytes,
+        disposedAt: new Date().toISOString(),
+        disposedBy: auth.userId,
+        dispositionReason: reason.trim(),
+      },
+    }).catch(() => {});
+
+    // 4. Update BusinessDocument to permanent DISPOSED tombstone state (content stripped)
+    doc.status = 'DISPOSED';
+    doc.isDeleted = true;
+    doc.fileBuffer = null;
+    doc.fileData = null;
+    doc.storageKey = null;
+    doc.storagePath = null;
+    doc.versions = [];
+    doc.disposedAt = new Date();
+    doc.disposedBy = auth.name || auth.userId || 'Master';
+    doc.dispositionReason = reason.trim();
+    await doc.save();
+
+    return {
+      success: true,
+      message: 'Document permanently disposed and scrubbed under retention policy.',
+      documentId: doc.documentId,
+      disposedAt: doc.disposedAt,
+    };
+  }
+
+  /**
+   * Modifies retention policy or legal hold with privileged auditing.
+   */
+  static async updateRetentionPolicy({
+    documentId,
+    organisationId,
+    newRetentionUntil = null,
+    legalHold = undefined,
+    legalHoldReason = null,
+    reason,
+    auth,
+  }) {
+    if (!auth || auth.role !== 'MASTER') {
+      throw new ApiError(403, 'UNAUTHORIZED_RETENTION_CHANGE', 'Only MASTER can update statutory retention policies or legal holds.');
+    }
+    if (!reason || reason.trim().length < 5) {
+      throw new ApiError(400, 'REASON_REQUIRED', 'A detailed audit reason (min 5 chars) is mandatory to modify retention policy.');
+    }
+
+    const doc = await BusinessDocument.findOne({
+      documentId: documentId.trim().toUpperCase(),
+      organisationId,
+    });
+    if (!doc) {
+      throw new ApiError(404, 'DOCUMENT_NOT_FOUND', 'Business document not found.');
+    }
+
+    if (newRetentionUntil) {
+      const newDate = new Date(newRetentionUntil);
+      if (doc.statutoryRecord && doc.retentionUntil && newDate < new Date(doc.retentionUntil)) {
+        throw new ApiError(400, 'CANNOT_SHORTEN_STATUTORY_RETENTION', 'Changing document metadata cannot fraudulently shorten an already-established statutory retention period without privileged audited policy change.');
+      }
+      doc.retentionUntil = newDate;
+      doc.dispositionEligibleAt = newDate;
+    }
+
+    if (legalHold !== undefined) {
+      doc.legalHold = Boolean(legalHold);
+      if (doc.legalHold) {
+        doc.legalHoldReason = (legalHoldReason || reason).trim();
+        doc.legalHoldPlacedAt = new Date();
+        doc.legalHoldPlacedBy = auth.userId || 'MASTER';
+      } else {
+        doc.legalHoldReason = null;
+      }
+    }
+
+    await doc.save();
+
+    await auditService.recordAuditEvent({
+      organisationId,
+      cafeId: doc.cafeId || 'GLOBAL',
+      actorUserId: auth.userId,
+      actorRole: auth.role,
+      module: 'DOCUMENT_ATTACHMENT',
+      action: 'RETENTION_POLICY_UPDATED',
+      entityType: 'BUSINESS_DOCUMENT',
+      entityId: doc.documentId,
+      reason: reason.trim(),
+      result: 'SUCCESS',
+      metadata: {
+        legalHold: doc.legalHold,
+        retentionUntil: doc.retentionUntil,
+      },
+    }).catch(() => {});
+
+    return doc;
   }
 }
 
