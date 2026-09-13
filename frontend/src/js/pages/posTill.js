@@ -477,10 +477,15 @@ function renderTerminalView() {
               </div>
             ` : ""}
 
-            <!-- Charge Action Button with Duplicate-Lock (§83, §84) -->
-            <button class="btn btn-primary btn-block" id="process-charge-btn" ${grandTotal <= 0 || isPaymentInProgress ? "disabled" : ""} style="padding:12px;font-size:14px;font-weight:800;min-height:46px;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.15);" type="button">
-              ${isPaymentInProgress ? "Confirming Payment…" : `Charge ₹${grandTotal.toLocaleString("en-IN")} (${activeTender})`}
-            </button>
+            <!-- Action Buttons Grid: Preview Receipt & Charge with Duplicate-Lock -->
+            <div style="display:grid;grid-template-columns:1fr 2fr;gap:8px;">
+              <button class="btn btn-secondary" id="preview-receipt-btn" ${grandTotal <= 0 ? "disabled" : ""} style="padding:12px;font-size:13px;font-weight:700;min-height:46px;border-radius:8px;" type="button">
+                👁️ Preview
+              </button>
+              <button class="btn btn-primary" id="process-charge-btn" ${grandTotal <= 0 || isPaymentInProgress ? "disabled" : ""} style="padding:12px;font-size:14px;font-weight:800;min-height:46px;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.15);" type="button">
+                ${isPaymentInProgress ? "Confirming Payment…" : `Charge ₹${grandTotal.toLocaleString("en-IN")} (${activeTender})`}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1252,6 +1257,42 @@ function wirePOSEventListeners(root) {
       refreshPOSView(root);
     });
   });
+
+  // Preview Receipt Action before Settlement
+  const previewBtn = root.querySelector("#preview-receipt-btn");
+  if (previewBtn) {
+    previewBtn.addEventListener("click", () => {
+      if (!cart.length) return;
+
+      const subtotal = cart.reduce((acc, l) => {
+        const modPrice = l.modifiers?.modifierPricePaisa ? l.modifiers.modifierPricePaisa / 100 : 0;
+        return acc + (l.item.price + modPrice) * l.qty;
+      }, 0);
+      const discount = Math.round(discountPaisa / 100);
+      const taxable = Math.max(0, subtotal - discount);
+      const gst = Math.round(taxable * 0.05);
+      const grandTotal = taxable + gst;
+
+      const previewBill = {
+        billId: `PREVIEW-${Date.now()}`,
+        invoiceNumber: `PREVIEW (NOT ISSUED)`,
+        subtotalPaisa: subtotal * 100,
+        taxPaisa: gst * 100,
+        totalPaisa: grandTotal * 100,
+        paymentMethod: activeTender,
+        businessDate: new Date().toISOString().substring(0, 10),
+        status: "PREVIEW",
+        lineItems: cart.map((l) => ({
+          itemNameSnapshot: l.item.name,
+          quantity: l.qty,
+          unitPricePaisa: (l.item.price + (l.modifiers?.modifierPricePaisa ? l.modifiers.modifierPricePaisa / 100 : 0)) * 100,
+          modifiers: l.modifiers,
+        })),
+      };
+
+      openReceiptModal(previewBill, false);
+    });
+  }
 
   // Charge / Payment Processing (§73–§85)
   const chargeBtn = root.querySelector("#process-charge-btn");

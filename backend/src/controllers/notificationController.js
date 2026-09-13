@@ -148,6 +148,13 @@ async function findUserNotification(
     );
   }
 
+  if (notification.cafeId && request.auth.role !== 'MASTER') {
+    const isAssigned = (request.auth.assignedCafeIds && request.auth.assignedCafeIds.includes(notification.cafeId)) || request.auth.primaryCafeId === notification.cafeId;
+    if (!isAssigned) {
+      throw new ApiError(403, 'CROSS_CAFE_NOTIFICATION_DENIED', 'Cannot access notification belonging to another café.');
+    }
+  }
+
   return notification;
 }
 
@@ -275,6 +282,20 @@ const markNotificationRead = asyncHandler(
   }
 );
 
+const markNotificationUnread = asyncHandler(
+  async (request, response) => {
+    const notification = await findUserNotification(request);
+    await notification.markUnread();
+
+    return response.status(200).json({
+      success: true,
+      message: 'Notification marked as unread.',
+      data: { notification },
+      correlationId: request.correlationId || null,
+    });
+  }
+);
+
 const markAllNotificationsRead =
   asyncHandler(
     async (request, response) => {
@@ -391,6 +412,7 @@ module.exports = {
   listNotifications,
   getNotification,
   markNotificationRead,
+  markNotificationUnread,
   markAllNotificationsRead,
   acknowledgeNotification,
   archiveNotification,

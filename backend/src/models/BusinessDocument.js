@@ -128,6 +128,30 @@ const businessDocumentSchema = new mongoose.Schema(
       required: true,
       trim: true, // e.g., 'SUPPLIER_INVOICE', 'DELIVERY_CHALLAN', 'QUOTATION', 'GRN_PHOTO', 'APPOINTMENT_LETTER', 'GST_CERTIFICATE'
     },
+    classification: {
+      type: String,
+      enum: [
+        'PROCUREMENT',
+        'INVENTORY',
+        'FINANCE',
+        'HR_SELF',
+        'HR_CONFIDENTIAL',
+        'SUPPLIER_GENERAL',
+        'SUPPLIER_BANKING',
+        'COMPLIANCE',
+        'ASSET',
+        'MANAGEMENT_CONFIDENTIAL',
+      ],
+      default: 'PROCUREMENT',
+      index: true,
+    },
+    employeeId: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: null,
+      index: true,
+    },
     documentNumber: {
       type: String,
       trim: true,
@@ -140,6 +164,21 @@ const businessDocumentSchema = new mongoose.Schema(
     },
     invoiceDate: {
       type: Date,
+      default: null,
+    },
+    expiryDate: {
+      type: Date,
+      default: null,
+      index: true,
+    },
+    renewalOwner: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    supersededBy: {
+      type: String,
+      trim: true,
       default: null,
     },
     amountPaisa: {
@@ -280,6 +319,16 @@ const businessDocumentSchema = new mongoose.Schema(
     collection: 'business_documents',
   }
 );
+
+businessDocumentSchema.virtual('version').get(function () {
+  return this.currentVersion;
+}).set(function (v) {
+  this.currentVersion = v;
+});
+
+documentVersionSchema.virtual('versionNumber').get(function () {
+  return this.version;
+});
 
 businessDocumentSchema.index({ organisationId: 1, relatedModule: 1, relatedRecordId: 1 });
 businessDocumentSchema.index({ organisationId: 1, cafeId: 1, isDeleted: 1 });

@@ -66,6 +66,12 @@ const approvalSchema = new mongoose.Schema(
       trim: true,
     },
 
+    amountPaisa: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+
     status: {
       type: String,
       enum: APPROVAL_STATUSES,

@@ -144,9 +144,12 @@ class PosOrderService {
       calculatedSubtotalPaisa - totalDiscountPaisa + taxPaisa
     );
 
+    const taxablePaisa = Math.max(0, calculatedSubtotalPaisa - totalDiscountPaisa);
+
     return {
       subtotalPaisa: calculatedSubtotalPaisa,
       discountPaisa: totalDiscountPaisa,
+      taxablePaisa,
       taxPaisa,
       cgstPaisa: calculatedCgstPaisa,
       sgstPaisa: calculatedSgstPaisa,
@@ -238,6 +241,7 @@ class PosOrderService {
       preview: true,
       totals,
       receiptPreviewHtml: htmlReceipt,
+      htmlPreview: htmlReceipt,
       formattedSummary: {
         itemCount: totals.lineItems.length,
         subtotalPaisa: totals.subtotalPaisa,
@@ -246,6 +250,10 @@ class PosOrderService {
         totalPaisa: totals.totalPaisa,
       },
     };
+  }
+
+  static async previewOrder(orderPayload = {}, authContext = {}, cafeContext = null) {
+    return this.previewReceipt(orderPayload, authContext, cafeContext);
   }
 
   /**

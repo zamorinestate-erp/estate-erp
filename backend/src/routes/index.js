@@ -424,6 +424,14 @@ router.use(
   analyticsRoutes
 );
 
+const sharedInfrastructureRoutes =
+  require('./sharedInfrastructureRoutes');
+
+router.use(
+  '/shared-infra',
+  sharedInfrastructureRoutes
+);
+
 router.use(
   '/',
   expansionModulesRoutes

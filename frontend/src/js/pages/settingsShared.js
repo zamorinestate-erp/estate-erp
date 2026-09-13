@@ -2169,6 +2169,36 @@ function renderUpdatesSection() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function renderSettingsShared() {
+  const role = state.role || (state.auth?.user?.role) || ROLES.MASTER;
+  if (role === ROLES.STAFF) {
+    const STAFF_PERMITTED_SECTIONS = new Set([
+      "overview",
+      "profile",
+      "security",
+      "devices",
+      "notifications",
+      "language",
+      "appearance",
+      "accessibility",
+    ]);
+    if (!STAFF_PERMITTED_SECTIONS.has(_activeSection)) {
+      return renderSettingsShell("overview", `
+        <div class="card" style="padding:32px; text-align:center; background:var(--surface); border:1px solid var(--line); border-radius:12px;">
+          <div style="font-size:40px; margin-bottom:12px;">⛔</div>
+          <h2 style="font-size:18px; font-weight:800; color:var(--ink); margin-bottom:8px;">Access Restricted</h2>
+          <p style="font-size:13px; color:var(--muted); max-width:440px; margin:0 auto 16px;">
+            Standard Staff accounts cannot access administrative settings or organization governance modules.
+          </p>
+          <button class="btn btn-primary btn-sm" data-settings-back type="button">
+            Return to Allowed Settings
+          </button>
+        </div>
+      `, {
+        statusChip: { type: "danger", label: "Permission Denied" },
+      });
+    }
+  }
+
   switch (_activeSection) {
     case "profile":       return renderProfile();
     case "employment":    return renderEmployment();

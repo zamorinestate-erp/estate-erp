@@ -506,6 +506,12 @@ notificationSchema.methods.markRead =
     return this.save();
   };
 
+notificationSchema.methods.markUnread =
+  async function markUnread() {
+    this.readAt = null;
+    return this.save();
+  };
+
 notificationSchema.methods.acknowledge =
   async function acknowledge() {
     if (!this.acknowledgementRequired) {

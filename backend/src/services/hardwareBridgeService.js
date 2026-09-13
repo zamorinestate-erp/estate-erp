@@ -475,6 +475,8 @@ function generateFallbackHtmlReceipt(orderData = {}, cafeInfo = {}) {
       <div>${sanitizeEscPosText(cafeInfo.legalName || 'Zamorin Hospitality')}</div>
       ${cafeInfo.gstin ? `<div>GSTIN: ${sanitizeEscPosText(cafeInfo.gstin)}</div>` : ''}
       ${cafeInfo.fssai ? `<div>FSSAI: ${sanitizeEscPosText(cafeInfo.fssai)}</div>` : ''}
+      ${orderData.isReprint ? `<div class="bold" style="background:#000;color:#fff;padding:2px 6px;margin-top:4px;">*** REPRINT #${orderData.reprintCount || 1} ***</div>` : ''}
+      ${orderData.isVoid ? `<div class="bold" style="background:#000;color:#fff;padding:2px 6px;margin-top:4px;">*** VOID - CANCELLED BILL ***</div>` : ''}
     </div>
     <div class="divider"></div>
     <div>Bill No: ${orderData.billNumber || orderData.orderId || 'ZC-001'}</div>

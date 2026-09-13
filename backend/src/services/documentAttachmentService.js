@@ -80,6 +80,111 @@ class DocumentAttachmentService {
     return crypto.createHash('sha256').update(bufferOrBase64).digest('hex');
   }
 
+  static assertDocumentAuthorization(doc, auth, action = 'VIEW') {
+    if (!auth || !auth.role) {
+      throw new ApiError(401, 'UNAUTHENTICATED', 'Authentication required.');
+    }
+
+    const role = auth.role;
+    const isMaster = role === 'MASTER';
+    const isOwner = role === 'OWNER';
+    const isRegional = role === 'REGIONAL_MANAGER';
+    const isCafeAdmin = role === 'CAFE_ADMIN';
+    const isStaff = role === 'STAFF';
+
+    // 1. Cross-Organisation Isolation
+    if (doc.organisationId && doc.organisationId !== auth.organisationId) {
+      throw new ApiError(403, 'CROSS_ORG_ACCESS_DENIED', 'Unauthorized cross-organisation document access.');
+    }
+
+    // 2. Cross-Café Isolation (unless Master, Owner, or Regional Manager)
+    if (doc.cafeId && doc.cafeId !== 'GLOBAL' && !isMaster && !isOwner && !isRegional) {
+      const assigned = (auth.assignedCafeIds && auth.assignedCafeIds.includes(doc.cafeId)) || auth.primaryCafeId === doc.cafeId;
+      if (!assigned) {
+        throw new ApiError(403, 'CROSS_CAFE_ACCESS_DENIED', 'Unauthorized cross-café document access.');
+      }
+    }
+
+    // 3. Resource Classification Gate
+    const classification = doc.classification || 'PROCUREMENT';
+
+    if (classification === 'MANAGEMENT_CONFIDENTIAL') {
+      if (!isMaster && !isOwner) {
+        throw new ApiError(403, 'CONFIDENTIAL_RESOURCE_DENIED', 'Management confidential files are restricted to Master and Owner.');
+      }
+    }
+
+    if (classification === 'SUPPLIER_BANKING') {
+      if (isStaff) {
+        throw new ApiError(403, 'BANKING_RESOURCE_DENIED', 'Staff are prohibited from viewing supplier banking attachments.');
+      }
+    }
+
+    if (classification === 'FINANCE') {
+      if (isStaff) {
+        throw new ApiError(403, 'FINANCE_RESOURCE_DENIED', 'Staff are prohibited from accessing finance attachments.');
+      }
+    }
+
+    if (classification === 'HR_CONFIDENTIAL') {
+      if (isStaff) {
+        throw new ApiError(403, 'HR_CONFIDENTIAL_DENIED', 'Staff are prohibited from accessing confidential HR documents.');
+      }
+    }
+
+    if (classification === 'HR_SELF') {
+      if (isStaff) {
+        const isOwn = (doc.employeeId && doc.employeeId === auth.userId) ||
+                      (doc.relatedRecordId && doc.relatedRecordId === auth.userId) ||
+                      (doc.uploadedBy && doc.uploadedBy === auth.userId);
+        if (!isOwn) {
+          throw new ApiError(403, 'UNRELATED_STAFF_RESOURCE_DENIED', 'Staff cannot access another employee HR records in the same café.');
+        }
+      }
+    }
+
+    // 4. Action-specific Authorization Matrix
+    const act = String(action || 'VIEW').toUpperCase();
+    if (['REPLACE_VERSION', 'TAG_UPDATE', 'LINK_ENTITY', 'EXPIRY_UPDATE'].includes(act)) {
+      if (isStaff) {
+        throw new ApiError(403, 'ACTION_DENIED_STAFF', `Action ${act} is not permitted for STAFF.`);
+      }
+    }
+
+    if (['VERIFY', 'REJECT'].includes(act)) {
+      if (isStaff) {
+        throw new ApiError(403, 'VERIFICATION_DENIED', 'Staff cannot verify or reject documents.');
+      }
+    }
+
+    if (act === 'SOFT_DELETE' || act === 'ARCHIVE') {
+      if (isStaff) {
+        throw new ApiError(403, 'DELETE_DENIED', 'Staff cannot delete documents.');
+      }
+    }
+
+    if (act === 'RESTORE') {
+      if (!isMaster && !isOwner) {
+        throw new ApiError(403, 'RESTORE_DENIED', 'Only Master and Owner can restore deleted documents.');
+      }
+    }
+
+    if (act === 'PERMANENT_DELETE') {
+      if (!isMaster) {
+        throw new ApiError(403, 'PERMANENT_DELETE_DENIED', 'Permanent delete is strictly restricted to MASTER.');
+      }
+    }
+
+    // Quarantine guard for content access
+    if (['PREVIEW', 'DOWNLOAD', 'VERIFY'].includes(act)) {
+      if (doc.securityScanStatus === 'REJECTED' || doc.status === 'REJECTED') {
+        throw new ApiError(400, 'CANNOT_ACCESS_QUARANTINED', 'Cannot access quarantined or rejected document.');
+      }
+    }
+
+    return true;
+  }
+
   static generateDocumentId(moduleCode = 'DOC', cafeCode = 'ZC01') {
     const d = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     const rand = crypto.randomBytes(3).toString('hex').toUpperCase();
@@ -458,26 +563,27 @@ class DocumentAttachmentService {
         });
       }
 
-      const versionRecord = {
-        version: nextVersion,
-        originalFilename: originalFilename.trim(),
-        internalFilename,
-        mimeType: normMime,
-        sizeBytes: effectiveSize,
-        checksum,
-        storageKey: storedResult?.storageKey || newVersionKey,
-        storagePath: storedResult?.storagePath || null,
-        storageDriver: storedResult?.storageDriver || 'RENDER_PERSISTENT_DISK',
-        fileBuffer: fileBuffer || null,
-        fileData: fileBase64 || null,
-        securityScanStatus: scanResult.status,
-        securityScanDetails: scanResult.details,
+      // Retain previous binary as an archived version
+      const previousVersionRecord = {
+        version: doc.currentVersion,
+        originalFilename: doc.originalFilename,
+        internalFilename: doc.internalFilename,
+        mimeType: doc.mimeType,
+        sizeBytes: doc.sizeBytes,
+        checksum: doc.checksum,
+        storageKey: doc.storageKey,
+        storagePath: doc.storagePath,
+        storageDriver: doc.storageDriver,
+        fileBuffer: doc.fileBuffer,
+        fileData: doc.fileData,
+        securityScanStatus: doc.securityScanStatus,
+        securityScanDetails: doc.securityScanDetails,
         changeReason: changeReason.trim(),
-        uploadedBy: auth.name || auth.userId || 'Operator',
-        uploadedAt: new Date(),
+        uploadedBy: doc.uploadedBy,
+        uploadedAt: doc.uploadedAt || new Date(),
       };
 
-      doc.versions.push(versionRecord);
+      doc.versions.push(previousVersionRecord);
       doc.currentVersion = nextVersion;
       doc.originalFilename = originalFilename.trim();
       doc.internalFilename = internalFilename;
@@ -546,6 +652,12 @@ class DocumentAttachmentService {
 
     if (!doc) {
       throw new ApiError(404, 'DOCUMENT_NOT_FOUND', 'Business document not found.');
+    }
+
+    if (doc.securityScanStatus === 'REJECTED' || doc.status === 'REJECTED') {
+      if (decision === 'VERIFIED') {
+        throw new ApiError(400, 'CANNOT_VERIFY_QUARANTINED', 'Cannot verify a quarantined or rejected document.');
+      }
     }
 
     doc.status = decision === 'VERIFIED' ? 'VERIFIED' : 'REJECTED';

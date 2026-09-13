@@ -65,26 +65,81 @@ router.get(
     const orgId = req.auth.organisationId;
     const filter = { organisationId: orgId, isDeleted: false };
 
-    if (req.auth.role === 'CAFE_ADMIN' && req.auth.primaryCafeId) {
+    // Cross-Café Parameter Manipulation Protection
+    if (req.auth.role === 'CAFE_ADMIN') {
+      if (req.query.cafeId && req.query.cafeId !== 'ALL' && req.query.cafeId !== req.auth.primaryCafeId) {
+        throw new ApiError(403, 'CROSS_CAFE_DENIED', 'Cannot query documents outside assigned café.');
+      }
       filter.cafeId = req.auth.primaryCafeId;
     } else if (req.query.cafeId && req.query.cafeId !== 'ALL') {
       filter.cafeId = req.query.cafeId.trim().toUpperCase();
+    }
+
+    // Unauthorized Sensitive-Document Filtering Protection
+    if (req.auth.role === 'STAFF') {
+      filter.classification = { $nin: ['MANAGEMENT_CONFIDENTIAL', 'HR_CONFIDENTIAL', 'SUPPLIER_BANKING', 'FINANCE'] };
+    } else if (req.auth.role === 'CAFE_ADMIN') {
+      filter.classification = { $ne: 'MANAGEMENT_CONFIDENTIAL' };
+    }
+
+    if (req.query.documentId) {
+      filter.documentId = req.query.documentId.trim().toUpperCase();
     }
 
     if (req.query.module) {
       filter.relatedModule = req.query.module.trim().toUpperCase();
     }
 
-    if (req.query.recordId) {
-      filter.relatedRecordId = req.query.recordId.trim().toUpperCase();
+    if (req.query.recordId || req.query.relatedRecordId) {
+      filter.relatedRecordId = (req.query.recordId || req.query.relatedRecordId).trim().toUpperCase();
     }
 
-    if (req.query.type) {
-      filter.documentType = req.query.type.trim();
+    if (req.query.relatedRecordType) {
+      filter.relatedRecordType = req.query.relatedRecordType.trim().toUpperCase();
+    }
+
+    if (req.query.type || req.query.documentType) {
+      filter.documentType = (req.query.type || req.query.documentType).trim();
+    }
+
+    if (req.query.employeeId || req.query.employee) {
+      filter.employeeId = (req.query.employeeId || req.query.employee).trim().toUpperCase();
+    }
+
+    if (req.query.documentNumber || req.query.invoiceNumber) {
+      filter.documentNumber = (req.query.documentNumber || req.query.invoiceNumber).trim();
+    }
+
+    if (req.query.supplier || req.query.entityName) {
+      const sup = (req.query.supplier || req.query.entityName).trim();
+      filter.$or = [
+        { entityName: { $regex: sup, $options: 'i' } },
+        { supplierOrEntity: { $regex: sup, $options: 'i' } },
+      ];
     }
 
     if (req.query.status) {
       filter.status = req.query.status.trim().toUpperCase();
+    }
+
+    if (req.query.verificationStatus) {
+      filter.status = req.query.verificationStatus.trim().toUpperCase();
+    }
+
+    if (req.query.startDate || req.query.endDate) {
+      filter.createdAt = {};
+      if (req.query.startDate) filter.createdAt.$gte = new Date(req.query.startDate);
+      if (req.query.endDate) filter.createdAt.$lte = new Date(req.query.endDate);
+    }
+
+    if (req.query.expiryStatus) {
+      const now = new Date();
+      if (req.query.expiryStatus === 'OVERDUE') {
+        filter.expiryDate = { $lt: now, $ne: null };
+      } else if (req.query.expiryStatus === 'EXPIRING_SOON') {
+        const in30Days = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+        filter.expiryDate = { $gte: now, $lte: in30Days };
+      }
     }
 
     if (req.query.search) {
@@ -331,4 +386,156 @@ router.delete(
   })
 );
 
+router.get(
+  '/documents/:documentId/preview',
+  authorize('REPORTS_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  asyncHandler(async (req, res) => {
+    const orgId = req.auth.organisationId;
+    const docId = req.params.documentId.trim().toUpperCase();
+
+    const doc = await BusinessDocument.findOne({
+      documentId: docId,
+      organisationId: orgId,
+      isDeleted: false,
+    }).select('+fileBuffer');
+
+    if (!doc) {
+      throw new ApiError(404, 'DOCUMENT_NOT_FOUND', 'Business document not found.');
+    }
+
+    if (req.auth.role === 'CAFE_ADMIN' && doc.cafeId && doc.cafeId !== req.auth.primaryCafeId) {
+      throw new ApiError(403, 'CROSS_CAFE_DENIED', 'Unauthorized cross-café document access.');
+    }
+
+    if (doc.securityScanStatus === 'REJECTED') {
+      throw new ApiError(403, 'MALWARE_DETECTED', 'Document preview blocked: file was rejected by security scanner.');
+    }
+    if (doc.securityScanStatus === 'PENDING_SCAN') {
+      throw new ApiError(423, 'SCAN_IN_PROGRESS', 'Document is undergoing security scanning and is not yet available.');
+    }
+
+    res.setHeader('Content-Type', doc.mimeType);
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(doc.originalFilename)}"`);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+
+    if (doc.storageKey) {
+      try {
+        const stream = await documentStorageAdapter.getStream({ storageKey: doc.storageKey });
+        res.setHeader('Content-Length', doc.sizeBytes);
+        return stream.pipe(res);
+      } catch (storageErr) {
+        if (doc.storagePath && fs.existsSync(doc.storagePath)) {
+          const stat = await fs.promises.stat(doc.storagePath);
+          res.setHeader('Content-Length', stat.size);
+          const stream = fs.createReadStream(doc.storagePath);
+          return stream.pipe(res);
+        }
+        throw storageErr;
+      }
+    } else if (doc.storagePath && fs.existsSync(doc.storagePath)) {
+      const stat = await fs.promises.stat(doc.storagePath);
+      res.setHeader('Content-Length', stat.size);
+      const stream = fs.createReadStream(doc.storagePath);
+      return stream.pipe(res);
+    }
+
+    const payload = doc.fileBuffer || (doc.fileData ? Buffer.from(doc.fileData, 'base64') : null);
+    if (!payload) {
+      throw new ApiError(404, 'FILE_CONTENT_UNAVAILABLE', 'File content is not available.');
+    }
+
+    res.setHeader('Content-Length', payload.length);
+    return res.send(payload);
+  })
+);
+
+router.get(
+  '/documents/:documentId/versions/:versionNumber/download',
+  authorize('REPORTS_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  asyncHandler(async (req, res) => {
+    const orgId = req.auth.organisationId;
+    const docId = req.params.documentId.trim().toUpperCase();
+    const verNum = parseInt(req.params.versionNumber, 10);
+
+    const doc = await BusinessDocument.findOne({
+      documentId: docId,
+      organisationId: orgId,
+    }).lean();
+
+    if (!doc) {
+      throw new ApiError(404, 'DOCUMENT_NOT_FOUND', 'Business document not found.');
+    }
+
+    if (req.auth.role === 'CAFE_ADMIN' && doc.cafeId && doc.cafeId !== req.auth.primaryCafeId) {
+      throw new ApiError(403, 'CROSS_CAFE_DENIED', 'Unauthorized cross-café document access.');
+    }
+
+    let targetVer;
+    if (doc.version === verNum) {
+      targetVer = doc;
+    } else {
+      targetVer = (doc.versions || []).find((v) => v.versionNumber === verNum);
+    }
+
+    if (!targetVer) {
+      throw new ApiError(404, 'VERSION_NOT_FOUND', `Version ${verNum} of document not found.`);
+    }
+
+    res.setHeader('Content-Type', targetVer.mimeType || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(targetVer.originalFilename || doc.originalFilename)}"`);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+
+    if (targetVer.storageKey) {
+      const stream = await documentStorageAdapter.getStream({ storageKey: targetVer.storageKey });
+      if (targetVer.sizeBytes) res.setHeader('Content-Length', targetVer.sizeBytes);
+      return stream.pipe(res);
+    }
+
+    const payload = targetVer.fileBuffer || (targetVer.fileData ? Buffer.from(targetVer.fileData, 'base64') : null);
+    if (!payload) {
+      throw new ApiError(404, 'FILE_CONTENT_UNAVAILABLE', 'Version content is not available.');
+    }
+
+    res.setHeader('Content-Length', payload.length);
+    return res.send(payload);
+  })
+);
+
+router.post(
+  '/documents/:documentId/restore',
+  authorize('PROCUREMENT_APPROVE', { allowedRoles: ['MASTER', 'OWNER'] }),
+  asyncHandler(async (req, res) => {
+    const { reason } = req.body || {};
+    if (!reason || !reason.trim()) {
+      throw new ApiError(400, 'REASON_REQUIRED', 'Mandatory restoration reason must be provided.');
+    }
+
+    const doc = await BusinessDocument.findOne({
+      documentId: req.params.documentId.trim().toUpperCase(),
+      organisationId: req.auth.organisationId,
+      isDeleted: true,
+    });
+
+    if (!doc) {
+      throw new ApiError(404, 'DOCUMENT_NOT_FOUND', 'Deleted business document not found.');
+    }
+
+    doc.isDeleted = false;
+    doc.deletedAt = null;
+    doc.deletedBy = null;
+    doc.deletionReason = null;
+    doc.restoredAt = new Date();
+    doc.restoredBy = req.auth.userId;
+    doc.restorationReason = reason.trim();
+    await doc.save();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Document successfully restored.',
+      data: doc,
+    });
+  })
+);
+
 module.exports = router;
+
