@@ -5,6 +5,7 @@
   "rewrites": [
     { "source": "/api/(.*)", "destination": "https://zamorin-cafe-erp-backend.onrender.com/api/$1" },
     { "source": "/.well-known/(.*)", "destination": "/.well-known/$1" },
+    { "source": "/privacy", "destination": "/privacy.html" },
     { "source": "/cafe-operations", "destination": "/cafe-operations/cafe-operations.html" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],

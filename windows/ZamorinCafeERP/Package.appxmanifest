@@ -39,7 +39,6 @@
         <uap3:Extension Category="windows.appUriHandler">
           <uap3:AppUriHandler>
             <uap3:Host Name="zamorin-cafe-erp.vercel.app" />
-            <uap3:Host Name="zamorin.app" />
           </uap3:AppUriHandler>
         </uap3:Extension>
       </Extensions>

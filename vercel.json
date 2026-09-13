@@ -27,6 +27,10 @@
       "dest": "/frontend/cafe-operations/cafe-operations.html"
     },
     {
+      "src": "/privacy",
+      "dest": "/frontend/privacy.html"
+    },
+    {
       "src": "/manifest.json",
       "dest": "/frontend/manifest.json"
     },

@@ -43,17 +43,6 @@
                     android:host="zamorin-cafe-erp.vercel.app"
                     android:pathPrefix="/cafe/" />
             </intent-filter>
-
-            <!-- Verified Android App Link: Alternate Custom Domain Host -->
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data
-                    android:scheme="https"
-                    android:host="zamorin.app"
-                    android:pathPrefix="/cafe/" />
-            </intent-filter>
         </activity>
 
         <!-- Secure FileProvider for Camera captures and System Share integration -->

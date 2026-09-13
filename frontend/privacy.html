@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy | Zamorin Café ERP</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --card-bg: #161b22;
+      --border: #30363d;
+      --text: #c9d1d9;
+      --text-heading: #f0f6fc;
+      --primary: #d97706;
+      --primary-light: #fbbf24;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      margin: 0;
+      padding: 0;
+    }
+    .container {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 40px 20px;
+    }
+    header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 24px;
+      margin-bottom: 32px;
+    }
+    h1 {
+      color: var(--text-heading);
+      font-size: 2rem;
+      margin: 0 0 8px 0;
+    }
+    .badge {
+      display: inline-block;
+      background: rgba(217, 119, 6, 0.2);
+      color: var(--primary-light);
+      padding: 4px 12px;
+      border-radius: 9999px;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+    h2 {
+      color: var(--text-heading);
+      font-size: 1.35rem;
+      margin-top: 32px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+    }
+    p, li {
+      font-size: 0.98rem;
+    }
+    ul {
+      padding-left: 20px;
+    }
+    li {
+      margin-bottom: 8px;
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+      margin: 20px 0;
+    }
+    footer {
+      border-top: 1px solid var(--border);
+      margin-top: 48px;
+      padding-top: 24px;
+      font-size: 0.85rem;
+      color: #8b949e;
+      text-align: center;
+    }
+    a {
+      color: var(--primary-light);
+      text-decoration: none;
+    }
+    a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <span class="badge">Enterprise Statutory & Operational Policy</span>
+      <h1>Zamorin Café ERP — Privacy Policy</h1>
+      <p>Effective Date: September 13, 2026 | Last Updated: September 13, 2026</p>
+    </header>
+
+    <div class="card">
+      <p><strong>Overview:</strong> Zamorin Café ERP provides integrated point-of-sale (POS), multi-branch inventory, statutory payroll, and operational governance software across Web, Android, iOS, macOS, and Windows. This policy governs how enterprise data is collected, processed, retained, and protected.</p>
+    </div>
+
+    <h2>1. Data Collection & Processing Scope</h2>
+    <p>Zamorin Café ERP operates on a multi-tenant enterprise basis. Data collected is strictly operational and necessary for restaurant and statutory compliance:</p>
+    <ul>
+      <li><strong>Authentication & Profile:</strong> Organisation ID, employee work email, encrypted authentication credentials, role classifications (Master, Owner, Manager, Cashier, Staff), and session security tokens.</li>
+      <li><strong>Commercial & Statutory Transactions:</strong> Point of Sale orders, GST-compliant tax invoices, statutory sequence counters (Rule 46(b)), payments (cash, card, UPI reference IDs), and line items.</li>
+      <li><strong>Inventory & Procurement:</strong> Purchase Orders, Goods Receipt Notes (GRN), Supplier Invoices, stock ledger movements, and three-way variance records.</li>
+      <li><strong>Statutory HR & Payroll:</strong> Employee rosters, attendance registers, wage records, EPF Scheme 1952 membership records, and ESI Rule 50 contribution metrics.</li>
+      <li><strong>Evidence & Attachments:</strong> Scanned supplier invoices, delivery challans, receipt photographs, and digital inspection logs.</li>
+    </ul>
+
+    <h2>2. Device Capabilities & Native Access</h2>
+    <p>The native application shells (Android, iOS, macOS, Windows) request only permissions strictly required for explicit operational workflows:</p>
+    <ul>
+      <li><strong>Camera Access:</strong> Used solely to capture physical receipts, delivery challans, procurement documentation, or scan café login QR codes. No background camera recording is ever performed.</li>
+      <li><strong>Photo & Document Pickers:</strong> Uses system pickers (Storage Access Framework on Android, UIDocumentPicker on iOS, FileOpenPicker on Windows, NSOpenPanel on macOS) to attach user-selected business documents. No unrestricted file-system scanning occurs.</li>
+      <li><strong>Storage Access Framework (SAF):</strong> On Android, documents (PDF invoices, Excel reports) are exported exclusively into the user-selected folder.</li>
+      <li><strong>Printing Frameworks:</strong> Leverages the platform's native print framework (Android Print Framework, Apple AirPrint, Windows Spooler) to output receipts and reports.</li>
+    </ul>
+
+    <h2>3. Scoping, Multi-Tenancy & Security Isolation</h2>
+    <p>Every commercial record is strictly scoped by Organisation ID and Café ID. Cross-tenant and cross-café data access is cryptographically and logically rejected at the authoritative backend gateway. Privileged commands from untrusted web origins are blocked by native client bridge allowlists.</p>
+
+    <h2>4. Data Retention & Statutory Archival</h2>
+    <p>Commercial invoices, GST ledgers, and audit logs are retained in accordance with applicable statutory mandates (including the GST Act requirements for minimum record preservation). Data is hosted in secured production environments with TLS 1.3 encryption in transit and AES-256 encryption at rest.</p>
+
+    <h2>5. Third-Party Sharing & Advertising</h2>
+    <p><strong>Zero Third-Party Advertising:</strong> Zamorin Café ERP contains no advertisements, no commercial tracking SDKs, and does not sell or broker business data to third-party brokers.</p>
+
+    <h2>6. User Rights & Contact Information</h2>
+    <p>Enterprise administrators and employees may inspect audit logs, request copies of operational documents, or update profile information through their designated organisation Master or Owner.</p>
+    <p>For privacy inquiries or technical data requests, contact:<br>
+      <strong>Data Protection Officer</strong><br>
+      Zamorin Café ERP Governance & Security<br>
+      Email: <a href="mailto:privacy@zamorin.cafe">privacy@zamorin.cafe</a> / <a href="mailto:support@zamorin.cafe">support@zamorin.cafe</a><br>
+      Website: <a href="https://zamorin-cafe-erp.vercel.app">https://zamorin-cafe-erp.vercel.app</a>
+    </p>
+
+    <footer>
+      &copy; 2026 Zamorin Café ERP. All rights reserved. Registered Enterprise System.
+    </footer>
+  </div>
+</body>
+</html>

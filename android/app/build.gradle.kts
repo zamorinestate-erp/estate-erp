@@ -17,12 +17,17 @@ android {
 
     signingConfigs {
         create("release") {
-            val keystoreFile = file("release.keystore")
-            if (keystoreFile.exists()) {
+            val keystorePath = System.getenv("ZAMORIN_RELEASE_KEYSTORE_PATH")
+            val keystoreFile = if (!keystorePath.isNullOrEmpty()) file(keystorePath) else file("release.keystore")
+            val envStorePass = System.getenv("ZAMORIN_RELEASE_STORE_PASSWORD")
+            val envKeyPass = System.getenv("ZAMORIN_RELEASE_KEY_PASSWORD")
+            val envAlias = System.getenv("ZAMORIN_RELEASE_KEY_ALIAS") ?: "zamorin_release"
+
+            if (keystoreFile.exists() && !envStorePass.isNullOrEmpty() && !envKeyPass.isNullOrEmpty()) {
                 storeFile = keystoreFile
-                storePassword = System.getenv("ZAMORIN_RELEASE_STORE_PASSWORD") ?: "zamorin_erp_2026_secure"
-                keyAlias = System.getenv("ZAMORIN_RELEASE_KEY_ALIAS") ?: "zamorin_release"
-                keyPassword = System.getenv("ZAMORIN_RELEASE_KEY_PASSWORD") ?: "zamorin_erp_2026_secure"
+                storePassword = envStorePass
+                keyAlias = envAlias
+                keyPassword = envKeyPass
             }
         }
     }
