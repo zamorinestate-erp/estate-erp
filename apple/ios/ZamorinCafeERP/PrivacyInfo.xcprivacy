@@ -24,13 +24,13 @@
                 <string>CA92.1</string>
             </array>
         </dict>
-        <!-- File Timestamp: used to preserve statutory invoice and export creation timestamps -->
+        <!-- File Timestamp: used to manage statutory invoices in user-granted document locations -->
         <dict>
             <key>NSPrivacyAccessedAPIType</key>
             <string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
             <key>NSPrivacyAccessedAPITypeReasons</key>
             <array>
-                <string>C617.1</string>
+                <string>3B52.1</string>
             </array>
         </dict>
     </array>
