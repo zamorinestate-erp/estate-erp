@@ -33,6 +33,10 @@ const {
   reopenFinancialPeriod,
   getFinancialStatements,
   getFinanceIntegrity,
+  generateGstTaxInvoice,
+  downloadGstInvoicePdf,
+  getGstr1Report,
+  commitZReport,
 } = require('../controllers/financeController');
 
 const router = express.Router();
@@ -273,6 +277,32 @@ router.get(
   '/integrity',
   authorize('FINANCE:READ', { allowedRoles: ['MASTER', 'OWNER'] }),
   getFinanceIntegrity
+);
+
+// 15. Statutory GST Invoicing & GSTR Returns (Stage 08)
+router.post(
+  '/invoices/gst',
+  authorize('FINANCE:WRITE', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN', 'STAFF', 'CASHIER'] }),
+  generateGstTaxInvoice
+);
+
+router.get(
+  '/invoices/:id/pdf',
+  authorize('FINANCE:READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN', 'STAFF', 'CASHIER'] }),
+  downloadGstInvoicePdf
+);
+
+router.get(
+  '/reports/gstr1/:cafeId',
+  authorize('FINANCE:READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  getGstr1Report
+);
+
+// 16. Daily Till Reconciliation & Z-Report Settlement (Stage 08)
+router.post(
+  '/reconciliation/z-report',
+  authorize('FINANCE:WRITE', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN', 'CASHIER'] }),
+  commitZReport
 );
 
 module.exports = router;

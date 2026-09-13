@@ -16,6 +16,9 @@ const { Payslip } = require('../models/Payslip');
 const { PersonalLedger } = require('../models/PersonalLedger');
 const { DashboardTarget } = require('../models/DashboardTarget');
 const { SequenceCounter } = require('../models/SequenceCounter');
+const { TaxInvoice } = require('../models/TaxInvoice');
+const gstTaxService = require('../services/gstTaxService');
+const zReportService = require('../services/zReportService');
 const { ApiError } = require('../utils/ApiError');
 const { asyncHandler } = require('../utils/asyncHandler');
 
@@ -659,6 +662,12 @@ const createJournal = asyncHandler(async (request, response) => {
 
   if (cafeId) ensureCafeAccess(request, cafeId);
 
+  // Validate Period Status - Cannot post or create journals in closed financial period
+  const period = await FinancialPeriod.findOne({ organisationId, periodId });
+  if (period && period.status === 'CLOSED') {
+    throw new ApiError(403, 'PERIOD_CLOSED', `Financial period ${periodId} is closed. Modifications and postings are locked.`);
+  }
+
   // Validate Control Account restrictions for manual journals
   if (journalType === 'MANUAL') {
     const coaAccounts = await ChartOfAccount.find({
@@ -1288,6 +1297,157 @@ const getFinanceIntegrity = asyncHandler(async (request, response) => {
   });
 });
 
+/**
+ * POST /api/v1/finance/invoices/gst
+ * Generate Authoritative CBIC Statutory GST Tax Invoice
+ */
+const generateGstTaxInvoice = asyncHandler(async (request, response) => {
+  const { organisationId } = request.auth;
+  const {
+    cafeId,
+    orderId,
+    billId,
+    invoiceDate,
+    supplyType,
+    placeOfSupply,
+    reverseCharge,
+    supplierDetails,
+    recipientDetails,
+    lineItems,
+    authorizedSignatory,
+  } = request.body;
+
+  if (!cafeId || !Array.isArray(lineItems) || lineItems.length === 0) {
+    throw new ApiError(400, 'VALIDATION_FAILED', 'cafeId and at least one lineItem are required for GST tax invoice generation.');
+  }
+
+  ensureCafeAccess(request, cafeId);
+
+  const invoice = await gstTaxService.generateStatutoryTaxInvoice({
+    organisationId,
+    cafeId,
+    orderId,
+    billId,
+    invoiceDate: invoiceDate ? new Date(invoiceDate) : new Date(),
+    supplyType: supplyType || 'INTRA_STATE',
+    placeOfSupply: placeOfSupply || '32-Kerala',
+    reverseCharge: !!reverseCharge,
+    supplierDetails,
+    recipientDetails,
+    lineItems,
+    authorizedSignatory,
+    auth: request.auth,
+  });
+
+  return response.status(201).json({
+    success: true,
+    message: 'Statutory GST Tax Invoice generated successfully.',
+    data: invoice,
+    correlationId: request.correlationId || null,
+  });
+});
+
+/**
+ * GET /api/v1/finance/invoices/:id/pdf
+ * Render and stream official CBIC GST Tax Invoice PDF
+ */
+const downloadGstInvoicePdf = asyncHandler(async (request, response) => {
+  const { organisationId } = request.auth;
+  const invoiceIdentifier = request.params.id;
+
+  const invoiceQuery = TaxInvoice.findOne({
+    organisationId,
+    $or: [
+      { invoiceId: invoiceIdentifier },
+      { invoiceNumber: invoiceIdentifier },
+      ...(mongoose.isValidObjectId(invoiceIdentifier) ? [{ _id: invoiceIdentifier }] : []),
+    ],
+  });
+  const invoice = invoiceQuery && typeof invoiceQuery.lean === 'function' ? await invoiceQuery.lean() : await invoiceQuery;
+
+  if (!invoice) {
+    throw new ApiError(404, 'INVOICE_NOT_FOUND', 'GST Tax Invoice not found.');
+  }
+
+  ensureCafeAccess(request, invoice.cafeId);
+
+  const pdfResult = gstTaxService.renderStatutoryGstInvoicePdf(invoice);
+
+  const exportId = `EXP-GST-${Date.now().toString(36).toUpperCase()}`;
+  response.setHeader('Content-Type', pdfResult.mimeType);
+  response.setHeader('Content-Disposition', `inline; filename="${pdfResult.filename}"`);
+  response.setHeader('X-Export-Id', exportId);
+  response.setHeader('Content-Length', pdfResult.buffer.length);
+  response.setHeader('X-Content-Type-Options', 'nosniff');
+
+  return response.send(pdfResult.buffer);
+});
+
+/**
+ * GET /api/v1/finance/reports/gstr1/:cafeId
+ * Generate GSTR-1 outward tax return summary
+ */
+const getGstr1Report = asyncHandler(async (request, response) => {
+  const { organisationId } = request.auth;
+  const { cafeId } = request.params;
+  const { from, to } = request.query;
+
+  if (cafeId && cafeId !== 'ALL') {
+    ensureCafeAccess(request, cafeId);
+  }
+
+  const report = await gstTaxService.generateGstr1Summary({
+    organisationId,
+    cafeId: cafeId === 'ALL' ? null : cafeId,
+    fromDate: from || null,
+    toDate: to || null,
+  });
+
+  return response.status(200).json({
+    success: true,
+    data: report,
+    correlationId: request.correlationId || null,
+  });
+});
+
+/**
+ * POST /api/v1/finance/reconciliation/z-report
+ * Commit Daily Till Settlement & Z-Report
+ */
+const commitZReport = asyncHandler(async (request, response) => {
+  const { organisationId } = request.auth;
+  const {
+    cafeId,
+    registerSessionId,
+    denominations,
+    countedCashPaisa,
+    closingDeclarationNote,
+  } = request.body;
+
+  if (!cafeId) {
+    throw new ApiError(400, 'VALIDATION_FAILED', 'cafeId is required for Z-Report settlement.');
+  }
+
+  ensureCafeAccess(request, cafeId);
+
+  const zReport = await zReportService.commitZReportSettlement({
+    organisationId,
+    cafeId,
+    registerSessionId,
+    denominations,
+    countedCashPaisa,
+    closingDeclarationNote,
+    auth: request.auth,
+  });
+
+  return response.status(200).json({
+    success: true,
+    message: 'Daily cash reconciliation settled and Z-Report committed.',
+    data: zReport,
+    correlationId: request.correlationId || null,
+  });
+});
+
 module.exports = {
   getFinanceOverview,
   getSalesAudit,
@@ -1316,4 +1476,8 @@ module.exports = {
   reopenFinancialPeriod,
   getFinancialStatements,
   getFinanceIntegrity,
+  generateGstTaxInvoice,
+  downloadGstInvoicePdf,
+  getGstr1Report,
+  commitZReport,
 };
