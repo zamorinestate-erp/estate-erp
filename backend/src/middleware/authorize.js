@@ -375,6 +375,31 @@ function authorize(
     selfOnly = false,
   } = {}
 ) {
+  if (Array.isArray(permissionCode)) {
+    const roles = permissionCode.map((r) => String(r).toUpperCase());
+    return async function roleOnlyMiddleware(request, response, next) {
+      if (!request.auth) {
+        return sendAuthorizationError(
+          response,
+          'AUTHENTICATION_REQUIRED',
+          'Authentication is required.',
+          401,
+          request
+        );
+      }
+      if (!roles.includes(String(request.auth.role).toUpperCase())) {
+        return sendAuthorizationError(
+          response,
+          'PERMISSION_DENIED',
+          'You do not have permission to perform this action.',
+          403,
+          request
+        );
+      }
+      return next();
+    };
+  }
+
   const normalizedPermissionCode =
     normalizePermissionCode(
       permissionCode

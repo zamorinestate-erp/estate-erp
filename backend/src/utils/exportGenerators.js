@@ -691,9 +691,10 @@ function generateTaxInvoicePdf(bill, cafeBranding = {}) {
 
   pdfData += `trailer\n<< /Size ${bodyObjects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
 
+  const safeInvoiceFilename = String(invoiceNum).replace(/[\/\\?%*:|"<>]/g, '-');
   return {
     buffer: Buffer.from(pdfData, 'utf8'),
-    filename: `${invoiceNum}.pdf`,
+    filename: `${safeInvoiceFilename}.pdf`,
     mimeType: 'application/pdf',
   };
 }
