@@ -94,6 +94,9 @@ export const NAVIGATION = {
     items: [
       { id: 'dashboard',    label: 'Overview',                icon: 'home',         route: 'dashboard',       group: 'COMMAND' },
       { id: 'approvals',    label: 'Tasks & Oversight',       icon: 'tasks',        route: 'approvals',       group: 'OPERATIONS' },
+      { id: 'owner-food-safety', label: 'Food Safety & Recall', icon: 'quality',     route: 'owner-food-safety', group: 'OPERATIONS' },
+      { id: 'owner-risk-audit',  label: 'Risk, Audit & Fraud Control', icon: 'shield', route: 'owner-risk-audit', group: 'GOVERNANCE' },
+      { id: 'owner-planning',    label: 'Planning, Budget & CAPEX', icon: 'finance', route: 'owner-planning', group: 'GOVERNANCE' },
       { id: 'bills',        label: 'Bills & Receipts',        icon: 'bills',        route: 'bills',           group: 'FINANCE' },
       { id: 'sales-cash',   label: 'Sales & Cash Book',       icon: 'finance',      route: 'sales-cash',      group: 'FINANCE' },
       { id: 'performance',  label: 'Café Performance',        icon: 'performance',  route: 'performance',     group: 'INSIGHTS' },

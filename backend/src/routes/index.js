@@ -83,6 +83,15 @@ const approvalRoutes =
 const qualityRoutes =
   require('./qualityRoutes');
 
+const foodSafetyGovernanceRoutes =
+  require('./foodSafetyGovernanceRoutes');
+
+const ownerRiskAuditRoutes =
+  require('./ownerRiskAuditRoutes');
+
+const ownerPlanningRoutes =
+  require('./ownerPlanningRoutes');
+
 const assetRoutes =
   require('./assetRoutes');
 
@@ -298,6 +307,21 @@ router.use(
 router.use(
   '/quality',
   qualityRoutes
+);
+
+router.use(
+  '/food-safety',
+  foodSafetyGovernanceRoutes
+);
+
+router.use(
+  '/risk-audit',
+  ownerRiskAuditRoutes
+);
+
+router.use(
+  '/planning',
+  ownerPlanningRoutes
 );
 
 router.use(

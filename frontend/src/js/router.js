@@ -65,6 +65,9 @@ import { renderCafeDeviceEnroll, wireCafeDeviceEnroll, resetCafeDeviceEnrollUi }
 import { renderCafeTerminalWelcome, wireCafeTerminalWelcome } from "./pages/cafeTerminalWelcome.js";
 import { renderOrgIdentity, wireOrgIdentity } from "./pages/organisationIdentity.js";
 import { renderSystemHealthPage, initSystemHealthPage } from "./pages/systemHealth.js";
+import { renderOwnerFoodSafety, wireOwnerFoodSafety, setOwnerFoodSafetySection } from "./pages/ownerFoodSafety.js";
+import { renderOwnerRiskAudit, wireOwnerRiskAudit, setOwnerRiskAuditSection } from "./pages/ownerRiskAudit.js";
+import { renderOwnerPlanning, wireOwnerPlanning, setOwnerPlanningSection } from "./pages/ownerPlanning.js";
 
 // ROLE_LABELS: display-safe generic labels used only for topbar scope chip
 // until /auth/me bootstrap provides the real user's display name.
@@ -499,6 +502,27 @@ async function renderPage() {
     case "tasks":
       content.innerHTML = renderTasks({ title: "Tasks & Approvals" });
       wireTasks(content);
+      break;
+
+    case "owner-food-safety":
+    case "food-safety":
+      setOwnerFoodSafetySection(subroute || "overview");
+      content.innerHTML = renderOwnerFoodSafety();
+      wireOwnerFoodSafety();
+      break;
+
+    case "owner-risk-audit":
+    case "risk-audit":
+      setOwnerRiskAuditSection(subroute || "overview");
+      content.innerHTML = renderOwnerRiskAudit();
+      wireOwnerRiskAudit();
+      break;
+
+    case "owner-planning":
+    case "planning":
+      setOwnerPlanningSection(subroute || "overview");
+      content.innerHTML = renderOwnerPlanning();
+      wireOwnerPlanning();
       break;
 
     case "approvals":
