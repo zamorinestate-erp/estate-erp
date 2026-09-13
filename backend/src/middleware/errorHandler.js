@@ -54,15 +54,18 @@ function errorHandler(error, req, res, next) {
     logStructuredError(error, req, { code, statusCode });
   } catch (_) {}
 
+  const reqId = req.requestId || req.correlationId || 'REQ-UNKNOWN';
+
   return res.status(statusCode).json({
     success: false,
     error: {
       code,
       message:
         statusCode === 500 && isProduction
-          ? 'An unexpected server error occurred.'
+          ? `Something went wrong. Reference: ${reqId}`
           : message,
     },
+    requestId: req.requestId || req.correlationId || null,
     correlationId: req.correlationId || null,
     ...(!isProduction && error.stack ? { stack: error.stack } : {}),
   });

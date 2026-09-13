@@ -119,6 +119,9 @@ const settingsRoutes =
 const kdsRoutes =
   require('./kdsRoutes');
 
+const systemRoutes =
+  require('./systemRoutes');
+
 const shiftRoutes =
   require('./shiftRoutes');
 
@@ -374,6 +377,11 @@ router.use(
 router.use(
   '/kds',
   kdsRoutes
+);
+
+router.use(
+  '/system',
+  systemRoutes
 );
 
 router.use(

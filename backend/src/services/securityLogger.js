@@ -177,9 +177,11 @@ function logSecurityEvent({
 
 function logStructuredError(error, req = null, additionalContext = {}) {
   const correlationId = req?.correlationId || (typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : null);
+  const requestId = req?.requestId || correlationId;
   const structured = {
     timestamp: new Date().toISOString(),
     type: 'APPLICATION_ERROR',
+    requestId,
     correlationId,
     path: req?.originalUrl || req?.url || null,
     method: req?.method || null,

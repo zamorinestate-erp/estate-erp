@@ -64,6 +64,7 @@ import { renderCafeMasterSignIn, wireCafeMasterSignIn, resetCafeMasterSignInUi }
 import { renderCafeDeviceEnroll, wireCafeDeviceEnroll, resetCafeDeviceEnrollUi } from "./pages/cafeDeviceEnroll.js";
 import { renderCafeTerminalWelcome, wireCafeTerminalWelcome } from "./pages/cafeTerminalWelcome.js";
 import { renderOrgIdentity, wireOrgIdentity } from "./pages/organisationIdentity.js";
+import { renderSystemHealthPage, initSystemHealthPage } from "./pages/systemHealth.js";
 
 // ROLE_LABELS: display-safe generic labels used only for topbar scope chip
 // until /auth/me bootstrap provides the real user's display name.
@@ -314,6 +315,12 @@ async function renderPage() {
       }
       break;
     }
+
+    case "system-health":
+    case "ops":
+      content.innerHTML = renderSystemHealthPage();
+      initSystemHealthPage();
+      break;
 
     case "staff-home":
       content.innerHTML = renderStaffHome();

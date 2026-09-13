@@ -5,7 +5,7 @@ services:
     rootDir: backend
     buildCommand: npm ci --only=production
     startCommand: node src/scripts/startProd.js
-    healthCheckPath: /readiness
+    healthCheckPath: /health/ready
     envVars:
       - key: NODE_ENV
         value: production

@@ -1,0 +1,74 @@
+{
+  "system": "Zamorin Café ERP",
+  "documentType": "THIRD_PARTY_DEPENDENCY_REGISTER",
+  "version": "1.0.0",
+  "lastAudited": "2026-09-13T06:00:00.000Z",
+  "dependencies": [
+    {
+      "serviceId": "DEP-01",
+      "name": "Vercel Cloud Platform",
+      "purpose": "Static Edge Web Hosting, Zero-Build Frontend Serving, CDN Edge Routing",
+      "operationalOwner": "Frontend / Release Lead",
+      "statusPageUrl": "https://www.vercel-status.com",
+      "credentialsOwner": "Primary Master",
+      "failureImpact": "CRITICAL: Frontend SPA interface becomes inaccessible.",
+      "fallbackStrategy": "Direct backup static file server (Caddy / Nginx) or local PWA offline shell cache.",
+      "recoveryProcedure": "DR-12 runbook in ZAMORIN_DISASTER_RECOVERY_RUNBOOK.md"
+    },
+    {
+      "serviceId": "DEP-02",
+      "name": "Render Cloud Services",
+      "purpose": "Node.js Express Production Backend Web Service & 10GB Persistent Document Disk",
+      "operationalOwner": "Backend Infrastructure Lead",
+      "statusPageUrl": "https://status.render.com",
+      "credentialsOwner": "Primary Master",
+      "failureImpact": "CRITICAL: Core API and document uploads become unavailable.",
+      "fallbackStrategy": "Point-in-time container restart or failover to secondary container instance.",
+      "recoveryProcedure": "DR-11 runbook in ZAMORIN_DISASTER_RECOVERY_RUNBOOK.md"
+    },
+    {
+      "serviceId": "DEP-03",
+      "name": "MongoDB Atlas",
+      "purpose": "3-Node Managed Replica Set (AWS Mumbai ap-south-1), Multi-Tenant Data Store",
+      "operationalOwner": "Database Operations (DBA)",
+      "statusPageUrl": "https://status.mongodb.com",
+      "credentialsOwner": "Primary Master & DBA",
+      "failureImpact": "CRITICAL: Complete transactional data store unavailable.",
+      "fallbackStrategy": "Automated replica-set failover; read-only mode if primary lost; PITR snapshot restore.",
+      "recoveryProcedure": "DR-10 runbook in ZAMORIN_DISASTER_RECOVERY_RUNBOOK.md"
+    },
+    {
+      "serviceId": "DEP-04",
+      "name": "GitHub & GitHub Actions",
+      "purpose": "Source Control, Protected Production Rulesets, CI/CD Pipeline & Invariant Gate Verification",
+      "operationalOwner": "DevOps / Release Lead",
+      "statusPageUrl": "https://www.githubstatus.com",
+      "credentialsOwner": "Primary Master",
+      "failureImpact": "HIGH: Release pipeline blocked; production runtime remains operational.",
+      "fallbackStrategy": "Local emergency tag and manual deploy deployment via CLI if authorized.",
+      "recoveryProcedure": "Emergency release procedure in ZAMORIN_PRODUCTION_OPERATIONS_RUNBOOK.md"
+    },
+    {
+      "serviceId": "DEP-05",
+      "name": "Google Workspace / Gmail API",
+      "purpose": "Operational Mailbox Dispatch, Security Alert Delivery, Daily Report Emailing",
+      "operationalOwner": "Mail Operations Lead",
+      "statusPageUrl": "https://www.google.com/appsstatus",
+      "credentialsOwner": "Primary Master",
+      "failureImpact": "MEDIUM: Outbound email delayed; transactions and POS continue uninterrupted.",
+      "fallbackStrategy": "In-app notifications via Notification model and NotificationOutbox queue retry.",
+      "recoveryProcedure": "ZAMORIN_ERP_OPERATIONS_EMAIL_SECURITY_RUNBOOK.md"
+    },
+    {
+      "serviceId": "DEP-06",
+      "name": "External Malware Scanner (Pending Provider)",
+      "purpose": "Off-Site Antivirus Binary Scanning for Uploaded Business Attachments",
+      "operationalOwner": "Security Engineering",
+      "statusPageUrl": "PENDING_PRODUCTION_PROVIDER",
+      "credentialsOwner": "Security Engineering",
+      "failureImpact": "LOW (Controlled): Heuristic scanner remains active; external scan remains in quarantine until completed.",
+      "fallbackStrategy": "Local signature & header heuristic engine blocks EICAR, MZ, PE, ELF, and malicious PDF triggers.",
+      "recoveryProcedure": "Quarantine workflow in ZAMORIN_PRODUCTION_OPERATIONS_RUNBOOK.md"
+    }
+  ]
+}

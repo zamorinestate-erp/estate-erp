@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ZamorinProductionReleaseChecklist",
+  "version": "1.0.0",
+  "description": "Pre-flight and post-deployment release verification gates for Zamorin Café ERP",
+  "preFlightGates": [
+    {
+      "id": "PRE-01",
+      "name": "Automated Quality & Regression Test Suites Pass",
+      "requirement": "npm run test:deploy-readiness exits code 0 with P0=0, P1=0",
+      "mandatory": true,
+      "verified": true
+    },
+    {
+      "id": "PRE-02",
+      "name": "Environment & Production Secret Validation",
+      "requirement": "Universal startup configuration validator reports zero MISSING or UNSAFE critical variables",
+      "mandatory": true,
+      "verified": true
+    },
+    {
+      "id": "PRE-03",
+      "name": "Database Migration Safety Pre-Flight",
+      "requirement": "migration_safety_checker.mjs confirms all pending migrations are backward-compatible",
+      "mandatory": true,
+      "verified": true
+    },
+    {
+      "id": "PRE-04",
+      "name": "MongoDB Atlas Backup Verification",
+      "requirement": "Latest automated cluster snapshot verified and restore capability confirmed",
+      "mandatory": true,
+      "verified": true
+    },
+    {
+      "id": "PRE-05",
+      "name": "Render Persistent Document Storage Verification",
+      "requirement": "Disk root mounted at /var/data/zamorin_documents with free capacity > 15%",
+      "mandatory": true,
+      "verified": true
+    },
+    {
+      "id": "PRE-06",
+      "name": "Release Manifest Generation",
+      "requirement": "LATEST_RELEASE_MANIFEST.json generated with git commit SHA and rollback target",
+      "mandatory": true,
+      "verified": true
+    }
+  ],
+  "postDeployGates": [
+    {
+      "id": "POST-01",
+      "name": "Liveness Probe Verification",
+      "endpoint": "GET /health/live",
+      "expectedStatus": 200,
+      "mandatory": true
+    },
+    {
+      "id": "POST-02",
+      "name": "Readiness Probe Verification",
+      "endpoint": "GET /health/ready",
+      "expectedStatus": 200,
+      "mandatory": true
+    },
+    {
+      "id": "POST-03",
+      "name": "Storage Probe Verification",
+      "endpoint": "GET /api/v1/system/storage",
+      "expectedStatus": 200,
+      "mandatory": true
+    },
+    {
+      "id": "POST-04",
+      "name": "Critical User Journey Smoke Test",
+      "requirement": "Read-only auth login context and POS catalog resolve with zero errors",
+      "mandatory": true
+    },
+    {
+      "id": "POST-05",
+      "name": "Post-Deploy Observation Window",
+      "requirement": "Zero SEV-1 alerts and 500 error rate < 0.05% for initial 30 minutes",
+      "mandatory": true
+    }
+  ]
+}

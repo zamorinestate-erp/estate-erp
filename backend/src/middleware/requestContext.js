@@ -21,20 +21,22 @@ function normalizeCorrelationId(value) {
 }
 
 function requestContext(request, response, next) {
-  const suppliedCorrelationId =
+  const suppliedId =
     normalizeCorrelationId(
-      request.get('x-correlation-id')
+      request.get('x-request-id') || request.get('x-correlation-id')
     );
 
-  const correlationId =
-    suppliedCorrelationId ||
-    crypto.randomUUID();
+  const requestId =
+    suppliedId ||
+    `REQ-${crypto.randomUUID()}`;
 
-  request.correlationId = correlationId;
+  request.requestId = requestId;
+  request.correlationId = requestId;
   request.requestStartedAt = new Date();
 
   if (typeof response.setHeader === 'function') {
-    response.setHeader('x-correlation-id', correlationId);
+    response.setHeader('x-request-id', requestId);
+    response.setHeader('x-correlation-id', requestId);
   }
 
   const startTime = process.hrtime.bigint();

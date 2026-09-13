@@ -202,6 +202,21 @@ function createApp(environment) {
     keyGenerator: (req) => ipKeyGenerator(getTrustedClientIp(req)),
   });
 
+  const livenessHandler = (request, response) =>
+    response.status(200).json({
+      success: true,
+      status: 'live',
+      service: SERVICE_NAME,
+      uptimeSeconds: Math.floor(process.uptime()),
+      timestamp: new Date().toISOString(),
+      requestId: request.requestId || request.correlationId || null,
+      correlationId: request.correlationId || null,
+    });
+
+  app.get('/health/live', livenessHandler);
+  app.get('/api/health/live', livenessHandler);
+  app.get('/api/v1/health/live', livenessHandler);
+
   const healthHandler = (request, response) =>
     response.status(200).json({
       success: true,
@@ -209,6 +224,8 @@ function createApp(environment) {
       service: SERVICE_NAME,
       timestamp:
         new Date().toISOString(),
+      requestId:
+        request.requestId || request.correlationId || null,
       correlationId:
         request.correlationId || null,
     });
@@ -240,13 +257,20 @@ function createApp(environment) {
         database: database.status,
         storage: storageStatus,
         timestamp: new Date().toISOString(),
+        requestId: request.requestId || request.correlationId || null,
         correlationId: request.correlationId || null,
       });
   };
 
+  app.get('/health/ready', readinessHandler);
+  app.get('/api/health/ready', readinessHandler);
+  app.get('/api/v1/health/ready', readinessHandler);
   app.get('/api/v1/readiness', readinessHandler);
   app.get('/api/readiness', readinessHandler);
   app.get('/readiness', readinessHandler);
+
+  const { createMaintenanceMiddleware } = require('./middleware/maintenanceMode');
+  app.use(createMaintenanceMiddleware());
 
   app.use('/api/', apiLimiter);
   app.use('/api/v1', apiRouter);
@@ -306,6 +330,10 @@ async function startServer() {
 
   // Validate durable document storage configuration before accepting traffic (Fails safe if unconfigured in production)
   documentStorageAdapter.validateStartupConfiguration(environment);
+
+  // Universal production configuration & secrets validator (Fails safe: reports PRESENT/MISSING/INVALID/UNSAFE without revealing secrets)
+  const { validateStartupConfiguration: validateConfig } = require('./config/startupValidator');
+  validateConfig(environment, { failClosed: true });
 
   const app =
     createApp(environment);

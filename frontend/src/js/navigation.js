@@ -68,6 +68,7 @@ const PRIMARY_MASTER_ITEMS = [
 
   // ── SYSTEM ───────────────────────────────────────────────────────────────────
   { id: 'cafe-ops-devices', label: 'Devices & Sessions',  icon: 'devices',      route: 'cafe-ops-devices',  group: 'SYSTEM' },
+  { id: 'system-health', label: 'System Health & Ops',    icon: 'settings',     route: 'system-health',     group: 'SYSTEM' },
   { id: 'settings',      label: 'Settings',               icon: 'settings',     route: 'settings',          group: 'SYSTEM' },
 ];
 
@@ -104,6 +105,7 @@ export const NAVIGATION = {
       { id: 'payroll',      label: 'Payroll & Payslips',      icon: 'payslip',      route: 'payroll',         group: 'PEOPLE' },
       { id: 'revenue-share',label: 'Revenue Share & Outlets', icon: 'revenueShare', route: 'revenue-share', group: 'COMMERCIAL' },
       { id: 'reports',      label: 'Reports',                 icon: 'reports',      route: 'reports',         group: 'INSIGHTS' },
+      { id: 'system-health',label: 'System Health & Ops',     icon: 'settings',     route: 'system-health',   group: 'SYSTEM' },
       { id: 'settings',     label: 'Settings',                icon: 'settings',     route: 'settings',        group: 'SYSTEM' },
     ],
     footnote: 'Owner Portal — strategic governance, executive metrics, and café oversight.',
