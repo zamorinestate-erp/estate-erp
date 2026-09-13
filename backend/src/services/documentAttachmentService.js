@@ -8,6 +8,7 @@ const { BusinessDocument } = require('../models/BusinessDocument');
 const { SequenceCounter } = require('../models/SequenceCounter');
 const auditService = require('./auditService');
 const { SecurityScannerService } = require('./securityScannerService');
+const { documentStorageAdapter } = require('./documentStorageAdapter');
 const { ApiError } = require('../utils/ApiError');
 
 // Strict extension & MIME validation per OWASP recommendation: PDF, JPG, PNG only
@@ -19,11 +20,10 @@ const ALLOWED_MIME_TYPES = new Map([
 ]);
 
 const MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024; // 15MB hard boundary
-const PROTECTED_DOCS_DIR = process.env.DOCUMENT_STORAGE_DIR || path.join(process.cwd(), 'data', 'protected_documents');
 
 class DocumentAttachmentService {
-  static getProtectedStorageDir() {
-    return PROTECTED_DOCS_DIR;
+  static getStorageAdapter() {
+    return documentStorageAdapter;
   }
 
   static validateFileMime(mimeType, filename = '') {
@@ -88,7 +88,7 @@ class DocumentAttachmentService {
 
   /**
    * Validate and attach a business document to any record.
-   * Supports temporary disk-backed staging via tempFilePath or in-memory fallback.
+   * Uses temporary disk-backed staging and persists into durable document storage.
    */
   static async attachDocument({
     organisationId,
@@ -197,17 +197,40 @@ class DocumentAttachmentService {
       const ext = ALLOWED_MIME_TYPES.get(normMime);
       const internalFilename = `${documentId}.${ext}`;
 
-      // 5. Safe Persistence to Protected Document Storage (Outside Web Root)
-      let finalStoragePath = null;
+      // 5. Safe Persistence via Durable Document Storage Adapter
+      const storageKey = documentStorageAdapter.generateStorageKey({
+        organisationId,
+        documentId,
+        mimeType: normMime,
+      });
+
+      let storedResult = null;
       if (tempFilePath) {
-        await fs.promises.mkdir(PROTECTED_DOCS_DIR, { recursive: true });
-        finalStoragePath = path.join(PROTECTED_DOCS_DIR, internalFilename);
-        
-        // Move/copy file to protected repository
-        await fs.promises.copyFile(tempFilePath, finalStoragePath);
-        
+        storedResult = await documentStorageAdapter.put({
+          filePath: tempFilePath,
+          storageKey,
+          mimeType: normMime,
+          sizeBytes: effectiveSize,
+          organisationId,
+        });
         // Clean up temporary staged file after successful persistence
         await fs.promises.unlink(tempFilePath).catch(() => {});
+      } else if (fileBuffer) {
+        storedResult = await documentStorageAdapter.put({
+          buffer: fileBuffer,
+          storageKey,
+          mimeType: normMime,
+          sizeBytes: effectiveSize,
+          organisationId,
+        });
+      } else if (fileBase64) {
+        storedResult = await documentStorageAdapter.put({
+          buffer: Buffer.from(fileBase64, 'base64'),
+          storageKey,
+          mimeType: normMime,
+          sizeBytes: effectiveSize,
+          organisationId,
+        });
       }
 
       const doc = await BusinessDocument.create({
@@ -227,7 +250,9 @@ class DocumentAttachmentService {
         mimeType: normMime,
         sizeBytes: effectiveSize,
         checksum,
-        storagePath: finalStoragePath,
+        storageKey: storedResult?.storageKey || storageKey,
+        storagePath: storedResult?.storagePath || null,
+        storageDriver: storedResult?.storageDriver || 'RENDER_PERSISTENT_DISK',
         fileBuffer: fileBuffer || null,
         fileData: fileBase64 || null,
         securityScanStatus: scanResult.status,
@@ -241,7 +266,9 @@ class DocumentAttachmentService {
             mimeType: normMime,
             sizeBytes: effectiveSize,
             checksum,
-            storagePath: finalStoragePath,
+            storageKey: storedResult?.storageKey || storageKey,
+            storagePath: storedResult?.storagePath || null,
+            storageDriver: storedResult?.storageDriver || 'RENDER_PERSISTENT_DISK',
             fileBuffer: fileBuffer || null,
             fileData: fileBase64 || null,
             securityScanStatus: scanResult.status,
@@ -273,6 +300,8 @@ class DocumentAttachmentService {
           originalFilename,
           sizeBytes: effectiveSize,
           mimeType: normMime,
+          storageKey: storedResult?.storageKey,
+          storageDriver: storedResult?.storageDriver,
           securityScanStatus: scanResult.status,
           relatedModule,
           relatedRecordId,
@@ -281,7 +310,6 @@ class DocumentAttachmentService {
 
       return doc;
     } catch (error) {
-      // Ensure temp file is cleaned on validation failure or persistence failure
       if (tempFilePath && fs.existsSync(tempFilePath)) {
         await fs.promises.unlink(tempFilePath).catch(() => {});
       }
@@ -396,12 +424,38 @@ class DocumentAttachmentService {
         throw new ApiError(400, 'MALWARE_DETECTED', `Replacement version rejected by security scanner: ${scanResult.details}`);
       }
 
-      let finalStoragePath = null;
+      const newVersionKey = documentStorageAdapter.generateStorageKey({
+        organisationId,
+        documentId: `${doc.documentId}_v${nextVersion}`,
+        mimeType: normMime,
+      });
+
+      let storedResult = null;
       if (tempFilePath) {
-        await fs.promises.mkdir(PROTECTED_DOCS_DIR, { recursive: true });
-        finalStoragePath = path.join(PROTECTED_DOCS_DIR, internalFilename);
-        await fs.promises.copyFile(tempFilePath, finalStoragePath);
+        storedResult = await documentStorageAdapter.put({
+          filePath: tempFilePath,
+          storageKey: newVersionKey,
+          mimeType: normMime,
+          sizeBytes: effectiveSize,
+          organisationId,
+        });
         await fs.promises.unlink(tempFilePath).catch(() => {});
+      } else if (fileBuffer) {
+        storedResult = await documentStorageAdapter.put({
+          buffer: fileBuffer,
+          storageKey: newVersionKey,
+          mimeType: normMime,
+          sizeBytes: effectiveSize,
+          organisationId,
+        });
+      } else if (fileBase64) {
+        storedResult = await documentStorageAdapter.put({
+          buffer: Buffer.from(fileBase64, 'base64'),
+          storageKey: newVersionKey,
+          mimeType: normMime,
+          sizeBytes: effectiveSize,
+          organisationId,
+        });
       }
 
       const versionRecord = {
@@ -411,7 +465,9 @@ class DocumentAttachmentService {
         mimeType: normMime,
         sizeBytes: effectiveSize,
         checksum,
-        storagePath: finalStoragePath,
+        storageKey: storedResult?.storageKey || newVersionKey,
+        storagePath: storedResult?.storagePath || null,
+        storageDriver: storedResult?.storageDriver || 'RENDER_PERSISTENT_DISK',
         fileBuffer: fileBuffer || null,
         fileData: fileBase64 || null,
         securityScanStatus: scanResult.status,
@@ -428,7 +484,9 @@ class DocumentAttachmentService {
       doc.mimeType = normMime;
       doc.sizeBytes = effectiveSize;
       doc.checksum = checksum;
-      doc.storagePath = finalStoragePath;
+      doc.storageKey = storedResult?.storageKey || newVersionKey;
+      doc.storagePath = storedResult?.storagePath || null;
+      doc.storageDriver = storedResult?.storageDriver || 'RENDER_PERSISTENT_DISK';
       doc.fileBuffer = fileBuffer || null;
       doc.fileData = fileBase64 || null;
       doc.securityScanStatus = scanResult.status;

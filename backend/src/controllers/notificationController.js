@@ -90,7 +90,8 @@ function buildNotificationFilter(request) {
   const cafeId = normalizeIdentifier(request.query.cafeId);
   if (cafeId) {
     if (request.auth.role !== 'MASTER' && (!request.auth.assignedCafeIds || !request.auth.assignedCafeIds.includes(cafeId))) {
-      throw new ApiError(403, 'CAFE_ACCESS_DENIED', 'You do not have access to this café.');
+      const errCode = request.auth.role === 'OWNER' ? 'CROSS_CAFE_RESOURCE_DENIED' : 'CAFE_ACCESS_DENIED';
+      throw new ApiError(403, errCode, 'You do not have access to this café.');
     }
     filter.cafeId = cafeId;
   }

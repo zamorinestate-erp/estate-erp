@@ -548,6 +548,8 @@ export function wireLoginPage2(container, { onSubmit, onForgotPassword, onCafeOp
             errorEl.textContent = "The server is taking longer than expected to respond. Please check your connection and try again.";
           } else if (err.isNetworkError || err.code === "NETWORK_UNAVAILABLE" || rawMsg.includes("could not be reached")) {
             errorEl.textContent = "The server could not be reached. Please check your network connection.";
+          } else if (err.status === 429 || err.code === "TOO_MANY_REQUESTS" || err.code === "RATE_LIMITED" || rawMsg.toLowerCase().includes("too many requests")) {
+            errorEl.textContent = "Too many sign-in attempts detected. Please wait a moment before trying again.";
           } else if (err.isServerError || (err.status >= 500 && err.status <= 599)) {
             errorEl.textContent = "The server encountered a temporary error. Please try again in a moment.";
           } else {
@@ -556,10 +558,8 @@ export function wireLoginPage2(container, { onSubmit, onForgotPassword, onCafeOp
           errorEl.style.display = "block";
         }
       } finally {
-        if (!errorEl || errorEl.style.display === "none") {
-          if (progressTimer) clearTimeout(progressTimer);
-          isSubmitting = false;
-        }
+        if (progressTimer) clearTimeout(progressTimer);
+        isSubmitting = false;
       }
     });
   }

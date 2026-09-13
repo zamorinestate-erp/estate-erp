@@ -189,25 +189,35 @@ const listTasks = asyncHandler(async (request, response) => {
 const getTask = asyncHandler(async (request, response) => {
   const taskId = normalizeId(request.params.taskId);
 
-  const task = await Task.findOne({
+  const query = Task.findOne({
     taskId,
     organisationId: request.auth.organisationId,
-  }).lean();
+  });
+  const task = query && typeof query.lean === 'function' ? await query.lean() : await query;
 
   if (!task) {
     throw new ApiError(404, 'TASK_NOT_FOUND', `Task ${taskId} not found.`);
   }
 
-  // Scoping check
-  if (request.auth.role === 'OWNER' && task.cafeId) {
-    if (!(request.auth.assignedCafeIds || []).includes(task.cafeId)) {
-      throw new ApiError(403, 'ACCESS_DENIED', 'You do not have access to tasks in this location.');
-    }
+  assertResourceCafeOwnership(task, request, 'Task');
+
+  let auditTrail = [];
+  try {
+    const auditQuery = AuditEvent.find({
+      organisationId: request.auth.organisationId,
+      'target.entityType': 'TASK',
+      'target.entityId': taskId,
+    });
+    auditTrail = auditQuery && typeof auditQuery.sort === 'function'
+      ? await auditQuery.sort({ createdAt: -1 }).limit(25).lean()
+      : [];
+  } catch (_) {
+    auditTrail = [];
   }
 
   return response.status(200).json({
     success: true,
-    data: { task },
+    data: { task, auditTrail },
     correlationId: request.correlationId || null,
   });
 });
@@ -240,10 +250,24 @@ const createTask = asyncHandler(async (request, response) => {
     throw new ApiError(400, 'TITLE_REQUIRED', 'Task title is required.');
   }
 
-  const targetCafeId = cafeId ? normalizeId(cafeId) : null;
-  if (request.auth.role === 'OWNER' && targetCafeId) {
-    if (!(request.auth.assignedCafeIds || []).includes(targetCafeId)) {
-      throw new ApiError(403, 'CAFE_OUT_OF_SCOPE', 'You can only assign tasks to your authorized cafés.');
+  const effectiveCafe = resolveEffectiveCafeScope(request);
+  let targetCafeId = cafeId ? normalizeId(cafeId) : null;
+
+  if (request.auth.role === 'CAFE_ADMIN') {
+    targetCafeId = effectiveCafe;
+  } else if (request.auth.role === 'OWNER') {
+    const rawCafes = [
+      ...(Array.isArray(request.auth.assignedCafeIds) ? request.auth.assignedCafeIds : (request.auth.assignedCafeIds ? [request.auth.assignedCafeIds] : [])),
+      ...(request.auth.primaryCafeId ? [request.auth.primaryCafeId] : []),
+      ...(request.auth.cafeId ? [request.auth.cafeId] : []),
+    ];
+    const authorizedCafes = [...new Set(rawCafes.filter(Boolean).map(c => String(c).trim().toUpperCase()))];
+    if (targetCafeId) {
+      if (!authorizedCafes.includes(targetCafeId)) {
+        throw new ApiError(403, 'CAFE_OUT_OF_SCOPE', 'You can only assign tasks to your authorized cafés.');
+      }
+    } else if (authorizedCafes.length === 1) {
+      targetCafeId = authorizedCafes[0];
     }
   }
 
@@ -271,7 +295,7 @@ const createTask = asyncHandler(async (request, response) => {
     dueDate: dueDate && /^\d{4}-\d{2}-\d{2}$/.test(dueDate) ? dueDate : null,
     dueTime: dueTime ? String(dueTime).trim() : '23:59',
     verificationRequired: Boolean(verificationRequired),
-    verificationStatus: verificationRequired ? 'NONE' : 'NONE',
+    verificationStatus: 'NONE',
     checklist: Array.isArray(checklist) ? checklist.map(c => ({
       item: String(c.item || c).trim(),
       status: 'PENDING',
@@ -328,24 +352,38 @@ const updateTaskStatus = asyncHandler(async (request, response) => {
     throw new ApiError(404, 'NOT_FOUND', 'Task not found.');
   }
 
+  assertResourceCafeOwnership(task, request, 'Task');
+
+  if (task.status === 'CANCELLED') {
+    throw new ApiError(400, 'TASK_CANCELLED', 'Cancelled tasks cannot be modified.');
+  }
+
+  if (task.status === 'COMPLETED' && targetStatus !== 'COMPLETED') {
+    throw new ApiError(400, 'TASK_COMPLETED', 'Completed task cannot be modified directly. Use /reopen to reopen.');
+  }
+
+  if (targetStatus === 'BLOCKED') {
+    throw new ApiError(400, 'USE_BLOCK_ENDPOINT', 'Use /block endpoint with mandatory reason to mark a task as blocked.');
+  }
+
+  if (targetStatus === 'CANCELLED') {
+    throw new ApiError(400, 'USE_CANCEL_ENDPOINT', 'Use /cancel endpoint with mandatory reason to cancel a task.');
+  }
+
   // Work completion vs verification check
-  if (targetStatus === 'COMPLETED' && task.verificationRequired) {
-    // Submit for verification instead of direct complete
-    task.status = 'AWAITING_VERIFICATION';
-    task.verificationStatus = 'PENDING_VERIFICATION';
-    task.completedByUserId = request.auth.userId;
-    task.completedAt = new Date();
-  } else {
-    task.status = targetStatus;
-    if (targetStatus === 'COMPLETED') {
+  if (targetStatus === 'COMPLETED') {
+    if (task.verificationRequired) {
+      task.status = 'AWAITING_VERIFICATION';
+      task.verificationStatus = 'PENDING_VERIFICATION';
       task.completedByUserId = request.auth.userId;
       task.completedAt = new Date();
-      if (task.verificationRequired) {
-        task.verificationStatus = 'VERIFIED';
-        task.verifiedByUserId = request.auth.userId;
-        task.verifiedAt = new Date();
-      }
+    } else {
+      task.status = 'COMPLETED';
+      task.completedByUserId = request.auth.userId;
+      task.completedAt = new Date();
     }
+  } else {
+    task.status = targetStatus;
   }
 
   await task.save();
@@ -366,7 +404,68 @@ const updateTaskStatus = asyncHandler(async (request, response) => {
   });
 });
 
-// ─── VERIFY TASK (GOVERNANCE ACTION) ──────────────────────────────────────────
+// ─── COMPLETE TASK (EXPLICIT / ALIAS) ─────────────────────────────────────────
+
+const completeTask = asyncHandler(async (request, response) => {
+  const taskId = normalizeId(request.params.taskId);
+  const { remarks = '' } = request.body;
+
+  const task = await Task.findOne({
+    taskId,
+    organisationId: request.auth.organisationId,
+  });
+
+  if (!task) {
+    throw new ApiError(404, 'NOT_FOUND', 'Task not found.');
+  }
+
+  assertResourceCafeOwnership(task, request, 'Task');
+
+  if (task.status === 'CANCELLED') {
+    throw new ApiError(400, 'TASK_CANCELLED', 'Cancelled tasks cannot be completed.');
+  }
+
+  if (task.status === 'COMPLETED') {
+    return response.status(200).json({
+      success: true,
+      message: `Task ${taskId} is already completed.`,
+      data: { task: task.toObject() },
+      correlationId: request.correlationId || null,
+    });
+  }
+
+  if (task.verificationRequired) {
+    task.status = 'AWAITING_VERIFICATION';
+    task.verificationStatus = 'PENDING_VERIFICATION';
+    task.completedByUserId = request.auth.userId;
+    task.completedAt = new Date();
+  } else {
+    task.status = 'COMPLETED';
+    task.completedByUserId = request.auth.userId;
+    task.completedAt = new Date();
+  }
+
+  await task.save();
+
+  await AuditEvent.create({
+    organisationId: task.organisationId,
+    action: 'TASK_COMPLETED_BY_STAFF',
+    actor: { userId: request.auth.userId, role: request.auth.role },
+    target: { entityType: 'TASK', entityId: taskId },
+    details: { status: task.status, verificationStatus: task.verificationStatus, remarks },
+  }).catch(() => {});
+
+  return response.status(200).json({
+    success: true,
+    message: task.verificationRequired
+      ? `Task ${taskId} submitted for verification.`
+      : `Task ${taskId} completed successfully.`,
+    data: { task: task.toObject() },
+    correlationId: request.correlationId || null,
+  });
+});
+
+// ─── VERIFY TASK (GOVERNANCE ACTION / APPROVE) ─────────────────────────────────
 
 const verifyTask = asyncHandler(async (request, response) => {
   const taskId = normalizeId(request.params.taskId);
@@ -381,9 +480,32 @@ const verifyTask = asyncHandler(async (request, response) => {
     throw new ApiError(404, 'NOT_FOUND', 'Task not found.');
   }
 
-  // Segregation of duties: Performer cannot verify their own critical task
-  if (task.isCriticalControl && task.completedByUserId === request.auth.userId) {
-    throw new ApiError(403, 'SEGREGATION_OF_DUTIES', 'Performer cannot verify their own critical control task.');
+  assertResourceCafeOwnership(task, request, 'Task');
+
+  // Idempotency: already verified
+  if (task.status === 'COMPLETED' && task.verificationStatus === 'VERIFIED') {
+    return response.status(200).json({
+      success: true,
+      message: `Task ${taskId} is already verified.`,
+      data: { task: task.toObject() },
+      correlationId: request.correlationId || null,
+    });
+  }
+
+  if (task.status === 'CANCELLED') {
+    throw new ApiError(400, 'TASK_CANCELLED', 'Cancelled tasks cannot be verified.');
+  }
+
+  if (task.status !== 'AWAITING_VERIFICATION' && task.verificationStatus !== 'PENDING_VERIFICATION') {
+    throw new ApiError(400, 'INVALID_STATE', `Task in ${task.status} status cannot be verified.`);
+  }
+
+  // Segregation of duties: Performer cannot verify their own work if verification is required
+  const isPerformer = (task.completedByUserId && task.completedByUserId.toUpperCase() === request.auth.userId.toUpperCase()) ||
+    (task.assignedUserId && task.assignedUserId.toUpperCase() === request.auth.userId.toUpperCase());
+
+  if (task.verificationRequired && isPerformer) {
+    throw new ApiError(403, 'SELF_VERIFICATION_PROHIBITED', 'Independent verification required: the task performer cannot verify their own work.');
   }
 
   task.status = 'COMPLETED';
@@ -410,7 +532,7 @@ const verifyTask = asyncHandler(async (request, response) => {
   });
 });
 
-// ─── RETURN FOR CORRECTION ────────────────────────────────────────────────────
+// ─── RETURN FOR CORRECTION / REJECT ───────────────────────────────────────────
 
 const returnTask = asyncHandler(async (request, response) => {
   const taskId = normalizeId(request.params.taskId);
@@ -427,6 +549,16 @@ const returnTask = asyncHandler(async (request, response) => {
 
   if (!task) {
     throw new ApiError(404, 'NOT_FOUND', 'Task not found.');
+  }
+
+  assertResourceCafeOwnership(task, request, 'Task');
+
+  if (task.status === 'CANCELLED') {
+    throw new ApiError(400, 'TASK_CANCELLED', 'Cancelled tasks cannot be returned for correction.');
+  }
+
+  if (task.status === 'COMPLETED') {
+    throw new ApiError(400, 'TASK_COMPLETED', 'Completed tasks cannot be returned for correction. Reopen first if rework is needed.');
   }
 
   task.status = 'RETURNED_FOR_CORRECTION';
@@ -476,8 +608,19 @@ const reopenTask = asyncHandler(async (request, response) => {
     throw new ApiError(404, 'NOT_FOUND', 'Task not found.');
   }
 
+  assertResourceCafeOwnership(task, request, 'Task');
+
+  if (task.status !== 'COMPLETED' && task.status !== 'CANCELLED') {
+    throw new ApiError(400, 'INVALID_STATE', `Only COMPLETED or CANCELLED tasks may be reopened (current: ${task.status}).`);
+  }
+
   task.status = 'IN_PROGRESS';
-  task.verificationStatus = task.verificationRequired ? 'PENDING_VERIFICATION' : 'NONE';
+  task.verificationStatus = 'NONE';
+  task.completedByUserId = null;
+  task.completedAt = null;
+  task.verifiedByUserId = null;
+  task.verifiedAt = null;
+  task.verificationRemarks = '';
 
   await task.save();
 
@@ -514,6 +657,17 @@ const cancelTask = asyncHandler(async (request, response) => {
 
   if (!task) {
     throw new ApiError(404, 'NOT_FOUND', 'Task not found.');
+  }
+
+  assertResourceCafeOwnership(task, request, 'Task');
+
+  if (task.status === 'CANCELLED') {
+    return response.status(200).json({
+      success: true,
+      message: `Task ${taskId} is already cancelled.`,
+      data: { task: task.toObject() },
+      correlationId: request.correlationId || null,
+    });
   }
 
   task.status = 'CANCELLED';
@@ -556,6 +710,16 @@ const blockTask = asyncHandler(async (request, response) => {
     throw new ApiError(404, 'NOT_FOUND', 'Task not found.');
   }
 
+  assertResourceCafeOwnership(task, request, 'Task');
+
+  if (task.status === 'BLOCKED') {
+    throw new ApiError(400, 'ALREADY_BLOCKED', 'Task is already marked as blocked.');
+  }
+
+  if (task.status === 'COMPLETED' || task.status === 'CANCELLED') {
+    throw new ApiError(400, 'INVALID_STATE', `Cannot block a ${task.status} task.`);
+  }
+
   task.status = 'BLOCKED';
   task.blockedReason = reason.trim();
   task.blockedAt = new Date();
@@ -578,14 +742,71 @@ const blockTask = asyncHandler(async (request, response) => {
   });
 });
 
+// ─── REASSIGN TASK (OWNER / MASTER / ADMIN GOVERNANCE) ─────────────────────────
+
+const reassignTask = asyncHandler(async (request, response) => {
+  const taskId = normalizeId(request.params.taskId);
+  const { assignedUserId, responsibleUserId, assignedRole } = request.body;
+
+  const task = await Task.findOne({
+    taskId,
+    organisationId: request.auth.organisationId,
+  });
+
+  if (!task) {
+    throw new ApiError(404, 'NOT_FOUND', 'Task not found.');
+  }
+
+  assertResourceCafeOwnership(task, request, 'Task');
+
+  if (task.status === 'COMPLETED' || task.status === 'CANCELLED') {
+    throw new ApiError(400, 'INVALID_STATE', `Cannot reassign a ${task.status} task.`);
+  }
+
+  const previousAssignee = task.assignedUserId;
+  if (assignedUserId !== undefined) {
+    task.assignedUserId = assignedUserId ? normalizeId(assignedUserId) : null;
+  }
+  if (responsibleUserId !== undefined) {
+    task.responsibleUserId = responsibleUserId ? normalizeId(responsibleUserId) : null;
+  }
+  if (assignedRole && ['MASTER', 'OWNER', 'CAFE_ADMIN', 'STAFF'].includes(assignedRole.toUpperCase())) {
+    task.assignedRole = assignedRole.toUpperCase();
+  }
+
+  await task.save();
+
+  await AuditEvent.create({
+    organisationId: task.organisationId,
+    action: 'TASK_REASSIGNED',
+    actor: { userId: request.auth.userId, role: request.auth.role },
+    target: { entityType: 'TASK', entityId: taskId },
+    details: {
+      previousAssignee,
+      newAssignee: task.assignedUserId,
+      responsibleUserId: task.responsibleUserId,
+      assignedRole: task.assignedRole,
+    },
+  }).catch(() => {});
+
+  return response.status(200).json({
+    success: true,
+    message: `Task ${taskId} reassigned successfully.`,
+    data: { task: task.toObject() },
+    correlationId: request.correlationId || null,
+  });
+});
+
 module.exports = {
   listTasks,
   getTask,
   createTask,
   updateTaskStatus,
+  completeTask,
   verifyTask,
   returnTask,
   reopenTask,
   cancelTask,
   blockTask,
+  reassignTask,
 };

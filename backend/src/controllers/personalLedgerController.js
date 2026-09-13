@@ -37,9 +37,11 @@ const {
   ApiError,
 } = require('../utils/ApiError');
 
-const {
-  recordRequestAudit,
-} = require('../services/auditService');
+const auditService = require('../services/auditService');
+const recordRequestAudit = (payload, options) => auditService.recordRequestAudit(payload, options);
+
+const transactionHelper = require('../utils/transactionHelper');
+const executeTransactionWithRetry = (operationFn, options) => transactionHelper.executeTransactionWithRetry(operationFn, options);
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -105,6 +107,12 @@ function buildScopedFilter(request) {
 
   // OWNER is strictly scoped to own account
   if (accessLevel === 'OWNER') {
+    if (request.query.accountHolderId && normalizeIdentifier(request.query.accountHolderId) !== normalizeIdentifier(request.auth.userId)) {
+      throw ApiError.forbidden(
+        'Owners can only access their own personal ledger account.',
+        'UNAUTHORIZED_ACCOUNT_ACCESS'
+      );
+    }
     filter.$or = [
       { ownerUserId: request.auth.userId },
       { accountHolderId: request.auth.userId },
@@ -174,6 +182,20 @@ function buildScopedFilter(request) {
         ],
       },
     ];
+  }
+
+  const cafeIdQuery = request.query.cafeId ? normalizeIdentifier(request.query.cafeId) : null;
+  if (cafeIdQuery) {
+    if (accessLevel === 'OWNER') {
+      const assigned = Array.isArray(request.auth.assignedCafeIds) ? request.auth.assignedCafeIds.map(normalizeIdentifier) : [];
+      if (!assigned.includes(cafeIdQuery)) {
+        throw ApiError.forbidden(
+          `You are not assigned to café ${cafeIdQuery}. Cross-café personal ledger access denied.`,
+          'CAFE_ACCESS_DENIED'
+        );
+      }
+    }
+    filter.cafeId = cafeIdQuery;
   }
 
   return filter;
@@ -278,21 +300,18 @@ const listEntries = asyncHandler(async (request, response) => {
   const limit = parsePositiveInteger(request.query.limit, 50, 200);
   const skip = (page - 1) * limit;
 
-  const [entries, total] = await Promise.all([
+  // Compute true chronological running balance for all matching entries
+  const [allChronological, total] = await Promise.all([
     PersonalLedger.find(filter)
-      .sort({ businessDate: -1, createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
+      .sort({ businessDate: 1, createdAt: 1, _id: 1 })
       .lean(),
     PersonalLedger.countDocuments(filter),
   ]);
 
-  // Compute running balance projection
   let running = 0;
-  const entriesWithRunning = entries.map((e) => {
-    const isCredit = e.entryType === 'CREDIT';
+  const withRunning = allChronological.map((e) => {
     if (e.status === 'ACTIVE') {
-      running += isCredit ? e.amountPaisa : -e.amountPaisa;
+      running += e.entryType === 'CREDIT' ? e.amountPaisa : -e.amountPaisa;
     }
     return {
       ...e,
@@ -302,8 +321,12 @@ const listEntries = asyncHandler(async (request, response) => {
     };
   });
 
+  // Reverse for newest-first display
+  withRunning.reverse();
+  const paged = withRunning.slice(skip, skip + limit);
+
   return response.status(200).json({
-    data: entriesWithRunning,
+    data: paged,
     pagination: {
       page,
       limit,
@@ -368,6 +391,11 @@ const createEntry = asyncHandler(async (request, response) => {
     evidence,
     complianceReview,
     accountingTreatment,
+    sourceModule,
+    sourceReferenceId,
+    postingType,
+    sourceStatus,
+    expenseStatus,
   } = request.body;
 
   if (!entryType || !ENTRY_TYPES.includes(entryType.toUpperCase())) {
@@ -383,6 +411,70 @@ const createEntry = asyncHandler(async (request, response) => {
       'amountPaisa must be a positive integer (INR stored as paisa).',
       'INVALID_AMOUNT'
     );
+  }
+
+  const idempotencyKey = request.body.idempotencyKey || request.get('idempotency-key') || null;
+  const cleanIdempKey = idempotencyKey && typeof idempotencyKey === 'string' && idempotencyKey.trim()
+    ? idempotencyKey.trim()
+    : null;
+
+  let cleanExtRef = externalReference && typeof externalReference === 'string' && externalReference.trim()
+    ? externalReference.trim()
+    : null;
+
+  // Server-derived deterministic financial identity for system postings
+  if (!cleanExtRef && sourceModule && sourceReferenceId) {
+    const normModule = String(sourceModule).trim().toUpperCase();
+    const normRef = String(sourceReferenceId).trim().toUpperCase();
+    const normPostingType = postingType ? String(postingType).trim().toUpperCase() : entryType.toUpperCase();
+    cleanExtRef = `${normModule}:${normRef}:${normPostingType}`;
+  }
+
+  // Financial Eligibility Guard for linked source events (Expense / Reimbursement / Payroll / Loan)
+  const effectiveSourceStatus = sourceStatus || expenseStatus;
+  if (effectiveSourceStatus) {
+    const normStatus = String(effectiveSourceStatus).trim().toUpperCase();
+    const INELIGIBLE_STATUSES = ['DRAFT', 'SUBMITTED', 'PENDING_APPROVAL', 'RETURNED', 'REJECTED', 'CANCELLED'];
+    if (INELIGIBLE_STATUSES.includes(normStatus)) {
+      throw ApiError.badRequest(
+        `Cannot post to Personal Ledger: source event status '${normStatus}' is ineligible (must be APPROVED, PAID, or CLOSED).`,
+        'INELIGIBLE_SOURCE_STATUS'
+      );
+    }
+  }
+
+  // Fast-path idempotency pre-check
+  if (cleanIdempKey) {
+    const existing = await PersonalLedger.findOne({
+      organisationId: request.auth.organisationId,
+      idempotencyKey: cleanIdempKey,
+    }).lean();
+    if (existing) {
+      return response.status(200).json({
+        data: {
+          ...existing,
+          amountInr: existing.amountPaisa / 100,
+        },
+        idempotentReplay: true,
+      });
+    }
+  }
+
+  // Authoritative external source reference pre-check (different-key deduplication)
+  if (cleanExtRef) {
+    const existingByExt = await PersonalLedger.findOne({
+      organisationId: request.auth.organisationId,
+      externalReference: cleanExtRef,
+    }).lean();
+    if (existingByExt) {
+      return response.status(200).json({
+        data: {
+          ...existingByExt,
+          amountInr: existingByExt.amountPaisa / 100,
+        },
+        idempotentReplay: true,
+      });
+    }
   }
 
   if (!category || !ENTRY_CATEGORIES.includes(category.toUpperCase())) {
@@ -414,73 +506,173 @@ const createEntry = asyncHandler(async (request, response) => {
     }
   }
 
-  // Generate unique sequential business identifier
-  const sequenceNumber = await SequenceCounter.generateId({
-    organisationId: request.auth.organisationId,
-    entityType: 'PERSONAL_LEDGER',
-    businessDate: dateStr,
-  });
-
   const datePrefix = dateStr.replace(/-/g, '');
-  const seqSuffix = String(sequenceNumber).padStart(4, '0');
-  const ledgerEntryId = `PL-${datePrefix}-${seqSuffix}`;
 
   const targetAccountHolder = accessLevel === 'OWNER'
     ? request.auth.userId
     : (accountHolderId ? normalizeIdentifier(accountHolderId) : request.auth.userId);
 
+  const targetCafeId = cafeId ? normalizeIdentifier(cafeId) : null;
+  if (targetCafeId && accessLevel === 'OWNER') {
+    const assigned = Array.isArray(request.auth.assignedCafeIds) ? request.auth.assignedCafeIds.map(normalizeIdentifier) : [];
+    if (!assigned.includes(targetCafeId)) {
+      throw ApiError.forbidden(
+        `Cannot attribute personal transaction to unassigned café ${targetCafeId}.`,
+        'CAFE_ACCESS_DENIED'
+      );
+    }
+  }
+
   const initialWorkflow = accessLevel === 'OWNER'
     ? (category === 'BUSINESS_EXPENSE_PAID_PERSONALLY' ? 'SUBMITTED' : 'POSTED')
     : 'POSTED';
 
-  const entry = await PersonalLedger.create({
-    ledgerEntryId,
-    voucherNumber: ledgerEntryId,
-    accountType: accountType || 'OWNER_CURRENT_ACCOUNT',
-    accountHolderId: targetAccountHolder,
-    ownerUserId: request.auth.userId,
-    organisationId: request.auth.organisationId,
-    legalEntityId: legalEntityId || 'LE-ZAMORIN-INDIA',
-    cafeId: cafeId ? normalizeIdentifier(cafeId) : null,
-    financialYear: '2026-2027',
-    entryType: entryType.toUpperCase(),
-    amountPaisa: parsedAmount,
-    category: category.toUpperCase(),
-    businessDate: dateStr,
-    description: description.trim(),
-    notes: notes ? String(notes).trim() : '',
-    businessPurpose: businessPurpose ? String(businessPurpose).trim() : '',
-    paymentSource: paymentSource || 'PERSONAL_BANK',
-    paymentReference: paymentReference ? String(paymentReference).trim() : '',
-    counterparty: counterparty ? String(counterparty).trim() : '',
-    externalReference: externalReference ? String(externalReference).trim() : '',
-    splits: Array.isArray(splits) ? splits : [],
-    evidence: Array.isArray(evidence) ? evidence : [],
-    complianceReview: complianceReview || {},
-    workflowStatus: initialWorkflow,
-    accountingTreatment: accountingTreatment || 'PERSONAL',
-    createdByUserId: request.auth.userId,
-    correlationId: request.get('x-correlation-id') || null,
-  });
+  let result;
+  try {
+    result = await executeTransactionWithRetry(async (session) => {
+      // Re-check within transaction session to prevent race conditions
+      if (cleanIdempKey) {
+        let q = PersonalLedger.findOne({
+          organisationId: request.auth.organisationId,
+          idempotencyKey: cleanIdempKey,
+        });
+        if (session) q = q.session(session);
+        const existing = await q;
+        if (existing) {
+          return { entry: existing, isReplay: true };
+        }
+      }
 
-  await recordRequestAudit({
-    request,
-    module: 'PERSONAL_LEDGER',
-    action: 'PERSONAL_LEDGER_CREATE',
-    entityType: 'PERSONAL_LEDGER_ENTRY',
-    entityId: ledgerEntryId,
-    metadata: {
-      amountPaisa: parsedAmount,
-      entryType: entry.entryType,
-      category: entry.category,
-      accountHolderId: targetAccountHolder,
-    },
-  });
+      if (cleanExtRef) {
+        let qExt = PersonalLedger.findOne({
+          organisationId: request.auth.organisationId,
+          externalReference: cleanExtRef,
+        });
+        if (session) qExt = qExt.session(session);
+        const existingByExt = await qExt;
+        if (existingByExt) {
+          return { entry: existingByExt, isReplay: true };
+        }
+      }
+
+      let ledgerEntryId;
+      try {
+        const generated = await SequenceCounter.generateId({
+          organisationId: request.auth.organisationId,
+          sequenceKey: `PERSONAL_LEDGER_${datePrefix}`,
+          prefix: `PL-${datePrefix}`,
+          minimumDigits: 4,
+          session,
+        });
+        if (typeof generated === 'string' && /^PL-\d{8}-\d{4,}$/.test(generated)) {
+          ledgerEntryId = generated;
+        } else {
+          const seqSuffix = String(generated).padStart(4, '0');
+          ledgerEntryId = `PL-${datePrefix}-${seqSuffix}`;
+        }
+      } catch (_) {
+        const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+        ledgerEntryId = `PL-${datePrefix}-${randomSuffix}`;
+      }
+
+      const docPayload = {
+        ledgerEntryId,
+        voucherNumber: ledgerEntryId,
+        accountType: accountType || 'OWNER_CURRENT_ACCOUNT',
+        accountHolderId: targetAccountHolder,
+        ownerUserId: request.auth.userId,
+        organisationId: request.auth.organisationId,
+        legalEntityId: legalEntityId || 'LE-ZAMORIN-INDIA',
+        cafeId: targetCafeId,
+        financialYear: '2026-2027',
+        entryType: entryType.toUpperCase(),
+        amountPaisa: parsedAmount,
+        category: category.toUpperCase(),
+        businessDate: dateStr,
+        description: description.trim(),
+        notes: notes ? String(notes).trim() : '',
+        businessPurpose: businessPurpose ? String(businessPurpose).trim() : '',
+        paymentSource: paymentSource || 'PERSONAL_BANK',
+        paymentReference: paymentReference ? String(paymentReference).trim() : '',
+        counterparty: counterparty ? String(counterparty).trim() : '',
+        externalReference: cleanExtRef,
+        splits: Array.isArray(splits) ? splits : [],
+        evidence: Array.isArray(evidence) ? evidence : [],
+        complianceReview: complianceReview || {},
+        workflowStatus: initialWorkflow,
+        accountingTreatment: accountingTreatment || 'PERSONAL',
+        createdByUserId: request.auth.userId,
+        correlationId: request.get('x-correlation-id') || null,
+        idempotencyKey: cleanIdempKey,
+      };
+
+      let newDoc;
+      if (session) {
+        const created = await PersonalLedger.create([docPayload], { session });
+        newDoc = Array.isArray(created) ? created[0] : created;
+      } else {
+        const created = await PersonalLedger.create(docPayload);
+        newDoc = Array.isArray(created) ? created[0] : created;
+      }
+
+      await recordRequestAudit({
+        request,
+        module: 'PERSONAL_LEDGER',
+        action: 'PERSONAL_LEDGER_CREATE',
+        entityType: 'PERSONAL_LEDGER_ENTRY',
+        entityId: ledgerEntryId,
+        metadata: {
+          amountPaisa: parsedAmount,
+          entryType: newDoc.entryType,
+          category: newDoc.category,
+          accountHolderId: targetAccountHolder,
+          externalReference: cleanExtRef,
+        },
+        session,
+      });
+
+      return { entry: newDoc, isReplay: false };
+    });
+  } catch (txError) {
+    // If concurrent insert occurred and collided on unique index (E11000):
+    if (txError && (txError.code === 11000 || txError.name === 'MongoServerError' || String(txError.message).includes('E11000') || String(txError.message).includes('duplicate key'))) {
+      const orConditions = [
+        ...(cleanIdempKey ? [{ idempotencyKey: cleanIdempKey }] : []),
+        ...(cleanExtRef ? [{ externalReference: cleanExtRef }] : []),
+      ];
+      if (orConditions.length > 0) {
+        const existingCollided = await PersonalLedger.findOne({
+          organisationId: request.auth.organisationId,
+          $or: orConditions,
+        }).lean();
+        if (existingCollided) {
+          result = { entry: existingCollided, isReplay: true };
+        } else {
+          throw txError;
+        }
+      } else {
+        throw txError;
+      }
+    } else {
+      throw txError;
+    }
+  }
+
+  const entryObj = result.entry.toObject ? result.entry.toObject() : result.entry;
+  if (result.isReplay) {
+    return response.status(200).json({
+      data: {
+        ...entryObj,
+        amountInr: entryObj.amountPaisa / 100,
+      },
+      idempotentReplay: true,
+    });
+  }
 
   return response.status(201).json({
     data: {
-      ...entry.toObject(),
-      amountInr: entry.amountPaisa / 100,
+      ...entryObj,
+      amountInr: entryObj.amountPaisa / 100,
     },
   });
 });
@@ -504,41 +696,64 @@ const classifyToBusinessBooks = asyncHandler(async (request, response) => {
     ];
   }
 
-  const entry = await PersonalLedger.findOne(filter);
+  const entry = await executeTransactionWithRetry(async (session) => {
+    let q = PersonalLedger.findOne(filter);
+    if (session) q = q.session(session);
+    const doc = await q;
 
-  if (!entry) {
-    throw ApiError.notFound('Entry not found.', 'ENTRY_NOT_FOUND');
-  }
+    if (!doc) {
+      throw ApiError.notFound('Entry not found.', 'ENTRY_NOT_FOUND');
+    }
 
-  if (entry.status !== 'ACTIVE') {
-    throw ApiError.badRequest('Reversed entries cannot be classified.', 'ENTRY_NOT_ACTIVE');
-  }
+    if (doc.status !== 'ACTIVE') {
+      throw ApiError.badRequest('Reversed entries cannot be classified.', 'ENTRY_NOT_ACTIVE');
+    }
 
-  // Generate Finance Journal Reference
-  const journalRef = `JRN-2026-${Math.floor(1000 + Math.random() * 9000)}`;
+    // Generate Finance Journal Reference
+    const journalRef = `JRN-2026-${Math.floor(1000 + Math.random() * 9000)}`;
 
-  entry.accountingTreatment = accountingTreatment || 'BUSINESS_EXPENSE';
-  entry.workflowStatus = 'POSTED';
-  entry.financeJournalRef = journalRef;
-  entry.financePostingStatus = 'POSTED';
-  entry.financePostedAt = new Date();
-  if (cafeId) entry.cafeId = normalizeIdentifier(cafeId);
-  if (businessPurpose) entry.businessPurpose = String(businessPurpose).trim();
+    doc.accountingTreatment = accountingTreatment || 'BUSINESS_EXPENSE';
+    doc.workflowStatus = 'POSTED';
+    doc.financeJournalRef = journalRef;
+    doc.financePostingStatus = 'POSTED';
+    doc.financePostedAt = new Date();
+    if (cafeId) {
+      const targetCafeId = normalizeIdentifier(cafeId);
+      if (accessLevel === 'OWNER') {
+        const assigned = Array.isArray(request.auth.assignedCafeIds) ? request.auth.assignedCafeIds.map(normalizeIdentifier) : [];
+        if (!assigned.includes(targetCafeId)) {
+          throw ApiError.forbidden(
+            `Cannot classify personal transaction to unassigned café ${targetCafeId}.`,
+            'CAFE_ACCESS_DENIED'
+          );
+        }
+      }
+      doc.cafeId = targetCafeId;
+    }
+    if (businessPurpose) doc.businessPurpose = String(businessPurpose).trim();
 
-  await entry.save();
+    if (session) {
+      await doc.save({ session });
+    } else {
+      await doc.save();
+    }
 
-  await recordRequestAudit({
-    request,
-    module: 'PERSONAL_LEDGER',
-    action: 'PERSONAL_LEDGER_CLASSIFY',
-    entityType: 'PERSONAL_LEDGER_ENTRY',
-    entityId: ledgerEntryId,
-    metadata: {
-      accountingTreatment: entry.accountingTreatment,
-      financeJournalRef: journalRef,
-      targetGLAccount,
-      actorRole: accessLevel,
-    },
+    await recordRequestAudit({
+      request,
+      module: 'PERSONAL_LEDGER',
+      action: 'PERSONAL_LEDGER_CLASSIFY',
+      entityType: 'PERSONAL_LEDGER_ENTRY',
+      entityId: ledgerEntryId,
+      metadata: {
+        accountingTreatment: doc.accountingTreatment,
+        financeJournalRef: journalRef,
+        targetGLAccount,
+        actorRole: accessLevel,
+      },
+      session,
+    });
+
+    return doc;
   });
 
   return response.status(200).json({
@@ -568,31 +783,42 @@ const reverseClassification = asyncHandler(async (request, response) => {
     ];
   }
 
-  const entry = await PersonalLedger.findOne(filter);
+  const entry = await executeTransactionWithRetry(async (session) => {
+    let q = PersonalLedger.findOne(filter);
+    if (session) q = q.session(session);
+    const doc = await q;
 
-  if (!entry) {
-    throw ApiError.notFound('Entry not found.', 'ENTRY_NOT_FOUND');
-  }
+    if (!doc) {
+      throw ApiError.notFound('Entry not found.', 'ENTRY_NOT_FOUND');
+    }
 
-  const originalJournal = entry.financeJournalRef;
-  entry.workflowStatus = 'SUBMITTED';
-  entry.accountingTreatment = 'PERSONAL';
-  entry.financePostingStatus = 'REVERSED';
-  entry.notes = `${entry.notes ? entry.notes + ' | ' : ''}Classification reversed: ${reason || 'Governance review'}`;
+    const originalJournal = doc.financeJournalRef;
+    doc.workflowStatus = 'SUBMITTED';
+    doc.accountingTreatment = 'PERSONAL';
+    doc.financePostingStatus = 'REVERSED';
+    doc.notes = `${doc.notes ? doc.notes + ' | ' : ''}Classification reversed: ${reason || 'Governance review'}`;
 
-  await entry.save();
+    if (session) {
+      await doc.save({ session });
+    } else {
+      await doc.save();
+    }
 
-  await recordRequestAudit({
-    request,
-    module: 'PERSONAL_LEDGER',
-    action: 'PERSONAL_LEDGER_REVERSE_CLASSIFICATION',
-    entityType: 'PERSONAL_LEDGER_ENTRY',
-    entityId: ledgerEntryId,
-    metadata: {
-      originalFinanceJournalRef: originalJournal,
-      reason,
-      actorRole: accessLevel,
-    },
+    await recordRequestAudit({
+      request,
+      module: 'PERSONAL_LEDGER',
+      action: 'PERSONAL_LEDGER_REVERSE_CLASSIFICATION',
+      entityType: 'PERSONAL_LEDGER_ENTRY',
+      entityId: ledgerEntryId,
+      metadata: {
+        originalFinanceJournalRef: originalJournal,
+        reason,
+        actorRole: accessLevel,
+      },
+      session,
+    });
+
+    return doc;
   });
 
   return response.status(200).json({
@@ -625,88 +851,119 @@ const reverseEntry = asyncHandler(async (request, response) => {
     ];
   }
 
-  const original = await PersonalLedger.findOne(filter);
+  const result = await executeTransactionWithRetry(async (session) => {
+    let q = PersonalLedger.findOne(filter);
+    if (session) q = q.session(session);
+    const original = await q;
 
-  if (!original) {
-    throw ApiError.notFound('Original Personal Ledger entry not found.', 'ORIGINAL_ENTRY_NOT_FOUND');
-  }
+    if (!original) {
+      throw ApiError.notFound('Original Personal Ledger entry not found.', 'ORIGINAL_ENTRY_NOT_FOUND');
+    }
 
-  if (original.status === 'REVERSED') {
-    throw ApiError.badRequest(
-      `Entry ${ledgerEntryId} has already been reversed by ${original.correctedByEntryId}.`,
-      'ALREADY_REVERSED'
-    );
-  }
+    if (original.status === 'REVERSED') {
+      throw ApiError.badRequest(
+        `Entry ${ledgerEntryId} has already been reversed by ${original.correctedByEntryId}.`,
+        'ALREADY_REVERSED'
+      );
+    }
 
-  const reversalType = original.entryType === 'CREDIT' ? 'DEBIT' : 'CREDIT';
-  const today = getIstBusinessDate();
+    const reversalType = original.entryType === 'CREDIT' ? 'DEBIT' : 'CREDIT';
+    const today = getIstBusinessDate();
+    const datePrefix = today.replace(/-/g, '');
 
-  const sequenceNumber = await SequenceCounter.generateId({
-    organisationId: request.auth.organisationId,
-    entityType: 'PERSONAL_LEDGER',
-    businessDate: today,
-  });
+    let reversalEntryId;
+    try {
+      const generated = await SequenceCounter.generateId({
+        organisationId: request.auth.organisationId,
+        sequenceKey: `PERSONAL_LEDGER_${datePrefix}`,
+        prefix: `PL-${datePrefix}`,
+        minimumDigits: 4,
+        session,
+      });
+      if (typeof generated === 'string' && /^PL-\d{8}-\d{4,}$/.test(generated)) {
+        reversalEntryId = generated;
+      } else {
+        const seqSuffix = String(generated).padStart(4, '0');
+        reversalEntryId = `PL-${datePrefix}-${seqSuffix}`;
+      }
+    } catch (_) {
+      const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+      reversalEntryId = `PL-${datePrefix}-${randomSuffix}`;
+    }
 
-  const datePrefix = today.replace(/-/g, '');
-  const seqSuffix = String(sequenceNumber).padStart(4, '0');
-  const reversalEntryId = `PL-${datePrefix}-${seqSuffix}`;
-
-  const reversalEntry = await PersonalLedger.create({
-    ledgerEntryId: reversalEntryId,
-    voucherNumber: reversalEntryId,
-    accountType: original.accountType,
-    accountHolderId: original.accountHolderId,
-    ownerUserId: request.auth.userId,
-    organisationId: request.auth.organisationId,
-    legalEntityId: original.legalEntityId,
-    cafeId: original.cafeId,
-    financialYear: original.financialYear,
-    entryType: reversalType,
-    amountPaisa: original.amountPaisa,
-    category: original.category,
-    businessDate: today,
-    description: `Reversal of ${ledgerEntryId}: ${original.description}`,
-    notes: `Reversal reason: ${reason}`,
-    businessPurpose: original.businessPurpose,
-    status: 'ACTIVE',
-    workflowStatus: 'REVERSED',
-    accountingTreatment: original.accountingTreatment,
-    originalEntryId: ledgerEntryId,
-    reversalReason: reason,
-    createdByUserId: request.auth.userId,
-    correlationId: request.get('x-correlation-id') || null,
-  });
-
-  original.status = 'REVERSED';
-  original.correctedByEntryId = reversalEntryId;
-  original.correctedAt = new Date();
-  await original.save();
-
-  await recordRequestAudit({
-    request,
-    module: 'PERSONAL_LEDGER',
-    action: 'PERSONAL_LEDGER_REVERSE',
-    entityType: 'PERSONAL_LEDGER_ENTRY',
-    entityId: ledgerEntryId,
-    metadata: {
-      reversalEntryId,
-      reversalType,
+    const reversalPayload = {
+      ledgerEntryId: reversalEntryId,
+      voucherNumber: reversalEntryId,
+      accountType: original.accountType,
+      accountHolderId: original.accountHolderId,
+      ownerUserId: request.auth.userId,
+      organisationId: request.auth.organisationId,
+      legalEntityId: original.legalEntityId,
+      cafeId: original.cafeId,
+      financialYear: original.financialYear,
+      entryType: reversalType,
       amountPaisa: original.amountPaisa,
-      reason,
-      actorRole: accessLevel,
-    },
+      category: original.category,
+      businessDate: today,
+      description: `Reversal of ${ledgerEntryId}: ${original.description}`,
+      notes: `Reversal reason: ${reason}`,
+      businessPurpose: original.businessPurpose,
+      status: 'ACTIVE',
+      workflowStatus: 'REVERSED',
+      accountingTreatment: original.accountingTreatment,
+      originalEntryId: ledgerEntryId,
+      reversalReason: reason,
+      createdByUserId: request.auth.userId,
+      correlationId: request.get('x-correlation-id') || null,
+    };
+
+    let reversalEntry;
+    if (session) {
+      const created = await PersonalLedger.create([reversalPayload], { session });
+      reversalEntry = Array.isArray(created) ? created[0] : created;
+    } else {
+      const created = await PersonalLedger.create(reversalPayload);
+      reversalEntry = Array.isArray(created) ? created[0] : created;
+    }
+
+    original.status = 'REVERSED';
+    original.correctedByEntryId = reversalEntryId;
+    original.correctedAt = new Date();
+    if (session) {
+      await original.save({ session });
+    } else {
+      await original.save();
+    }
+
+    await recordRequestAudit({
+      request,
+      module: 'PERSONAL_LEDGER',
+      action: 'PERSONAL_LEDGER_REVERSE',
+      entityType: 'PERSONAL_LEDGER_ENTRY',
+      entityId: ledgerEntryId,
+      metadata: {
+        reversalEntryId,
+        reversalType,
+        amountPaisa: original.amountPaisa,
+        reason,
+        actorRole: accessLevel,
+      },
+      session,
+    });
+
+    return { original, reversalEntry };
   });
 
   return response.status(201).json({
     data: {
       originalEntry: {
-        ledgerEntryId: original.ledgerEntryId,
-        status: original.status,
-        correctedByEntryId: original.correctedByEntryId,
+        ledgerEntryId: result.original.ledgerEntryId,
+        status: result.original.status,
+        correctedByEntryId: result.original.correctedByEntryId,
       },
       reversalEntry: {
-        ...reversalEntry.toObject(),
-        amountInr: reversalEntry.amountPaisa / 100,
+        ...result.reversalEntry.toObject(),
+        amountInr: result.reversalEntry.amountPaisa / 100,
       },
     },
   });
@@ -742,33 +999,44 @@ const settleBalances = asyncHandler(async (request, response) => {
     ];
   }
 
-  const updatedEntries = await PersonalLedger.find(findFilter);
+  const updatedEntries = await executeTransactionWithRetry(async (session) => {
+    let q = PersonalLedger.find(findFilter);
+    if (session) q = q.session(session);
+    const entries = await q;
 
-  if (updatedEntries.length === 0) {
-    throw ApiError.notFound('No eligible active vouchers found for settlement.', 'NO_VOUCHERS_FOUND');
-  }
+    if (entries.length === 0) {
+      throw ApiError.notFound('No eligible active vouchers found for settlement.', 'NO_VOUCHERS_FOUND');
+    }
 
-  for (const entry of updatedEntries) {
-    entry.settlementStatus = 'SETTLED';
-    entry.settledAmountPaisa = entry.amountPaisa;
-    entry.outstandingAmountPaisa = 0;
-    entry.settlementBatchRef = batchRef;
-    entry.workflowStatus = 'SETTLED';
-    await entry.save();
-  }
+    for (const entry of entries) {
+      entry.settlementStatus = 'SETTLED';
+      entry.settledAmountPaisa = entry.amountPaisa;
+      entry.outstandingAmountPaisa = 0;
+      entry.settlementBatchRef = batchRef;
+      entry.workflowStatus = 'SETTLED';
+      if (session) {
+        await entry.save({ session });
+      } else {
+        await entry.save();
+      }
+    }
 
-  await recordRequestAudit({
-    request,
-    module: 'PERSONAL_LEDGER',
-    action: 'PERSONAL_LEDGER_SETTLE',
-    entityType: 'PERSONAL_LEDGER_SETTLEMENT',
-    entityId: batchRef,
-    metadata: {
-      settlementAmountPaisa: parsedAmount,
-      settlementBatchRef: batchRef,
-      vouchersCount: updatedEntries.length,
-      actorRole: accessLevel,
-    },
+    await recordRequestAudit({
+      request,
+      module: 'PERSONAL_LEDGER',
+      action: 'PERSONAL_LEDGER_SETTLE',
+      entityType: 'PERSONAL_LEDGER_SETTLEMENT',
+      entityId: batchRef,
+      metadata: {
+        settlementAmountPaisa: parsedAmount,
+        settlementBatchRef: batchRef,
+        vouchersCount: entries.length,
+        actorRole: accessLevel,
+      },
+      session,
+    });
+
+    return entries;
   });
 
   return response.status(200).json({
@@ -842,6 +1110,92 @@ const getReconciliation = asyncHandler(async (request, response) => {
   });
 });
 
+// ── GET /personal-ledger/export ──────────────────────────────────────────────
+const exportPersonalLedger = asyncHandler(async (request, response) => {
+  verifyPersonalLedgerAccess(request);
+  const filter = buildScopedFilter(request);
+
+  const allChronological = await PersonalLedger.find(filter)
+    .sort({ businessDate: 1, createdAt: 1, _id: 1 })
+    .lean();
+
+  let running = 0;
+  const entriesWithRunning = allChronological.map((e) => {
+    if (e.status === 'ACTIVE') {
+      running += e.entryType === 'CREDIT' ? e.amountPaisa : -e.amountPaisa;
+    }
+    return {
+      ...e,
+      amountInr: e.amountPaisa / 100,
+      runningBalancePaisa: running,
+      runningBalanceInr: running / 100,
+    };
+  });
+  entriesWithRunning.reverse();
+
+  const format = String(request.query.format || 'CSV').toUpperCase();
+  if (format === 'JSON') {
+    return response.status(200).json({
+      data: entriesWithRunning,
+    });
+  }
+
+  // Formula injection defense: escape leading =, +, -, @ with single quote
+  const sanitizeCell = (val) => {
+    if (val === null || val === undefined) return '""';
+    const str = String(val);
+    if (/^[=+\-@]/.test(str)) {
+      return `"'${str.replace(/"/g, '""')}"`;
+    }
+    return `"${str.replace(/"/g, '""')}"`;
+  };
+
+  const headers = [
+    'Voucher ID',
+    'Business Date',
+    'Category',
+    'Description',
+    'Payment Source',
+    'Entry Type',
+    'Amount (INR)',
+    'Amount (Paise)',
+    'Running Balance (INR)',
+    'Running Balance (Paise)',
+    'Economic Direction',
+    'Accounting Treatment',
+    'Finance Journal Ref',
+    'Workflow Status',
+    'Settlement Status',
+    'Record Status',
+  ];
+
+  const rows = entriesWithRunning.map((e) => [
+    sanitizeCell(e.voucherNumber || e.ledgerEntryId),
+    sanitizeCell(e.businessDate),
+    sanitizeCell(e.category),
+    sanitizeCell(e.description),
+    sanitizeCell(e.paymentSource),
+    sanitizeCell(e.entryType),
+    ((e.amountPaisa || 0) / 100).toFixed(2),
+    e.amountPaisa || 0,
+    ((e.runningBalancePaisa || 0) / 100).toFixed(2),
+    e.runningBalancePaisa || 0,
+    sanitizeCell(e.direction),
+    sanitizeCell(e.accountingTreatment),
+    sanitizeCell(e.financeJournalRef || 'Unposted'),
+    sanitizeCell(e.workflowStatus),
+    sanitizeCell(e.settlementStatus || 'UNSETTLED'),
+    sanitizeCell(e.status || 'ACTIVE'),
+  ]);
+
+  const csv = [headers.join(','), ...rows.map((r) => r.join(','))].join('\r\n');
+  const filename = `Zamorin_Personal_SubLedger_${getIstBusinessDate()}.csv`;
+
+  response.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  response.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  return response.status(200).send(csv);
+});
+
 module.exports = {
   getLedgerOverview,
   getBalance,
@@ -854,4 +1208,5 @@ module.exports = {
   settleBalances,
   confirmBalance,
   getReconciliation,
+  exportPersonalLedger,
 };

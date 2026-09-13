@@ -24,6 +24,7 @@ const {
   retryFailedInventoryPosting,
   submitBankChangeRequest,
   approveBankChangeRequest,
+  rejectBankChangeRequest,
   placeVendorHold,
   releaseVendorHold,
   getSupplierPerformance,
@@ -136,6 +137,12 @@ router.post(
   changeVendorStatus
 );
 
+router.patch(
+  '/:vendorId/status',
+  authorize('VENDORS_WRITE', { allowedRoles: ['MASTER'] }),
+  changeVendorStatus
+);
+
 // ── High-Risk Bank Changes & Holds ─────────────────────────────────────────
 router.post(
   '/:vendorId/bank-change-request',
@@ -147,6 +154,12 @@ router.post(
   '/:vendorId/bank-change-approve',
   authorize('VENDORS_WRITE', { allowedRoles: ['MASTER'] }),
   approveBankChangeRequest
+);
+
+router.post(
+  '/:vendorId/bank-change-reject',
+  authorize('VENDORS_WRITE', { allowedRoles: ['MASTER'] }),
+  rejectBankChangeRequest
 );
 
 router.post(

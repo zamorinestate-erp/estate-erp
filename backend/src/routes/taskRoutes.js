@@ -13,11 +13,13 @@ const {
   getTask,
   createTask,
   updateTaskStatus,
+  completeTask,
   verifyTask,
   returnTask,
   reopenTask,
   cancelTask,
   blockTask,
+  reassignTask,
 } = require('../controllers/taskController');
 
 const router = express.Router();
@@ -49,13 +51,31 @@ router.patch(
 );
 
 router.post(
+  '/:taskId/complete',
+  authorize('TASKS_WRITE', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN', 'STAFF'] }),
+  completeTask
+);
+
+router.post(
   '/:taskId/verify',
   authorize('TASKS_WRITE', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
   verifyTask
 );
 
 router.post(
+  '/:taskId/approve',
+  authorize('TASKS_WRITE', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  verifyTask
+);
+
+router.post(
   '/:taskId/return',
+  authorize('TASKS_WRITE', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  returnTask
+);
+
+router.post(
+  '/:taskId/reject',
   authorize('TASKS_WRITE', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
   returnTask
 );
@@ -76,6 +96,18 @@ router.post(
   '/:taskId/block',
   authorize('TASKS_WRITE', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
   blockTask
+);
+
+router.post(
+  '/:taskId/assign',
+  authorize('TASKS_WRITE', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  reassignTask
+);
+
+router.patch(
+  '/:taskId/assign',
+  authorize('TASKS_WRITE', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  reassignTask
 );
 
 module.exports = router;

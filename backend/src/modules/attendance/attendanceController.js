@@ -101,10 +101,15 @@ function ensureCafeOperationsAllowed(request) {
 }
 
 function ensureCafeAccess(request, cafeId) {
-  if (request.auth.role === 'MASTER' || request.auth.role === 'OWNER') return;
+  if (request.auth.role === 'MASTER') return;
   ensureCafeOperationsAllowed(request);
-  if (!request.auth.assignedCafeIds?.includes(cafeId)) {
-    throw new ApiError(403, 'CAFE_ACCESS_DENIED', 'You do not have access to this café.');
+  const assigned = (request.auth.assignedCafeIds || []).map((c) => String(c).trim().toUpperCase());
+  if (!assigned.length && request.auth.role === 'OWNER') {
+    throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'Owner has no assigned cafés.');
+  }
+  if (!assigned.includes(String(cafeId).trim().toUpperCase())) {
+    const errCode = request.auth.role === 'OWNER' ? 'CROSS_CAFE_RESOURCE_DENIED' : 'CAFE_ACCESS_DENIED';
+    throw new ApiError(403, errCode, 'You do not have access to this café.');
   }
 }
 
@@ -162,13 +167,19 @@ const getAttendanceOverview = asyncHandler(async (request, response) => {
     const normCafe = normalizeIdentifier(request.query.cafeId);
     ensureCafeAccess(request, normCafe);
     filter.cafeId = normCafe;
-  } else if (!['MASTER', 'OWNER'].includes(request.auth.role)) {
+  } else if (request.auth.role === 'OWNER') {
+    const assigned = (request.auth.assignedCafeIds || []).map((c) => String(c).trim().toUpperCase()).filter(Boolean);
+    if (!assigned.length) {
+      throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'Owner has no assigned cafés.');
+    }
+    filter.cafeId = { $in: assigned };
+  } else if (request.auth.role !== 'MASTER') {
     filter.cafeId = { $in: request.auth.assignedCafeIds };
   }
 
   const attendanceRecords = await Attendance.find(filter).lean();
   let allCafes = [];
-  if (['MASTER', 'OWNER'].includes(request.auth.role)) {
+  if (request.auth.role === 'MASTER') {
     allCafes = await Cafe.find({ organisationId, status: 'ACTIVE' }).lean();
   } else {
     allCafes = await Cafe.find({ organisationId, cafeId: { $in: request.auth.assignedCafeIds }, status: 'ACTIVE' }).lean();
@@ -273,7 +284,13 @@ const getLiveAttendance = asyncHandler(async (request, response) => {
     const normCafe = normalizeIdentifier(request.query.cafeId);
     ensureCafeAccess(request, normCafe);
     filter.cafeId = normCafe;
-  } else if (!['MASTER', 'OWNER'].includes(request.auth.role)) {
+  } else if (request.auth.role === 'OWNER') {
+    const assigned = (request.auth.assignedCafeIds || []).map((c) => String(c).trim().toUpperCase()).filter(Boolean);
+    if (!assigned.length) {
+      throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'Owner has no assigned cafés.');
+    }
+    filter.cafeId = { $in: assigned };
+  } else if (request.auth.role !== 'MASTER') {
     filter.cafeId = { $in: request.auth.assignedCafeIds };
   }
 
@@ -2083,7 +2100,13 @@ const getOvertimeList = asyncHandler(async (request, response) => {
     const cafeId = normalizeIdentifier(request.query.cafeId);
     ensureCafeAccess(request, cafeId);
     filter.cafeId = cafeId;
-  } else if (!['MASTER', 'OWNER'].includes(request.auth.role)) {
+  } else if (request.auth.role === 'OWNER') {
+    const assigned = (request.auth.assignedCafeIds || []).map((c) => String(c).trim().toUpperCase()).filter(Boolean);
+    if (!assigned.length) {
+      throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'Owner has no assigned cafés.');
+    }
+    filter.cafeId = { $in: assigned };
+  } else if (request.auth.role !== 'MASTER') {
     filter.cafeId = { $in: request.auth.assignedCafeIds || [] };
   }
 
@@ -2114,7 +2137,13 @@ const getExceptionList = asyncHandler(async (request, response) => {
     const cafeId = normalizeIdentifier(request.query.cafeId);
     ensureCafeAccess(request, cafeId);
     filter.cafeId = cafeId;
-  } else if (!['MASTER', 'OWNER'].includes(request.auth.role)) {
+  } else if (request.auth.role === 'OWNER') {
+    const assigned = (request.auth.assignedCafeIds || []).map((c) => String(c).trim().toUpperCase()).filter(Boolean);
+    if (!assigned.length) {
+      throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'Owner has no assigned cafés.');
+    }
+    filter.cafeId = { $in: assigned };
+  } else if (request.auth.role !== 'MASTER') {
     filter.cafeId = { $in: request.auth.assignedCafeIds || [] };
   }
 
@@ -2437,7 +2466,15 @@ const getEvidenceMedia = asyncHandler(async (request, response) => {
     if (attendance && attendance.cafeId.toUpperCase() !== boundCafe) {
       throw new ApiError(403, 'FORBIDDEN_CAFE_EVIDENCE', 'Access denied to attendance photographs outside your bound café.');
     }
-  } else if (!['MASTER', 'OWNER'].includes(role)) {
+  } else if (role === 'OWNER') {
+    const ownerCafes = new Set((assignedCafeIds || []).map((c) => String(c).trim().toUpperCase()));
+    if (!ownerCafes.size) {
+      throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'Owner has no assigned cafés.');
+    }
+    if (attendance && !ownerCafes.has(attendance.cafeId.toUpperCase())) {
+      throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'Access denied to attendance photographs outside your assigned café.');
+    }
+  } else if (role !== 'MASTER') {
     throw new ApiError(403, 'FORBIDDEN_EVIDENCE_ACCESS', 'Unauthorised to view attendance evidence.');
   }
 

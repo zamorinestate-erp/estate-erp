@@ -18,6 +18,7 @@ const path = require('path');
 const os = require('os');
 const { generatePdf, generateXlsx, generateTaxInvoicePdf, sanitizeCsvValue } = require('../src/utils/exportGenerators');
 const { DocumentAttachmentService } = require('../src/services/documentAttachmentService');
+const { DocumentStorageAdapter, documentStorageAdapter } = require('../src/services/documentStorageAdapter');
 const { SecurityScannerService, EICAR_SIGNATURE } = require('../src/services/securityScannerService');
 const authService = require('../src/services/authService');
 const cafeService = require('../src/services/cafeService');
@@ -648,6 +649,75 @@ test('Cross-System Implementation Specification — Comprehensive Verification',
       });
       assert.strictEqual(jsResult.status, 'REJECTED');
       assert.ok(jsResult.threatName.includes('Embedded-Executable-Script-PDF'));
+    });
+
+    await t.test('5.8 Durable Document Storage Adapter & Server Restart Persistence Verification', async () => {
+      // 1. Upload a test PDF
+      const tempStorageRoot = path.join(os.tmpdir(), `test_zamorin_storage_${Date.now()}`);
+      await fs.promises.mkdir(tempStorageRoot, { recursive: true });
+
+      const adapter = new DocumentStorageAdapter({
+        driver: 'RENDER_PERSISTENT_DISK',
+        storageRoot: tempStorageRoot,
+      });
+
+      const testPdfContent = Buffer.from('%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n');
+      const initialSha256 = crypto.createHash('sha256').update(testPdfContent).digest('hex');
+      const documentId = 'DOC-PO-ZC01-20260913-999888';
+      const storageKey = adapter.generateStorageKey({
+        organisationId: 'ORG-ZAMORIN',
+        documentId,
+        mimeType: 'application/pdf',
+      });
+
+      // 2. Record Document ID and SHA-256
+      const putResult = await adapter.put({
+        buffer: testPdfContent,
+        storageKey,
+        mimeType: 'application/pdf',
+        sizeBytes: testPdfContent.length,
+        organisationId: 'ORG-ZAMORIN',
+      });
+
+      assert.strictEqual(putResult.storageKey, storageKey);
+      assert.strictEqual(fs.existsSync(putResult.storagePath), true);
+
+      // 3. Verify download
+      const streamBeforeRestart = await adapter.getStream({ storageKey });
+      const bytesBefore = await new Promise((res, rej) => {
+        const chunks = [];
+        streamBeforeRestart.on('data', c => chunks.push(c));
+        streamBeforeRestart.on('end', () => res(Buffer.concat(chunks)));
+        streamBeforeRestart.on('error', rej);
+      });
+      assert.strictEqual(crypto.createHash('sha256').update(bytesBefore).digest('hex'), initialSha256);
+
+      // 4. Restart/redeploy backend: instantiate completely fresh adapter instance pointing to same mount path
+      const freshAdapterAfterRestart = new DocumentStorageAdapter({
+        driver: 'RENDER_PERSISTENT_DISK',
+        storageRoot: tempStorageRoot,
+      });
+
+      // 5. Download the same document after restart
+      const streamAfterRestart = await freshAdapterAfterRestart.getStream({ storageKey });
+      const bytesAfter = await new Promise((res, rej) => {
+        const chunks = [];
+        streamAfterRestart.on('data', c => chunks.push(c));
+        streamAfterRestart.on('end', () => res(Buffer.concat(chunks)));
+        streamAfterRestart.on('error', rej);
+      });
+
+      // 6. Verify identical SHA-256
+      const recoveredSha256 = crypto.createHash('sha256').update(bytesAfter).digest('hex');
+      assert.strictEqual(recoveredSha256, initialSha256, 'SHA-256 recovered after restart matches initial upload bit-for-bit');
+
+      // 7. Confirm metadata format remains linked correctly
+      assert.ok(storageKey.startsWith('ORG-ZAMORIN/'), 'Storage key adheres to org scoping');
+      assert.ok(storageKey.includes(documentId), 'Storage key contains unique Document ID');
+
+      // Cleanup
+      await freshAdapterAfterRestart.delete({ storageKey });
+      await fs.promises.rm(tempStorageRoot, { recursive: true, force: true }).catch(() => {});
     });
 
   });

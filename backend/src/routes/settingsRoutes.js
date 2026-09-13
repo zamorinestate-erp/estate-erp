@@ -29,6 +29,7 @@ const {
   updateNotificationPreferences,
   getLanguageCatalogue,
   getSecurityOverview,
+  updateSecurityPolicy,
   getMySessions,
   revokeMySession,
   revokeOtherSessions,
@@ -81,6 +82,8 @@ router.get('/languages', getLanguageCatalogue);
 
 // ── Security & Sign-In ────────────────────────────────────────────────────────
 router.get('/security', getSecurityOverview);
+router.patch('/security', updateSecurityPolicy);
+router.put('/security', updateSecurityPolicy);
 
 // ── Devices & Sessions ────────────────────────────────────────────────────────
 router.get('/sessions', getMySessions);

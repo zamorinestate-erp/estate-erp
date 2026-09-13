@@ -2,6 +2,7 @@
 
 const { asyncHandler } = require('../utils/asyncHandler');
 const { ApiError } = require('../utils/ApiError');
+const { executeTransactionWithRetry } = require('../utils/transactionHelper');
 
 const {
   normalizeIdentifier,
@@ -178,15 +179,31 @@ const executeRoleChange = asyncHandler(async (request, response) => {
   target.permissionsVersion += 1;
   target.updatedBy = request.auth.userId;
 
-  // 13. Save
-  await target.save();
-
-  // 14. Capture after state
+  // 13. Save and Audit atomically
   const afterSnapshot = buildUserSnapshot(target);
 
-  // 15. Revoke target sessions
-  let revokedCount = 0;
+  await executeTransactionWithRetry(async (session) => {
+    await target.save(session ? { session } : {});
 
+    // 16. Audit
+    await auditGovernanceSuccess({
+      request,
+      action: 'USER_ROLE_CHANGED',
+      target,
+      before: beforeSnapshot,
+      after: afterSnapshot,
+      reason,
+      riskClassification: 'CRITICAL',
+      metadata: {
+        fromRole: beforeSnapshot.role,
+        toRole: proposedRole,
+      },
+      session,
+    });
+  });
+
+  // 14. Revoke target sessions (post-commit)
+  let revokedCount = 0;
   try {
     revokedCount = await revokeTargetSessions({
       request,
@@ -196,22 +213,6 @@ const executeRoleChange = asyncHandler(async (request, response) => {
   } catch (_err) {
     // Session revocation failure is non-fatal after save
   }
-
-  // 16. Audit
-  await auditGovernanceSuccess({
-    request,
-    action: 'USER_ROLE_CHANGED',
-    target,
-    before: beforeSnapshot,
-    after: afterSnapshot,
-    reason,
-    riskClassification: 'CRITICAL',
-    metadata: {
-      fromRole: beforeSnapshot.role,
-      toRole: proposedRole,
-      revokedSessionCount: revokedCount,
-    },
-  });
 
   return response.status(200).json({
     success: true,

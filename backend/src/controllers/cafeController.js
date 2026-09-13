@@ -38,7 +38,14 @@ function requireGovernanceRole(request) {
 }
 
 function requireMaster(request) {
-  requireGovernanceRole(request);
+  const role = request.auth?.role ? request.auth.role.toUpperCase() : '';
+  if (role !== 'MASTER') {
+    throw new ApiError(
+      403,
+      'MASTER_ACCESS_REQUIRED',
+      'Only Master role may perform this operational café mutation.'
+    );
+  }
 }
 
 function assertCafeAccess(request, cafeId) {
@@ -185,16 +192,16 @@ const getCafe = asyncHandler(
 
 const createCafe = asyncHandler(
   async (request, response) => {
-    requireGovernanceRole(request);
+    requireMaster(request);
 
     const result = await cafeService.createCafeWithAccess({
       auth: request.auth,
       cafeData: request.body || {},
       clientIp: request.ip,
-      userAgent: request.headers['user-agent'],
+      userAgent: request.headers ? request.headers['user-agent'] : '',
       correlationId:
         request.correlationId ||
-        request.headers['x-correlation-id'] ||
+        request.headers?.['x-correlation-id'] ||
         null,
     });
 

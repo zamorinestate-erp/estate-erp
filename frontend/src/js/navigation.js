@@ -243,6 +243,7 @@ export function isRouteAllowed(role, rawRoute, isPrimaryMaster = false) {
     'ledger': 'personal-ledger',
     'org-identity': 'admin',
     'organisation-identity': 'admin',
+    'performance': 'dashboard',
   };
 
   // Block Primary-Master-only routes for Normal Masters

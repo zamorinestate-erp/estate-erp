@@ -47,6 +47,16 @@ const documentVersionSchema = new mongoose.Schema(
       trim: true,
       default: null,
     },
+    storageKey: {
+      type: String, // Canonical non-public storage key
+      trim: true,
+      default: null,
+    },
+    storageDriver: {
+      type: String,
+      enum: ['RENDER_PERSISTENT_DISK', 'PRIVATE_OBJECT_STORAGE', 'LEGACY_BUFFER'],
+      default: 'RENDER_PERSISTENT_DISK',
+    },
     securityScanStatus: {
       type: String,
       enum: ['PENDING_SCAN', 'CLEAN', 'REJECTED', 'SCAN_FAILED'],
@@ -181,6 +191,18 @@ const businessDocumentSchema = new mongoose.Schema(
       type: String, // Disk-backed protected storage path
       trim: true,
       default: null,
+    },
+    storageKey: {
+      type: String, // Canonical non-public storage key
+      trim: true,
+      default: null,
+      index: true,
+    },
+    storageDriver: {
+      type: String,
+      enum: ['RENDER_PERSISTENT_DISK', 'PRIVATE_OBJECT_STORAGE', 'LEGACY_BUFFER'],
+      default: 'RENDER_PERSISTENT_DISK',
+      index: true,
     },
     securityScanStatus: {
       type: String,

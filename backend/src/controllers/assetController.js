@@ -59,8 +59,18 @@ function parsePositiveInteger(value, fallback, maximum) {
 
 function assertCafeAccess(request, cafeId) {
   if (!cafeId) return;
-  if (request.auth.role === 'MASTER' || request.auth.role === 'OWNER') return;
+  const isCafeOps = request.auth.workspaceMode === 'CAFE_OPERATIONS' ||
+    request.headers?.['x-workspace-mode'] === 'CAFE_OPERATIONS' ||
+    (request.auth.deviceContext?.deviceClass === 'CAFE_OWNED' && !!request.auth.deviceContext?.boundCafeId);
   const effectiveCafe = resolveEffectiveCafeScope(request);
+  if (isCafeOps && effectiveCafe && effectiveCafe !== cafeId.trim().toUpperCase()) {
+    throw new ApiError(
+      403,
+      'CROSS_CAFE_RESOURCE_DENIED',
+      'Cross-café access is denied. You are not authorized for the requested café.'
+    );
+  }
+  if (request.auth.role === 'MASTER' || request.auth.role === 'OWNER') return;
   if (effectiveCafe && effectiveCafe !== cafeId.trim().toUpperCase()) {
     throw new ApiError(
       403,
@@ -787,6 +797,62 @@ const logMaintenanceJob = asyncHandler(async (request, response) => {
   });
 });
 
+const recordInspection = asyncHandler(async (request, response) => {
+  const { assetId: rawAssetId, verdict = 'PASS', notes = '' } = request.body || {};
+  const normAssetId = normalizeId(rawAssetId);
+  if (!normAssetId) throw new ApiError(400, 'ASSET_ID_REQUIRED', 'Asset ID is required.');
+
+  const asset = await Asset.findOne({
+    assetId: normAssetId,
+    organisationId: request.auth.organisationId,
+  });
+
+  if (!asset) throw new ApiError(404, 'ASSET_NOT_FOUND', 'Asset not found.');
+  assertCafeAccess(request, asset.cafeId);
+
+  const jobId = await SequenceCounter.generateId({
+    organisationId: request.auth.organisationId,
+    sequenceKey: 'MAINTENANCE',
+    prefix: 'MNT',
+    minimumDigits: 4,
+  });
+
+  const job = await MaintenanceJob.create({
+    jobId,
+    organisationId: request.auth.organisationId,
+    cafeId: asset.cafeId,
+    assetId: normAssetId,
+    issueDescription: `Periodic Inspection Calibration — ${verdict}`,
+    costPaisa: 0,
+    technicianName: request.auth.name || 'Equipment Inspector',
+    resolutionNotes: notes || `Inspection completed with verdict: ${verdict}`,
+    loggedByUserId: request.auth.userId,
+    status: 'COMPLETED',
+    completedAt: new Date(),
+  });
+
+  asset.lastServiceDate = new Date().toISOString().split('T')[0];
+  await asset.save();
+
+  await recordRequestAudit({
+    request,
+    module: 'ASSETS',
+    action: 'RECORD_INSPECTION',
+    entityType: 'ASSET',
+    entityId: normAssetId,
+    reason: notes || `Inspection verdict ${verdict}`,
+    result: 'SUCCESS',
+    riskClassification: 'LOW',
+  });
+
+  return response.status(201).json({
+    success: true,
+    message: `Inspection logged for ${normAssetId}: ${verdict}.`,
+    data: { job, asset },
+    correlationId: request.correlationId || null,
+  });
+});
+
 module.exports = {
   getAssetOverview,
   listAssets,
@@ -802,4 +868,5 @@ module.exports = {
   listMaintenancePlans,
   createMaintenancePlan,
   logMaintenanceJob,
+  recordInspection,
 };

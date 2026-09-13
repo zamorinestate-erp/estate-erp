@@ -17,6 +17,9 @@ const {
   SequenceCounter,
 } = require('../models/SequenceCounter');
 
+const { FoodSafetyService } = require('../services/foodSafetyService');
+const { FoodSafetyIncident } = require('../models/FoodSafetyIncident');
+
 const {
   asyncHandler,
 } = require('../utils/asyncHandler');
@@ -501,13 +504,39 @@ const listTemplates = asyncHandler(async (request, response) => {
 /**
  * 5. GET /api/v1/quality/temperatures & POST /api/v1/quality/temperatures
  */
+/**
+ * 5. Temperature Monitoring & Excursions (Food Safety R02-01)
+ */
 const listTemperatures = asyncHandler(async (request, response) => {
   const { organisationId, role, assignedCafeIds } = request.auth;
-  ensureQualitySeeded(organisationId);
+  const { cafeId: queryCafe, excursionsOnly, limit = 50 } = request.query || {};
 
-  let logs = inMemoryTemperatures.filter((t) => t.organisationId === organisationId);
-  if (role !== 'MASTER' && role !== 'OWNER') {
-    logs = logs.filter((t) => assignedCafeIds.includes(t.cafeId));
+  let targetCafe = queryCafe ? normalizeId(queryCafe) : null;
+  if (targetCafe) {
+    assertCafeAccess(request, targetCafe);
+  } else if (role !== 'MASTER' && role !== 'OWNER' && assignedCafeIds?.length > 0) {
+    targetCafe = assignedCafeIds[0];
+  }
+
+  let logs = [];
+  try {
+    logs = await FoodSafetyService.listTemperatures({
+      organisationId,
+      cafeId: targetCafe || 'CAFE-001',
+      excursionsOnly: excursionsOnly === 'true',
+      limit: Number(limit),
+    });
+  } catch (err) {
+    logs = [];
+  }
+
+  // Fallback to in-memory if DB is empty / offline
+  if (logs.length === 0) {
+    ensureQualitySeeded(organisationId);
+    logs = inMemoryTemperatures.filter((t) => t.organisationId === organisationId);
+    if (targetCafe) {
+      logs = logs.filter((t) => t.cafeId === targetCafe);
+    }
   }
 
   return response.status(200).json({
@@ -518,7 +547,22 @@ const listTemperatures = asyncHandler(async (request, response) => {
 });
 
 const recordTemperature = asyncHandler(async (request, response) => {
-  const { cafeId: rawCafeId, assetId, assetName, location, readingCelsius, expectedMinCelsius = 1.0, expectedMaxCelsius = 4.0, notes = '' } = request.body || {};
+  const {
+    cafeId: rawCafeId,
+    monitoringPoint,
+    monitoringPointName,
+    equipmentId,
+    equipmentName,
+    location,
+    readingCelsius,
+    expectedMinCelsius = 1.0,
+    expectedMaxCelsius = 4.0,
+    minimumAllowedCelsius,
+    maximumAllowedCelsius,
+    operatorSessionId,
+    notes = '',
+    remarks = '',
+  } = request.body || {};
 
   const cafeId = normalizeId(rawCafeId);
   if (!cafeId) throw new ApiError(400, 'CAFE_ID_REQUIRED', 'cafeId is required.');
@@ -528,61 +572,306 @@ const recordTemperature = asyncHandler(async (request, response) => {
     throw new ApiError(400, 'VALIDATION_ERROR', 'Numeric temperature reading in Celsius is required.');
   }
 
-  const reading = Number(readingCelsius);
-  const isExcursion = reading < expectedMinCelsius || reading > expectedMaxCelsius;
-  const logId = `TEMP-2026-${String(Math.floor(Math.random() * 9000) + 1000)}`;
+  const min = minimumAllowedCelsius !== undefined ? Number(minimumAllowedCelsius) : Number(expectedMinCelsius);
+  const max = maximumAllowedCelsius !== undefined ? Number(maximumAllowedCelsius) : Number(expectedMaxCelsius);
 
-  const logEntry = {
-    logId,
-    organisationId: request.auth.organisationId,
-    cafeId,
-    assetId: assetId || 'AST-CHILL-GEN',
-    assetName: assetName || 'Refrigeration Unit',
-    location: location || 'Kitchen',
-    readingCelsius: reading,
-    expectedMinCelsius,
-    expectedMaxCelsius,
-    isExcursion,
-    notes,
-    source: 'MANUAL_ENTRY',
-    recordedBy: request.auth.userId,
-    recordedAt: new Date().toISOString(),
-  };
-
-  inMemoryTemperatures.unshift(logEntry);
-
-  if (isExcursion) {
-    // Automatically record an excursion NCR
-    const ncrId = `NCR-2026-${String(Math.floor(Math.random() * 9000) + 1000)}`;
-    inMemoryNcrs.unshift({
-      ncrId,
+  let logRecord;
+  try {
+    logRecord = await FoodSafetyService.recordTemperature({
       organisationId: request.auth.organisationId,
       cafeId,
-      source: 'TEMPERATURE_EXCURSION',
-      severity: reading > 8.0 ? 'CRITICAL' : 'MAJOR',
-      title: `Thermal Excursion on ${assetName || assetId}`,
-      description: `Reading recorded at ${reading}°C (Permissible range: ${expectedMinCelsius}°C to ${expectedMaxCelsius}°C).`,
-      immediateAction: 'Transferred perishable contents to backup chiller. Flagged for technician calibration.',
-      status: 'OPEN',
-      reportedBy: request.auth.userId,
-      reportedAt: new Date().toISOString(),
+      monitoringPoint: monitoringPoint || 'REFRIGERATOR',
+      monitoringPointName: monitoringPointName || location || 'Kitchen Unit',
+      equipmentId: equipmentId || 'AST-CHILL-GEN',
+      equipmentName: equipmentName || 'Refrigeration Unit',
+      readingCelsius: Number(readingCelsius),
+      minimumAllowedCelsius: min,
+      maximumAllowedCelsius: max,
+      recordedByUserId: request.auth.userId,
+      operatorSessionId,
+      remarks: remarks || notes,
     });
+  } catch (err) {
+    // In-memory fallback
+    const isExcursion = Number(readingCelsius) < min || Number(readingCelsius) > max;
+    const logId = `TEMP-2026-${String(Math.floor(Math.random() * 9000) + 1000)}`;
+    logRecord = {
+      logId,
+      organisationId: request.auth.organisationId,
+      cafeId,
+      assetId: equipmentId || 'AST-CHILL-GEN',
+      assetName: equipmentName || 'Refrigeration Unit',
+      location: location || 'Kitchen',
+      readingCelsius: Number(readingCelsius),
+      expectedMinCelsius: min,
+      expectedMaxCelsius: max,
+      isExcursion,
+      notes: remarks || notes,
+      status: isExcursion ? 'OUT_OF_RANGE' : 'WITHIN_RANGE',
+      recordedBy: request.auth.userId,
+      recordedAt: new Date().toISOString(),
+    };
+    inMemoryTemperatures.unshift(logRecord);
   }
 
-  await recordRequestAudit({
-    request,
-    module: 'QUALITY',
-    action: 'RECORD_TEMPERATURE',
-    entityType: 'TEMPERATURE_RECORD',
-    entityId: logId,
-    after: logEntry,
-    result: 'SUCCESS',
-    riskClassification: isExcursion ? 'HIGH' : 'LOW',
+  return response.status(201).json({
+    success: true,
+    data: { temperature: logRecord },
+    correlationId: request.correlationId || null,
+  });
+});
+
+const applyCorrectiveAction = asyncHandler(async (request, response) => {
+  const { id } = request.params;
+  const { cafeId: rawCafeId, correctiveAction, resolvedReadingCelsius, remarks = '' } = request.body || {};
+
+  const cafeId = normalizeId(rawCafeId);
+  if (!cafeId) throw new ApiError(400, 'CAFE_ID_REQUIRED', 'cafeId is required.');
+  assertCafeAccess(request, cafeId);
+
+  if (!correctiveAction || !correctiveAction.trim()) {
+    throw new ApiError(400, 'ACTION_REQUIRED', 'Corrective action details are required.');
+  }
+
+  const updatedLog = await FoodSafetyService.applyCorrectiveAction({
+    organisationId: request.auth.organisationId,
+    cafeId,
+    logId: id,
+    correctiveAction: correctiveAction.trim(),
+    resolvedReadingCelsius,
+    actionTakenByUserId: request.auth.userId,
+    remarks,
+  });
+
+  return response.status(200).json({
+    success: true,
+    data: { temperature: updatedLog },
+    correlationId: request.correlationId || null,
+  });
+});
+
+/**
+ * 5b. Cleaning & Sanitation Tasks (Food Safety R02-01)
+ */
+const listCleaningTasks = asyncHandler(async (request, response) => {
+  const { organisationId, role, assignedCafeIds } = request.auth;
+  const { cafeId: queryCafe, status, limit = 50 } = request.query || {};
+
+  let targetCafe = queryCafe ? normalizeId(queryCafe) : null;
+  if (targetCafe) {
+    assertCafeAccess(request, targetCafe);
+  } else if (role !== 'MASTER' && role !== 'OWNER' && assignedCafeIds?.length > 0) {
+    targetCafe = assignedCafeIds[0];
+  }
+
+  const tasks = await FoodSafetyService.listCleaningTasks({
+    organisationId,
+    cafeId: targetCafe || 'CAFE-001',
+    status: status ? normalizeId(status) : null,
+    limit: Number(limit),
+  });
+
+  return response.status(200).json({
+    success: true,
+    data: { tasks },
+    correlationId: request.correlationId || null,
+  });
+});
+
+const createCleaningTask = asyncHandler(async (request, response) => {
+  const { cafeId: rawCafeId, areaOrEquipment, procedure, frequency, assignedRole, assignedUserId, dueDateTime, remarks } = request.body || {};
+
+  const cafeId = normalizeId(rawCafeId);
+  if (!cafeId) throw new ApiError(400, 'CAFE_ID_REQUIRED', 'cafeId is required.');
+  assertCafeAccess(request, cafeId);
+
+  if (!areaOrEquipment || !procedure || !dueDateTime) {
+    throw new ApiError(400, 'VALIDATION_ERROR', 'areaOrEquipment, procedure, and dueDateTime are required.');
+  }
+
+  const task = await FoodSafetyService.createCleaningTask({
+    organisationId: request.auth.organisationId,
+    cafeId,
+    areaOrEquipment,
+    procedure,
+    frequency,
+    assignedRole,
+    assignedUserId,
+    dueDateTime,
+    remarks,
   });
 
   return response.status(201).json({
     success: true,
-    data: { temperature: logEntry },
+    data: { task },
+    correlationId: request.correlationId || null,
+  });
+});
+
+const completeCleaningTask = asyncHandler(async (request, response) => {
+  const { id } = request.params;
+  const { cafeId: rawCafeId, verifiedByUserId, remarks } = request.body || {};
+
+  const cafeId = normalizeId(rawCafeId);
+  if (!cafeId) throw new ApiError(400, 'CAFE_ID_REQUIRED', 'cafeId is required.');
+  assertCafeAccess(request, cafeId);
+
+  const task = await FoodSafetyService.completeCleaningTask({
+    organisationId: request.auth.organisationId,
+    cafeId,
+    taskId: id,
+    completedByUserId: request.auth.userId,
+    verifiedByUserId,
+    remarks,
+  });
+
+  return response.status(200).json({
+    success: true,
+    data: { task },
+    correlationId: request.correlationId || null,
+  });
+});
+
+/**
+ * 5c. Pest Control Register (Food Safety R02-01)
+ */
+const listPestControl = asyncHandler(async (request, response) => {
+  const { organisationId, role, assignedCafeIds } = request.auth;
+  const { cafeId: queryCafe, limit = 50 } = request.query || {};
+
+  let targetCafe = queryCafe ? normalizeId(queryCafe) : null;
+  if (targetCafe) {
+    assertCafeAccess(request, targetCafe);
+  } else if (role !== 'MASTER' && role !== 'OWNER' && assignedCafeIds?.length > 0) {
+    targetCafe = assignedCafeIds[0];
+  }
+
+  const records = await FoodSafetyService.listPestControl({
+    organisationId,
+    cafeId: targetCafe || 'CAFE-001',
+    limit: Number(limit),
+  });
+
+  return response.status(200).json({
+    success: true,
+    data: { pestControlRecords: records },
+    correlationId: request.correlationId || null,
+  });
+});
+
+const recordPestControl = asyncHandler(async (request, response) => {
+  const {
+    cafeId: rawCafeId,
+    serviceProvider,
+    vendorId,
+    serviceDate,
+    areasTreated,
+    treatmentAction,
+    findings,
+    followUpRequired,
+    nextDueDate,
+    certificateNumber,
+    remarks,
+  } = request.body || {};
+
+  const cafeId = normalizeId(rawCafeId);
+  if (!cafeId) throw new ApiError(400, 'CAFE_ID_REQUIRED', 'cafeId is required.');
+  assertCafeAccess(request, cafeId);
+
+  if (!serviceProvider || !treatmentAction || !serviceDate || !nextDueDate) {
+    throw new ApiError(400, 'VALIDATION_ERROR', 'serviceProvider, treatmentAction, serviceDate, and nextDueDate are required.');
+  }
+
+  const record = await FoodSafetyService.recordPestControl({
+    organisationId: request.auth.organisationId,
+    cafeId,
+    serviceProvider,
+    vendorId,
+    serviceDate,
+    areasTreated,
+    treatmentAction,
+    findings,
+    followUpRequired,
+    nextDueDate,
+    certificateNumber,
+    recordedByUserId: request.auth.userId,
+    remarks,
+  });
+
+  return response.status(201).json({
+    success: true,
+    data: { pestControlRecord: record },
+    correlationId: request.correlationId || null,
+  });
+});
+
+/**
+ * 5d. Calibration Register (Food Safety R02-01)
+ */
+const listCalibrations = asyncHandler(async (request, response) => {
+  const { organisationId, role, assignedCafeIds } = request.auth;
+  const { cafeId: queryCafe, limit = 50 } = request.query || {};
+
+  let targetCafe = queryCafe ? normalizeId(queryCafe) : null;
+  if (targetCafe) {
+    assertCafeAccess(request, targetCafe);
+  } else if (role !== 'MASTER' && role !== 'OWNER' && assignedCafeIds?.length > 0) {
+    targetCafe = assignedCafeIds[0];
+  }
+
+  const calibrations = await FoodSafetyService.listCalibrations({
+    organisationId,
+    cafeId: targetCafe || 'CAFE-001',
+    limit: Number(limit),
+  });
+
+  return response.status(200).json({
+    success: true,
+    data: { calibrations },
+    correlationId: request.correlationId || null,
+  });
+});
+
+const recordCalibration = asyncHandler(async (request, response) => {
+  const {
+    cafeId: rawCafeId,
+    assetId,
+    assetName,
+    equipmentType,
+    calibrationDate,
+    result,
+    certificateNumber,
+    nextDueDate,
+    performedBy,
+    remarks,
+  } = request.body || {};
+
+  const cafeId = normalizeId(rawCafeId);
+  if (!cafeId) throw new ApiError(400, 'CAFE_ID_REQUIRED', 'cafeId is required.');
+  assertCafeAccess(request, cafeId);
+
+  if (!assetId || !assetName || !calibrationDate || !nextDueDate || !performedBy) {
+    throw new ApiError(400, 'VALIDATION_ERROR', 'assetId, assetName, calibrationDate, nextDueDate, and performedBy are required.');
+  }
+
+  const cal = await FoodSafetyService.recordCalibration({
+    organisationId: request.auth.organisationId,
+    cafeId,
+    assetId,
+    assetName,
+    equipmentType,
+    calibrationDate,
+    result,
+    certificateNumber,
+    nextDueDate,
+    performedBy,
+    recordedByUserId: request.auth.userId,
+    remarks,
+  });
+
+  return response.status(201).json({
+    success: true,
+    data: { calibration: cal },
     correlationId: request.correlationId || null,
   });
 });
@@ -1024,6 +1313,134 @@ const getQualityIntegrity = asyncHandler(async (request, response) => {
   });
 });
 
+// ── Food Safety Incidents & Complaints (R02-06) ──────────────────────────────
+const listFoodSafetyIncidents = asyncHandler(async (request, response) => {
+  const { organisationId } = request.auth;
+  const cafeId = resolveEffectiveCafeScope(request);
+  const { incidentType, severity, status } = request.query;
+
+  const filter = { organisationId, cafeId };
+  if (incidentType) filter.incidentType = incidentType.toUpperCase();
+  if (severity) filter.severity = severity.toUpperCase();
+  if (status) filter.status = status.toUpperCase();
+
+  const incidents = await FoodSafetyIncident.find(filter).sort({ createdAt: -1 }).lean();
+
+  return response.status(200).json({
+    success: true,
+    data: {
+      incidents,
+      totalCount: incidents.length,
+    },
+  });
+});
+
+const recordFoodSafetyIncident = asyncHandler(async (request, response) => {
+  const { organisationId, userId } = request.auth;
+  const cafeId = resolveEffectiveCafeScope(request);
+  const {
+    incidentType,
+    severity = 'MEDIUM',
+    customerName,
+    customerContact,
+    billId,
+    menuItemId,
+    menuItemName,
+    lotId,
+    description,
+    sampleRetained,
+    sampleStorageLocation,
+  } = request.body || {};
+
+  if (!incidentType || !description) {
+    throw new ApiError(400, 'VALIDATION_FAILED', 'incidentType and description are required.');
+  }
+
+  const count = await FoodSafetyIncident.countDocuments({ organisationId });
+  const incidentId = `FSI-2026-${String(count + 1).padStart(4, '0')}`;
+
+  const incident = await FoodSafetyIncident.create({
+    incidentId,
+    organisationId,
+    cafeId,
+    incidentType,
+    severity,
+    status: 'REPORTED',
+    customerName: customerName || '',
+    customerContact: customerContact || '',
+    billId: billId || '',
+    menuItemId: menuItemId || '',
+    menuItemName: menuItemName || '',
+    lotId: lotId || '',
+    description,
+    sampleRetained: Boolean(sampleRetained),
+    sampleStorageLocation: sampleStorageLocation || '',
+    reportedByUserId: userId,
+    reportedAt: new Date(),
+  });
+
+  await recordRequestAudit(request, {
+    action: 'FOOD_SAFETY_INCIDENT_RECORDED',
+    entityType: 'FoodSafetyIncident',
+    entityId: incidentId,
+    cafeId,
+    metadata: {
+      incidentType,
+      severity,
+      menuItemId,
+      billId,
+    },
+  });
+
+  return response.status(201).json({
+    success: true,
+    message: `Food safety incident ${incidentId} logged.`,
+    data: { incident },
+  });
+});
+
+const resolveFoodSafetyIncident = asyncHandler(async (request, response) => {
+  const { organisationId, userId } = request.auth;
+  const cafeId = resolveEffectiveCafeScope(request);
+  const { incidentId } = request.params;
+  const { investigationFindings, correctiveAction, status = 'RESOLVED' } = request.body || {};
+
+  const incident = await FoodSafetyIncident.findOne({
+    organisationId,
+    cafeId,
+    incidentId: incidentId.toUpperCase(),
+  });
+
+  if (!incident) {
+    throw new ApiError(404, 'NOT_FOUND', `Food safety incident ${incidentId} not found.`);
+  }
+
+  if (investigationFindings !== undefined) incident.investigationFindings = investigationFindings;
+  if (correctiveAction !== undefined) incident.correctiveAction = correctiveAction;
+  incident.status = status.toUpperCase();
+  incident.resolvedAt = new Date();
+  incident.resolvedByUserId = userId;
+
+  await incident.save();
+
+  await recordRequestAudit(request, {
+    action: 'FOOD_SAFETY_INCIDENT_RESOLVED',
+    entityType: 'FoodSafetyIncident',
+    entityId: incidentId,
+    cafeId,
+    metadata: {
+      status: incident.status,
+      correctiveAction,
+    },
+  });
+
+  return response.status(200).json({
+    success: true,
+    message: `Incident ${incidentId} updated to ${incident.status}.`,
+    data: { incident },
+  });
+});
+
 module.exports = {
   getQualityOverview,
   listChecklists,
@@ -1031,6 +1448,17 @@ module.exports = {
   listTemplates,
   listTemperatures,
   recordTemperature,
+  applyCorrectiveAction,
+  listCleaningTasks,
+  createCleaningTask,
+  completeCleaningTask,
+  listPestControl,
+  recordPestControl,
+  listCalibrations,
+  recordCalibration,
+  listFoodSafetyIncidents,
+  recordFoodSafetyIncident,
+  resolveFoodSafetyIncident,
   listQualityHolds,
   createQualityHold,
   releaseQualityHold,

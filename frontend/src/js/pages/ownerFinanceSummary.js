@@ -17,7 +17,20 @@ let activeTab = "overview";
 let selectedCafeFilter = "ALL";
 let selectedPeriod = "THIS_MONTH";
 let selectedComparison = "VS_PREV_MONTH";
-let selectedBusinessDate = "2026-08-22";
+function getIstBusinessDate() {
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Kolkata",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+  } catch {
+    return new Date().toISOString().split("T")[0];
+  }
+}
+
+let selectedBusinessDate = getIstBusinessDate();
 let lastRefreshedTime = new Date();
 
 let cachedFinanceSummary = null;
@@ -107,9 +120,9 @@ export function renderOwnerFinanceSummary() {
   const data = cachedFinanceSummary || DEFAULT_FINANCE_DATA;
 
   // Filter cafes by selected scope
-  let filteredCafes = data.cafes;
+  let filteredCafes = data.cafes || [];
   if (selectedCafeFilter !== "ALL") {
-    filteredCafes = data.cafes.filter((c) => c.cafeId === selectedCafeFilter);
+    filteredCafes = (data.cafes || []).filter((c) => c.cafeId === selectedCafeFilter);
   }
 
   // Aggregate dynamically for selected cafes
@@ -124,21 +137,35 @@ export function renderOwnerFinanceSummary() {
   let totalExceptions = 0;
   let totalVariance = 0;
 
-  for (const c of filteredCafes) {
-    totalNetSales += c.netSales;
-    totalGrossSales += c.grossSales;
-    totalDiscounts += c.discounts || 0;
-    totalRefunds += c.refunds || 0;
-    totalExpenses += c.expenses;
-    totalPayroll += c.payrollCost;
-    totalOvertime += c.overtimeCost || 0;
-    totalWastage += c.wastageValue;
-    totalExceptions += c.exceptions;
-    totalVariance += c.drawerVariance;
+  if (filteredCafes.length > 0) {
+    for (const c of filteredCafes) {
+      totalNetSales += Number(c.netSales || 0);
+      totalGrossSales += Number(c.grossSales || 0);
+      totalDiscounts += Number(c.discounts || 0);
+      totalRefunds += Number(c.refunds || 0);
+      totalExpenses += Number(c.expenses || 0);
+      totalPayroll += Number(c.payrollCost || 0);
+      totalOvertime += Number(c.overtimeCost || 0);
+      totalWastage += Number(c.wastageValue || 0);
+      totalExceptions += Number(c.exceptions || 0);
+      totalVariance += Number(c.drawerVariance || 0);
+    }
+  } else if (data.kpis) {
+    totalNetSales = Number(data.kpis.netSales || 0);
+    totalGrossSales = Number(data.kpis.grossSales || 0);
+    totalDiscounts = Number(data.kpis.itemDiscounts || 0);
+    totalRefunds = Number(data.kpis.refundsTotal || 0);
+    totalExpenses = Number(data.kpis.operatingExpenses || 0);
+    totalPayroll = Number(data.kpis.payrollCost || 0);
+    totalOvertime = Number(data.kpis.overtimeCost || 0);
+    totalWastage = Number(data.kpis.wastageValue || 0);
+    totalExceptions = Number(data.kpis.exceptionsCount || 0);
+    totalVariance = Number(data.kpis.reconciliationVariance || 0);
   }
 
   const expRatio = totalNetSales > 0 ? ((totalExpenses / totalNetSales) * 100).toFixed(1) : "0.0";
   const payrollRatio = totalNetSales > 0 ? ((totalPayroll / totalNetSales) * 100).toFixed(1) : "0.0";
+  const opContribPct = (100 - Number(expRatio) - Number(payrollRatio)).toFixed(1);
 
   return `
     <div class="page-enter" style="max-width:1400px; margin:0 auto; padding-bottom:60px;">
@@ -209,7 +236,7 @@ export function renderOwnerFinanceSummary() {
         </div>
 
         <div style="font-size:12px; color:var(--muted); font-weight:600;">
-          Revenue Growth: <span style="color:var(--color-success);">+6.2%</span> · OpEx Growth: <span style="color:var(--color-warning);">+9.8%</span> · Gap: <span style="color:var(--color-danger);">-3.6 pp</span>
+          OpEx Ratio: <span style="color:var(--color-accent-amber); font-weight:700;">${expRatio}%</span> · Workforce Ratio: <span style="color:var(--ink); font-weight:700;">${payrollRatio}%</span> · Operating Contribution: <span style="color:var(--color-success); font-weight:700;">${opContribPct}%</span>
         </div>
       </div>
 
@@ -255,15 +282,22 @@ function renderActiveTabContent(tab, data, filteredCafes, totalNetSales, totalGr
 
 // ── Tab 1: Executive Overview ────────────────────────────────────────────────
 function renderOverviewTab(data, totalNetSales, totalGrossSales, totalExpenses, totalPayroll, totalWastage, totalExceptions, totalVariance, expRatio, payrollRatio) {
+  const opContribPct = (100 - Number(expRatio) - Number(payrollRatio)).toFixed(1);
+  const opSurplus = totalNetSales - totalExpenses - totalPayroll;
+  const wastageRatio = totalNetSales > 0 ? ((totalWastage / totalNetSales) * 100).toFixed(2) : "0.00";
+  const overduePayables = data.payables?.overdue || 0;
+  const dueNext7Days = data.payables?.dueNext7Days || 0;
+  const overdueReceivables = data.departmentOrders?.overdue || 0;
+
   return `
     <!-- Top 6 Core Executive KPIs -->
     <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:14px; margin-bottom:20px;">
-      ${kpiBox("Net Sales", fmtInr(totalNetSales), "+6.2% vs comparison", "var(--color-success)", "Gross Billing minus customer refunds & discounts (Canonical SCR-005 match)")}
+      ${kpiBox("Net Sales", fmtInr(totalNetSales), totalGrossSales > 0 ? `Gross: ${fmtInr(totalGrossSales)}` : "Canonical POS Bills", "var(--color-success)", "Gross Billing minus customer refunds & discounts (Canonical SCR-005 match)")}
       ${kpiBox("Operating Expenses", fmtInr(totalExpenses), `${expRatio}% of Net Sales`, "var(--ink)", "Store operations, utilities, repairs, supplies & direct consumables")}
-      ${kpiBox("Expense Ratio", `${expRatio}%`, "+3.1 pp vs comparison", "var(--color-accent-amber)", "Operating Expenses ÷ Net Sales × 100")}
+      ${kpiBox("Expense Ratio", `${expRatio}%`, totalNetSales > 0 ? "OpEx ÷ Net Sales × 100" : "Baseline", "var(--color-accent-amber)", "Operating Expenses ÷ Net Sales × 100")}
       ${kpiBox("Payroll Workforce Cost", fmtInr(totalPayroll), `${payrollRatio}% of Net Sales`, "var(--ink)", "Consolidated employee salaries & allowances across authorized cafes")}
-      ${kpiBox("Reconciliation Variance", fmtInr(totalVariance), "Matched · ₹0 Variance", "var(--color-success)", "Unresolved difference between tender/drawer records and sales")}
-      ${kpiBox("Financial Exceptions", `${totalExceptions} Issues`, "Zero Blocking Errors", totalExceptions > 0 ? "var(--color-danger)" : "var(--color-success)", "Unreconciled registers or critical financial control discrepancies")}
+      ${kpiBox("Reconciliation Variance", fmtInr(totalVariance), totalVariance === 0 ? "Matched · ₹0 Variance" : `Variance: ${fmtInr(totalVariance)}`, totalVariance === 0 ? "var(--color-success)" : "var(--color-danger)", "Unresolved difference between tender/drawer records and sales")}
+      ${kpiBox("Financial Exceptions", `${totalExceptions} Issues`, totalExceptions === 0 ? "Zero Blocking Errors" : "Attention Required", totalExceptions > 0 ? "var(--color-danger)" : "var(--color-success)", "Unreconciled registers or critical financial control discrepancies")}
     </div>
 
     <!-- Layer 3: What Changed Financially & Financial Attention Required -->
@@ -272,28 +306,28 @@ function renderOverviewTab(data, totalNetSales, totalGrossSales, totalExpenses, 
       <div class="card" style="padding:18px 20px;">
         <h4 style="font-size:13.5px; font-weight:700; margin:0 0 10px; color:var(--ink); display:flex; justify-content:space-between;">
           <span>📈 What Changed Financially</span>
-          <span style="font-size:11.5px; font-weight:500; color:var(--muted);">Factual Trend Digest</span>
+          <span style="font-size:11.5px; font-weight:500; color:var(--muted);">Factual Performance Digest</span>
         </h4>
         <div style="display:flex; flex-direction:column; gap:8px; font-size:12.5px;">
           <div style="display:flex; justify-content:space-between;">
-            <span style="color:var(--muted);">Net Revenue Movement:</span>
-            <strong style="color:var(--color-success);">+6.2% (₹1,48,520 vs ₹1,39,850)</strong>
+            <span style="color:var(--muted);">Net Realized Revenue:</span>
+            <strong style="color:var(--color-success); font-family:var(--font-mono);">${fmtInr(totalNetSales)}</strong>
           </div>
           <div style="display:flex; justify-content:space-between;">
-            <span style="color:var(--muted);">Operating Cost Growth:</span>
-            <strong style="color:var(--color-warning);">+9.8% (₹62,450 vs ₹56,880)</strong>
+            <span style="color:var(--muted);">Operating Cost Burden:</span>
+            <strong style="color:var(--color-warning); font-family:var(--font-mono);">${fmtInr(totalExpenses)} (${expRatio}%)</strong>
           </div>
           <div style="display:flex; justify-content:space-between;">
-            <span style="color:var(--muted);">Expense Ratio Shift:</span>
-            <strong style="color:var(--ink);">+3.1 pp (42.0% vs 38.9%)</strong>
+            <span style="color:var(--muted);">Workforce Payroll Burden:</span>
+            <strong style="color:var(--ink); font-family:var(--font-mono);">${fmtInr(totalPayroll)} (${payrollRatio}%)</strong>
           </div>
           <div style="display:flex; justify-content:space-between;">
-            <span style="color:var(--muted);">Workforce Payroll Ratio:</span>
-            <strong style="color:var(--ink);">30.0% (Stable across 2 periods)</strong>
+            <span style="color:var(--muted);">Operating Contribution (Surplus):</span>
+            <strong style="color:var(--color-success); font-family:var(--font-mono);">${fmtInr(opSurplus)} (${opContribPct}%)</strong>
           </div>
           <div style="display:flex; justify-content:space-between;">
             <span style="color:var(--muted);">Inventory Wastage Impact:</span>
-            <strong style="color:var(--color-success);">${fmtInr(totalWastage)} (-4.3% reduction)</strong>
+            <strong style="color:var(--color-accent-amber); font-family:var(--font-mono);">${fmtInr(totalWastage)} (${wastageRatio}%)</strong>
           </div>
         </div>
       </div>
@@ -302,28 +336,36 @@ function renderOverviewTab(data, totalNetSales, totalGrossSales, totalExpenses, 
       <div class="card" style="padding:18px 20px;">
         <h4 style="font-size:13.5px; font-weight:700; margin:0 0 10px; color:var(--ink); display:flex; justify-content:space-between;">
           <span>🛡️ Financial Control Scorecard</span>
-          <span class="status success" style="font-size:10.5px; font-weight:700;">100% RECONCILED</span>
+          <span class="status ${totalExceptions === 0 && totalVariance === 0 ? "success" : "warning"}" style="font-size:10.5px; font-weight:700;">
+            ${totalExceptions === 0 && totalVariance === 0 ? "CONTROL INTEGRITY VERIFIED" : "ATTENTION REQUIRED"}
+          </span>
         </h4>
         <div style="display:flex; flex-direction:column; gap:8px; font-size:12.5px;">
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <span>Tender Reconciliation:</span>
-            <span class="status success" style="font-size:10.5px;">✓ MATCHED (₹0 VARIANCE)</span>
+            <span class="status ${totalVariance === 0 ? "success" : "danger"}" style="font-size:10.5px;">
+              ${totalVariance === 0 ? "✓ MATCHED (₹0 VARIANCE)" : `⚠️ VARIANCE ${fmtInr(totalVariance)}`}
+            </span>
           </div>
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <span>Cash Drawer Sessions:</span>
-            <span class="status success" style="font-size:10.5px;">✓ 3/3 SESSIONS RECONCILED</span>
+            <span class="status ${totalExceptions === 0 ? "success" : "warning"}" style="font-size:10.5px;">
+              ${totalExceptions === 0 ? "✓ SESSIONS RECONCILED" : `⚠️ ${totalExceptions} UNRECONCILED`}
+            </span>
           </div>
           <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span>GST Output Classification:</span>
-            <span class="status success" style="font-size:10.5px;">✓ 100% COMPLETE (5% SPLIT)</span>
+            <span>GST Output Recorded:</span>
+            <span class="status success" style="font-size:10.5px;">✓ ${fmtInr(data.kpis?.taxCollected || 0)} (5% COMPOSITE)</span>
           </div>
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <span>Overdue Receivables:</span>
-            <span class="status success" style="font-size:10.5px;">✓ ₹0 OVERDUE BALANCE</span>
+            <span class="status ${overdueReceivables === 0 ? "success" : "danger"}" style="font-size:10.5px;">
+              ${overdueReceivables === 0 ? "✓ ₹0 OVERDUE BALANCE" : `⚠️ ${fmtInr(overdueReceivables)} OVERDUE`}
+            </span>
           </div>
           <div style="display:flex; justify-content:space-between; align-items:center;">
             <span>Vendor Payables Due (Next 7d):</span>
-            <strong style="font-family:var(--font-mono); color:var(--ink);">${fmtInr(data.payables.dueNext7Days)}</strong>
+            <strong style="font-family:var(--font-mono); color:var(--ink);">${fmtInr(dueNext7Days)}</strong>
           </div>
         </div>
       </div>
@@ -333,13 +375,13 @@ function renderOverviewTab(data, totalNetSales, totalGrossSales, totalExpenses, 
     <div class="card" style="padding:20px; margin-bottom:24px;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:8px;">
         <div>
-          <h3 style="font-size:15px; font-weight:700; margin:0 0 2px; color:var(--ink);">📊 Revenue Growth vs Cost Dynamics</h3>
+          <h3 style="font-size:15px; font-weight:700; margin:0 0 2px; color:var(--ink);">📊 Revenue Structure vs Cost Dynamics</h3>
           <p style="font-size:12px; color:var(--muted); margin:0;">Comparison of revenue trajectory against operating and labour expenses</p>
         </div>
         <div style="display:flex; gap:10px; font-size:12px;">
-          <span style="display:flex; align-items:center; gap:4px;"><span style="width:10px; height:10px; background:var(--color-success); border-radius:2px;"></span> Net Sales (+6.2%)</span>
-          <span style="display:flex; align-items:center; gap:4px;"><span style="width:10px; height:10px; background:var(--color-warning); border-radius:2px;"></span> OpEx (+9.8%)</span>
-          <span style="display:flex; align-items:center; gap:4px;"><span style="width:10px; height:10px; background:var(--color-accent-amber); border-radius:2px;"></span> Payroll (30.0%)</span>
+          <span style="display:flex; align-items:center; gap:4px;"><span style="width:10px; height:10px; background:var(--color-success); border-radius:2px;"></span> Net Sales (${fmtInr(totalNetSales)})</span>
+          <span style="display:flex; align-items:center; gap:4px;"><span style="width:10px; height:10px; background:var(--color-warning); border-radius:2px;"></span> OpEx (${expRatio}%)</span>
+          <span style="display:flex; align-items:center; gap:4px;"><span style="width:10px; height:10px; background:var(--color-accent-amber); border-radius:2px;"></span> Payroll (${payrollRatio}%)</span>
         </div>
       </div>
 
@@ -359,7 +401,7 @@ function renderOverviewTab(data, totalNetSales, totalGrossSales, totalExpenses, 
         </div>
         <div>
           <div style="font-size:11.5px; color:var(--muted);">Operating Contribution Retained:</div>
-          <strong style="font-size:16px; color:var(--color-success); font-family:var(--font-mono);">${(100 - Number(expRatio) - Number(payrollRatio)).toFixed(1)}%</strong>
+          <strong style="font-size:16px; color:var(--color-success); font-family:var(--font-mono);">${opContribPct}%</strong>
         </div>
       </div>
     </div>
@@ -428,7 +470,7 @@ function renderMatrixTab(filteredCafes) {
                   ${fmtInr(c.wastageValue)}
                 </td>
                 <td>
-                  <span class="status success" style="font-size:10.5px;">✓ MATCHED</span>
+                  ${(c.drawerVariance || 0) === 0 ? '<span class="status success" style="font-size:10.5px;">✓ MATCHED</span>' : `<span class="status danger" style="font-size:10.5px;">⚠️ ${fmtInr(c.drawerVariance)}</span>`}
                 </td>
                 <td>
                   <div style="display:flex; align-items:center; gap:6px;">
@@ -441,7 +483,7 @@ function renderMatrixTab(filteredCafes) {
                   </div>
                 </td>
                 <td>
-                  <button class="btn btn-xs btn-outline btn-health-audit" data-cafeid="${c.cafeId}" style="font-size:11px; font-weight:700; color:var(--color-success); border-color:rgba(16,185,129,0.3);">
+                  <button class="btn btn-xs btn-outline btn-health-audit" data-cafeid="${c.cafeId}" style="font-size:11px; font-weight:700; color:${c.health === 'HEALTHY' ? 'var(--color-success)' : 'var(--color-warning)'}; border-color:${c.health === 'HEALTHY' ? 'rgba(16,185,129,0.3)' : 'rgba(245,158,11,0.3)'};">
                     ● ${c.health} ℹ
                   </button>
                 </td>
@@ -510,8 +552,11 @@ function renderRevenueBridgeTab(data, totalNetSales, totalGrossSales, totalDisco
             <strong style="font-family:var(--font-mono); color:var(--ink);">${fmtInr(data.kpis.sgstAmount)}</strong>
           </div>
           <div style="display:flex; justify-content:space-between; padding-top:6px; font-size:14px; background:var(--bg-subtle, rgba(0,0,0,0.02)); padding:8px 12px; border-radius:6px;">
-            <strong style="color:var(--ink);">Total GST Liability Collected:</strong>
+            <strong style="color:var(--ink);">Total Output GST Recorded:</strong>
             <strong style="font-family:var(--font-mono); color:var(--color-accent-amber);">${fmtInr(data.kpis.taxCollected)}</strong>
+          </div>
+          <div style="font-size:11.5px; color:var(--muted); margin-top:4px;">
+            ℹ️ Recorded output tax under restaurant service profile. Net GST payable is not claimed on this management dashboard without statutory ITC filing data.
           </div>
         </div>
       </div>
@@ -521,6 +566,7 @@ function renderRevenueBridgeTab(data, totalNetSales, totalGrossSales, totalDisco
 
 // ── Tab 4: Cost & Leakage Control ────────────────────────────────────────────
 function renderCostLeakageTab(data, totalNetSales, totalExpenses, totalPayroll, totalOvertime, totalWastage, expRatio, payrollRatio) {
+  const wastageRatio = totalNetSales > 0 ? ((totalWastage / totalNetSales) * 100).toFixed(2) : "0.00";
   return `
     <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(440px, 1fr)); gap:20px; margin-bottom:24px;">
       <!-- Cost Structure Breakdown -->
@@ -568,12 +614,12 @@ function renderCostLeakageTab(data, totalNetSales, totalExpenses, totalPayroll, 
           </div>
           <div style="padding:10px; background:var(--bg-subtle, rgba(0,0,0,0.02)); border-radius:6px;">
             <div style="color:var(--muted); font-size:11px;">Wastage % of Revenue:</div>
-            <strong style="font-size:18px; color:var(--color-success); font-family:var(--font-mono);">${((totalWastage / (totalNetSales || 1)) * 100).toFixed(2)}%</strong>
+            <strong style="font-size:18px; color:var(--color-success); font-family:var(--font-mono);">${wastageRatio}%</strong>
           </div>
         </div>
 
         <div style="font-size:12.5px; color:var(--muted); line-height:1.5;">
-          Wastage decreased by <strong>4.3%</strong> compared to previous month due to tighter roastery batching controls in Kozhikode and improved dairy shelf-life rotation.
+          Inventory wastage is recorded at <strong>${fmtInr(totalWastage)}</strong> (<strong>${wastageRatio}%</strong> of Net Sales). Authoritative stock loss and spoilage allocations are pulled directly from approved store waste registers.
         </div>
       </div>
     </div>
@@ -601,14 +647,14 @@ function renderCashDrawersTab(data, filteredCafes, totalVariance) {
           </div>
           <div style="padding:10px; background:var(--bg-subtle, rgba(0,0,0,0.02)); border-radius:6px;">
             <div style="color:var(--muted); font-size:11px;">Drawer Cash Variance:</div>
-            <strong style="font-size:18px; color:var(--color-success); font-family:var(--font-mono);">₹0.00</strong>
+            <strong style="font-size:18px; color:${totalVariance === 0 ? "var(--color-success)" : "var(--color-danger)"}; font-family:var(--font-mono);">${fmtInr(totalVariance)}</strong>
           </div>
         </div>
 
         <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--muted); padding-top:6px; border-top:1px solid var(--border-subtle);">
-          <span>UPI / QR Digital: <strong style="color:var(--ink);">64% Volume</strong></span>
-          <span>EDC Card Swipes: <strong style="color:var(--ink);">20% Volume</strong></span>
-          <span>Cash Tills: <strong style="color:var(--ink);">16% Volume</strong></span>
+          <span>Physical Till Cash: <strong style="color:var(--ink);">${fmtInr(data.kpis.physicalCashInTill)}</strong></span>
+          <span>Reconciliation Variance: <strong style="color:${totalVariance === 0 ? "var(--color-success)" : "var(--color-danger)"};">${fmtInr(totalVariance)}</strong></span>
+          <span>Active Sessions: <strong style="color:var(--ink);">${filteredCafes.length} Branch Drawers</strong></span>
         </div>
       </div>
 
@@ -630,7 +676,7 @@ function renderCashDrawersTab(data, filteredCafes, totalVariance) {
                 <span class="status ${c.drawerStatus === "RECONCILED" ? "success" : "info"}" style="font-size:10px;">
                   ${c.drawerStatus}
                 </span>
-                <div style="font-size:11px; color:var(--muted);">Variance: ₹0.00</div>
+                <div style="font-size:11px; color:var(--muted);">Variance: ${fmtInr(c.drawerVariance || 0)}</div>
               </div>
             </div>
           `
@@ -644,6 +690,21 @@ function renderCashDrawersTab(data, filteredCafes, totalVariance) {
 
 // ── Tab 6: Payables, Receivables & Budgets ───────────────────────────────────
 function renderPayablesReceivablesTab(data, totalNetSales, totalExpenses, totalPayroll) {
+  const revTarget = data.budgets?.revenueTarget || 0;
+  const revDiff = totalNetSales - revTarget;
+  const revPct = revTarget > 0 ? ((Math.abs(revDiff) / revTarget) * 100).toFixed(1) : "0.0";
+  const revAhead = revDiff >= 0;
+
+  const expBudget = data.budgets?.expenseBudget || 0;
+  const expDiff = totalExpenses - expBudget;
+  const expPct = expBudget > 0 ? ((Math.abs(expDiff) / expBudget) * 100).toFixed(1) : "0.0";
+  const expUnder = expDiff <= 0;
+
+  const payBudget = data.budgets?.payrollBudget || 0;
+  const payDiff = totalPayroll - payBudget;
+  const payPct = payBudget > 0 ? ((Math.abs(payDiff) / payBudget) * 100).toFixed(1) : "0.0";
+  const payUnder = payDiff <= 0;
+
   return `
     <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(440px, 1fr)); gap:20px; margin-bottom:24px;">
       <!-- Department Order Receivables & Vendor Payables -->
@@ -680,7 +741,7 @@ function renderPayablesReceivablesTab(data, totalNetSales, totalExpenses, totalP
             </div>
             <div style="display:flex; justify-content:space-between;">
               <span>Overdue (>30 Days):</span>
-              <strong style="font-family:var(--font-mono); color:var(--color-success);">₹0.00</strong>
+              <strong style="font-family:var(--font-mono); color:${(data.payables?.overdue || 0) === 0 ? "var(--color-success)" : "var(--color-danger)"};">${fmtInr(data.payables?.overdue || 0)}</strong>
             </div>
           </div>
         </div>
@@ -695,25 +756,31 @@ function renderPayablesReceivablesTab(data, totalNetSales, totalExpenses, totalP
           <div>
             <div style="display:flex; justify-content:space-between; margin-bottom:2px;">
               <span>Revenue Target:</span>
-              <span>Actual: <strong style="color:var(--color-success); font-family:var(--font-mono);">${fmtInr(totalNetSales)}</strong> / Target: <strong style="font-family:var(--font-mono);">${fmtInr(data.budgets.revenueTarget)}</strong></span>
+              <span>Actual: <strong style="color:var(--color-success); font-family:var(--font-mono);">${fmtInr(totalNetSales)}</strong> / Target: <strong style="font-family:var(--font-mono);">${fmtInr(revTarget)}</strong></span>
             </div>
-            <div style="font-size:11.5px; color:var(--color-success);">✓ +6.1% Ahead of Target (Target Achieved)</div>
+            <div style="font-size:11.5px; color:${revAhead ? "var(--color-success)" : "var(--color-warning)"};">
+              ${revAhead ? `✓ +${revPct}% Ahead of Target` : `⚠️ -${revPct}% Below Target`} (${fmtInr(Math.abs(revDiff))} variance)
+            </div>
           </div>
 
           <div>
             <div style="display:flex; justify-content:space-between; margin-bottom:2px;">
               <span>Operating Expense Budget:</span>
-              <span>Actual: <strong style="color:var(--ink); font-family:var(--font-mono);">${fmtInr(totalExpenses)}</strong> / Budget: <strong style="font-family:var(--font-mono);">${fmtInr(data.budgets.expenseBudget)}</strong></span>
+              <span>Actual: <strong style="color:var(--ink); font-family:var(--font-mono);">${fmtInr(totalExpenses)}</strong> / Budget: <strong style="font-family:var(--font-mono);">${fmtInr(expBudget)}</strong></span>
             </div>
-            <div style="font-size:11.5px; color:var(--color-success);">✓ -3.9% Under Budget (Cost Well Controlled)</div>
+            <div style="font-size:11.5px; color:${expUnder ? "var(--color-success)" : "var(--color-warning)"};">
+              ${expUnder ? `✓ -${expPct}% Under Budget (Controlled)` : `⚠️ +${expPct}% Over Budget`} (${fmtInr(Math.abs(expDiff))} variance)
+            </div>
           </div>
 
           <div>
             <div style="display:flex; justify-content:space-between; margin-bottom:2px;">
               <span>Payroll Budget:</span>
-              <span>Actual: <strong style="color:var(--ink); font-family:var(--font-mono);">${fmtInr(totalPayroll)}</strong> / Budget: <strong style="font-family:var(--font-mono);">${fmtInr(data.budgets.payrollBudget)}</strong></span>
+              <span>Actual: <strong style="color:var(--ink); font-family:var(--font-mono);">${fmtInr(totalPayroll)}</strong> / Budget: <strong style="font-family:var(--font-mono);">${fmtInr(payBudget)}</strong></span>
             </div>
-            <div style="font-size:11.5px; color:var(--color-success);">✓ -1.0% Under Budget (Headcount Optimal)</div>
+            <div style="font-size:11.5px; color:${payUnder ? "var(--color-success)" : "var(--color-warning)"};">
+              ${payUnder ? `✓ -${payPct}% Under Payroll Allocation` : `⚠️ +${payPct}% Over Allocation`} (${fmtInr(Math.abs(payDiff))} variance)
+            </div>
           </div>
         </div>
       </div>
@@ -782,7 +849,8 @@ function renderPersonalLedgerAndReportsTab(data) {
         <a href="#performance" class="btn btn-ghost" style="display:flex; align-items:center; justify-content:space-between; padding:12px 14px; text-decoration:none; font-size:12.5px; border:1px solid var(--border-subtle); border-radius:6px; color:var(--ink);">
           <span>📈 Café Performance</span>
           <span style="color:var(--color-accent-amber);">→</span>
-          <a href="#expenses" class="btn btn-ghost" style="display:flex; align-items:center; justify-content:space-between; padding:12px 14px; text-decoration:none; font-size:12.5px; border:1px solid var(--border-subtle); border-radius:6px; color:var(--ink);">
+        </a>
+        <a href="#expenses" class="btn btn-ghost" style="display:flex; align-items:center; justify-content:space-between; padding:12px 14px; text-decoration:none; font-size:12.5px; border:1px solid var(--border-subtle); border-radius:6px; color:var(--ink);">
           <span>💸 Expense Summary</span>
           <span style="color:var(--color-accent-amber);">→</span>
         </a>
@@ -830,10 +898,7 @@ function wireFinanceEventListeners(root) {
       tabBtns.forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
       activeTab = btn.dataset.tab;
-      const content = root.querySelector("#finance-tab-content");
-      if (content) {
-        content.innerHTML = renderActiveTabContent();
-      }
+      refreshView(root);
     });
   });
 
@@ -853,8 +918,9 @@ function wireFinanceEventListeners(root) {
   // Cafe Scope Selector
   const cafeSel = root.querySelector("#finance-cafe-scope");
   if (cafeSel) {
-    cafeSel.addEventListener("change", (e) => {
+    cafeSel.addEventListener("change", async (e) => {
       selectedCafeFilter = e.target.value;
+      await fetchFinanceSummaryData();
       refreshView(root);
     });
   }
@@ -862,8 +928,9 @@ function wireFinanceEventListeners(root) {
   // Period Selector
   const periodSel = root.querySelector("#finance-period-selector");
   if (periodSel) {
-    periodSel.addEventListener("change", (e) => {
+    periodSel.addEventListener("change", async (e) => {
       selectedPeriod = e.target.value;
+      await fetchFinanceSummaryData();
       refreshView(root);
     });
   }
@@ -893,7 +960,7 @@ function wireFinanceEventListeners(root) {
   root.querySelectorAll(".btn-health-audit").forEach((btn) => {
     btn.addEventListener("click", () => {
       const cafeId = btn.dataset.cafeid;
-      const cafe = (cachedFinanceSummary?.multiCafeMatrix || DEFAULT_FINANCE_DATA.multiCafeMatrix).find((c) => c.cafeId === cafeId);
+      const cafe = (cachedFinanceSummary?.cafes || []).find((c) => c.cafeId === cafeId);
       if (cafe) openHealthAuditModal(cafe);
     });
   });
@@ -901,22 +968,30 @@ function wireFinanceEventListeners(root) {
 
 async function fetchFinanceSummaryData() {
   try {
-    const res = await apiGet(`/finance/overview?cafeId=${selectedCafeFilter !== "ALL" ? selectedCafeFilter : ""}`);
-    if (res?.kpis || res?.data?.kpis) {
-      const kpis = res.kpis || res.data.kpis;
+    let url = `/finance/overview?period=${encodeURIComponent(selectedPeriod)}`;
+    if (selectedCafeFilter && selectedCafeFilter !== "ALL") {
+      url += `&cafeId=${encodeURIComponent(selectedCafeFilter)}`;
+    }
+    const res = await apiGet(url);
+    const body = res?.data || res || {};
+    if (body.kpis) {
       cachedFinanceSummary = {
-        ...DEFAULT_FINANCE_DATA,
         kpis: {
           ...DEFAULT_FINANCE_DATA.kpis,
-          netSales: (kpis.revenueMtdPaisa || 14852000) / 100,
-          operatingExpenses: (kpis.expensesMtdPaisa || 6245000) / 100,
+          ...body.kpis,
         },
+        cafes: Array.isArray(body.cafes || body.cafeBreakdown) ? (body.cafes || body.cafeBreakdown) : [],
+        personalLedger: body.personalLedger || DEFAULT_FINANCE_DATA.personalLedger,
+        departmentOrders: body.departmentOrders || DEFAULT_FINANCE_DATA.departmentOrders,
+        payables: body.payables || DEFAULT_FINANCE_DATA.payables,
+        budgets: body.budgets || DEFAULT_FINANCE_DATA.budgets,
+        controlStrip: body.controlStrip || {},
       };
     } else {
       cachedFinanceSummary = { ...DEFAULT_FINANCE_DATA };
     }
   } catch (err) {
-    console.warn("Could not fetch remote finance summary, using baseline:", err);
+    console.warn("Could not fetch remote finance summary:", err);
     if (!cachedFinanceSummary) cachedFinanceSummary = { ...DEFAULT_FINANCE_DATA };
   }
 }
@@ -961,20 +1036,21 @@ function openDataCoverageModal() {
 }
 
 function openHealthAuditModal(cafe) {
+  const reason = cafe.healthReason || (cafe.drawerVariance === 0 && (cafe.expenseRatio || 0) <= 50 ? "All till sessions reconciled with zero cash discrepancy and operating costs within normal benchmark bounds." : "Reconciliation review recommended: inspect till drawer sessions and operating expense velocity.");
   openModal({
-    title: `🏥 Financial Health Audit · ${cafe.cafeName}`,
+    title: `🏥 Financial Health Audit · ${cafe.cafeName || cafe.name || cafe.cafeId}`,
     body: `
       <div style="font-size:13px; line-height:1.6;">
         <div style="display:flex; align-items:center; gap:8px; margin-bottom:14px;">
-          <span class="status success" style="font-size:12px; font-weight:700;">● ${cafe.health}</span>
+          <span class="status ${cafe.health === "HEALTHY" ? "success" : "warning"}" style="font-size:12px; font-weight:700;">● ${cafe.health}</span>
           <span style="color:var(--muted);">Location ID: ${cafe.cafeId}</span>
         </div>
-        <p style="margin-bottom:12px;"><strong>Diagnostic Rationale:</strong><br>${cafe.healthReason}</p>
+        <p style="margin-bottom:12px;"><strong>Diagnostic Rationale:</strong><br>${reason}</p>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; padding:10px; background:var(--bg-subtle, rgba(0,0,0,0.02)); border-radius:6px;">
           <div>Net Sales: <strong style="font-family:var(--font-mono);">${fmtInr(cafe.netSales)}</strong></div>
-          <div>OpEx Ratio: <strong style="font-family:var(--font-mono);">${cafe.expenseRatio.toFixed(1)}%</strong></div>
-          <div>Payroll Ratio: <strong style="font-family:var(--font-mono);">${cafe.payrollRatio.toFixed(1)}%</strong></div>
-          <div>Cash Drawer: <strong>${cafe.drawerStatus} (₹0 Variance)</strong></div>
+          <div>OpEx Ratio: <strong style="font-family:var(--font-mono);">${Number(cafe.expenseRatio || 0).toFixed(1)}%</strong></div>
+          <div>Payroll Ratio: <strong style="font-family:var(--font-mono);">${Number(cafe.payrollRatio || 0).toFixed(1)}%</strong></div>
+          <div>Cash Drawer: <strong>${cafe.drawerStatus} (${fmtInr(cafe.drawerVariance || 0)} Variance)</strong></div>
         </div>
       </div>
     `,
@@ -982,7 +1058,61 @@ function openHealthAuditModal(cafe) {
   });
 }
 
+function downloadFinanceCsv(cafes = [], period = "THIS_MONTH") {
+  const headers = [
+    "Cafe ID",
+    "Cafe Name",
+    "Net Sales (INR)",
+    "Gross Sales (INR)",
+    "Discounts (INR)",
+    "Refunds (INR)",
+    "Operating Expenses (INR)",
+    "Expense Ratio (%)",
+    "Payroll Cost (INR)",
+    "Payroll Ratio (%)",
+    "Overtime Cost (INR)",
+    "Wastage Value (INR)",
+    "Drawer Variance (INR)",
+    "Drawer Status",
+    "Health",
+  ];
+  const rows = (cafes || []).map((c) => [
+    `"${c.cafeId}"`,
+    `"${c.cafeName || c.name || c.cafeId}"`,
+    (c.netSales || 0).toFixed(2),
+    (c.grossSales || 0).toFixed(2),
+    (c.discounts || 0).toFixed(2),
+    (c.refunds || 0).toFixed(2),
+    (c.expenses || 0).toFixed(2),
+    (c.expenseRatio || 0).toFixed(1),
+    (c.payrollCost || 0).toFixed(2),
+    (c.payrollRatio || 0).toFixed(1),
+    (c.overtimeCost || 0).toFixed(2),
+    (c.wastageValue || 0).toFixed(2),
+    (c.drawerVariance || 0).toFixed(2),
+    `"${c.drawerStatus || "RECONCILED"}"`,
+    `"${c.health || "HEALTHY"}"`,
+  ]);
+
+  const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.setAttribute("href", url);
+  link.setAttribute("download", `Zamorin_Finance_Summary_${period}_${new Date().toISOString().split("T")[0]}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
 function openExportModal() {
+  const data = cachedFinanceSummary || DEFAULT_FINANCE_DATA;
+  let exportCafes = data.cafes || [];
+  if (selectedCafeFilter !== "ALL") {
+    exportCafes = exportCafes.filter((c) => c.cafeId === selectedCafeFilter);
+  }
+
   openModal({
     title: "📄 Export Owner Financial Report Pack",
     body: `
@@ -992,16 +1122,12 @@ function openExportModal() {
         </p>
         <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:16px;">
           <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
-            <input type="radio" name="export-format" value="PDF" checked>
-            <span><strong>Management Summary PDF</strong> (Executive KPIs, Trends, Multi-Café Matrix, Cash &amp; Exceptions)</span>
+            <input type="radio" name="export-format" value="CSV" checked>
+            <span><strong>Financial Data CSV</strong> (Authoritative tabular branch metrics, expense ratios, and payroll allocations)</span>
           </label>
           <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
-            <input type="radio" name="export-format" value="CSV">
-            <span><strong>Financial Data CSV</strong> (Raw tabular branch metrics, expense ratios, and payroll allocations)</span>
-          </label>
-          <label style="display:flex; align-items:center; gap:8px; cursor:pointer;">
-            <input type="radio" name="export-format" value="XLSX">
-            <span><strong>Executive Workbook XLSX</strong> (Formatted multi-sheet financial model with formula integrity)</span>
+            <input type="radio" name="export-format" value="SUMMARY">
+            <span><strong>Management Summary</strong> (Executive KPIs, Trends, Multi-Café Matrix, Cash &amp; Exceptions)</span>
           </label>
         </div>
         <div style="font-size:11.5px; color:var(--muted);">
@@ -1012,7 +1138,8 @@ function openExportModal() {
     primaryBtn: {
       text: "Download Report Pack",
       action: () => {
-        showToast("Generating report pack download...", "mint");
+        downloadFinanceCsv(exportCafes, selectedPeriod);
+        showToast("Report pack downloaded successfully", "mint");
       },
     },
     secondaryBtn: { text: "Cancel", action: () => {} },

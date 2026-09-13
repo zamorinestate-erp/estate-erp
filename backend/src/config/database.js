@@ -72,8 +72,62 @@ async function disconnectDatabase() {
   await mongoose.disconnect();
 }
 
+async function getDatabaseTopology() {
+  if (!mongoose.connection || mongoose.connection.readyState !== 1) {
+    return {
+      connected: false,
+      topologyType: 'UNKNOWN',
+      setNamePresent: false,
+      isWritablePrimary: false,
+      logicalSessionTimeoutMinutes: null,
+      transactionCapable: false,
+    };
+  }
+
+  try {
+    const adminDb = mongoose.connection.db.admin();
+    let hello;
+    try {
+      hello = await adminDb.command({ hello: 1 });
+    } catch (_) {
+      hello = await adminDb.command({ isMaster: 1 });
+    }
+
+    const client = typeof mongoose.connection.getClient === 'function'
+      ? mongoose.connection.getClient()
+      : mongoose.connection.client;
+    const topologyDesc = client?.topology?.description;
+
+    const topologyType = topologyDesc?.type || (hello.setName ? 'ReplicaSetWithPrimary' : (hello.msg === 'isdbgrid' ? 'Sharded' : 'Single'));
+    const setNamePresent = !!(hello.setName || topologyDesc?.setName);
+    const isWritablePrimary = !!(hello.isWritablePrimary || hello.ismaster);
+    const logicalSessionTimeoutMinutes = hello.logicalSessionTimeoutMinutes !== undefined ? hello.logicalSessionTimeoutMinutes : null;
+    const transactionCapable = !!(
+      (setNamePresent || String(topologyType).includes('ReplicaSet') || topologyType === 'Sharded') &&
+      logicalSessionTimeoutMinutes !== null
+    );
+
+    return {
+      connected: true,
+      topologyType,
+      setNamePresent,
+      isWritablePrimary,
+      logicalSessionTimeoutMinutes,
+      transactionCapable,
+    };
+  } catch (err) {
+    return {
+      connected: false,
+      error: err.message,
+      transactionCapable: false,
+    };
+  }
+}
+
 module.exports = {
   connectDatabase,
   disconnectDatabase,
   getDatabaseState,
+  getDatabaseTopology,
 };
+

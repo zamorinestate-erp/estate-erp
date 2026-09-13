@@ -1,5 +1,7 @@
 'use strict';
 
+const { logStructuredError } = require('../services/securityLogger');
+
 function errorHandler(error, req, res, next) {
   if (res.headersSent) {
     return next(error);
@@ -46,6 +48,11 @@ function errorHandler(error, req, res, next) {
   }
 
   const isProduction = process.env.NODE_ENV === 'production';
+
+  // Structured internal logging with correlationId & redacted credentials
+  try {
+    logStructuredError(error, req, { code, statusCode });
+  } catch (_) {}
 
   return res.status(statusCode).json({
     success: false,

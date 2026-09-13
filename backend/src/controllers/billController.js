@@ -50,6 +50,11 @@ const {
   ApiError,
 } = require('../utils/ApiError');
 
+const {
+  assertResourceCafeOwnership,
+  resolveEffectiveCafeScope,
+} = require('../utils/cafeScope');
+
 const auditService = require('../services/auditService');
 const recordRequestAudit = (opts) => auditService.recordRequestAudit(opts);
 
@@ -75,8 +80,17 @@ function parsePositiveInteger(value, fallback, maximum) {
 }
 
 function assertCafeAccess(request, cafeId) {
+  const normCafeId = normalizeId(cafeId);
+  const effectiveCafe = resolveEffectiveCafeScope(request);
+  if (effectiveCafe && normCafeId && normCafeId !== effectiveCafe) {
+    throw new ApiError(
+      403,
+      'CROSS_CAFE_RESOURCE_DENIED',
+      'Cross-café access is denied. You are not authorized for the requested café.'
+    );
+  }
   if (request.auth.role === 'MASTER' || request.auth.role === 'OWNER') return;
-  if (!request.auth.assignedCafeIds || !request.auth.assignedCafeIds.includes(cafeId)) {
+  if (!request.auth.assignedCafeIds || !request.auth.assignedCafeIds.map(normalizeId).includes(normCafeId)) {
     throw new ApiError(
       403,
       'CAFE_ACCESS_DENIED',
@@ -94,17 +108,29 @@ const getBillsOverview = asyncHandler(async (request, response) => {
   const businessDate = request.query.date || getIstBusinessDate();
 
   const filter = { organisationId: orgId, businessDate };
-  if (request.auth.role === 'OWNER') {
-    if (Array.isArray(request.auth.assignedCafeIds) && request.auth.assignedCafeIds.length > 0) {
-      if (request.query.cafeId) {
-        const normCafeId = normalizeId(request.query.cafeId);
-        assertCafeAccess(request, normCafeId);
-        filter.cafeId = normCafeId;
-      } else {
-        filter.cafeId = { $in: request.auth.assignedCafeIds };
+  const effectiveCafe = resolveEffectiveCafeScope(request);
+
+  if (effectiveCafe) {
+    filter.cafeId = effectiveCafe;
+  } else if (request.auth.role === 'OWNER') {
+    const ownerCafes = (Array.isArray(request.auth.assignedCafeIds) ? request.auth.assignedCafeIds : [])
+      .map((c) => normalizeId(c))
+      .filter(Boolean);
+    if (request.query.cafeId) {
+      const normCafeId = normalizeId(request.query.cafeId);
+      if (ownerCafes.length > 0 && !ownerCafes.includes(normCafeId)) {
+        throw new ApiError(
+          403,
+          'CROSS_CAFE_RESOURCE_DENIED',
+          'Cross-café access is denied. You are not authorized for the requested café.'
+        );
       }
-    } else if (request.query.cafeId) {
-      filter.cafeId = normalizeId(request.query.cafeId);
+      assertCafeAccess(request, normCafeId);
+      filter.cafeId = normCafeId;
+    } else {
+      if (ownerCafes.length > 0) {
+        filter.cafeId = { $in: ownerCafes };
+      }
     }
   } else if (request.auth.role !== 'MASTER') {
     filter.cafeId = { $in: request.auth.assignedCafeIds || [] };
@@ -115,16 +141,28 @@ const getBillsOverview = asyncHandler(async (request, response) => {
   }
 
   const cafeFilter = { organisationId: orgId };
-  if (request.auth.role === 'OWNER' && Array.isArray(request.auth.assignedCafeIds) && request.auth.assignedCafeIds.length > 0) {
-    cafeFilter.cafeId = { $in: request.auth.assignedCafeIds };
-  } else if (request.auth.role !== 'MASTER' && request.auth.role !== 'OWNER') {
+  if (filter.cafeId) {
+    cafeFilter.cafeId = filter.cafeId;
+  } else if (request.auth.role === 'OWNER') {
+    const ownerCafes = (Array.isArray(request.auth.assignedCafeIds) ? request.auth.assignedCafeIds : [])
+      .map((c) => normalizeId(c))
+      .filter(Boolean);
+    if (ownerCafes.length > 0) {
+      cafeFilter.cafeId = { $in: ownerCafes };
+    }
+  } else if (request.auth.role !== 'MASTER') {
     cafeFilter.cafeId = { $in: request.auth.assignedCafeIds || [] };
+  }
+
+  const sessionFilter = { organisationId: orgId, businessDate };
+  if (filter.cafeId) {
+    sessionFilter.cafeId = filter.cafeId;
   }
 
   const [bills, cafes, registerSessions] = await Promise.all([
     Bill.find(filter).lean(),
     Cafe.find(cafeFilter).lean(),
-    RegisterSession.find({ organisationId: orgId, businessDate }).lean(),
+    RegisterSession.find(sessionFilter).lean(),
   ]);
 
   let grossSalesPaisa = 0;
@@ -287,7 +325,35 @@ const listBills = asyncHandler(async (request, response) => {
   const filter = { organisationId: request.auth.organisationId };
   const { cafeId, status, date, startDate, endDate, paymentMethod, orderType, search, minAmount, maxAmount } = request.query;
 
-  if (cafeId) {
+  const effectiveCafe = resolveEffectiveCafeScope(request);
+  if (effectiveCafe) {
+    filter.cafeId = effectiveCafe;
+  } else if (request.auth.role === 'OWNER') {
+    const ownerCafes = (Array.isArray(request.auth.assignedCafeIds) ? request.auth.assignedCafeIds : [])
+      .map((c) => normalizeId(c))
+      .filter(Boolean);
+    if (ownerCafes.length === 0) {
+      throw new ApiError(
+        403,
+        'CROSS_CAFE_RESOURCE_DENIED',
+        'Owner has no assigned cafés.'
+      );
+    }
+    if (cafeId) {
+      const normCafeId = normalizeId(cafeId);
+      if (ownerCafes.length > 0 && !ownerCafes.includes(normCafeId)) {
+        throw new ApiError(
+          403,
+          'CROSS_CAFE_RESOURCE_DENIED',
+          'Cross-café access is denied. You are not authorized for the requested café.'
+        );
+      }
+      assertCafeAccess(request, normCafeId);
+      filter.cafeId = normCafeId;
+    } else if (ownerCafes.length > 0) {
+      filter.cafeId = { $in: ownerCafes };
+    }
+  } else if (cafeId) {
     const normCafeId = normalizeId(cafeId);
     assertCafeAccess(request, normCafeId);
     filter.cafeId = normCafeId;
@@ -370,6 +436,7 @@ const getBill = asyncHandler(async (request, response) => {
   if (!bill) {
     throw new ApiError(404, 'NOT_FOUND', 'Bill not found.');
   }
+  assertResourceCafeOwnership(bill, request, 'Bill');
   assertCafeAccess(request, bill.cafeId);
 
   const isPrimary = request.auth.isPrimaryMaster === true;
@@ -427,10 +494,18 @@ const createBill = asyncHandler(async (request, response) => {
   if (role === 'CAFE_ADMIN') {
     cafeId = request.auth.primaryCafeId || request.auth.assignedCafeIds?.[0] || 'ZC-0001';
   } else {
-    if (!cafeId) {
-      throw new ApiError(400, 'CAFE_ID_REQUIRED', 'cafeId is required.');
+    const effectiveCafe = resolveEffectiveCafeScope(request);
+    if (effectiveCafe) {
+      if (cafeId && cafeId !== effectiveCafe) {
+        throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'Cross-café access is denied. You are not authorized for the requested café.');
+      }
+      cafeId = effectiveCafe;
+    } else {
+      if (!cafeId) {
+        throw new ApiError(400, 'CAFE_ID_REQUIRED', 'cafeId is required.');
+      }
+      assertCafeAccess(request, cafeId);
     }
-    assertCafeAccess(request, cafeId);
   }
 
   // Payment Idempotency Check (§83, §157, §158)
@@ -704,6 +779,7 @@ const reprintBill = asyncHandler(async (request, response) => {
   if (!bill) {
     throw new ApiError(404, 'NOT_FOUND', 'Bill not found.');
   }
+  assertResourceCafeOwnership(bill, request, 'Bill');
   assertCafeAccess(request, bill.cafeId);
 
   if (!Array.isArray(bill.reprints)) {
@@ -768,6 +844,7 @@ const voidBill = asyncHandler(async (request, response) => {
   if (!bill) {
     throw new ApiError(404, 'NOT_FOUND', 'Bill not found.');
   }
+  assertResourceCafeOwnership(bill, request, 'Bill');
   assertCafeAccess(request, bill.cafeId);
 
   if (bill.status === 'VOIDED') {
@@ -844,6 +921,7 @@ const refundBill = asyncHandler(async (request, response) => {
   if (!bill) {
     throw new ApiError(404, 'NOT_FOUND', 'Bill not found.');
   }
+  assertResourceCafeOwnership(bill, request, 'Bill');
   assertCafeAccess(request, bill.cafeId);
 
   if (bill.status === 'VOIDED') {
@@ -929,12 +1007,31 @@ const getGstRegister = asyncHandler(async (request, response) => {
 
   const filter = { organisationId: orgId, status: { $in: ['COMPLETED', 'PARTIALLY_REFUNDED'] } };
 
-  if (cafeId) {
+  const effectiveCafe = resolveEffectiveCafeScope(request);
+  if (effectiveCafe) {
+    filter.cafeId = effectiveCafe;
+  } else if (request.auth.role === 'OWNER') {
+    const ownerCafes = (Array.isArray(request.auth.assignedCafeIds) ? request.auth.assignedCafeIds : [])
+      .map((c) => normalizeId(c))
+      .filter(Boolean);
+    if (cafeId) {
+      const normCafeId = normalizeId(cafeId);
+      if (ownerCafes.length > 0 && !ownerCafes.includes(normCafeId)) {
+        throw new ApiError(
+          403,
+          'CROSS_CAFE_RESOURCE_DENIED',
+          'Cross-café access is denied. You are not authorized for the requested café.'
+        );
+      }
+      assertCafeAccess(request, normCafeId);
+      filter.cafeId = normCafeId;
+    } else if (ownerCafes.length > 0) {
+      filter.cafeId = { $in: ownerCafes };
+    }
+  } else if (cafeId) {
     const normCafeId = normalizeId(cafeId);
     assertCafeAccess(request, normCafeId);
     filter.cafeId = normCafeId;
-  } else if (request.auth.role === 'OWNER' && Array.isArray(request.auth.assignedCafeIds) && request.auth.assignedCafeIds.length > 0) {
-    filter.cafeId = { $in: request.auth.assignedCafeIds };
   } else if (request.auth.role !== 'MASTER' && request.auth.role !== 'OWNER') {
     filter.cafeId = { $in: request.auth.assignedCafeIds || [] };
   }
@@ -967,7 +1064,7 @@ const getGstRegister = asyncHandler(async (request, response) => {
       invoiceNumber: b.invoiceNumber || b.billId,
       businessDate: b.businessDate,
       cafeId: b.cafeId,
-      gstRegistration: b.gstRegistrationNumber || '29AABCT1332L1ZV',
+      gstRegistration: b.gstRegistrationNumber || '',
       customerGstin: b.b2bCustomerGstin || 'B2C Retail',
       taxableValue: (b.subtotalPaisa - (b.discountPaisa || 0)) / 100,
       taxClassification: 'GST_5',
@@ -1006,17 +1103,26 @@ const getReconciliationStatus = asyncHandler(async (request, response) => {
   const businessDate = request.query.date || getIstBusinessDate();
 
   const filter = { organisationId: orgId, businessDate };
-  if (request.auth.role === 'OWNER') {
-    if (Array.isArray(request.auth.assignedCafeIds) && request.auth.assignedCafeIds.length > 0) {
-      if (request.query.cafeId) {
-        const normCafeId = normalizeId(request.query.cafeId);
-        assertCafeAccess(request, normCafeId);
-        filter.cafeId = normCafeId;
-      } else {
-        filter.cafeId = { $in: request.auth.assignedCafeIds };
+  const effectiveCafe = resolveEffectiveCafeScope(request);
+  if (effectiveCafe) {
+    filter.cafeId = effectiveCafe;
+  } else if (request.auth.role === 'OWNER') {
+    const ownerCafes = (Array.isArray(request.auth.assignedCafeIds) ? request.auth.assignedCafeIds : [])
+      .map((c) => normalizeId(c))
+      .filter(Boolean);
+    if (request.query.cafeId) {
+      const normCafeId = normalizeId(request.query.cafeId);
+      if (ownerCafes.length > 0 && !ownerCafes.includes(normCafeId)) {
+        throw new ApiError(
+          403,
+          'CROSS_CAFE_RESOURCE_DENIED',
+          'Cross-café access is denied. You are not authorized for the requested café.'
+        );
       }
-    } else if (request.query.cafeId) {
-      filter.cafeId = normalizeId(request.query.cafeId);
+      assertCafeAccess(request, normCafeId);
+      filter.cafeId = normCafeId;
+    } else if (ownerCafes.length > 0) {
+      filter.cafeId = { $in: ownerCafes };
     }
   } else if (request.auth.role !== 'MASTER') {
     filter.cafeId = { $in: request.auth.assignedCafeIds || [] };
@@ -1026,9 +1132,14 @@ const getReconciliationStatus = asyncHandler(async (request, response) => {
     filter.cafeId = normCafeId;
   }
 
+  const sessionFilter = { organisationId: orgId, businessDate };
+  if (filter.cafeId) {
+    sessionFilter.cafeId = filter.cafeId;
+  }
+
   const [bills, registerSessions] = await Promise.all([
     Bill.find(filter).lean(),
-    RegisterSession.find({ organisationId: orgId, businessDate }).lean(),
+    RegisterSession.find(sessionFilter).lean(),
   ]);
 
   const openBills = bills.filter((b) => b.status === 'OPEN');
@@ -1122,18 +1233,26 @@ const closeBusinessDayBilling = asyncHandler(async (request, response) => {
 const getPastOrdersSummary = asyncHandler(async (request, response) => {
   const orgId = request.auth.organisationId;
   const filter = { organisationId: orgId, status: { $in: ['COMPLETED', 'PARTIALLY_REFUNDED', 'REFUNDED'] } };
-
-  if (request.auth.role === 'OWNER') {
-    if (Array.isArray(request.auth.assignedCafeIds) && request.auth.assignedCafeIds.length > 0) {
-      if (request.query.cafeId) {
-        const normCafeId = normalizeId(request.query.cafeId);
-        assertCafeAccess(request, normCafeId);
-        filter.cafeId = normCafeId;
-      } else {
-        filter.cafeId = { $in: request.auth.assignedCafeIds };
+  const effectiveCafe = resolveEffectiveCafeScope(request);
+  if (effectiveCafe) {
+    filter.cafeId = effectiveCafe;
+  } else if (request.auth.role === 'OWNER') {
+    const ownerCafes = (Array.isArray(request.auth.assignedCafeIds) ? request.auth.assignedCafeIds : [])
+      .map((c) => normalizeId(c))
+      .filter(Boolean);
+    if (request.query.cafeId) {
+      const normCafeId = normalizeId(request.query.cafeId);
+      if (ownerCafes.length > 0 && !ownerCafes.includes(normCafeId)) {
+        throw new ApiError(
+          403,
+          'CROSS_CAFE_RESOURCE_DENIED',
+          'Cross-café access is denied. You are not authorized for the requested café.'
+        );
       }
-    } else if (request.query.cafeId) {
-      filter.cafeId = normalizeId(request.query.cafeId);
+      assertCafeAccess(request, normCafeId);
+      filter.cafeId = normCafeId;
+    } else if (ownerCafes.length > 0) {
+      filter.cafeId = { $in: ownerCafes };
     }
   } else if (request.auth.role !== 'MASTER') {
     filter.cafeId = { $in: request.auth.assignedCafeIds || [] };
@@ -1249,17 +1368,26 @@ const getSalesCalendar = asyncHandler(async (request, response) => {
     status: { $in: ['COMPLETED', 'PARTIALLY_REFUNDED', 'REFUNDED'] },
   };
 
-  if (request.auth.role === 'OWNER') {
-    if (Array.isArray(request.auth.assignedCafeIds) && request.auth.assignedCafeIds.length > 0) {
-      if (request.query.cafeId) {
-        const normCafeId = normalizeId(request.query.cafeId);
-        assertCafeAccess(request, normCafeId);
-        filter.cafeId = normCafeId;
-      } else {
-        filter.cafeId = { $in: request.auth.assignedCafeIds };
+  const effectiveCafe = resolveEffectiveCafeScope(request);
+  if (effectiveCafe) {
+    filter.cafeId = effectiveCafe;
+  } else if (request.auth.role === 'OWNER') {
+    const ownerCafes = (Array.isArray(request.auth.assignedCafeIds) ? request.auth.assignedCafeIds : [])
+      .map((c) => normalizeId(c))
+      .filter(Boolean);
+    if (request.query.cafeId) {
+      const normCafeId = normalizeId(request.query.cafeId);
+      if (ownerCafes.length > 0 && !ownerCafes.includes(normCafeId)) {
+        throw new ApiError(
+          403,
+          'CROSS_CAFE_RESOURCE_DENIED',
+          'Cross-café access is denied. You are not authorized for the requested café.'
+        );
       }
-    } else if (request.query.cafeId) {
-      filter.cafeId = normalizeId(request.query.cafeId);
+      assertCafeAccess(request, normCafeId);
+      filter.cafeId = normCafeId;
+    } else if (ownerCafes.length > 0) {
+      filter.cafeId = { $in: ownerCafes };
     }
   } else if (request.auth.role !== 'MASTER') {
     filter.cafeId = { $in: request.auth.assignedCafeIds || [] };
@@ -1337,7 +1465,10 @@ const listOpenTickets = asyncHandler(async (request, response) => {
   const orgId = request.auth.organisationId;
   const filter = { organisationId: orgId, status: 'OPEN' };
 
-  if (!['MASTER', 'OWNER'].includes(request.auth.role)) {
+  const effectiveCafe = resolveEffectiveCafeScope(request);
+  if (effectiveCafe) {
+    filter.cafeId = effectiveCafe;
+  } else if (!['MASTER', 'OWNER'].includes(request.auth.role)) {
     filter.cafeId = { $in: request.auth.assignedCafeIds };
   } else if (request.query.cafeId) {
     const normCafeId = normalizeId(request.query.cafeId);
@@ -1561,6 +1692,21 @@ const getRegisterSession = asyncHandler(async (request, response) => {
   let cafeId = request.query.cafeId ? normalizeId(request.query.cafeId) : request.auth.primaryCafeId || request.auth.assignedCafeIds?.[0] || 'ZC-0001';
   if (role === 'CAFE_ADMIN') {
     cafeId = request.auth.primaryCafeId || request.auth.assignedCafeIds?.[0] || 'ZC-0001';
+  } else if (role === 'OWNER') {
+    const ownerCafes = (Array.isArray(request.auth.assignedCafeIds) ? request.auth.assignedCafeIds : [])
+      .map((c) => normalizeId(c))
+      .filter(Boolean);
+    if (request.query.cafeId) {
+      if (ownerCafes.length > 0 && !ownerCafes.includes(cafeId)) {
+        throw new ApiError(
+          403,
+          'CROSS_CAFE_RESOURCE_DENIED',
+          'Cross-café access is denied. You are not authorized for the requested café.'
+        );
+      }
+    } else if (ownerCafes.length > 0) {
+      cafeId = ownerCafes[0];
+    }
   }
 
   assertCafeAccess(request, cafeId);
@@ -1594,6 +1740,7 @@ const splitBill = asyncHandler(async (request, response) => {
   if (!bill) {
     throw new ApiError(404, 'BILL_NOT_FOUND', `Bill ${billId} not found.`);
   }
+  assertResourceCafeOwnership(bill, request, 'Bill');
 
   let totalAllocatedPaisa = 0;
   const newTenders = [];
@@ -1630,11 +1777,79 @@ const splitBill = asyncHandler(async (request, response) => {
   });
 });
 
+/**
+ * POST /api/v1/bills/offline-sync
+ * Ingests and reconciles batches of offline queued transactions (R02-09)
+ */
+const syncOfflineBills = asyncHandler(async (request, response) => {
+  const { organisationId, userId } = request.auth;
+  const cafeId = resolveEffectiveCafeScope(request);
+  const { transactions, deviceId } = request.body || {};
+
+  if (!Array.isArray(transactions) || transactions.length === 0) {
+    throw new ApiError(400, 'VALIDATION_FAILED', 'Transactions array is required for offline sync.');
+  }
+
+  const OfflineSyncService = require('../services/offlineSyncService');
+  const syncResult = await OfflineSyncService.syncBatch({
+    organisationId,
+    cafeId,
+    deviceId: deviceId || request.deviceContext?.deviceId || '',
+    userId,
+    transactions,
+  });
+
+  return response.status(200).json({
+    success: true,
+    message: `Processed ${transactions.length} offline transactions.`,
+    data: syncResult,
+    correlationId: request.correlationId || null,
+  });
+});
+
+/**
+ * GET /api/v1/bills/:billId/pdf
+ * Official Canonical Tax Invoice PDF generation
+ */
+const getBillPdf = asyncHandler(async (request, response) => {
+  const { organisationId } = request.auth;
+  const cafeId = resolveEffectiveCafeScope(request);
+  const { billId } = request.params;
+
+  const bill = await Bill.findOne({
+    organisationId,
+    ...(cafeId ? { cafeId } : {}),
+    billId: normalizeId(billId),
+  }).lean();
+
+  if (!bill) {
+    throw new ApiError(404, 'BILL_NOT_FOUND', `Bill ${billId} was not found.`);
+  }
+
+  let cafe = null;
+  if (bill.cafeId) {
+    cafe = await Cafe.findOne({ organisationId, cafeId: bill.cafeId }).lean();
+  }
+
+  const { generateTaxInvoicePdf } = require('../utils/exportGenerators');
+  const result = generateTaxInvoicePdf(bill, {
+    legalName: cafe?.legalName || cafe?.name || 'Zamorin Café',
+    gstin: cafe?.gstin || bill.sellerGstin || '32AABCT1332L1ZV',
+    address: cafe?.address?.line1 ? `${cafe.address.line1}, ${cafe.address.city || ''} - ${cafe.address.pincode || ''}` : 'Koramangala, Bengaluru, Karnataka — 560095',
+  });
+
+  response.setHeader('Content-Type', 'application/pdf');
+  response.setHeader('Content-Disposition', `inline; filename="${result.filename}"`);
+  return response.status(200).send(result.buffer);
+});
+
 module.exports = {
   getBillsOverview,
   listBills,
   getBill,
+  getBillPdf,
   createBill,
+  syncOfflineBills,
   reprintBill,
   voidBill,
   refundBill,
@@ -1651,3 +1866,4 @@ module.exports = {
   getRegisterSession,
   splitBill,
 };
+

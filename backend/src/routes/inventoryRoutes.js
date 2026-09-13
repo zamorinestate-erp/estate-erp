@@ -3,6 +3,7 @@
 const express = require('express');
 const { authenticate } = require('../middleware/authenticate');
 const { authorize } = require('../middleware/authorize');
+const { attachDeviceContext } = require('../middleware/deviceContext');
 
 const {
   getInventoryOverview,
@@ -23,8 +24,17 @@ const {
   receiveTransfer,
   listLots,
   getExpirySchedule,
+  recordIncomingInspection,
+  listIncomingInspections,
+  quarantineLot,
+  releaseLot,
+  disposeLot,
+  planFefoDeduction,
+  getFefoAlerts,
   listRecalls,
   createRecall,
+  traceForward,
+  traceBackward,
   getReplenishmentRecommendations,
   listCycleCounts,
   submitCycleCount,
@@ -43,6 +53,7 @@ const {
 const router = express.Router();
 
 router.use(authenticate);
+router.use(attachDeviceContext);
 
 // 1. Overview & Multi-Café Command Centre
 router.get(
@@ -158,11 +169,66 @@ router.get(
   getExpirySchedule
 );
 
+router.get(
+  '/fefo/alerts',
+  authorize('INVENTORY_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  getFefoAlerts
+);
+
+router.post(
+  '/fefo/plan',
+  authorize('INVENTORY_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  planFefoDeduction
+);
+
+router.post(
+  '/lots/:lotId/quarantine',
+  authorize('INVENTORY_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
+  quarantineLot
+);
+
+router.post(
+  '/lots/:lotId/release',
+  authorize('INVENTORY_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
+  releaseLot
+);
+
+router.post(
+  '/lots/:lotId/disposition',
+  authorize('INVENTORY_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
+  disposeLot
+);
+
+// 6b. Receiving Dock / Incoming Material Inspection (R02-02)
+router.get(
+  '/incoming-inspections',
+  authorize('INVENTORY_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  listIncomingInspections
+);
+
+router.post(
+  '/incoming-inspections',
+  authorize('INVENTORY_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
+  recordIncomingInspection
+);
+
 // 7. Recall & Traceability
 router.get(
   '/recalls',
   authorize('INVENTORY_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
   listRecalls
+);
+
+router.get(
+  '/recalls/trace/forward',
+  authorize('INVENTORY_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  traceForward
+);
+
+router.get(
+  '/recalls/trace/backward',
+  authorize('INVENTORY_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  traceBackward
 );
 
 router.post(
@@ -205,13 +271,13 @@ router.post(
 
 router.post(
   '/counts/:countId/approve',
-  authorize('INVENTORY_WRITE', { allowedRoles: ['MASTER'] }),
+  authorize('INVENTORY_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
   approveCycleCount
 );
 
 router.post(
   '/cycle-counts/:countId/approve',
-  authorize('INVENTORY_WRITE', { allowedRoles: ['MASTER'] }),
+  authorize('INVENTORY_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
   approveCycleCount
 );
 

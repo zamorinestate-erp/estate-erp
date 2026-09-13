@@ -275,7 +275,7 @@ async function renderActiveTab(root) {
       title: 'Reports & Analytics',
       desc: 'Category spend breakdowns, price variance trends and supplier OTIF scorecards.',
       icon: '📈',
-      actionsHtml: `<button class="btn btn-sm btn-secondary" id="btn-child-export-rep" type="button">Export Spend (CSV)</button>`
+      actionsHtml: `<button class="btn btn-sm btn-secondary" id="btn-child-export-rep" type="button">View Spend Analytics</button>`
     },
   };
 
@@ -341,10 +341,10 @@ async function renderActiveTab(root) {
   content.querySelector('#btn-child-reconcile-matching')?.addEventListener('click', async () => {
     showToast('Triggering 3-way automated reconciliation check...', 'info');
     try {
-      await apiPost('/procurement/matching/recalculate', { body: {} });
-      showToast('3-Way Match tolerance check completed: 100% matched.', 'mint');
-    } catch {
-      showToast('3-Way Match tolerance check completed: 100% matched.', 'mint');
+      const res = await apiGet('/procurement/matching');
+      showToast(`3-Way Match check completed: status ${res?.data?.status || 'HEALTHY'}.`, 'mint');
+    } catch (err) {
+      showToast(err?.message || '3-Way Match check failed', 'coral');
     }
   });
   content.querySelector('#btn-child-new-supp')?.addEventListener('click', () => openAddSupplierModal(root));
@@ -355,7 +355,7 @@ async function renderActiveTab(root) {
   if (activeTab === 'requisitions') {
     await renderRequisitionsSubtab(root, inner);
   } else if (activeTab === 'catalogue') {
-    renderCatalogueSubtab(root, inner);
+    await renderCatalogueSubtab(root, inner);
   } else if (activeTab === 'rfqs') {
     await renderRfqsSubtab(root, inner);
   } else if (activeTab === 'orders') {
@@ -363,7 +363,7 @@ async function renderActiveTab(root) {
   } else if (activeTab === 'agreements') {
     renderAgreementsSubtab(root, inner);
   } else if (activeTab === 'deliveries') {
-    renderDeliveriesSubtab(root, inner);
+    await renderDeliveriesSubtab(root, inner);
   } else if (activeTab === 'receiving') {
     await renderReceivingSubtab(root, inner);
   } else if (activeTab === 'matching') {
@@ -654,7 +654,7 @@ function renderFilteredOrders(root) {
 
 async function executePoAction(root, poId, action) {
   try {
-    await apiPost(`/procurement/orders/${poId}/${action}`, { body: {} });
+    await apiPost(`/procurement/orders/${poId}/${action}`, {});
     showToast(`Purchase Order ${poId} ${action}d successfully.`, 'mint');
     await loadOrdersSubtabData(root);
     await loadProcurementOverview(root);
@@ -725,41 +725,64 @@ async function renderRequisitionsSubtab(root, container) {
   }
 }
 
-function renderCatalogueSubtab(root, container) {
-  // TODO: Replace with API-fetched catalogue from /procurement/catalogue
-  const items = [];
-
+async function renderCatalogueSubtab(root, container) {
   container.innerHTML = `
     <div class="card" style="padding:16px;background:var(--surface);">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
         <div>
           <h3 style="font-size:14px;font-weight:700;color:var(--ink);margin:0;">Approved Guided-Buying Catalogue</h3>
-          <p style="font-size:11px;color:var(--muted);margin:2px 0 0 0;">Pre-negotiated contract pricing and approved item standards</p>
+          <p style="font-size:11px;color:var(--muted);margin:2px 0 0 0;">Pre-negotiated contract pricing, MOQ and approved vendor mappings</p>
         </div>
       </div>
+      <div id="cat-items-wrap">${skeleton('200px')}</div>
+    </div>
+  `;
+
+  try {
+    const res = await apiGet('/procurement/catalogue');
+    const items = res?.data?.catalogue || [];
+    const wrap = container.querySelector('#cat-items-wrap');
+    if (!wrap) return;
+
+    if (items.length === 0) {
+      wrap.innerHTML = `
+        <div style="padding:32px;text-align:center;color:var(--muted);font-size:13px;">
+          No approved items found in the procurement catalogue.
+        </div>
+      `;
+      return;
+    }
+
+    wrap.innerHTML = `
       <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(280px, 1fr));gap:12px;">
         ${items.map((item) => `
           <div class="card" style="padding:14px;background:var(--surface-sunken);border:1px solid var(--line);display:flex;flex-direction:column;justify-content:space-between;">
             <div>
               <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-                <span class="badge neutral" style="font-size:10px;">${item.category}</span>
-                <span style="font-family:var(--font-mono);font-size:10px;color:var(--muted);">${item.sku}</span>
+                <span class="badge neutral" style="font-size:10px;">${item.category || 'INVENTORY'}</span>
+                <span style="font-family:var(--font-mono);font-size:10px;color:var(--muted);">${item.itemId || item.sku || ''}</span>
               </div>
-              <strong style="font-size:13px;color:var(--ink);display:block;margin:6px 0 2px 0;">${item.name}</strong>
-              <div style="font-size:11px;color:var(--muted);">Preferred: ${item.supplier}</div>
+              <strong style="font-size:13px;color:var(--ink);display:block;margin:6px 0 2px 0;">${item.itemName || item.name}</strong>
+              <div style="font-size:11px;color:var(--muted);">Preferred: <strong>${item.preferredVendorName || item.preferredVendorId || 'Contracted'}</strong></div>
+              <div style="font-size:10.5px;color:var(--muted);margin-top:2px;">MOQ: ${item.minimumOrderQuantity || 1} ${item.baseUnit || 'units'} • Lead: ${item.leadTimeDays || 2}d</div>
             </div>
             <div style="margin-top:12px;display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--line);padding-top:8px;">
               <div>
-                <span style="font-size:14px;font-weight:800;color:var(--ink);">${formatPaise(item.price)}</span>
-                <span style="font-size:10px;color:var(--muted);">/ ${item.uom}</span>
+                <span style="font-size:14px;font-weight:800;color:var(--ink);">${formatPaise(item.contractPricePaisa || item.price || 0)}</span>
+                <span style="font-size:10px;color:var(--muted);">/ ${item.baseUnit || 'unit'}</span>
               </div>
-              <button class="btn btn-sm btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="window._quickAddToPo('${item.sku}')">+ Add to PO</button>
+              <button class="btn btn-sm btn-secondary" style="font-size:11px;padding:4px 10px;" onclick="window._quickAddToPo('${item.itemId || item.sku}')">+ Add to PO</button>
             </div>
           </div>
         `).join('')}
       </div>
-    </div>
-  `;
+    `;
+  } catch (err) {
+    const wrap = container.querySelector('#cat-items-wrap');
+    if (wrap) {
+      wrap.innerHTML = `<div style="padding:24px;text-align:center;color:var(--coral);font-size:12px;">Failed to load catalogue: ${err.message}</div>`;
+    }
+  }
 
   window._quickAddToPo = (sku) => {
     openNewPoModal(root, sku);
@@ -886,79 +909,136 @@ function renderAgreementsSubtab(root, container) {
   `;
 }
 
-function renderDeliveriesSubtab(root, container) {
-  // TODO: Replace with API-fetched ASN/delivery data from /procurement/deliveries
-  const deliveries = [];
-
+async function renderDeliveriesSubtab(root, container) {
   container.innerHTML = `
     <div class="card" style="padding:16px;background:var(--surface);">
-      <h3 style="font-size:14px;font-weight:700;color:var(--ink);margin:0 0 12px 0;">Inbound Shipments &amp; Advance Shipment Notices (ASN)</h3>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <h3 style="font-size:14px;font-weight:700;color:var(--ink);margin:0;">Inbound Shipments &amp; Advance Shipment Notices (ASN)</h3>
+        <button class="btn btn-sm btn-primary" id="btn-create-asn-deliveries" style="font-size:11px;padding:4px 10px;" type="button">+ Create ASN</button>
+      </div>
+      <div id="asn-table-wrap">${skeleton('160px')}</div>
+    </div>
+  `;
+
+  container.querySelector('#btn-create-asn-deliveries')?.addEventListener('click', () => openCreateAsnModal(root));
+
+  try {
+    const res = await apiGet('/procurement/asns');
+    const deliveries = res?.data?.asns || [];
+    const wrap = container.querySelector('#asn-table-wrap');
+    if (!wrap) return;
+
+    if (deliveries.length === 0) {
+      wrap.innerHTML = `
+        <div style="padding:32px;text-align:center;color:var(--muted);font-size:13px;">
+          No inbound Advance Shipping Notices (ASN) recorded.
+        </div>
+      `;
+      return;
+    }
+
+    wrap.innerHTML = `
       <table class="glass-table" style="width:100%;font-size:12px;">
         <thead>
           <tr>
             <th>ASN Number</th>
             <th>PO Number</th>
-            <th>Supplier</th>
+            <th>Vendor</th>
+            <th>Destination Café</th>
             <th>Carrier / Vehicle</th>
             <th>Expected Arrival</th>
             <th>Status</th>
-            <th>Shipment Summary</th>
+            <th>Line Items</th>
           </tr>
         </thead>
         <tbody>
           ${deliveries.map((d) => `
             <tr>
-              <td style="font-family:var(--font-mono);font-weight:700;">${d.asn}</td>
-              <td style="font-family:var(--font-mono);">${d.po}</td>
-              <td><strong>${d.supplier}</strong></td>
-              <td style="color:var(--muted);">${d.carrier}</td>
-              <td style="font-weight:600;color:var(--ink);">${d.eta}</td>
-              <td><span class="badge warning" style="font-size:10px;">${d.status}</span></td>
-              <td style="color:var(--muted);">${d.items}</td>
+              <td style="font-family:var(--font-mono);font-weight:700;">${d.asnNumber}</td>
+              <td style="font-family:var(--font-mono);">${d.purchaseOrderId}</td>
+              <td><strong>${d.vendorNameSnapshot || d.vendorId}</strong></td>
+              <td style="color:var(--muted);">${d.cafeId}</td>
+              <td style="color:var(--muted);">${d.carrier || '—'} ${d.vehicleNumber ? '(' + d.vehicleNumber + ')' : ''}</td>
+              <td style="font-weight:600;color:var(--ink);">${d.expectedArrivalDate ? d.expectedArrivalDate.slice(0, 10) : '—'}</td>
+              <td><span class="badge ${d.status === 'RECEIVED' ? 'success' : 'warning'}" style="font-size:10px;">${d.status}</span></td>
+              <td style="color:var(--muted);">${(d.lineItems || []).map((l) => `${l.shippedQuantity} ${l.unitOfMeasure} of ${l.itemId}`).join(', ') || '—'}</td>
             </tr>
           `).join('')}
         </tbody>
       </table>
-    </div>
-  `;
+    `;
+  } catch (err) {
+    const wrap = container.querySelector('#asn-table-wrap');
+    if (wrap) {
+      wrap.innerHTML = `<div style="padding:24px;text-align:center;color:var(--coral);font-size:12px;">Failed to load ASNs: ${err.message}</div>`;
+    }
+  }
 }
 
 async function renderReceivingSubtab(root, container) {
   container.innerHTML = `
     <div class="card" style="padding:16px;background:var(--surface);">
-      <h3 style="font-size:14px;font-weight:700;color:var(--ink);margin:0 0 12px 0;">Goods Receipt Notes (GRN) &amp; Physical Receiving</h3>
-      <div id="grn-table-wrap">
-        <table class="glass-table" style="width:100%;font-size:12px;">
-          <thead>
-            <tr>
-              <th>GRN Number</th>
-              <th>PO Reference</th>
-              <th>Supplier</th>
-              <th>Café</th>
-              <th>Received Date</th>
-              <th>Condition</th>
-              <th>Quality Status</th>
-              <th style="text-align:right;">Received Value</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${sampleGRNs.map((g) => `
-              <tr>
-                <td style="font-family:var(--font-mono);font-weight:700;">${g.grnId}</td>
-                <td style="font-family:var(--font-mono);">${g.purchaseOrderId}</td>
-                <td><strong>${g.vendorName}</strong></td>
-                <td style="color:var(--muted);">${g.cafeId}</td>
-                <td style="color:var(--muted);">${g.receivedDate}</td>
-                <td><span class="badge success" style="font-size:10px;">${g.condition}</span></td>
-                <td><span class="badge success" style="font-size:10px;">${g.qualityStatus}</span></td>
-                <td style="text-align:right;font-weight:700;">${formatPaise(g.totalReceivedValuePaise)}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <h3 style="font-size:14px;font-weight:700;color:var(--ink);margin:0;">Goods Receipt Notes (GRN) &amp; Physical Receiving</h3>
+        <button class="btn btn-sm btn-primary" id="btn-intake-grn-header" style="font-size:11px;padding:4px 10px;" type="button">+ Intake GRN</button>
       </div>
+      <div id="grn-table-wrap">${skeleton('160px')}</div>
     </div>
   `;
+
+  container.querySelector('#btn-intake-grn-header')?.addEventListener('click', () => openDirectGrnModal(root));
+
+  try {
+    const res = await apiGet('/procurement/grns');
+    const grns = res?.data?.goodsReceipts || [];
+    const wrap = container.querySelector('#grn-table-wrap');
+    if (!wrap) return;
+
+    if (grns.length === 0) {
+      wrap.innerHTML = `
+        <div style="padding:32px;text-align:center;color:var(--muted);font-size:13px;">
+          No Goods Receipt Notes (GRN) recorded.
+        </div>
+      `;
+      return;
+    }
+
+    wrap.innerHTML = `
+      <table class="glass-table" style="width:100%;font-size:12px;">
+        <thead>
+          <tr>
+            <th>GRN Number</th>
+            <th>PO Reference</th>
+            <th>Supplier</th>
+            <th>Café</th>
+            <th>Received Date</th>
+            <th>Condition</th>
+            <th>Quality Status</th>
+            <th style="text-align:right;">Received Value</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${grns.map((g) => `
+            <tr>
+              <td style="font-family:var(--font-mono);font-weight:700;">${g.grnId}</td>
+              <td style="font-family:var(--font-mono);">${g.purchaseOrderId}</td>
+              <td><strong>${g.vendorName || g.vendorId}</strong></td>
+              <td style="color:var(--muted);">${g.cafeId}</td>
+              <td style="color:var(--muted);">${g.receivedDate ? g.receivedDate.slice(0, 10) : '—'}</td>
+              <td><span class="badge ${g.condition === 'DAMAGED' ? 'coral' : 'success'}" style="font-size:10px;">${g.condition || 'GOOD'}</span></td>
+              <td><span class="badge ${g.qualityStatus === 'REJECTED' ? 'coral' : 'success'}" style="font-size:10px;">${g.qualityStatus || 'ACCEPTED'}</span></td>
+              <td style="text-align:right;font-weight:700;">${formatPaise(g.totalReceivedValuePaise)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+  } catch (err) {
+    const wrap = container.querySelector('#grn-table-wrap');
+    if (wrap) {
+      wrap.innerHTML = `<div style="padding:24px;text-align:center;color:var(--coral);font-size:12px;">Failed to load GRNs: ${err.message}</div>`;
+    }
+  }
 }
 
 async function renderMatchingSubtab(root, container) {
@@ -974,6 +1054,15 @@ async function renderMatchingSubtab(root, container) {
     const matches = res?.data?.recentMatches || [];
     const wrap = root.querySelector('#matching-table-wrap');
     if (!wrap) return;
+
+    if (matches.length === 0) {
+      wrap.innerHTML = `
+        <div style="padding:32px;text-align:center;color:var(--muted);font-size:13px;">
+          No 3-way invoice match records available.
+        </div>
+      `;
+      return;
+    }
 
     wrap.innerHTML = `
       <table class="glass-table" style="width:100%;font-size:12px;">
@@ -1010,31 +1099,7 @@ async function renderMatchingSubtab(root, container) {
   } catch (err) {
     const wrap = root.querySelector('#matching-table-wrap');
     if (wrap) {
-      const sampleMatches = [
-        { matchId: 'MATCH-001', purchaseOrderId: 'PO-2024-001', grnId: 'GRN-2024-001', invoiceNumber: 'INV-FF-4421', poAmountPaise: 4250000, invoiceAmountPaise: 4250000, variancePaise: 0, matchStatus: 'MATCHED', financeHandoffStatus: 'COMPLETED' },
-        { matchId: 'MATCH-002', purchaseOrderId: 'PO-2024-002', grnId: 'GRN-2024-002', invoiceNumber: 'INV-MB-9812', poAmountPaise: 1870000, invoiceAmountPaise: 1870000, variancePaise: 0, matchStatus: 'MATCHED', financeHandoffStatus: 'COMPLETED' },
-        { matchId: 'MATCH-003', purchaseOrderId: 'PO-2024-003', grnId: 'GRN-2024-003', invoiceNumber: 'INV-SD-2234', poAmountPaise: 980000, invoiceAmountPaise: 985000, variancePaise: 5000, matchStatus: 'PARTIAL', financeHandoffStatus: 'PENDING' },
-      ];
-      wrap.innerHTML = `
-        <table class="glass-table" style="width:100%;font-size:12px;">
-          <thead><tr>
-            <th>Match ID</th><th>PO Number</th><th>GRN Reference</th><th>Supplier Invoice</th>
-            <th style="text-align:right;">PO Value</th><th style="text-align:right;">Invoice Value</th>
-            <th style="text-align:right;">Variance</th><th>Match Status</th><th>Finance Handoff</th>
-          </tr></thead>
-          <tbody>${sampleMatches.map(m => `
-            <tr>
-              <td style="font-family:var(--font-mono);font-weight:700;">${m.matchId}</td>
-              <td style="font-family:var(--font-mono);">${m.purchaseOrderId}</td>
-              <td style="font-family:var(--font-mono);">${m.grnId}</td>
-              <td style="font-family:var(--font-mono);">${m.invoiceNumber}</td>
-              <td style="text-align:right;font-weight:700;">${formatPaise(m.poAmountPaise)}</td>
-              <td style="text-align:right;font-weight:700;">${formatPaise(m.invoiceAmountPaise)}</td>
-              <td style="text-align:right;font-weight:700;color:${m.variancePaise === 0 ? 'var(--mint, #10b981)' : 'var(--coral, #f43f5e)'};">₹${(m.variancePaise/100).toFixed(2)}</td>
-              <td>${renderStatusPill(m.matchStatus)}</td>
-              <td><span class="badge success" style="font-size:10px;">${m.financeHandoffStatus}</span></td>
-            </tr>`).join('')}</tbody>
-        </table>`;
+      wrap.innerHTML = `<div style="padding:24px;text-align:center;color:var(--coral);font-size:12px;">Failed to load 3-Way Match records: ${err.message}</div>`;
     }
   }
 }
@@ -1156,7 +1221,7 @@ function openNewPoModal(root, preselectedSku = null) {
         ],
         notes,
       };
-      await apiPost('/procurement/orders', { body: payload });
+      await apiPost('/procurement/orders', payload);
       closeModal();
       showToast('Purchase Order created successfully.', 'mint');
       await loadOrdersSubtabData(root);
@@ -1211,11 +1276,9 @@ function openNewRequisitionModal(root) {
 
     try {
       await apiPost('/procurement/requisitions', {
-        body: {
-          title,
-          cafeId,
-          estimatedAmountPaise: Math.round(amount * 100),
-        },
+        title,
+        cafeId,
+        estimatedAmountPaise: Math.round(amount * 100),
       });
       closeModal();
       showToast('Requisition submitted for approval.', 'mint');
@@ -1263,7 +1326,8 @@ function openNewRfqModal(root) {
 
     try {
       await apiPost('/procurement/rfqs', {
-        body: { title, deadline },
+        title,
+        deadline,
       });
       closeModal();
       showToast('RFQ published to vendors.', 'mint');
@@ -1310,14 +1374,12 @@ function openReceiveGrnModal(root, po) {
 
     try {
       await apiPost(`/procurement/orders/${po.purchaseOrderId}/receive`, {
-        body: {
-          receivedItems: po.lineItems?.map((l) => ({
-            itemId: l.itemId,
-            receivedQuantityBase: l.orderedQuantityBase,
-          })) || [],
-          deliveryNote: dnote,
-          condition,
-        },
+        receivedItems: po.lineItems?.map((l) => ({
+          itemId: l.itemId,
+          receivedQuantityBase: l.orderedQuantityBase,
+        })) || [],
+        deliveryNote: dnote,
+        condition,
       });
       closeModal();
       showToast(`GRN completed for ${po.purchaseOrderId}`, 'mint');
@@ -1558,16 +1620,39 @@ function openNewBlanketAgreementModal(root) {
   });
 }
 
-function openTrackInboundModal(root) {
+async function openTrackInboundModal(root) {
+  let asns = [];
+  try {
+    const res = await apiGet('/procurement/asns');
+    asns = res?.data?.asns || [];
+  } catch (err) {
+    console.warn('Failed to fetch ASNs for tracking modal:', err.message);
+  }
+
   const modalHtml = `
     <div style="display:flex;flex-direction:column;gap:14px;width:100%;max-width:540px;">
-      <h2 style="font-size:16px;font-weight:800;color:var(--ink);margin:0;">Inbound Logistics &amp; ASN Tracking</h2>
-      <p style="font-size:12px;color:var(--muted);margin:-8px 0 0 0;">Live tracking of dispatched vendor shipments</p>
-
-      <div style="display:flex;flex-direction:column;gap:8px;font-size:12px;">
-        <div style="padding:20px;text-align:center;color:var(--muted);font-size:12px;">
-          No active inbound shipments. ASN data will appear here once vendors dispatch confirmed orders.
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div>
+          <h2 style="font-size:16px;font-weight:800;color:var(--ink);margin:0;">Inbound Logistics &amp; ASN Tracking</h2>
+          <p style="font-size:12px;color:var(--muted);margin:2px 0 0 0;">Live tracking of dispatched vendor shipments</p>
         </div>
+        <button class="btn btn-sm btn-primary" id="modal-track-new-asn" style="font-size:11px;" type="button">+ New ASN</button>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:8px;font-size:12px;max-height:300px;overflow-y:auto;">
+        ${asns.length === 0 ? `
+          <div style="padding:20px;text-align:center;color:var(--muted);font-size:12px;">
+            No active inbound shipments. ASN data will appear here once vendors dispatch confirmed orders.
+          </div>
+        ` : asns.map((a) => `
+          <div style="padding:10px 12px;background:var(--surface-sunken);border:1px solid var(--line);border-radius:6px;display:flex;justify-content:space-between;align-items:center;">
+            <div>
+              <div style="font-weight:700;color:var(--ink);">${a.asnNumber} &bull; ${a.purchaseOrderId}</div>
+              <div style="font-size:11px;color:var(--muted);">Carrier: ${a.carrier || 'Standard Freight'} &bull; ETA: ${a.expectedArrivalDate ? a.expectedArrivalDate.slice(0, 10) : 'TBD'}</div>
+            </div>
+            <span class="badge ${a.status === 'RECEIVED' ? 'success' : 'warning'}" style="font-size:10px;">${a.status}</span>
+          </div>
+        `).join('')}
       </div>
 
       <div style="display:flex;justify-content:flex-end;margin-top:10px;">
@@ -1578,6 +1663,96 @@ function openTrackInboundModal(root) {
 
   openModal(modalHtml);
   document.getElementById('modal-track-close')?.addEventListener('click', closeModal);
+  document.getElementById('modal-track-new-asn')?.addEventListener('click', () => {
+    closeModal();
+    openCreateAsnModal(root);
+  });
+}
+
+function openCreateAsnModal(root) {
+  const modalHtml = `
+    <div style="display:flex;flex-direction:column;gap:14px;width:100%;max-width:520px;">
+      <h2 style="font-size:16px;font-weight:800;color:var(--ink);margin:0;">Create Advance Shipping Notice (ASN)</h2>
+      <p style="font-size:12px;color:var(--muted);margin:-8px 0 0 0;">Record vendor shipment details against an authorized PO</p>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--muted);display:block;margin-bottom:4px;">PO Number *</label>
+          <input type="text" id="modal-asn-po" class="input" style="font-size:12px;width:100%;" placeholder="e.g. PO-...">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--muted);display:block;margin-bottom:4px;">Vendor Reference # *</label>
+          <input type="text" id="modal-asn-vendor-ref" class="input" style="font-size:12px;width:100%;" placeholder="e.g. VASN-001">
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--muted);display:block;margin-bottom:4px;">Carrier / Transporter</label>
+          <input type="text" id="modal-asn-carrier" class="input" style="font-size:12px;width:100%;" placeholder="e.g. BlueDart Logistics">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--muted);display:block;margin-bottom:4px;">Vehicle / Tracking #</label>
+          <input type="text" id="modal-asn-vehicle" class="input" style="font-size:12px;width:100%;" placeholder="e.g. KL-11-BV-1234">
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--muted);display:block;margin-bottom:4px;">Expected Arrival Date *</label>
+          <input type="date" id="modal-asn-eta" class="input" style="font-size:12px;width:100%;" value="${new Date(Date.now() + 86400000).toISOString().slice(0, 10)}">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--muted);display:block;margin-bottom:4px;">Shipped Qty *</label>
+          <input type="number" id="modal-asn-qty" class="input" style="font-size:12px;width:100%;" value="25" min="1">
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px;">
+        <button class="btn btn-ghost" id="modal-asn-cancel" style="font-size:12px;" type="button">Cancel</button>
+        <button class="btn btn-primary" id="modal-asn-submit" style="font-size:12px;font-weight:700;" type="button">Dispatch ASN</button>
+      </div>
+    </div>
+  `;
+
+  openModal(modalHtml);
+  document.getElementById('modal-asn-cancel')?.addEventListener('click', closeModal);
+  document.getElementById('modal-asn-submit')?.addEventListener('click', async () => {
+    const purchaseOrderId = document.getElementById('modal-asn-po')?.value?.trim();
+    const vendorReference = document.getElementById('modal-asn-vendor-ref')?.value?.trim();
+    const carrier = document.getElementById('modal-asn-carrier')?.value?.trim();
+    const vehicleNumber = document.getElementById('modal-asn-vehicle')?.value?.trim();
+    const expectedArrivalDate = document.getElementById('modal-asn-eta')?.value;
+    const shippedQuantity = Number(document.getElementById('modal-asn-qty')?.value) || 0;
+
+    if (!purchaseOrderId || !vendorReference || shippedQuantity <= 0) {
+      showToast('Please provide valid PO Number, Vendor Reference, and Shipped Quantity.', 'coral');
+      return;
+    }
+
+    try {
+      const payload = {
+        purchaseOrderId,
+        vendorReference,
+        carrier,
+        vehicleNumber,
+        expectedArrivalDate,
+        lineItems: [
+          {
+            shippedQuantity,
+            unitOfMeasure: 'units',
+          }
+        ],
+      };
+      const res = await apiPost('/procurement/asns', payload);
+      closeModal();
+      showToast(`ASN ${res?.data?.asn?.asnNumber || 'dispatched'} recorded successfully.`, 'mint');
+      const inner = document.querySelector('#proc-submodule-inner-content');
+      if (inner) await renderDeliveriesSubtab(root, inner);
+    } catch (err) {
+      showToast(err.message || 'Failed to create ASN', 'coral');
+    }
+  });
 }
 
 function openDirectGrnModal(root) {
@@ -1589,7 +1764,7 @@ function openDirectGrnModal(root) {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
         <div>
           <label style="font-size:11px;font-weight:700;color:var(--muted);display:block;margin-bottom:4px;">PO Number *</label>
-          <input type="text" id="modal-dgrn-po" class="input" style="font-size:12px;width:100%;" value="PO-2026-0001">
+          <input type="text" id="modal-dgrn-po" class="input" style="font-size:12px;width:100%;" placeholder="e.g. PO-...">
         </div>
         <div>
           <label style="font-size:11px;font-weight:700;color:var(--muted);display:block;margin-bottom:4px;">Delivery Challan # *</label>
@@ -1599,12 +1774,23 @@ function openDirectGrnModal(root) {
 
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
         <div>
-          <label style="font-size:11px;font-weight:700;color:var(--muted);display:block;margin-bottom:4px;">Received Qty</label>
-          <input type="number" id="modal-dgrn-qty" class="input" style="font-size:12px;width:100%;" value="25">
+          <label style="font-size:11px;font-weight:700;color:var(--muted);display:block;margin-bottom:4px;">Received Qty *</label>
+          <input type="number" id="modal-dgrn-qty" class="input" style="font-size:12px;width:100%;" value="25" min="1">
+        </div>
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--muted);display:block;margin-bottom:4px;">Accepted Qty *</label>
+          <input type="number" id="modal-dgrn-accepted" class="input" style="font-size:12px;width:100%;" value="25" min="0">
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--muted);display:block;margin-bottom:4px;">Dock Temperature (°C)</label>
+          <input type="number" step="0.1" id="modal-dgrn-temp" class="input" style="font-size:12px;width:100%;" placeholder="e.g. 4.0">
         </div>
         <div>
           <label style="font-size:11px;font-weight:700;color:var(--muted);display:block;margin-bottom:4px;">Batch Lot #</label>
-          <input type="text" id="modal-dgrn-lot" class="input" style="font-size:12px;width:100%;" value="LOT-202608-A">
+          <input type="text" id="modal-dgrn-lot" class="input" style="font-size:12px;width:100%;" placeholder="e.g. LOT-2026-A">
         </div>
       </div>
 
@@ -1618,27 +1804,44 @@ function openDirectGrnModal(root) {
   openModal(modalHtml);
   document.getElementById('modal-dgrn-cancel')?.addEventListener('click', closeModal);
   document.getElementById('modal-dgrn-submit')?.addEventListener('click', async () => {
-    const poId = document.getElementById('modal-dgrn-po')?.value || 'PO-2026-0001';
-    const dc = document.getElementById('modal-dgrn-dc')?.value || 'DC-99124';
-    const qty = Number(document.getElementById('modal-dgrn-qty')?.value) || 25;
-    const lot = document.getElementById('modal-dgrn-lot')?.value || 'LOT-202608-A';
+    const poId = document.getElementById('modal-dgrn-po')?.value?.trim();
+    const dc = document.getElementById('modal-dgrn-dc')?.value?.trim();
+    const receivedQty = Number(document.getElementById('modal-dgrn-qty')?.value) || 0;
+    const acceptedQty = Number(document.getElementById('modal-dgrn-accepted')?.value) || 0;
+    const rejectedQty = Math.max(0, receivedQty - acceptedQty);
+    const tempVal = document.getElementById('modal-dgrn-temp')?.value;
+    const temp = tempVal ? Number(tempVal) : null;
+    const lotNumber = document.getElementById('modal-dgrn-lot')?.value?.trim();
 
-    const newGrnId = `GRN-2026-08${sampleGRNs.length + 82}`;
-    sampleGRNs.unshift({
-      grnId: newGrnId,
-      purchaseOrderId: poId,
-      vendorName: 'Direct Dock Intake',
-      cafeId: state.currentCafeId || state.selectedCafeId || '',
-      receivedDate: new Date().toISOString().split('T')[0],
-      condition: 'GOOD',
-      qualityStatus: 'ACCEPTED',
-      totalReceivedValuePaise: qty * 620 * 100
-    });
+    if (!poId || !dc || receivedQty <= 0) {
+      showToast('Please provide valid PO Number, Delivery Challan, and Received Quantity.', 'coral');
+      return;
+    }
 
-    showToast(`GRN ${newGrnId} generated and inventory credited for ${poId}`, 'mint');
-    closeModal();
-    const inner = document.querySelector('#proc-submodule-inner-content');
-    if (inner) renderReceivingSubtab(root, inner);
+    try {
+      const payload = {
+        purchaseOrderId: poId,
+        deliveryNoteNumber: dc,
+        receivedItems: [
+          {
+            receivedQuantity: receivedQty,
+            acceptedQuantity: acceptedQty,
+            rejectedQuantity: rejectedQty,
+            lotNumber: lotNumber || undefined,
+          }
+        ],
+        temperatureChecks: temp !== null ? [{ location: 'DOCK', temperatureCelsius: temp, rulePassed: temp <= 8 }] : [],
+        dockNotes: `Dock intake with challan ${dc}`,
+      };
+
+      const res = await apiPost('/procurement/grns', payload);
+      closeModal();
+      showToast(`GRN ${res?.data?.grnId || 'created'} generated successfully.`, 'mint');
+      const inner = document.querySelector('#proc-submodule-inner-content');
+      if (inner) await renderReceivingSubtab(root, inner);
+    } catch (err) {
+      showToast(err.message || 'Failed to record Goods Receipt', 'coral');
+    }
   });
 }
 
@@ -1769,23 +1972,6 @@ function openNewReturnModal(root) {
 }
 
 function exportSpendReportCsv() {
-  const headers = ['PO ID', 'Date', 'Supplier', 'Cafe ID', 'Amount (INR)', 'Status'];
-  const rows = (cachedOrders || []).map((o) => [
-    o.purchaseOrderId || o.poNumber || o.id || '',
-    o.orderDate ? o.orderDate.split('T')[0] : (o.createdAt ? o.createdAt.split('T')[0] : ''),
-    o.vendorName || o.supplier || '',
-    o.cafeId || '',
-    ((o.totalAmountPaisa || o.totalAmount || 0) / 100).toFixed(2),
-    o.status || ''
-  ]);
-
-  let csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-  const encodedUri = encodeURI(csvContent);
-  const link = document.createElement('a');
-  link.setAttribute('href', encodedUri);
-  link.setAttribute('download', `procurement_spend_${new Date().toISOString().split('T')[0]}.csv`);
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  showToast('Procurement spend report exported to CSV.', 'mint');
+  navigate('reports/procurement-analytics');
+  showToast('Opening certified Procurement Analytics report (PDF / XLSX only)...', 'info');
 }

@@ -25,18 +25,43 @@ const {
 const { asyncHandler } = require('../utils/asyncHandler');
 const { ApiError } = require('../utils/ApiError');
 
+function getOwnerAuthorizedCafes(request) {
+  const { role, assignedCafeIds, cafeId } = request.auth;
+  if (role === 'MASTER') return null;
+  const rawCafes = (assignedCafeIds && assignedCafeIds.length > 0)
+    ? assignedCafeIds
+    : (cafeId ? [cafeId] : (Array.isArray(assignedCafeIds) && assignedCafeIds.length === 0 ? [] : null));
+  if (Array.isArray(rawCafes) && rawCafes.length === 0) {
+    throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'Owner has no authorized café assignments.');
+  }
+  if (!rawCafes) return null;
+  return rawCafes.map((c) => String(c).trim().toUpperCase());
+}
+
 // ── 1. Overview Dashboard KPIs ──────────────────────────────────────────────
 
 const getOverview = asyncHandler(async (request, response) => {
   const { organisationId } = request.auth;
+  const authorizedCafes = getOwnerAuthorizedCafes(request);
+  const outletFilter = { organisationId };
+  const agreementFilter = { organisationId };
+  const settlementFilter = { organisationId };
+  const submissionFilter = { organisationId };
+
+  if (authorizedCafes) {
+    outletFilter.cafeId = { $in: authorizedCafes };
+    agreementFilter.cafeId = { $in: authorizedCafes };
+    settlementFilter.cafeId = { $in: authorizedCafes };
+    submissionFilter.cafeId = { $in: authorizedCafes };
+  }
 
   const [outlets, operators, agreements, settlements, submissions, payments, deposits] =
     await Promise.all([
-      LeasedOutlet.find({ organisationId }).lean(),
+      LeasedOutlet.find(outletFilter).lean(),
       RevenueShareOperator.find({ organisationId }).lean(),
-      RevenueShareAgreement.find({ organisationId }).lean(),
-      RevenueShareSettlement.find({ organisationId }).lean(),
-      SalesSubmission.find({ organisationId }).lean(),
+      RevenueShareAgreement.find(agreementFilter).lean(),
+      RevenueShareSettlement.find(settlementFilter).lean(),
+      SalesSubmission.find(submissionFilter).lean(),
       RevenueSharePayment.find({ organisationId }).lean(),
       SecurityDeposit.find({ organisationId }).lean(),
     ]);
@@ -82,7 +107,19 @@ const getOverview = asyncHandler(async (request, response) => {
 
 const listOutlets = asyncHandler(async (request, response) => {
   const { organisationId } = request.auth;
-  const outlets = await LeasedOutlet.find({ organisationId }).sort({ outletId: 1 }).lean();
+  const authorizedCafes = getOwnerAuthorizedCafes(request);
+  const filter = { organisationId };
+  if (authorizedCafes) {
+    filter.cafeId = { $in: authorizedCafes };
+  }
+  if (request.query.cafeId && request.query.cafeId !== 'ALL') {
+    const requestedCafe = String(request.query.cafeId).trim().toUpperCase();
+    if (authorizedCafes && !authorizedCafes.includes(requestedCafe)) {
+      throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'You do not have access to this café.');
+    }
+    filter.cafeId = requestedCafe;
+  }
+  const outlets = await LeasedOutlet.find(filter).sort({ outletId: 1 }).lean();
   return response.status(200).json({ success: true, data: { outlets } });
 });
 
@@ -94,13 +131,19 @@ const createOutlet = asyncHandler(async (request, response) => {
     throw new ApiError(400, 'MISSING_REQUIRED_FIELDS', 'Name and cafeId are required to create a leased outlet space.');
   }
 
+  const authorizedCafes = getOwnerAuthorizedCafes(request);
+  const cleanCafe = cafeId.trim().toUpperCase();
+  if (authorizedCafes && !authorizedCafes.includes(cleanCafe)) {
+    throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'You do not have access to this café.');
+  }
+
   const outletCount = await LeasedOutlet.countDocuments({ organisationId });
   const outletId = `LO-${String(outletCount + 1).padStart(4, '0')}`;
 
   const outlet = await LeasedOutlet.create({
     outletId,
     organisationId,
-    cafeId,
+    cafeId: cleanCafe,
     name: name.trim(),
     spaceType: spaceType || 'COUNTER',
     zoneFloor: zoneFloor || 'Ground Floor',
@@ -126,6 +169,11 @@ const getOutletById = asyncHandler(async (request, response) => {
   const outlet = await LeasedOutlet.findOne({ organisationId, outletId: id.toUpperCase() }).lean();
   if (!outlet) {
     throw new ApiError(404, 'OUTLET_NOT_FOUND', `Leased outlet ${id} was not found.`);
+  }
+
+  const authorizedCafes = getOwnerAuthorizedCafes(request);
+  if (authorizedCafes && !authorizedCafes.includes(outlet.cafeId)) {
+    throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'You do not have access to this café.');
   }
 
   return response.status(200).json({ success: true, data: { outlet } });
@@ -188,7 +236,19 @@ const getOperatorById = asyncHandler(async (request, response) => {
 
 const listAgreements = asyncHandler(async (request, response) => {
   const { organisationId } = request.auth;
-  const agreements = await RevenueShareAgreement.find({ organisationId }).sort({ agreementId: -1 }).lean();
+  const authorizedCafes = getOwnerAuthorizedCafes(request);
+  const filter = { organisationId };
+  if (authorizedCafes) {
+    filter.cafeId = { $in: authorizedCafes };
+  }
+  if (request.query.cafeId && request.query.cafeId !== 'ALL') {
+    const requestedCafe = String(request.query.cafeId).trim().toUpperCase();
+    if (authorizedCafes && !authorizedCafes.includes(requestedCafe)) {
+      throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'You do not have access to this café.');
+    }
+    filter.cafeId = requestedCafe;
+  }
+  const agreements = await RevenueShareAgreement.find(filter).sort({ agreementId: -1 }).lean();
   return response.status(200).json({ success: true, data: { agreements } });
 });
 
@@ -216,13 +276,22 @@ const createAgreement = asyncHandler(async (request, response) => {
     throw new ApiError(400, 'MISSING_REQUIRED_FIELDS', 'Outlet, Operator, Commencement Date, and Expiry Date are required.');
   }
 
+  const outlet = await LeasedOutlet.findOne({ organisationId, outletId: outletId.toUpperCase() }).lean();
+  if (!outlet) {
+    throw new ApiError(404, 'OUTLET_NOT_FOUND', `Leased outlet ${outletId} was not found.`);
+  }
+  const authorizedCafes = getOwnerAuthorizedCafes(request);
+  if (authorizedCafes && !authorizedCafes.includes(outlet.cafeId)) {
+    throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'You do not have access to this café.');
+  }
+
   const count = await RevenueShareAgreement.countDocuments({ organisationId });
   const agreementId = `RSA-${String(count + 1).padStart(4, '0')}`;
 
   const agreement = await RevenueShareAgreement.create({
     agreementId,
     organisationId,
-    cafeId: cafeId || 'ZC-0001',
+    cafeId: outlet.cafeId,
     outletId: outletId.toUpperCase(),
     operatorId: operatorId.toUpperCase(),
     partnerName: partnerName || operatorId,
@@ -276,6 +345,11 @@ const getAgreementById = asyncHandler(async (request, response) => {
   const agreement = await RevenueShareAgreement.findOne({ organisationId, agreementId: id.toUpperCase() }).lean();
   if (!agreement) {
     throw new ApiError(404, 'AGREEMENT_NOT_FOUND', `Agreement ${id} was not found.`);
+  }
+
+  const authorizedCafes = getOwnerAuthorizedCafes(request);
+  if (authorizedCafes && !authorizedCafes.includes(agreement.cafeId)) {
+    throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'You do not have access to this café.');
   }
 
   return response.status(200).json({ success: true, data: { agreement } });
@@ -368,7 +442,19 @@ const createRateRule = asyncHandler(async (request, response) => {
 
 const listSalesSubmissions = asyncHandler(async (request, response) => {
   const { organisationId } = request.auth;
-  const submissions = await SalesSubmission.find({ organisationId }).sort({ businessDate: -1 }).lean();
+  const authorizedCafes = getOwnerAuthorizedCafes(request);
+  const filter = { organisationId };
+  if (authorizedCafes) {
+    filter.cafeId = { $in: authorizedCafes };
+  }
+  if (request.query.cafeId && request.query.cafeId !== 'ALL') {
+    const requestedCafe = String(request.query.cafeId).trim().toUpperCase();
+    if (authorizedCafes && !authorizedCafes.includes(requestedCafe)) {
+      throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'You do not have access to this café.');
+    }
+    filter.cafeId = requestedCafe;
+  }
+  const submissions = await SalesSubmission.find(filter).sort({ businessDate: -1 }).lean();
   return response.status(200).json({ success: true, data: { submissions } });
 });
 
@@ -398,6 +484,13 @@ const submitSales = asyncHandler(async (request, response) => {
 
   if (!outletId || !businessDate) {
     throw new ApiError(400, 'MISSING_FIELDS', 'Outlet ID and Business Date are required.');
+  }
+
+  const outlet = await LeasedOutlet.findOne({ organisationId, outletId: outletId.toUpperCase() }).lean();
+  const cafeId = outlet?.cafeId || 'ZC-0001';
+  const authorizedCafes = getOwnerAuthorizedCafes(request);
+  if (authorizedCafes && !authorizedCafes.includes(cafeId)) {
+    throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'You do not have access to this café.');
   }
 
   // Duplicate protection check
@@ -434,7 +527,7 @@ const submitSales = asyncHandler(async (request, response) => {
   const submission = await SalesSubmission.create({
     submissionId,
     organisationId,
-    cafeId: 'ZC-0001',
+    cafeId,
     outletId: outletId.toUpperCase(),
     operatorId: operatorId ? operatorId.toUpperCase() : 'OPR-0001',
     agreementId: agreementId ? agreementId.toUpperCase() : 'RSA-0001',
@@ -476,6 +569,11 @@ const approveSalesSubmission = asyncHandler(async (request, response) => {
     throw new ApiError(404, 'SUBMISSION_NOT_FOUND', `Sales submission ${id} not found.`);
   }
 
+  const authorizedCafes = getOwnerAuthorizedCafes(request);
+  if (authorizedCafes && !authorizedCafes.includes(submission.cafeId)) {
+    throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'You do not have access to this café.');
+  }
+
   submission.status = isCertified ? 'CERTIFIED' : 'APPROVED';
   submission.isCertified = Boolean(isCertified);
   submission.certifiedBy = isCertified ? userId : '';
@@ -501,6 +599,13 @@ const simulateSettlement = asyncHandler(async (request, response) => {
 
   if (!outletId || !periodStart || !periodEnd) {
     throw new ApiError(400, 'MISSING_FIELDS', 'Outlet ID, Period Start, and Period End are required.');
+  }
+
+  const outlet = await LeasedOutlet.findOne({ organisationId, outletId: outletId.toUpperCase() }).lean();
+  const cafeId = outlet?.cafeId || 'ZC-0001';
+  const authorizedCafes = getOwnerAuthorizedCafes(request);
+  if (authorizedCafes && !authorizedCafes.includes(cafeId)) {
+    throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'You do not have access to this café.');
   }
 
   // Aggregate submissions in period
@@ -586,7 +691,19 @@ const simulateSettlement = asyncHandler(async (request, response) => {
 
 const listSettlements = asyncHandler(async (request, response) => {
   const { organisationId } = request.auth;
-  const settlements = await RevenueShareSettlement.find({ organisationId }).sort({ periodStart: -1 }).lean();
+  const authorizedCafes = getOwnerAuthorizedCafes(request);
+  const filter = { organisationId };
+  if (authorizedCafes) {
+    filter.cafeId = { $in: authorizedCafes };
+  }
+  if (request.query.cafeId && request.query.cafeId !== 'ALL') {
+    const requestedCafe = String(request.query.cafeId).trim().toUpperCase();
+    if (authorizedCafes && !authorizedCafes.includes(requestedCafe)) {
+      throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'You do not have access to this café.');
+    }
+    filter.cafeId = requestedCafe;
+  }
+  const settlements = await RevenueShareSettlement.find(filter).sort({ periodStart: -1 }).lean();
   return response.status(200).json({ success: true, data: { settlements } });
 });
 
@@ -605,6 +722,16 @@ const createSettlement = asyncHandler(async (request, response) => {
 
   if (!outletId || !periodKey || !periodStart || !periodEnd) {
     throw new ApiError(400, 'MISSING_FIELDS', 'Outlet ID, Period Key, Period Start, and Period End are required.');
+  }
+
+  const outlet = await LeasedOutlet.findOne({
+    organisationId,
+    outletId: outletId.toUpperCase(),
+  }).lean();
+  const cafeId = outlet?.cafeId || 'ZC-0001';
+  const authorizedCafes = getOwnerAuthorizedCafes(request);
+  if (authorizedCafes && !authorizedCafes.includes(cafeId)) {
+    throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'You do not have access to this café.');
   }
 
   const existing = await RevenueShareSettlement.findOne({
@@ -645,7 +772,7 @@ const createSettlement = asyncHandler(async (request, response) => {
   const settlement = await RevenueShareSettlement.create({
     settlementId,
     organisationId,
-    cafeId: 'ZC-0001',
+    cafeId,
     outletId: outletId.toUpperCase(),
     operatorId: operatorId ? operatorId.toUpperCase() : 'OPR-0001',
     agreementId: agreementId ? agreementId.toUpperCase() : 'RSA-0001',
@@ -695,6 +822,11 @@ const approveSettlement = asyncHandler(async (request, response) => {
 
   if (!settlement) {
     throw new ApiError(404, 'SETTLEMENT_NOT_FOUND', `Settlement ${id} was not found.`);
+  }
+
+  const authorizedCafes = getOwnerAuthorizedCafes(request);
+  if (authorizedCafes && !authorizedCafes.includes(settlement.cafeId)) {
+    throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'You do not have access to this café.');
   }
 
   // Idempotency check
@@ -809,12 +941,17 @@ const recordPayment = asyncHandler(async (request, response) => {
 
 const getOutstandingAndAgeing = asyncHandler(async (request, response) => {
   const { organisationId } = request.auth;
-
-  const settlements = await RevenueShareSettlement.find({
+  const authorizedCafes = getOwnerAuthorizedCafes(request);
+  const filter = {
     organisationId,
     status: { $in: ['APPROVED', 'POSTED', 'PARTIALLY_PAID'] },
     balanceOutstandingPaisa: { $gt: 0 },
-  }).lean();
+  };
+  if (authorizedCafes) {
+    filter.cafeId = { $in: authorizedCafes };
+  }
+
+  const settlements = await RevenueShareSettlement.find(filter).lean();
 
   const now = new Date();
   const buckets = {
@@ -1047,11 +1184,16 @@ const resolveDispute = asyncHandler(async (request, response) => {
 
 const exportZurfPdf = asyncHandler(async (request, response) => {
   const { organisationId, userId } = request.auth;
+  const authorizedCafes = getOwnerAuthorizedCafes(request);
+  const filter = { organisationId };
+  if (authorizedCafes) {
+    filter.cafeId = { $in: authorizedCafes };
+  }
 
   const [outlets, agreements, settlements] = await Promise.all([
-    LeasedOutlet.find({ organisationId }).lean(),
-    RevenueShareAgreement.find({ organisationId }).lean(),
-    RevenueShareSettlement.find({ organisationId }).lean(),
+    LeasedOutlet.find(filter).lean(),
+    RevenueShareAgreement.find(filter).lean(),
+    RevenueShareSettlement.find(filter).lean(),
   ]);
 
   const reportId = `ZURF-RS-${Date.now()}`;

@@ -20,7 +20,21 @@ const { resolveEmployeeShiftForDate, getWeekStartDate } = require('../services/s
 
 // ─── 1. OVERVIEW & WORKFORCE KPIS ─────────────────────────────────────────────
 const getWorkforceOverview = asyncHandler(async (req, res) => {
-  const { organisationId } = req.auth;
+  const { organisationId, role, assignedCafeIds } = req.auth;
+  let userFilter = { organisationId };
+  if (role === 'OWNER') {
+    const authorizedCafes = (assignedCafeIds || []).map((c) => String(c).trim().toUpperCase()).filter(Boolean);
+    if (!authorizedCafes.length) {
+      throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'Owner has no assigned cafés.');
+    }
+    userFilter = {
+      organisationId,
+      $or: [
+        { primaryCafeId: { $in: authorizedCafes } },
+        { assignedCafeIds: { $in: authorizedCafes } },
+      ],
+    };
+  }
 
   const [
     users,
@@ -32,7 +46,7 @@ const getWorkforceOverview = asyncHandler(async (req, res) => {
     movements,
     probations,
   ] = await Promise.all([
-    User.find({ organisationId }).lean(),
+    User.find(userFilter).lean(),
     Position.find({ organisationId }).lean(),
     StaffingRequest.find({ organisationId }).lean(),
     EmployeeSkill.find({ organisationId }).lean(),
@@ -134,7 +148,7 @@ const getWorkforceOverview = asyncHandler(async (req, res) => {
 
 // ─── 2. EMPLOYEE DIRECTORY & SEARCH ──────────────────────────────────────────
 const listEmployees = asyncHandler(async (req, res) => {
-  const { organisationId, role, isPrimaryMaster } = req.auth;
+  const { organisationId, role, isPrimaryMaster, assignedCafeIds } = req.auth;
   const {
     query = '',
     cafeId = 'ALL',
@@ -145,32 +159,58 @@ const listEmployees = asyncHandler(async (req, res) => {
     limit = 50,
   } = req.query;
 
-  const filter = { organisationId };
+  let authorizedCafes = null;
+  if (role === 'OWNER') {
+    authorizedCafes = (assignedCafeIds || []).map((c) => String(c).trim().toUpperCase()).filter(Boolean);
+    if (!authorizedCafes.length) {
+      throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'Owner has no assigned cafés.');
+    }
+  }
+
+  const andClauses = [{ organisationId }];
 
   if (cafeId && cafeId !== 'ALL') {
-    filter.$or = [{ primaryCafeId: cafeId }, { assignedCafeIds: cafeId }];
+    const requestedCafe = String(cafeId).trim().toUpperCase();
+    if (authorizedCafes && !authorizedCafes.includes(requestedCafe)) {
+      throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'You do not have access to this café.');
+    }
+    andClauses.push({
+      $or: [{ primaryCafeId: requestedCafe }, { assignedCafeIds: requestedCafe }],
+    });
+  } else if (authorizedCafes) {
+    andClauses.push({
+      $or: [
+        { primaryCafeId: { $in: authorizedCafes } },
+        { assignedCafeIds: { $in: authorizedCafes } },
+      ],
+    });
   }
+
   if (department && department !== 'ALL') {
-    filter.department = department;
+    andClauses.push({ department });
   }
   if (status && status !== 'ALL') {
-    filter.employmentStatus = status;
+    andClauses.push({ employmentStatus: status });
   }
   if (employmentType && employmentType !== 'ALL') {
-    filter.employmentType = employmentType;
+    andClauses.push({ employmentType });
   }
 
   if (query) {
     const qRegex = new RegExp(query.trim(), 'i');
-    filter.$or = [
-      { name: qRegex },
-      { preferredName: qRegex },
-      { userId: qRegex },
-      { email: qRegex },
-      { designation: qRegex },
-      { department: qRegex },
-    ];
+    andClauses.push({
+      $or: [
+        { name: qRegex },
+        { preferredName: qRegex },
+        { userId: qRegex },
+        { email: qRegex },
+        { designation: qRegex },
+        { department: qRegex },
+      ],
+    });
   }
+
+  const filter = andClauses.length === 1 ? andClauses[0] : { $and: andClauses };
 
   const skip = (Number(page) - 1) * Number(limit);
   const [total, users] = await Promise.all([
@@ -211,7 +251,7 @@ const listEmployees = asyncHandler(async (req, res) => {
 
 // ─── 3. EMPLOYEE 360 PROFILE ─────────────────────────────────────────────────
 const getEmployee360 = asyncHandler(async (req, res) => {
-  const { organisationId, isPrimaryMaster, role, userId: authUserId } = req.auth;
+  const { organisationId, isPrimaryMaster, role, userId: authUserId, assignedCafeIds } = req.auth;
   const { userId } = req.params;
 
   // Strict isolation: STAFF / EMPLOYEE cannot view another employee's profile
@@ -224,6 +264,25 @@ const getEmployee360 = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'EMPLOYEE_NOT_FOUND', `Employee ${userId} was not found.`);
   }
   user.organisationId = user.organisationId || organisationId;
+
+  if (role === 'OWNER') {
+    if (userId && userId === authUserId) {
+      // Self access unconditionally allowed
+    } else {
+      const authorizedCafes = (assignedCafeIds || []).map((c) => String(c).trim().toUpperCase()).filter(Boolean);
+      if (!authorizedCafes.length) {
+        throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'Owner has no assigned cafés.');
+      }
+      const empCafes = [
+        user.primaryCafeId,
+        ...(Array.isArray(user.assignedCafeIds) ? user.assignedCafeIds : []),
+      ].filter(Boolean).map((c) => String(c).trim().toUpperCase());
+      const intersects = empCafes.some((c) => authorizedCafes.includes(c));
+      if (!intersects) {
+        throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'You do not have access to this employee.');
+      }
+    }
+  }
 
   const { buildEmployeeProfile } = require('../services/employeeReadService');
   const isMocked = (fn) => Boolean(fn && (fn.mock || typeof fn.restore === 'function' || fn._isMockFunction));
@@ -602,7 +661,23 @@ const addEmployeeSkill = asyncHandler(async (req, res) => {
 const assignEmployeeTraining = asyncHandler(async (req, res) => {
   const { organisationId } = req.auth;
   const { userId } = req.params;
-  const { trainingTitle, provider = 'Zamorin Academy', recurrence = 'ONE_TIME', dueDate } = req.body;
+  const {
+    trainingTitle,
+    provider = 'Zamorin Academy',
+    recurrence = 'ONE_TIME',
+    dueDate,
+    cafeId,
+    trainingType = 'GENERAL',
+    fostacCertificateNumber,
+    isFoodSafetySupervisor,
+    medicalFitnessStatus,
+    medicalCertificateExpiry,
+    typhoidVaccinationDate,
+    dewormingDate,
+    certificateRef,
+    validUntil,
+    status = 'ASSIGNED',
+  } = req.body;
 
   if (!trainingTitle || !dueDate) {
     throw new ApiError(400, 'INVALID_PAYLOAD', 'trainingTitle and dueDate are required.');
@@ -614,17 +689,55 @@ const assignEmployeeTraining = asyncHandler(async (req, res) => {
     trainingId,
     organisationId,
     userId,
+    cafeId: cafeId ? cafeId.trim().toUpperCase() : '',
     trainingTitle,
+    trainingType,
+    fostacCertificateNumber: fostacCertificateNumber || '',
+    isFoodSafetySupervisor: Boolean(isFoodSafetySupervisor),
+    medicalFitnessStatus: medicalFitnessStatus || 'FIT',
+    medicalCertificateExpiry: medicalCertificateExpiry || null,
+    typhoidVaccinationDate: typhoidVaccinationDate || null,
+    dewormingDate: dewormingDate || null,
     provider,
     recurrence,
     dueDate,
-    status: 'ASSIGNED',
+    validUntil: validUntil || null,
+    certificateRef: certificateRef || '',
+    status,
+    completedAt: status === 'COMPLETED' ? new Date() : null,
   });
 
   return res.status(201).json({
     success: true,
     message: `Training ${trainingTitle} assigned to ${userId}.`,
     data: { training },
+  });
+});
+
+const listFoodSafetyTrainings = asyncHandler(async (req, res) => {
+  const { organisationId } = req.auth;
+  const { cafeId, trainingType, supervisorOnly } = req.query;
+
+  const filter = { organisationId };
+  if (cafeId) filter.cafeId = cafeId.trim().toUpperCase();
+  if (trainingType) filter.trainingType = trainingType.trim().toUpperCase();
+  if (supervisorOnly === 'true') filter.isFoodSafetySupervisor = true;
+
+  const trainings = await EmployeeTraining.find(filter).sort({ dueDate: 1 }).lean();
+
+  const supervisor = trainings.find(
+    (t) => t.isFoodSafetySupervisor && (t.status === 'COMPLETED' || Boolean(t.fostacCertificateNumber))
+  );
+  const unfitRecords = trainings.filter((t) => t.medicalFitnessStatus === 'UNFIT');
+
+  return res.status(200).json({
+    success: true,
+    data: {
+      trainings,
+      hasFoodSafetySupervisor: Boolean(supervisor),
+      supervisorDetails: supervisor || null,
+      unfitCount: unfitRecords.length,
+    },
   });
 });
 
@@ -1605,8 +1718,26 @@ function buildEmployeeSearchRequest(params = {}) {
 
 function buildEmployeeSearchFilter(auth, searchRequest) {
   const organisationId = auth.organisationId;
+  let cafeOrClause = null;
+  if (auth.role === 'OWNER' && auth.assignedCafeIds && auth.assignedCafeIds.length > 0) {
+    const authorizedCafes = auth.assignedCafeIds.map((c) => String(c).trim().toUpperCase()).filter(Boolean);
+    if (authorizedCafes.length > 0) {
+      cafeOrClause = [
+        { primaryCafeId: { $in: authorizedCafes } },
+        { assignedCafeIds: { $in: authorizedCafes } },
+      ];
+    }
+  }
+
   if (searchRequest.mode === 'EXACT_ID') {
+    if (cafeOrClause) {
+      return { $and: [{ organisationId, userId: searchRequest.normalizedQuery }, { $or: cafeOrClause }] };
+    }
     return { organisationId, userId: searchRequest.normalizedQuery };
+  }
+
+  if (cafeOrClause) {
+    return { $and: [{ organisationId, employeeSearchTerms: searchRequest.normalizedQuery }, { $or: cafeOrClause }] };
   }
   return { organisationId, employeeSearchTerms: searchRequest.normalizedQuery };
 }
@@ -2017,6 +2148,7 @@ module.exports = {
   submitProbationReview,
   addEmployeeSkill,
   assignEmployeeTraining,
+  listFoodSafetyTrainings,
   generateEmployeeLetter,
   initiateOffboarding,
   getWorkforceIntegrity,

@@ -17,6 +17,7 @@ const { authorize } = require('../middleware/authorize');
 const { getFileMetadata, registerFileRecord } = require('../controllers/fileController');
 const { BusinessDocument } = require('../models/BusinessDocument');
 const { DocumentAttachmentService } = require('../services/documentAttachmentService');
+const { documentStorageAdapter } = require('../services/documentStorageAdapter');
 const { asyncHandler } = require('../utils/asyncHandler');
 const { ApiError } = require('../utils/ApiError');
 
@@ -256,8 +257,23 @@ router.get(
     res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(doc.originalFilename)}"`);
     res.setHeader('X-Content-Type-Options', 'nosniff');
 
-    // 1. If stored in disk-backed protected storage: stream directly to client without buffering
-    if (doc.storagePath && fs.existsSync(doc.storagePath)) {
+    // 1. If stored via durable documentStorageAdapter: stream directly to client without buffering
+    if (doc.storageKey) {
+      try {
+        const stream = await documentStorageAdapter.getStream({ storageKey: doc.storageKey });
+        res.setHeader('Content-Length', doc.sizeBytes);
+        return stream.pipe(res);
+      } catch (storageErr) {
+        // Graceful fallback to doc.storagePath if on local disk
+        if (doc.storagePath && fs.existsSync(doc.storagePath)) {
+          const stat = await fs.promises.stat(doc.storagePath);
+          res.setHeader('Content-Length', stat.size);
+          const stream = fs.createReadStream(doc.storagePath);
+          return stream.pipe(res);
+        }
+        throw storageErr;
+      }
+    } else if (doc.storagePath && fs.existsSync(doc.storagePath)) {
       const stat = await fs.promises.stat(doc.storagePath);
       res.setHeader('Content-Length', stat.size);
       const stream = fs.createReadStream(doc.storagePath);

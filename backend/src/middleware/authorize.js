@@ -4,6 +4,11 @@ const {
   RolePermission,
 } = require('../models/RolePermission');
 
+const {
+  logSecurityEvent,
+  SECURITY_ACTIONS,
+} = require('../services/securityLogger');
+
 const ABSOLUTE_ROLE_RESTRICTIONS = {
   PERSONAL_LEDGER: ['MASTER', 'OWNER'],
   MASTER_AUDIT: ['MASTER'],
@@ -46,8 +51,24 @@ function sendAuthorizationError(
   response,
   code,
   message,
-  status = 403
+  status = 403,
+  request = null
 ) {
+  try {
+    logSecurityEvent({
+      correlationId: request?.correlationId || null,
+      organisationId: request?.auth?.organisationId || null,
+      cafeId: request?.auth?.cafeId || request?.headers?.['x-cafe-id'] || null,
+      actorId: request?.auth?.userId || null,
+      action: SECURITY_ACTIONS.AUTHORIZATION_DENIED,
+      targetType: 'API_ENDPOINT',
+      targetId: request?.originalUrl || request?.url || null,
+      outcome: 'DENIED',
+      severity: status >= 500 ? 'ERROR' : 'WARN',
+      metadata: { code, message, statusCode: status },
+    });
+  } catch (_) {}
+
   return response.status(status).json({
     error: {
       code,
@@ -226,7 +247,9 @@ function enforceSensitiveRequirements({
     sendAuthorizationError(
       response,
       'MFA_REQUIRED',
-      'Multi-factor authentication is required for this action.'
+      'Multi-factor authentication is required for this action.',
+      403,
+      request
     );
 
     return false;
@@ -263,7 +286,9 @@ function enforceSensitiveRequirements({
       sendAuthorizationError(
         response,
         'STEP_UP_AUTHENTICATION_REQUIRED',
-        'Recent authentication is required for this action.'
+        'Recent authentication is required for this action.',
+        403,
+        request
       );
 
       return false;
@@ -291,7 +316,9 @@ function requirePrimaryMaster(
     return sendAuthorizationError(
       response,
       'PRIMARY_MASTER_AUTHORITY_REQUIRED',
-      'This action requires Primary Master authority.'
+      'This action requires Primary Master authority.',
+      403,
+      request
     );
   }
 
@@ -312,7 +339,9 @@ function requirePrimaryMasterOrOwner(
     return sendAuthorizationError(
       response,
       'UNAUTHORIZED',
-      'Authentication required.'
+      'Authentication required.',
+      401,
+      request
     );
   }
 
@@ -325,7 +354,9 @@ function requirePrimaryMasterOrOwner(
     return sendAuthorizationError(
       response,
       'REVENUE_SHARE_RESTRICTED',
-      'SCR-026 Revenue Share is visible and accessible exclusively to Primary Master and Owner.'
+      'SCR-026 Revenue Share is visible and accessible exclusively to Primary Master and Owner.',
+      403,
+      request
     );
   }
 
@@ -360,7 +391,8 @@ function authorize(
           response,
           'AUTHENTICATION_REQUIRED',
           'Authentication is required.',
-          401
+          401,
+          request
         );
       }
 
@@ -373,7 +405,9 @@ function authorize(
         return sendAuthorizationError(
           response,
           'ROLE_NOT_ALLOWED',
-          'Your role is not permitted to perform this action.'
+          'Your role is not permitted to perform this action.',
+          403,
+          request
         );
       }
 
@@ -386,7 +420,9 @@ function authorize(
         return sendAuthorizationError(
           response,
           'ABSOLUTE_ROLE_RESTRICTION',
-          'This action is permanently restricted to another role.'
+          'This action is permanently restricted to another role.',
+          403,
+          request
         );
       }
 
@@ -398,7 +434,9 @@ function authorize(
         return sendAuthorizationError(
           response,
           'PRIMARY_MASTER_AUTHORITY_REQUIRED',
-          'This action requires Primary Master authority.'
+          'This action requires Primary Master authority.',
+          403,
+          request
         );
       }
 
@@ -412,7 +450,8 @@ function authorize(
           response,
           'CAFE_SCOPE_REQUIRED',
           'A café scope is required for this action.',
-          400
+          400,
+          request
         );
       }
 
@@ -423,7 +462,9 @@ function authorize(
         return sendAuthorizationError(
           response,
           'CAFE_ACCESS_DENIED',
-          'You do not have access to this café.'
+          'You do not have access to this café.',
+          403,
+          request
         );
       }
 
@@ -440,7 +481,9 @@ function authorize(
         return sendAuthorizationError(
           response,
           'SELF_ACCESS_ONLY',
-          'You may access only your own information.'
+          'You may access only your own information.',
+          403,
+          request
         );
       }
 
@@ -475,7 +518,9 @@ function authorize(
         return sendAuthorizationError(
           response,
           'PERMISSION_DENIED',
-          'You do not have permission to perform this action.'
+          'You do not have permission to perform this action.',
+          403,
+          request
         );
       }
 

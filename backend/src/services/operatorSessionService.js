@@ -294,9 +294,40 @@ class OperatorSessionService {
       let device = null;
       if (resolvedDeviceId) {
         device = await DeviceRegistration.findOne({
-          deviceId: resolvedDeviceId,
+          $or: [{ deviceId: resolvedDeviceId }, { 'metadata.deviceCode': resolvedDeviceId }],
           organisationId: orgId,
         });
+
+        if (!device) {
+          // Check repos.devices / CafeOpsDevice as fallback bridge
+          try {
+            const { getRepositories } = require('../cafe-operations/repositories');
+            const repos = getRepositories();
+            const cafeOpsDev = (await repos.devices.findById(resolvedDeviceId)) || (await repos.devices.findByCode(resolvedDeviceId));
+            if (cafeOpsDev) {
+              device = await DeviceRegistration.findOneAndUpdate(
+                { deviceId: String(cafeOpsDev.id) },
+                {
+                  deviceId: String(cafeOpsDev.id),
+                  organisationId: cafeOpsDev.organisationId,
+                  deviceClass: 'CAFE_OWNED',
+                  assignedCafeId: cafeOpsDev.cafeId,
+                  deviceName: cafeOpsDev.displayName,
+                  platform: 'WEB_POS',
+                  status: cafeOpsDev.lifecycleStatus === 'ACTIVE' ? 'ACTIVE' : (cafeOpsDev.lifecycleStatus || 'REVOKED'),
+                  trustLevel: 'ENROLLED',
+                  lastSeenAt: new Date(),
+                  metadata: { deviceCode: cafeOpsDev.deviceCode },
+                },
+                { upsert: true, new: true }
+              );
+            }
+          } catch (_) {}
+        }
+      }
+
+      if (device && device.status !== 'ACTIVE') {
+        throw new ApiError(403, 'DEVICE_REVOKED', `This device is ${device.status}. Operations access is blocked.`);
       }
 
       if (device && device.assignedCafeId) {
@@ -834,10 +865,36 @@ class OperatorSessionService {
       throw new ApiError(400, 'DEVICE_ID_REQUIRED', 'Cafe Operations require a registered device ID.');
     }
 
-    const device = await DeviceRegistration.findOne({
-      deviceId,
+    let device = await DeviceRegistration.findOne({
+      $or: [{ deviceId }, { 'metadata.deviceCode': deviceId }],
       organisationId: orgId,
     });
+
+    if (!device) {
+      try {
+        const { getRepositories } = require('../cafe-operations/repositories');
+        const repos = getRepositories();
+        const cafeOpsDev = (await repos.devices.findById(deviceId)) || (await repos.devices.findByCode(deviceId));
+        if (cafeOpsDev) {
+          device = await DeviceRegistration.findOneAndUpdate(
+            { deviceId: String(cafeOpsDev.id) },
+            {
+              deviceId: String(cafeOpsDev.id),
+              organisationId: cafeOpsDev.organisationId,
+              deviceClass: 'CAFE_OWNED',
+              assignedCafeId: cafeOpsDev.cafeId,
+              deviceName: cafeOpsDev.displayName,
+              platform: 'WEB_POS',
+              status: cafeOpsDev.lifecycleStatus === 'ACTIVE' ? 'ACTIVE' : (cafeOpsDev.lifecycleStatus || 'REVOKED'),
+              trustLevel: 'ENROLLED',
+              lastSeenAt: new Date(),
+              metadata: { deviceCode: cafeOpsDev.deviceCode },
+            },
+            { upsert: true, new: true }
+          );
+        }
+      } catch (_) {}
+    }
 
     if (!device || device.deviceClass !== 'CAFE_OWNED' || device.status !== 'ACTIVE' || !device.assignedCafeId) {
       throw new ApiError(403, 'DEVICE_NOT_ELIGIBLE', 'Cafe Operations is only accessible on active cafe-owned devices assigned to a cafe.');

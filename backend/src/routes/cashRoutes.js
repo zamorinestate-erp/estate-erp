@@ -5,6 +5,9 @@ const express = require('express');
 const {
   authenticate,
 } = require('../middleware/authenticate');
+const {
+  attachDeviceContext,
+} = require('../middleware/deviceContext');
 
 const {
   listCashTransactions,
@@ -17,6 +20,7 @@ const {
 const router = express.Router();
 
 router.use(authenticate);
+router.use(attachDeviceContext);
 
 router
   .route('/')

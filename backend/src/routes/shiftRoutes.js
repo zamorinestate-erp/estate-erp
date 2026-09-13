@@ -10,6 +10,10 @@ const {
   updateShift,
   deactivateShift,
   activateShift,
+  listShiftHandovers,
+  getLatestShiftHandover,
+  recordShiftHandover,
+  acknowledgeShiftHandover,
 } = require('../controllers/shiftController');
 
 const {
@@ -32,6 +36,12 @@ router.get('/me/schedule', getMyShiftsSchedule);
 // Manager/Org shift change requests
 router.get('/requests', listOrgShiftChangeRequests);
 router.patch('/requests/:requestId', reviewShiftChangeRequest);
+
+// Shift Handover & Operational Continuity (R02-07)
+router.get('/handovers', listShiftHandovers);
+router.get('/handovers/latest', getLatestShiftHandover);
+router.post('/handovers', recordShiftHandover);
+router.post('/handovers/:handoverId/acknowledge', acknowledgeShiftHandover);
 
 router.get('/', listShifts);
 router.get('/:shiftId', getShift);

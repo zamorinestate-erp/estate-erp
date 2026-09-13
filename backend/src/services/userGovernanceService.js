@@ -656,6 +656,7 @@ async function auditGovernanceSuccess({
   reason,
   riskClassification = 'HIGH',
   metadata = {},
+  session,
 }) {
   try {
     await auditService.recordRequestAudit({
@@ -670,9 +671,11 @@ async function auditGovernanceSuccess({
       result: 'SUCCESS',
       riskClassification,
       metadata,
+      session,
     });
   } catch (_err) {
-    // Audit failure is logged but must not mask the original success
+    if (session) throw _err;
+    // Audit failure is logged but must not mask the original success outside a transaction
   }
 }
 

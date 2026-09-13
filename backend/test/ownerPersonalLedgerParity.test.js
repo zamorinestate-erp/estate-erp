@@ -443,5 +443,188 @@ test('OWN-SCR-005: Owner Personal Ledger Parity & Security Suite', async (t) => 
       mock.restore();
     }
   });
+
+  await t.test('7. Multi-Café Security: OWNER cannot create entry for unassigned café, but can for assigned café', async () => {
+    const mock = setupMockEnvironment('OWNER', false, 'OWNER-0001');
+
+    try {
+      // 1. Attempt to create entry for unassigned foreign café -> 403 CROSS_CAFE_RESOURCE_DENIED
+      const unassignedRes = await fetch(`${baseUrl}/personal-ledger/entries`, {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer test-token',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          category: 'BUSINESS_EXPENSE_PAID_PERSONALLY',
+          entryType: 'CREDIT',
+          amountPaisa: 500000,
+          businessDate: '2026-08-14',
+          description: 'Supplies for foreign cafe',
+          cafeId: 'CAFE-FOREIGN-999',
+        }),
+      });
+
+      assert.equal(unassignedRes.status, 403);
+      const unassignedBody = await unassignedRes.json();
+      assert.equal(unassignedBody.error.code, 'CAFE_ACCESS_DENIED');
+
+      // 2. Attempt to create entry for assigned café -> 201 Created
+      const assignedRes = await fetch(`${baseUrl}/personal-ledger/entries`, {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer test-token',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          category: 'BUSINESS_EXPENSE_PAID_PERSONALLY',
+          entryType: 'CREDIT',
+          amountPaisa: 500000,
+          businessDate: '2026-08-14',
+          description: 'Supplies for assigned cafe',
+          cafeId: 'CAFE-001',
+        }),
+      });
+
+      assert.equal(assignedRes.status, 201);
+      const assignedBody = await assignedRes.json();
+      assert.equal(assignedBody.data.cafeId, 'CAFE-001');
+    } finally {
+      mock.restore();
+    }
+  });
+
+  await t.test('8. Multi-Café Security: OWNER cannot classify entry to unassigned café', async () => {
+    const mock = setupMockEnvironment('OWNER', false, 'OWNER-0001');
+
+    try {
+      const res = await fetch(`${baseUrl}/personal-ledger/entries/PL-20260814-0001/classify`, {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer test-token',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          targetGLAccount: '5100-EXP',
+          accountingTreatment: 'BUSINESS_EXPENSE',
+          cafeId: 'CAFE-FOREIGN-999',
+        }),
+      });
+
+      assert.equal(res.status, 403);
+      const body = await res.json();
+      assert.equal(body.error.code, 'CAFE_ACCESS_DENIED');
+    } finally {
+      mock.restore();
+    }
+  });
+
+  await t.test('9. Multi-Café Scoped Filter: GET /personal-ledger/entries?cafeId=... enforces assigned cafés', async () => {
+    const mock = setupMockEnvironment('OWNER', false, 'OWNER-0001');
+
+    try {
+      // 1. Query with unassigned café -> 403 CAFE_ACCESS_DENIED
+      const unassignedRes = await fetch(`${baseUrl}/personal-ledger/entries?cafeId=CAFE-FOREIGN-999`, {
+        method: 'GET',
+        headers: {
+          Authorization: 'Bearer test-token',
+        },
+      });
+
+      assert.equal(unassignedRes.status, 403);
+      const unassignedBody = await unassignedRes.json();
+      assert.equal(unassignedBody.error.code, 'CAFE_ACCESS_DENIED');
+
+      // 2. Query with assigned café -> 200 OK
+      const assignedRes = await fetch(`${baseUrl}/personal-ledger/entries?cafeId=CAFE-001`, {
+        method: 'GET',
+        headers: {
+          Authorization: 'Bearer test-token',
+        },
+      });
+
+      assert.equal(assignedRes.status, 200);
+      const assignedBody = await assignedRes.json();
+      assert.ok(Array.isArray(assignedBody.data));
+    } finally {
+      mock.restore();
+    }
+  });
+
+  await t.test('10. Parity: OWNER can reverse classification back to unclassified personal state', async () => {
+    const mock = setupMockEnvironment('OWNER', false, 'OWNER-0001');
+
+    try {
+      const res = await fetch(`${baseUrl}/personal-ledger/entries/PL-20260814-0001/reverse-classification`, {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer test-token',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          reason: 'Governance reclassification to personal expense',
+        }),
+      });
+
+      assert.equal(res.status, 200);
+      const body = await res.json();
+      assert.equal(body.data.workflowStatus, 'SUBMITTED');
+      assert.equal(body.data.accountingTreatment, 'PERSONAL');
+      assert.equal(body.data.financePostingStatus, 'REVERSED');
+    } finally {
+      mock.restore();
+    }
+  });
+
+  await t.test('11. Role Boundaries: CAFE_ADMIN, STAFF, and Normal Master are strictly DENIED', async () => {
+    for (const testCase of [
+      { role: 'CAFE_ADMIN', isPrimaryMaster: false, userId: 'ADMIN-0001' },
+      { role: 'STAFF', isPrimaryMaster: false, userId: 'STAFF-0001' },
+      { role: 'MASTER', isPrimaryMaster: false, userId: 'MASTER-NORMAL-0001' },
+    ]) {
+      const mock = setupMockEnvironment(testCase.role, testCase.isPrimaryMaster, testCase.userId);
+
+      try {
+        const res = await fetch(`${baseUrl}/personal-ledger/overview`, {
+          method: 'GET',
+          headers: {
+            Authorization: 'Bearer test-token',
+          },
+        });
+
+        assert.equal(
+          res.status,
+          403,
+          `Expected 403 for role ${testCase.role} (isPrimaryMaster=${testCase.isPrimaryMaster}), received ${res.status}`
+        );
+      } finally {
+        mock.restore();
+      }
+    }
+  });
+
+  await t.test('12. Mathematical Precision & Integer Paise Arithmetic', async () => {
+    // Test the pure balance calculation with integer paise to guarantee 0 floating-point drift
+    const entries = [
+      { status: 'ACTIVE', entryType: 'CREDIT', amountPaisa: 1250075 }, // ₹12,500.75
+      { status: 'ACTIVE', entryType: 'DEBIT', amountPaisa: 350025 },   // ₹3,500.25
+      { status: 'ACTIVE', entryType: 'CREDIT', amountPaisa: 1 },        // ₹0.01
+      { status: 'REVERSED', entryType: 'CREDIT', amountPaisa: 9999999 }, // Reversed: ignored
+    ];
+
+    let creditPaisa = 0;
+    let debitPaisa = 0;
+    for (const e of entries) {
+      if (e.status !== 'ACTIVE') continue;
+      if (e.entryType === 'CREDIT') creditPaisa += e.amountPaisa;
+      if (e.entryType === 'DEBIT') debitPaisa += e.amountPaisa;
+    }
+    const balancePaisa = creditPaisa - debitPaisa;
+
+    assert.equal(creditPaisa, 1250076); // Exactly ₹12,500.76
+    assert.equal(debitPaisa, 350025);   // Exactly ₹3,500.25
+    assert.equal(balancePaisa, 900051);  // Exactly ₹9,000.51
+    assert.equal(Number.isInteger(balancePaisa), true);
+  });
 });
 

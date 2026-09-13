@@ -324,6 +324,19 @@ function buildEmployeeScopeFilter(
     return filter;
   }
 
+  if (auth.role === 'OWNER') {
+    const actorCafeIds = normalizeCafeIds(auth.assignedCafeIds);
+    if (actorCafeIds.length > 0) {
+      filter.assignedCafeIds = {
+        $in: actorCafeIds,
+      };
+    }
+    if (normalizedTargetUserId) {
+      filter.userId = normalizedTargetUserId;
+    }
+    return filter;
+  }
+
   if (auth.role === 'STAFF') {
     const actorUserId =
       normalizeIdentifier(auth.userId);
@@ -398,6 +411,32 @@ function assertEmployeeProfileAccess(
         'EMPLOYEE_NOT_FOUND',
         'The employee was not found.'
       );
+    }
+  }
+
+  if (
+    normalizeIdentifier(plainEmployee.userId) ===
+    normalizeIdentifier(auth.userId)
+  ) {
+    return plainEmployee;
+  }
+
+  if (auth.role === 'OWNER') {
+    const actorCafeIds = normalizeCafeIds(auth.assignedCafeIds);
+    if (actorCafeIds.length > 0) {
+      const actorCafeSet = new Set(actorCafeIds);
+      const targetCafeIds = normalizeCafeIds([
+        plainEmployee.primaryCafeId,
+        ...(Array.isArray(plainEmployee.assignedCafeIds) ? plainEmployee.assignedCafeIds : []),
+      ]);
+      const intersects = targetCafeIds.some((cafeId) => actorCafeSet.has(cafeId));
+      if (!intersects) {
+        throw new ApiError(
+          403,
+          'CROSS_CAFE_RESOURCE_DENIED',
+          'You do not have access to this employee.'
+        );
+      }
     }
   }
 

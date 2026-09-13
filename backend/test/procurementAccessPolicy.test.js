@@ -45,18 +45,25 @@ test('Procurement backend routes preserve the approved role matrix and exclude S
   );
 });
 
-test('OWNER has organisation-wide Procurement read, approve, and cancel scope while CAFE_ADMIN remains assigned-cafe scoped', () => {
+test('MASTER has organisation-wide Procurement scope while OWNER and CAFE_ADMIN remain assigned-cafe scoped', () => {
   const source = loadSource('backend/src/controllers/procurementController.js');
 
   assert.equal(
-    source.includes("if (request.auth.role === 'MASTER' || request.auth.role === 'OWNER') return;"),
+    source.includes("if (request.auth.role === 'MASTER') return;"),
     true,
-    'assertCafeAccess must allow MASTER and OWNER organisation-wide Procurement access'
+    'assertCafeAccess must allow MASTER organisation-wide Procurement access'
   );
 
   assert.equal(
-    source.includes("} else if (!['MASTER', 'OWNER'].includes(request.auth.role)) {"),
+    source.includes("if (request.auth.role === 'OWNER') {") &&
+      source.includes("Owner is not authorized for the requested café."),
     true,
-    'listOrders must apply assignedCafeIds filtering only to non-MASTER/non-OWNER roles'
+    'assertCafeAccess must enforce assignedCafeIds on OWNER'
+  );
+
+  assert.equal(
+    source.includes("} else if (request.auth.role !== 'MASTER') {"),
+    true,
+    'listOrders must apply assignedCafeIds filtering to all non-MASTER roles'
   );
 });

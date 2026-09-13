@@ -36,6 +36,10 @@ function getIstBusinessDate(date = new Date()) {
 function ensureCafeAccess(request, cafeId) {
   if (!cafeId) return;
   const cleanCafe = cafeId.trim().toUpperCase();
+  const effectiveCafe = resolveEffectiveCafeScope(request);
+  if (effectiveCafe && effectiveCafe !== cleanCafe) {
+    throw new ApiError(403, 'CAFE_ACCESS_DENIED', 'You do not have access to this cafe in the current workspace scope.');
+  }
   const role = request?.auth?.role;
   if (role === 'MASTER') return;
   if (role === 'OWNER') {
@@ -44,10 +48,6 @@ function ensureCafeAccess(request, cafeId) {
       throw new ApiError(403, 'CAFE_ACCESS_DENIED', 'You do not have access to this cafe.');
     }
     return;
-  }
-  const effectiveCafe = resolveEffectiveCafeScope(request);
-  if (effectiveCafe && effectiveCafe !== cleanCafe) {
-    throw new ApiError(403, 'CAFE_ACCESS_DENIED', 'You do not have access to this cafe.');
   }
 }
 
@@ -138,7 +138,10 @@ const listExpenses = asyncHandler(async (request, response) => {
 
   const query = { organisationId };
 
-  if (cafeId && cafeId !== 'ALL') {
+  const effectiveCafe = resolveEffectiveCafeScope(request);
+  if (effectiveCafe) {
+    query.cafeId = effectiveCafe;
+  } else if (cafeId && cafeId !== 'ALL') {
     ensureCafeAccess(request, cafeId);
     query.cafeId = cafeId.trim().toUpperCase();
   } else if (request.auth.role === 'OWNER' || request.auth.role === 'CAFE_ADMIN') {
@@ -407,6 +410,8 @@ const submitExpense = asyncHandler(async (request, response) => {
     throw new ApiError(404, 'EXPENSE_NOT_FOUND', 'The requested expense does not exist.');
   }
 
+  ensureCafeAccess(request, expense.cafeId);
+
   if (expense.status !== 'DRAFT' && expense.status !== 'RETURNED') {
     throw new ApiError(400, 'INVALID_STATE', 'Expense is not in draft or returned state.');
   }
@@ -437,6 +442,8 @@ const decideExpense = asyncHandler(async (request, response) => {
   if (!expense) {
     throw new ApiError(404, 'EXPENSE_NOT_FOUND', 'The requested expense does not exist.');
   }
+
+  ensureCafeAccess(request, expense.cafeId);
 
   // Maker-Checker enforcement: cannot approve own expense
   if (decision === 'APPROVE' && expense.ownerUserId === userId && request.auth.role !== 'MASTER') {
@@ -493,6 +500,8 @@ const recordMissingReceipt = asyncHandler(async (request, response) => {
     throw new ApiError(404, 'EXPENSE_NOT_FOUND', 'The requested expense does not exist.');
   }
 
+  ensureCafeAccess(request, expense.cafeId);
+
   if (isWaiver) {
     if (request.auth.role !== 'MASTER' || !request.auth.isPrimaryMaster) {
       throw new ApiError(403, 'PRIMARY_MASTER_REQUIRED', 'Only Primary Master may waive missing receipts.');
@@ -541,6 +550,8 @@ const matchCorporateCard = asyncHandler(async (request, response) => {
   if (!expense) {
     throw new ApiError(404, 'EXPENSE_NOT_FOUND', 'Expense voucher not found.');
   }
+
+  ensureCafeAccess(request, expense.cafeId);
 
   cardTxn.matchStatus = 'MATCHED';
   cardTxn.matchedExpenseId = expense.expenseId;
@@ -601,6 +612,8 @@ const markExpensePaid = asyncHandler(async (request, response) => {
     throw new ApiError(404, 'EXPENSE_NOT_FOUND', 'The requested expense does not exist.');
   }
 
+  ensureCafeAccess(request, expense.cafeId);
+
   if (expense.status !== 'APPROVED') {
     throw new ApiError(400, 'INVALID_STATE', 'Only approved expenses can be marked as paid.');
   }
@@ -638,6 +651,8 @@ const reverseExpense = asyncHandler(async (request, response) => {
   if (!expense) {
     throw new ApiError(404, 'EXPENSE_NOT_FOUND', 'The requested expense does not exist.');
   }
+
+  ensureCafeAccess(request, expense.cafeId);
 
   expense.status = 'REVERSED';
   expense.reversedAt = new Date();
@@ -726,7 +741,14 @@ const getExpenseIntegrity = asyncHandler(async (request, response) => {
 // 14. Spend Requests / Pre-Spend Authorisations
 const listExpenseRequests = asyncHandler(async (request, response) => {
   const { organisationId } = request.auth;
-  const requests = await ExpenseRequest.find({ organisationId }).sort({ createdAt: -1 });
+  const effectiveCafe = resolveEffectiveCafeScope(request);
+  const filter = { organisationId };
+  if (effectiveCafe) {
+    filter.cafeId = effectiveCafe;
+  } else if (request.auth.role === 'OWNER' || request.auth.role === 'CAFE_ADMIN') {
+    filter.cafeId = { $in: request.auth.assignedCafeIds || [] };
+  }
+  const requests = await ExpenseRequest.find(filter).sort({ createdAt: -1 });
   return response.status(200).json({ requests });
 });
 

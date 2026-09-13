@@ -1,0 +1,52 @@
+{
+  "system": "Zamorin Cafe ERP",
+  "version": "1.0.0",
+  "statutoryFrameworks": [
+    "Digital Personal Data Protection (DPDP) Act 2023 (India)",
+    "Goods and Services Tax (GST) Act 2017 (Sec 36)",
+    "Income Tax Act 1961 (Sec 44AA)",
+    "Payment and Settlement Systems Act 2007 (RBI)",
+    "Code on Wages 2019"
+  ],
+  "tiers": {
+    "PUBLIC": {
+      "level": 1,
+      "description": "Publicly accessible information",
+      "fields": ["menuItem.name", "menuItem.description", "menuItem.price", "cafe.displayName", "cafe.publicAddress"],
+      "maskingRequired": false,
+      "exportable": true
+    },
+    "INTERNAL": {
+      "level": 2,
+      "description": "Operational data visible to authorized employees",
+      "fields": ["inventory.sku", "inventory.quantityOnHand", "purchaseOrder.orderNumber", "asset.tagId", "task.title"],
+      "maskingRequired": false,
+      "exportable": true
+    },
+    "CONFIDENTIAL": {
+      "level": 3,
+      "description": "Commercial and personal financial records requiring role scoping",
+      "fields": ["bill.totalPaisa", "customer.phone", "customer.name", "expense.amountPaisa", "revenueShare.payoutPaisa", "employee.salary"],
+      "maskingRequired": false,
+      "exportable": true,
+      "roleRestricted": true
+    },
+    "HIGHLY_SENSITIVE": {
+      "level": 4,
+      "description": "Credentials, auth secrets, and protected PII that must never be exposed or logged",
+      "fields": ["user.passwordHash", "user.pin", "auth.token", "customer.aadhaar", "customer.pan", "device.deviceTokenHash", "infra.mongodbUri"],
+      "maskingRequired": true,
+      "exportable": false,
+      "logRedacted": true
+    }
+  },
+  "retentionScheduleYears": {
+    "FINANCIAL_BILLS_AND_INVOICES": 8,
+    "TAX_GST_RECORDS": 8,
+    "PAYROLL_AND_WAGES": 8,
+    "INVENTORY_LEDGER": 5,
+    "ATTENDANCE_LOGS": 3,
+    "AUDIT_TRAIL": 10,
+    "CUSTOMER_PII_CONSENT_WITHDRAWN": 0.08
+  }
+}

@@ -11,15 +11,41 @@ import { apiGet, apiPost } from "../apiClient.js";
 import { showToast, openModal, closeModal, confirmAction } from "../components.js";
 import { state } from "../state.js";
 import { ROLES } from "../navigation.js";
+import { generateInvoicePdf } from "../utils/invoicePdfGenerator.js";
+
+function resolvePosCafeId() {
+  const user = state.auth?.user || state.user || {};
+  const isPrimary = user.isPrimaryMaster === true;
+  const role = user.role || state.role;
+
+  if (role === "MASTER" && isPrimary) {
+    return state.currentCafeId || (state.selectedCafeId && state.selectedCafeId !== "ALL" ? state.selectedCafeId : "");
+  }
+
+  // CAFE_ADMIN / STAFF / Terminal Operations:
+  // Strictly bound to hardware device or authenticated operator assignment.
+  // Must NEVER fall back to global UI dropdown selector (state.currentCafeId).
+  const boundDeviceCafe = typeof localStorage !== "undefined" ? (localStorage.getItem("zamorin_bound_cafe_id") || "").trim() : "";
+  if (boundDeviceCafe) {
+    return boundDeviceCafe;
+  }
+
+  if (role === "CAFE_ADMIN") {
+    return user.primaryCafeId || user.assignedCafeIds?.[0] || "";
+  }
+
+  return user.assignedCafeIds?.[0] || user.primaryCafeId || "";
+}
 
 function getOperatorSession() {
   const user = state.auth?.user || state.user || {};
+  const resolvedCafe = resolvePosCafeId();
   return {
     operatorUserId: user.userId || "",
     operatorName: user.name || "Operator",
-    role: user.role || "CAFE_ADMIN",
-    primaryCafeId: user.primaryCafeId || user.assignedCafeIds?.[0] || "",
-    primaryCafeName: user.primaryCafeName || "Café Outlet",
+    role: user.role || state.role || "CAFE_ADMIN",
+    primaryCafeId: resolvedCafe,
+    primaryCafeName: user.primaryCafeName || (resolvedCafe ? `Outlet ${resolvedCafe}` : "Café Outlet"),
     deviceId: user.deviceId || "DEV-POS-01",
     businessDate: new Date().toISOString().slice(0, 10),
   };
@@ -54,6 +80,10 @@ let activeRegisterSession = null;
 let openTicketsList = [];
 let openTicketsFilter = "ALL";
 let openTicketsSearch = "";
+let kdsStationFilter = "ALL";
+let kdsStationsList = [];
+let kdsTicketsList = [];
+let kdsMetrics = null;
 
 // UPI Assistant State
 let upiState = "READY"; // READY | GENERATING | PRESENTED | CONFIRMING | PAID | EXPIRED | FAILED
@@ -74,6 +104,9 @@ function escapeHtml(str) {
 export function renderPOS() {
   if (activeMainView === "PAST_ORDERS") {
     return renderPastOrdersView();
+  }
+  if (activeMainView === "KDS") {
+    return renderKdsView();
   }
   return renderTerminalView();
 }
@@ -208,12 +241,20 @@ function renderTerminalView() {
           <button class="pos-service-mode-btn" id="register-session-btn" style="padding:6px 12px;font-size:12px;" type="button">
             💵 Cash Drawer
           </button>
+          <button class="pos-service-mode-btn" id="kds-view-btn" style="padding:6px 12px;font-size:12px;" type="button">
+            🍳 Kitchen KDS
+          </button>
           <button class="btn btn-sm btn-secondary" id="view-past-orders-btn" style="font-size:12px;padding:6px 12px;font-weight:700;min-height:32px;" type="button">
             📜 Past Orders
           </button>
           <button class="pos-service-mode-btn" id="toggle-density-btn" style="padding:6px 10px;font-size:12px;" title="Toggle Compact Mode" type="button">
             ${isCompactMode ? "🖼️ Visual" : "☷ Compact"}
           </button>
+          <div id="pos-offline-status-container" style="display:inline-flex;align-items:center;">
+            <span id="pos-offline-badge" style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:700;background:rgba(16,185,129,0.12);color:#059669;">
+              🟢 Online
+            </span>
+          </div>
         </div>
       </div>
 
@@ -654,6 +695,161 @@ function renderSalesCalendarSubTab() {
   `;
 }
 
+function renderKdsView() {
+  const stations = [
+    { id: 'ALL', label: 'All Stations' },
+    ...(Array.isArray(kdsStationsList) && kdsStationsList.length > 0
+      ? kdsStationsList.map((s) => ({
+          id: s.code,
+          label: s.isExpediter ? `📋 ${s.name}` : (s.code.includes('HOT') ? `🔥 ${s.name}` : s.code.includes('BEV') ? `☕ ${s.name}` : s.code.includes('BAKE') ? `🥐 ${s.name}` : s.code.includes('DESSERT') ? `🍨 ${s.name}` : `🍳 ${s.name}`),
+        }))
+      : [
+          { id: 'HOT_KITCHEN', label: '🔥 Hot Kitchen' },
+          { id: 'BEVERAGE_BAR', label: '☕ Beverage Bar' },
+          { id: 'BAKERY_COLD', label: '🥐 Bakery & Cold' },
+          { id: 'DESSERT', label: '🍨 Dessert' },
+          { id: 'EXPEDITER', label: '📋 Expediter' },
+        ]),
+  ];
+
+  const tickets = kdsTicketsList || [];
+  const activeCount = tickets.filter(t => t.status === 'RECEIVED' || t.status === 'PREPARING').length;
+  const readyCount = tickets.filter(t => t.status === 'READY').length;
+  const overdueCount = tickets.filter(t => t.isOverdue).length;
+
+  return `
+    <div class="page-enter kds-workspace" style="display:flex;flex-direction:column;gap:16px;">
+      <!-- KDS Header -->
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+        <div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <h1 class="page-title" style="font-size:20px;font-weight:800;margin:0;color:var(--ink);">Kitchen Display System (KDS)</h1>
+            <span class="badge" style="background:rgba(217,119,6,0.15);color:#d97706;font-weight:700;font-size:11px;padding:3px 8px;border-radius:6px;">Station Line Cook</span>
+          </div>
+          <p style="font-size:12.5px;color:var(--muted);margin:2px 0 0;">Live order routing, prep timers, allergen alerts & station bump progression.</p>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <button class="btn btn-sm btn-secondary" id="kds-refresh-btn" type="button" style="font-weight:700;">🔄 Refresh</button>
+          <button class="btn btn-sm btn-primary" id="back-to-pos-from-kds-btn" style="font-size:12.5px;padding:6px 14px;font-weight:700;" type="button">
+            ⬅ Return to Live POS
+          </button>
+        </div>
+      </div>
+
+      <!-- Station Filter Pills & Metrics -->
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;background:var(--surface);padding:10px 14px;border-radius:10px;border:1px solid var(--line);">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          ${stations.map(st => `
+            <button class="btn btn-sm ${kdsStationFilter === st.id ? 'btn-primary' : 'btn-ghost'}" data-kds-station="${st.id}" style="font-size:12px;font-weight:700;" type="button">
+              ${st.label}
+            </button>
+          `).join('')}
+        </div>
+        <div style="display:flex;gap:12px;align-items:center;font-size:12px;font-weight:700;">
+          <span style="color:var(--ink);">Active: <strong>${activeCount}</strong></span>
+          <span style="color:var(--mint, #10b981);">Ready: <strong>${readyCount}</strong></span>
+          ${overdueCount > 0 ? `<span style="color:var(--coral, #ef4444);background:rgba(239,68,68,0.1);padding:2px 8px;border-radius:6px;">⚠️ ${overdueCount} Overdue</span>` : ''}
+        </div>
+      </div>
+
+      <!-- KDS Ticket Grid -->
+      <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(280px, 1fr));gap:14px;align-items:start;">
+        ${tickets.length === 0 ? `
+          <div style="grid-column:1/-1;text-align:center;padding:60px 20px;color:var(--muted);background:var(--surface);border-radius:10px;border:1px dashed var(--line);">
+            <div style="font-size:36px;margin-bottom:8px;">✅</div>
+            <div style="font-size:16px;font-weight:700;color:var(--ink);">All Orders Cleared</div>
+            <div style="font-size:13px;margin-top:4px;">No pending kitchen tickets for station <strong>${kdsStationFilter}</strong>.</div>
+          </div>
+        ` : tickets.map(ticket => {
+          const ageMin = Math.floor((ticket.ticketAgeSeconds || 0) / 60);
+          const isOverdue = ticket.isOverdue || ageMin > (ticket.targetPrepTimeMinutes || 15);
+          const timerColor = isOverdue ? '#ef4444' : ageMin >= 10 ? '#f59e0b' : '#10b981';
+          const statusBg = ticket.status === 'READY' ? 'rgba(16,185,129,0.15)' : ticket.status === 'PREPARING' ? 'rgba(245,158,11,0.15)' : 'rgba(59,130,246,0.15)';
+          const statusColor = ticket.status === 'READY' ? '#10b981' : ticket.status === 'PREPARING' ? '#d97706' : '#2563eb';
+
+          return `
+            <div class="card kds-ticket-card" style="padding:14px;background:var(--surface);border:1.5px solid ${isOverdue ? '#ef4444' : 'var(--line)'};border-radius:10px;display:flex;flex-direction:column;gap:10px;">
+              <!-- Ticket Header -->
+              <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+                <div>
+                  <div style="font-size:14px;font-weight:800;color:var(--ink);">${escapeHtml(ticket.ticketId)}</div>
+                  <div style="font-size:11px;color:var(--muted);font-weight:600;">
+                    ${ticket.tableNumber ? `Table: ${escapeHtml(ticket.tableNumber)}` : ticket.orderNumber ? `Order: ${escapeHtml(ticket.orderNumber)}` : 'Takeaway'} · ${ticket.diningOption}
+                  </div>
+                </div>
+                <div style="text-align:right;">
+                  <span style="font-size:11.5px;font-weight:800;color:${timerColor};background:rgba(0,0,0,0.05);padding:3px 6px;border-radius:4px;display:inline-block;">
+                    ⏱️ ${ageMin}m
+                  </span>
+                  <div style="margin-top:4px;">
+                    <span style="font-size:10px;font-weight:800;color:${statusColor};background:${statusBg};padding:2px 6px;border-radius:4px;text-transform:uppercase;">
+                      ${ticket.status}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Station Tag & Rush indicator -->
+              <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                <span style="font-size:10.5px;font-weight:700;padding:2px 6px;border-radius:4px;background:var(--surface-sunken);color:var(--ink);">
+                  📍 ${ticket.prepStation}
+                </span>
+                ${ticket.priority === 'RUSH' || ticket.priority === 'VIP' ? `
+                  <span style="font-size:10px;font-weight:800;background:#ef4444;color:#fff;padding:2px 6px;border-radius:4px;">
+                    🔥 ${ticket.priority}
+                  </span>
+                ` : ''}
+              </div>
+
+              <!-- Items Checklist -->
+              <div style="display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:8px 0;">
+                ${(ticket.items || []).map((it, idx) => {
+                  const isDone = it.status === 'COMPLETED';
+                  return `
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start;font-size:12.5px;opacity:${it.isVoided ? '0.4' : '1'};text-decoration:${it.isVoided ? 'line-through' : isDone ? 'line-through' : 'none'};">
+                      <div style="display:flex;gap:6px;align-items:baseline;">
+                        <strong style="color:var(--ink);min-width:20px;">${it.quantity}x</strong>
+                        <div>
+                          <span style="color:${isDone ? 'var(--muted)' : 'var(--ink)'};font-weight:600;">${escapeHtml(it.name)}</span>
+                          ${it.variant ? `<span style="font-size:10.5px;color:var(--muted);display:block;">${escapeHtml(it.variant)}</span>` : ''}
+                          ${it.itemNotes ? `<span style="font-size:10.5px;color:#d97706;font-weight:700;display:block;">⚠️ ${escapeHtml(it.itemNotes)}</span>` : ''}
+                          ${Array.isArray(it.allergens) && it.allergens.length ? `<span style="font-size:10px;background:rgba(239,68,68,0.12);color:#dc2626;padding:1px 4px;border-radius:3px;font-weight:700;">Allergen: ${it.allergens.join(', ')}</span>` : ''}
+                        </div>
+                      </div>
+                      ${!it.isVoided ? `
+                        <button class="btn btn-xs ${isDone ? 'btn-secondary' : 'btn-ghost'}" data-bump-item="${ticket.ticketId}" data-item-idx="${idx}" style="font-size:10.5px;padding:2px 6px;" type="button">
+                          ${isDone ? '✓ Done' : '○ Mark'}
+                        </button>
+                      ` : '<span style="font-size:10px;color:#ef4444;font-weight:700;">VOID</span>'}
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+
+              <!-- Ticket Bottom Controls -->
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;">
+                ${ticket.status === 'RECEIVED' ? `
+                  <button class="btn btn-sm btn-primary" data-bump-ticket="${ticket.ticketId}" data-next-status="PREPARING" style="flex:1;font-weight:700;" type="button">
+                    ▶ Start Prep
+                  </button>
+                ` : ticket.status === 'PREPARING' ? `
+                  <button class="btn btn-sm btn-success" data-bump-ticket="${ticket.ticketId}" data-next-status="READY" style="flex:1;font-weight:700;background:#10b981;color:#fff;" type="button">
+                    ✓ Mark Ready
+                  </button>
+                ` : ticket.status === 'READY' ? `
+                  <button class="btn btn-sm btn-secondary" data-bump-ticket="${ticket.ticketId}" data-next-status="COLLECTED" style="flex:1;font-weight:700;" type="button">
+                    📦 Collected / Dispatched
+                  </button>
+                ` : ''}
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    </div>
+  `;
+}
+
 // -----------------------------------------------------------------------------
 // EVENT WIRING & INTERACTION LOGIC
 // -----------------------------------------------------------------------------
@@ -704,6 +900,126 @@ function wirePOSEventListeners(root) {
       activeMainView = "POS";
       refreshPOSView(root);
     });
+  }
+
+  // KDS View Toggle & Actions
+  const kdsBtn = root.querySelector("#kds-view-btn");
+  if (kdsBtn) {
+    kdsBtn.addEventListener("click", async () => {
+      activeMainView = "KDS";
+      try {
+        const [ticketsRes, stationsRes] = await Promise.all([
+          apiGet(`/kds/tickets?prepStation=${kdsStationFilter}`),
+          apiGet('/kds/stations').catch(() => null),
+        ]);
+        if (stationsRes?.data?.stations) kdsStationsList = stationsRes.data.stations;
+        else if (stationsRes?.stations) kdsStationsList = stationsRes.stations;
+        if (ticketsRes?.data?.tickets) kdsTicketsList = ticketsRes.data.tickets;
+        else if (ticketsRes?.tickets) kdsTicketsList = ticketsRes.tickets;
+      } catch (_) {}
+      refreshPOSView(root);
+    });
+  }
+
+  const backToPosFromKds = root.querySelector("#back-to-pos-from-kds-btn");
+  if (backToPosFromKds) {
+    backToPosFromKds.addEventListener("click", () => {
+      activeMainView = "POS";
+      refreshPOSView(root);
+    });
+  }
+
+  const kdsRefreshBtn = root.querySelector("#kds-refresh-btn");
+  if (kdsRefreshBtn) {
+    kdsRefreshBtn.addEventListener("click", async () => {
+      try {
+        const [ticketsRes, stationsRes] = await Promise.all([
+          apiGet(`/kds/tickets?prepStation=${kdsStationFilter}`),
+          apiGet('/kds/stations').catch(() => null),
+        ]);
+        if (stationsRes?.data?.stations) kdsStationsList = stationsRes.data.stations;
+        else if (stationsRes?.stations) kdsStationsList = stationsRes.stations;
+        if (ticketsRes?.data?.tickets) kdsTicketsList = ticketsRes.data.tickets;
+        else if (ticketsRes?.tickets) kdsTicketsList = ticketsRes.tickets;
+      } catch (_) {}
+      refreshPOSView(root);
+    });
+  }
+
+  root.querySelectorAll("[data-kds-station]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      kdsStationFilter = btn.dataset.kdsStation;
+      try {
+        const res = await apiGet(`/kds/tickets?prepStation=${kdsStationFilter}`);
+        if (res?.data?.tickets) kdsTicketsList = res.data.tickets;
+        else if (res?.tickets) kdsTicketsList = res.tickets;
+      } catch (_) {}
+      refreshPOSView(root);
+    });
+  });
+
+  root.querySelectorAll("[data-bump-ticket]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const ticketId = btn.dataset.bumpTicket;
+      const targetStatus = btn.dataset.nextStatus;
+      try {
+        await apiPost(`/kds/tickets/${ticketId}/bump`, { targetStatus });
+        showToast(`Ticket ${ticketId} bumped to ${targetStatus}`, "success");
+        const res = await apiGet(`/kds/tickets?prepStation=${kdsStationFilter}`);
+        if (res?.data?.tickets) kdsTicketsList = res.data.tickets;
+        else if (res?.tickets) kdsTicketsList = res.tickets;
+        refreshPOSView(root);
+      } catch (err) {
+        showToast(err.message || "Failed to bump ticket", "error");
+      }
+    });
+  });
+
+  root.querySelectorAll("[data-bump-item]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const ticketId = btn.dataset.bumpItem;
+      const itemIndex = btn.dataset.itemIdx;
+      try {
+        await apiPost(`/kds/tickets/${ticketId}/items/${itemIndex}/bump`, { itemStatus: "COMPLETED" });
+        const res = await apiGet(`/kds/tickets?prepStation=${kdsStationFilter}`);
+        if (res?.data?.tickets) kdsTicketsList = res.data.tickets;
+        else if (res?.tickets) kdsTicketsList = res.tickets;
+        refreshPOSView(root);
+      } catch (err) {
+        showToast(err.message || "Failed to update item", "error");
+      }
+    });
+  });
+
+  // Offline / Degraded Sync Wiring
+  if (typeof window !== "undefined" && window.offlineManager) {
+    const updateOfflineBadge = () => {
+      const c = root.querySelector("#pos-offline-status-container");
+      if (!c) return;
+      const pending = window.offlineManager.getPendingCount();
+      const online = window.offlineManager.isOnline;
+      if (!online || pending > 0) {
+        c.innerHTML = `
+          <span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:700;background:rgba(239,68,68,0.12);color:#dc2626;">
+            ${online ? "⚠️ Reconnected" : "🔴 Degraded Mode"} (${pending} queued)
+          </span>
+          ${online && pending > 0 ? `<button class="btn btn-sm btn-primary" id="pos-sync-offline-btn" style="margin-left:4px;padding:2px 8px;font-size:10.5px;" type="button">Sync</button>` : ""}
+        `;
+        c.querySelector("#pos-sync-offline-btn")?.addEventListener("click", async () => {
+          showToast("Replaying queued offline bills...", "info");
+          const syncRes = await window.offlineManager.sync({ post: apiPost });
+          showToast(`Synced ${syncRes?.syncedCount || 0} offline bills!`, "success");
+          updateOfflineBadge();
+        });
+      } else {
+        c.innerHTML = `
+          <span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:700;background:rgba(16,185,129,0.12);color:#059669;">
+            🟢 Online
+          </span>
+        `;
+      }
+    };
+    updateOfflineBadge();
   }
 
   // Service Mode Selector
@@ -859,10 +1175,17 @@ function wirePOSEventListeners(root) {
   if (holdBtn) {
     holdBtn.addEventListener("click", async () => {
       if (!cart.length) return;
+      const cafeId = resolvePosCafeId();
+      if (!cafeId) {
+        showToast("Select a café before completing this sale.", "danger");
+        const cafeSelector = document.querySelector("#global-cafe-selector") || document.querySelector("#ctx-cafe-selector");
+        if (cafeSelector) cafeSelector.focus();
+        return;
+      }
       try {
         const holdName = `${activeServiceMode === "DINE_IN" ? activeTable : activeToken} (Hold)`;
         const res = await apiPost("/bills", {
-          cafeId: state.user?.assignedCafeIds?.[0] || state.user?.primaryCafeId || "",
+          cafeId,
           orderType: activeServiceMode,
           serviceMode: activeServiceMode,
           tableNumber: activeServiceMode === "DINE_IN" ? activeTable : "",
@@ -1345,8 +1668,16 @@ async function executeFinalSale(grandTotal, tender, root, paymentRef = "", custo
       },
     ];
 
+    const cafeId = resolvePosCafeId();
+    if (!cafeId) {
+      showToast("Select a café before completing this sale.", "danger");
+      const cafeSelector = document.querySelector("#global-cafe-selector") || document.querySelector("#ctx-cafe-selector");
+      if (cafeSelector) cafeSelector.focus();
+      return;
+    }
+
     const payload = {
-      cafeId: state.user?.assignedCafeIds?.[0] || state.user?.primaryCafeId || "",
+      cafeId,
       orderType: activeServiceMode,
       serviceMode: activeServiceMode,
       tableNumber: activeServiceMode === "DINE_IN" ? activeTable : "",
@@ -1405,48 +1736,150 @@ function openReceiptModal(bill, isReprint = false) {
   const gst = bill.taxPaisa ? bill.taxPaisa / 100 : Math.round(subtotal * 0.05);
   const grandTotal = bill.totalPaisa ? bill.totalPaisa / 100 : subtotal + gst;
   const cafeName = bill.cafeName || state.user?.primaryCafeName || (state.cafes?.find((c) => c.cafeId === bill.cafeId)?.name) || "Zamorin Outlet";
+  const reprintCount = bill.reprints?.length || (isReprint ? 1 : 0);
+  const isVoid = bill.status === "VOID" || bill.status === "CANCELLED";
+
+  const statusBadge = isVoid
+    ? `<span style="background:#fee2e2;color:#b91c1c;border:1px solid #f87171;padding:2px 8px;border-radius:4px;font-weight:700;font-size:11px;">VOID — CANCELLED (NOT VALID)</span>`
+    : (reprintCount > 0
+      ? `<span style="background:#fef3c7;color:#b45309;border:1px solid #fcd34d;padding:2px 8px;border-radius:4px;font-weight:700;font-size:11px;">REPRINT #${reprintCount}</span>`
+      : `<span style="background:#dcfce7;color:#15803d;border:1px solid #86efac;padding:2px 8px;border-radius:4px;font-weight:700;font-size:11px;">ORIGINAL</span>`);
+
+  const savePdf = () => {
+    const { blob, filename } = generateInvoicePdf(bill, { tradeName: cafeName });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    showToast(`Official Tax Invoice PDF saved: ${filename}`, "mint");
+  };
+
+  const printThermal = () => {
+    showToast("Thermal print command sent to POS printer.", "mint");
+    window.print();
+  };
 
   openModal({
-    title: isReprint ? "Tax Invoice · [DUPLICATE REPRINT]" : "Sale Completed · Tax Invoice Receipt",
-    maxWidth: "440px",
+    title: `Tax Invoice Receipt · ${bill.invoiceNumber || bill.billId}`,
+    maxWidth: "480px",
     body: `
-      <div style="font-family:var(--font-mono);background:var(--surface-sunken);padding:18px;border-radius:var(--radius-sm);font-size:12px;line-height:1.5;border:1px solid var(--line);">
-        <div style="text-align:center;font-weight:800;font-size:15px;margin-bottom:2px;color:var(--ink);">ZAMORIN CAFE ESTATE</div>
-        <div style="text-align:center;font-size:10px;color:var(--muted);">GSTIN: 32AABCT1332L1ZV · ${escapeHtml(cafeName)}</div>
-        <div style="text-align:center;font-size:11px;font-weight:700;color:var(--bronze-600);margin-bottom:10px;">
-          ${isReprint ? "TAX INVOICE — [DUPLICATE REPRINT]" : "TAX INVOICE / RETAIL BILL"}
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <div style="font-size:12px;color:var(--muted);">Status: ${statusBadge}</div>
+        <div style="font-size:11px;font-family:monospace;color:var(--ink);">Official ID: ${bill.invoiceNumber || bill.billId}</div>
+      </div>
+
+      <div class="pos-thermal-receipt" id="pos-thermal-receipt" style="background:#fff;color:#000;padding:16px;border-radius:6px;border:1px solid #e2e8f0;font-family:'Courier New',Courier,monospace;">
+        <div class="receipt-header" style="text-align:center;margin-bottom:12px;">
+          <div class="receipt-title" style="font-size:16px;font-weight:bold;letter-spacing:1px;">ZAMORIN CAFE ESTATE</div>
+          <div class="receipt-subtitle" style="font-size:11px;margin-top:2px;">GSTIN: 32AABCT1332L1ZV · ${cafeName}</div>
+          <div class="receipt-doc-type" style="font-size:11px;font-weight:bold;margin-top:4px;">
+            ${isVoid ? "TAX INVOICE — [VOID / CANCELLED]" : (reprintCount > 0 ? `TAX INVOICE — [REPRINT #${reprintCount}]` : "TAX INVOICE / RETAIL BILL")}
+          </div>
         </div>
-        <div style="display:flex;justify-content:space-between;">
+        <div class="receipt-row" style="display:flex;justify-content:space-between;font-size:11px;">
           <span>INVOICE: <strong>${bill.invoiceNumber || bill.billId}</strong></span>
           <span>${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
         </div>
-        <div>DATE: ${bill.businessDate || new Date().toISOString().substring(0, 10)} · REGISTER 01</div>
-        <hr style="border:0;border-top:1px dashed var(--line-strong);margin:8px 0;" />
-        ${bill.lineItems?.map((li) => `
-          <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
-            <span>${li.quantity}× ${li.itemNameSnapshot}</span>
-            <span>₹${((li.unitPricePaisa * li.quantity) / 100).toFixed(0)}</span>
+        <div class="receipt-row" style="display:flex;justify-content:space-between;font-size:11px;color:#64748b;">
+          <span>DATE: ${bill.businessDate || new Date().toISOString().substring(0, 10)}</span>
+          <span>REGISTER 01</span>
+        </div>
+        <hr class="receipt-divider" style="border-top:1px dashed #94a3b8;margin:8px 0;" />
+        
+        <!-- Table Header with Universal Sl. No. -->
+        <div style="display:flex;font-size:10px;font-weight:bold;color:#475569;border-bottom:1px solid #cbd5e1;padding-bottom:3px;margin-bottom:4px;">
+          <span style="width:24px;">Sl.</span>
+          <span style="flex:1;">Item</span>
+          <span style="width:30px;text-align:center;">Qty</span>
+          <span style="width:60px;text-align:right;">Amount</span>
+        </div>
+
+        ${bill.lineItems?.map((li, idx) => `
+          <div style="display:flex;font-size:11px;padding:2px 0;">
+            <span style="width:24px;color:#64748b;">${idx + 1}</span>
+            <span style="flex:1;">${li.itemNameSnapshot || li.name || 'Item'}</span>
+            <span style="width:30px;text-align:center;">${li.quantity}</span>
+            <span style="width:60px;text-align:right;font-weight:600;">₹${((li.unitPricePaisa * li.quantity) / 100).toFixed(0)}</span>
           </div>
         `).join("") || ""}
-        <hr style="border:0;border-top:1px dashed var(--line-strong);margin:8px 0;" />
-        <div style="display:flex;justify-content:space-between;"><span>Subtotal:</span><span>₹${subtotal.toFixed(0)}</span></div>
-        <div style="display:flex;justify-content:space-between;"><span>CGST (2.5%):</span><span>₹${(gst / 2).toFixed(0)}</span></div>
-        <div style="display:flex;justify-content:space-between;"><span>SGST (2.5%):</span><span>₹${(gst / 2).toFixed(0)}</span></div>
-        <div style="display:flex;justify-content:space-between;font-size:15px;font-weight:800;margin-top:4px;padding-top:4px;border-top:1px solid var(--line);color:var(--ink);">
+        <hr class="receipt-divider" style="border-top:1px dashed #94a3b8;margin:8px 0;" />
+        <div style="display:flex;justify-content:space-between;font-size:11px;"><span>Subtotal:</span><span>₹${subtotal.toFixed(0)}</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;"><span>CGST (2.5%):</span><span>₹${(gst / 2).toFixed(0)}</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:11px;"><span>SGST (2.5%):</span><span>₹${(gst / 2).toFixed(0)}</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:13px;font-weight:bold;border-top:1px solid #cbd5e1;padding-top:4px;margin-top:4px;">
           <span>PAID TOTAL:</span>
           <span>₹${grandTotal.toFixed(0)}</span>
         </div>
-        <div style="text-align:center;margin-top:12px;font-size:10.5px;color:var(--muted);">
+        <div class="receipt-footer" style="text-align:center;font-size:10.5px;margin-top:10px;color:#475569;">
           Tender: <strong>${bill.paymentMethod || "UPI"}</strong> · THANK YOU FOR VISITING ZAMORIN!
         </div>
       </div>
+
+      <!-- Action Panel -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:16px;">
+        <button type="button" class="btn btn-sm btn-secondary" id="posReceiptSaveBtn" style="justify-content:center;">
+          💾 Save A4 PDF
+        </button>
+        <button type="button" class="btn btn-sm btn-secondary" id="posReceiptPrintBtn" style="justify-content:center;">
+          🖨️ Thermal Print
+        </button>
+        <button type="button" class="btn btn-sm btn-primary" id="posReceiptSaveAndPrintBtn" style="justify-content:center;">
+          ⚡ Save & Print
+        </button>
+        <button type="button" class="btn btn-sm btn-outline" id="posReceiptReprintBtn" style="justify-content:center;">
+          🔁 Reprint Receipt
+        </button>
+      </div>
     `,
-    saveLabel: "🖨️ Print Receipt / Done",
     cancelLabel: "Close",
-    onSave: () => {
-      showToast("Thermal print command sent to POS printer.", "mint");
-    },
+    saveLabel: null,
   });
+
+  // Attach interactive button listeners
+  setTimeout(() => {
+    const modalEl = document.getElementById("zamorin-global-modal");
+    if (!modalEl) return;
+
+    modalEl.querySelector("#posReceiptSaveBtn")?.addEventListener("click", () => {
+      savePdf();
+    });
+
+    modalEl.querySelector("#posReceiptPrintBtn")?.addEventListener("click", () => {
+      printThermal();
+    });
+
+    // Atomic Save & Print (Section 51)
+    modalEl.querySelector("#posReceiptSaveAndPrintBtn")?.addEventListener("click", () => {
+      savePdf();
+      printThermal();
+    });
+
+    // Audit-tracked Reprint (Section 52)
+    modalEl.querySelector("#posReceiptReprintBtn")?.addEventListener("click", async () => {
+      const confirmReprint = await confirmAction({
+        title: "Confirm Receipt Reprint",
+        message: `Generate duplicate receipt reprint for invoice ${bill.invoiceNumber || bill.billId}? This action is recorded in the operational audit log.`,
+        confirmText: "Reprint Receipt",
+        cancelText: "Cancel",
+      });
+
+      if (!confirmReprint) return;
+
+      try {
+        const res = await apiPost(`/bills/${bill.billId}/reprint`, { reason: "Customer request / terminal reprint" });
+        showToast("Reprint logged to operational audit register.", "mint");
+        closeModal();
+        const updatedBill = { ...bill, reprints: res?.data?.reprints || [...(bill.reprints || []), { reprintedAt: new Date() }] };
+        openReceiptModal(updatedBill, true);
+      } catch (err) {
+        showToast(err?.message || "Failed to log reprint", "coral");
+      }
+    });
+  }, 50);
 }
 
 function openOpenTicketsModal(root) {
@@ -1683,9 +2116,16 @@ function openRegisterModal(root) {
         }
       } else {
         const floatVal = Number(document.querySelector("#opening-float-input")?.value) || 0;
+        const cafeId = resolvePosCafeId();
+        if (!cafeId) {
+          showToast("Select a café before opening the register.", "danger");
+          const cafeSelector = document.querySelector("#global-cafe-selector") || document.querySelector("#ctx-cafe-selector");
+          if (cafeSelector) cafeSelector.focus();
+          return;
+        }
         try {
           const res = await apiPost("/bills/register/session/open", {
-            cafeId: state.user?.assignedCafeIds?.[0] || state.user?.primaryCafeId || "",
+            cafeId,
             registerId: "REG-01",
             openingFloatPaisa: floatVal * 100,
           });

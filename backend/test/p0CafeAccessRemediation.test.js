@@ -143,13 +143,31 @@ test('P0 Remediation Verification Suite — Create Café & Café Operations Acce
   // ---------------------------------------------------------------------------
   // P0-01 & P0-01B: AUTHORITATIVE GATEWAY CONTEXT & STRICT EXPIRATION
   // ---------------------------------------------------------------------------
-  await t.test('P0-01: Permanent PIN resolution creates authoritative CafeGatewayContext', async () => {
+  await t.test('P0-01: Permanent PIN in authentication flow is strictly rejected (PIN_AUTH_DISALLOWED)', async () => {
     const pin = createdAccess.permanentCafePin;
-    assert.ok(pin, 'Permanent PIN must be returned during provisioning');
+    assert.ok(pin, 'Permanent PIN must be returned during provisioning for emergency reveal only');
 
+    await assert.rejects(
+      async () => {
+        await cafeService.resolveGatewayCredential({
+          method: 'PIN',
+          credential: pin,
+          clientIp: '127.0.0.1',
+          userAgent: 'TestBrowser/1.0',
+        });
+      },
+      (err) => {
+        assert.equal(err.code, 'PIN_AUTH_DISALLOWED');
+        assert.equal(err.statusCode, 400);
+        return true;
+      }
+    );
+  });
+
+  await t.test('P0-01: QR resolution creates authoritative CafeGatewayContext and operator signs in', async () => {
     const gatewayRes = await cafeService.resolveGatewayCredential({
-      method: 'PIN',
-      credential: pin,
+      method: 'QR',
+      credential: createdAccess.qrToken,
       clientIp: '127.0.0.1',
       userAgent: 'TestBrowser/1.0',
     });
@@ -200,8 +218,8 @@ test('P0 Remediation Verification Suite — Create Café & Café Operations Acce
   await t.test('P0-01: Consumed CafeGatewayContext cannot be reused', async () => {
     // Generate new gateway context
     const gatewayRes = await cafeService.resolveGatewayCredential({
-      method: 'PIN',
-      credential: createdAccess.permanentCafePin,
+      method: 'QR',
+      credential: createdAccess.qrToken,
       clientIp: '127.0.0.1',
     });
 
@@ -264,8 +282,8 @@ test('P0 Remediation Verification Suite — Create Café & Café Operations Acce
 
   await t.test('P0-01: Client cafeId tampering is rejected (CAFE_MISMATCH)', async () => {
     const gatewayRes = await cafeService.resolveGatewayCredential({
-      method: 'PIN',
-      credential: createdAccess.permanentCafePin,
+      method: 'QR',
+      credential: createdAccess.qrToken,
     });
 
     // Client maliciously passes a different cafeId ('ZC-9999')

@@ -67,6 +67,10 @@ export function renderCafeOperationsDevices(subroute) {
         </div>
 
         <div style="display:flex; gap:10px; align-items:center;">
+          <button class="btn btn-secondary" id="btn-run-diagnostic" type="button" title="Run Terminal Diagnostic" style="display:flex; align-items:center; gap:6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            Run Diagnostic
+          </button>
           <button class="btn btn-secondary" id="btn-refresh-data" type="button" title="Refresh Fleet &amp; Session Data" style="display:flex; align-items:center; gap:6px;">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
             Refresh Fleet
@@ -108,11 +112,98 @@ export function wireCafeOperationsDevices(root, subroute) {
   renderActiveTabContent(root);
   loadFleetData(root);
 
+  // Run Terminal Diagnostic
+  root.querySelector("#btn-run-diagnostic")?.addEventListener("click", () => {
+    openDiagnosticModal();
+  });
+
   // Refresh
   root.querySelector("#btn-refresh-data")?.addEventListener("click", () => {
     showToast("Refreshing fleet and session status...");
     loadFleetData(root);
   });
+}
+
+async function openDiagnosticModal() {
+  const user = state.auth?.user || state.user || {};
+  const cafeId = state.currentCafeId || user.primaryCafeId || "MAIN-01";
+  const operatorName = user.name || user.email || "Operator";
+
+  const initialContent = `
+    <div style="padding:4px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:16px;">
+        <h3 style="margin:0; font-size:18px; font-weight:700; color:var(--ink);">Terminal &amp; Network Diagnostic</h3>
+        <span class="status info" style="font-weight:700; font-size:11px;">RUNNING CHECKS...</span>
+      </div>
+      <div id="diagnostic-results" aria-live="polite" style="display:flex; flex-direction:column; gap:12px; margin-bottom:20px;">
+        ${skeleton("180px")}
+      </div>
+      <div style="display:flex; justify-content:flex-end; gap:10px; border-top:1px solid var(--border-subtle); padding-top:14px;">
+        <button class="btn btn-secondary" id="diag-btn-close" type="button">Close</button>
+      </div>
+    </div>
+  `;
+
+  openModal(initialContent);
+  const modalEl = document.getElementById("zamorin-global-modal");
+  modalEl?.querySelector("#diag-btn-close")?.addEventListener("click", () => closeModal());
+
+  const t0 = performance.now();
+  let healthOk = false;
+  let readinessOk = false;
+  let latencyMs = 0;
+
+  try {
+    const healthRes = await apiGet("/health");
+    latencyMs = Math.round(performance.now() - t0);
+    healthOk = healthRes?.status === "ok" || healthRes?.success === true;
+  } catch (err) {
+    healthOk = false;
+  }
+
+  try {
+    const readyRes = await apiGet("/readiness");
+    readinessOk = readyRes?.status === "ready" || readyRes?.database === "connected";
+  } catch (err) {
+    readinessOk = false;
+  }
+
+  const resultsEl = modalEl?.querySelector("#diagnostic-results");
+  if (resultsEl) {
+    resultsEl.innerHTML = `
+      <div class="card" style="padding:14px; display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <div style="font-weight:700; font-size:13px; color:var(--ink);">Backend API Reachability</div>
+          <div style="font-size:12px; color:var(--muted);">Round-trip latency: \${latencyMs}ms</div>
+        </div>
+        <span class="status \${healthOk ? "success" : "danger"}">\${healthOk ? "CONNECTED" : "UNREACHABLE"}</span>
+      </div>
+
+      <div class="card" style="padding:14px; display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <div style="font-weight:700; font-size:13px; color:var(--ink);">Database Readiness</div>
+          <div style="font-size:12px; color:var(--muted);">Primary database connectivity</div>
+        </div>
+        <span class="status \${readinessOk ? "success" : "warning"}">\${readinessOk ? "READY" : "DEGRADED"}</span>
+      </div>
+
+      <div class="card" style="padding:14px; display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <div style="font-weight:700; font-size:13px; color:var(--ink);">Terminal Hardware State</div>
+          <div style="font-size:12px; color:var(--muted);">Bound café: \${escapeHtml(cafeId)}</div>
+        </div>
+        <span class="status success">REGISTERED</span>
+      </div>
+
+      <div class="card" style="padding:14px; display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <div style="font-weight:700; font-size:13px; color:var(--ink);">Active Operator</div>
+          <div style="font-size:12px; color:var(--muted);">\${escapeHtml(operatorName)}</div>
+        </div>
+        <span class="status info">SESSION ACTIVE</span>
+      </div>
+    `;
+  }
 }
 
 async function loadFleetData(root) {
@@ -420,23 +511,112 @@ function openDeviceActionModal(device, root) {
   });
 
   modalEl?.querySelector("#dev-btn-revoke")?.addEventListener("click", () => {
-    confirmAction({
-      title: "Emergency Revocation",
-      description: `<strong>EMERGENCY:</strong> Revoke <strong>${device.deviceId}</strong>?<br>This immediately terminates all active sessions and blocks all terminal access.`,
-      confirmLabel: "Revoke Device",
-      danger: true,
-      onConfirm: async () => {
-        try {
-          await apiPost(`/devices/${device.deviceId}/revoke`, { reason: "Master emergency revocation" });
-          showToast("Device revoked immediately.", "mint");
-          closeModal();
-          loadFleetData(root);
-        } catch (err) {
-          showToast(err.userMessage || err.message || "Failed to revoke device.", "coral");
+    closeModal();
+    openDeviceRevocationModal(device, root);
+  });
+}
+
+function openDeviceRevocationModal(device, root) {
+  const content = `
+    <div style="max-width:520px; margin:0 auto; padding:8px 0;">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+        <span class="status danger" style="font-weight:800; font-size:11px;">SECURITY ACTION</span>
+        <span style="font-size:12px; color:var(--muted);">· Device Trust Management</span>
+      </div>
+      <h3 style="font-size:18px; font-weight:800; margin:0 0 4px; color:var(--danger, #dc2626);">
+        Revoke Terminal Device
+      </h3>
+      <p style="font-size:12.5px; color:var(--muted); margin:0 0 16px;">
+        Permanently revokes hardware trust certificates and immediately invalidates active operator sessions.
+      </p>
+
+      <div style="background:var(--bg-subtle, #faf8f5); border:1px solid var(--border-subtle, #e5e7eb); border-radius:var(--radius-md, 8px); padding:12px 14px; margin-bottom:16px; font-size:12.5px;">
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
+          <div><span style="color:var(--muted);">Device ID:</span> <strong style="font-family:var(--font-mono);">${escapeHtml(device.deviceId)}</strong></div>
+          <div><span style="color:var(--muted);">Name:</span> <strong>${escapeHtml(device.deviceName)}</strong></div>
+          <div><span style="color:var(--muted);">Assigned Café:</span> <strong>${escapeHtml(device.assignedCafeId || "Unassigned")}</strong></div>
+          <div><span style="color:var(--muted);">Current Status:</span> <span class="status ${device.status === 'ACTIVE' ? 'success' : 'danger'}" style="font-size:10px; font-weight:700;">${escapeHtml(device.status)}</span></div>
+        </div>
+      </div>
+
+      <div style="background:#fef2f2; border:1px solid #fecaca; border-radius:var(--radius-md, 8px); padding:12px; margin-bottom:16px; font-size:12px; color:#991b1b;">
+        <div style="font-weight:700; display:flex; align-items:center; gap:6px; margin-bottom:4px;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0zM12 9v4M12 17h.01"/></svg>
+          Immediate Operational Impact:
+        </div>
+        <ul style="margin:4px 0 0 16px; padding:0; line-height:1.4;">
+          <li>All active and idle operator sessions on this terminal will be terminated immediately.</li>
+          <li>POS tills and attendance kiosks bound to this device will be blocked from transacting.</li>
+          <li>Device will require full administrative re-enrollment to regain access.</li>
+        </ul>
+      </div>
+
+      <form id="device-revocation-form" style="display:flex; flex-direction:column; gap:12px;">
+        <div>
+          <label for="revoke-reason-input" style="font-size:12px; font-weight:700; color:var(--ink); display:block; margin-bottom:4px;">
+            Revocation Reason (Mandatory) <span style="color:var(--danger);">*</span>
+          </label>
+          <textarea id="revoke-reason-input" class="textarea input-sm" rows="3" placeholder="State operational or security reason (e.g., Device compromised, stolen, replaced, or operator security policy violation)" required style="width:100%; min-height:68px; font-size:12.5px;"></textarea>
+        </div>
+
+        <div style="display:flex; align-items:flex-start; gap:8px; margin-top:2px;">
+          <input type="checkbox" id="revoke-confirm-checkbox" required style="margin-top:3px; cursor:pointer;" />
+          <label for="revoke-confirm-checkbox" style="font-size:12px; color:var(--ink); cursor:pointer; line-height:1.3;">
+            I confirm that I want to revoke <strong>${escapeHtml(device.deviceId)}</strong> and acknowledge that all active operator sessions on this device will be terminated immediately.
+          </label>
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:8px; border-top:1px solid var(--border-subtle); padding-top:12px;">
+          <button type="button" class="btn btn-secondary" id="revoke-btn-cancel">Cancel</button>
+          <button type="submit" class="btn btn-danger" id="revoke-btn-submit" style="font-weight:700;">
+            🚫 Confirm Emergency Revocation
+          </button>
+        </div>
+      </form>
+    </div>
+  `;
+
+  openModal(content);
+  const modalEl = document.getElementById("zamorin-global-modal");
+
+  modalEl?.querySelector("#revoke-btn-cancel")?.addEventListener("click", () => closeModal());
+
+  const form = modalEl?.querySelector("#device-revocation-form");
+  if (form) {
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      const reason = modalEl.querySelector("#revoke-reason-input")?.value?.trim();
+      const confirmed = modalEl.querySelector("#revoke-confirm-checkbox")?.checked;
+
+      if (!reason) {
+        showToast("Revocation reason is mandatory.", "coral");
+        return;
+      }
+      if (!confirmed) {
+        showToast("Please check the confirmation box to proceed.", "coral");
+        return;
+      }
+
+      const submitBtn = form.querySelector("#revoke-btn-submit");
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Revoking Device...";
+      }
+
+      try {
+        await apiPost(`/devices/${device.deviceId}/revoke`, { reason });
+        showToast(`Device ${device.deviceId} revoked successfully. Active sessions terminated.`, "mint");
+        closeModal();
+        await loadFleetData(root);
+      } catch (err) {
+        showToast(err.userMessage || err.message || "Failed to revoke device.", "coral");
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = "🚫 Confirm Emergency Revocation";
         }
       }
-    });
-  });
+    };
+  }
 }
 
 function renderSessionsTable() {

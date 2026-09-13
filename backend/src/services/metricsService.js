@@ -213,6 +213,8 @@ const METRICS_DICTIONARY = [
   },
 ];
 
+const { MetricRegistry } = require('../reporting/metricRegistry');
+
 class MetricsService {
   /**
    * Retrieves the full governed metric dictionary.
@@ -225,7 +227,34 @@ class MetricsService {
    * Retrieves metadata for a specific metric.
    */
   static getMetricById(metricId) {
-    return METRICS_DICTIONARY.find((m) => m.metricId === metricId) || null;
+    const existing = METRICS_DICTIONARY.find((m) => m.metricId === metricId);
+    if (existing) return existing;
+    const canonical = MetricRegistry.getMetric(metricId);
+    if (canonical) {
+      return {
+        metricId: canonical.metricId,
+        name: canonical.displayName,
+        displayName: canonical.displayName,
+        category: canonical.domain,
+        businessDefinition: canonical.description,
+        formula: canonical.source,
+        unit: canonical.unit,
+        version: canonical.formulaVersion,
+        formulaVersion: canonical.formulaVersion,
+        trustStatus: canonical.trustStatus,
+        owner: canonical.ownerDomain,
+        actuality: canonical.actuality,
+        availability: canonical.availability,
+      };
+    }
+    return null;
+  }
+
+  /**
+   * Returns the central canonical MetricRegistry.
+   */
+  static getCanonicalRegistry() {
+    return MetricRegistry;
   }
 }
 

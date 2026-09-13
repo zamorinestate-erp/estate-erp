@@ -146,7 +146,7 @@ function getRequestedCafeId(request) {
   ) {
     throw new ApiError(
       403,
-      'CAFE_ACCESS_DENIED',
+      'CROSS_CAFE_RESOURCE_DENIED',
       'You do not have access to this café.'
     );
   }
@@ -161,9 +161,12 @@ function buildPayrollRunFilter(request) {
   };
 
   if (request.auth.role === 'OWNER') {
+    const assigned = (request.auth.assignedCafeIds || []).map((c) => String(c).trim().toUpperCase());
+    if (assigned.length === 0) {
+      throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'Owner has no authorized café assignments.');
+    }
     filter.cafeId = {
-      $in:
-        request.auth.assignedCafeIds || [],
+      $in: assigned,
     };
   }
 
@@ -940,4 +943,5 @@ module.exports = {
   generatePaymentBatch,
   getPayrollCompliance,
   getPayrollIntegrity,
+  requirePayrollManagementAccess,
 };

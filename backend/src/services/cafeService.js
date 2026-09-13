@@ -841,13 +841,12 @@ class CafeService {
     let access = null;
 
     if (cleanMethod === 'PIN') {
-      if (!/^\d{6}$/.test(cleanCred)) {
-        throw new ApiError(400, 'INVALID_CAFE_PIN', 'Invalid Café PIN.');
-      }
-      const hash = computePinLookupHash(cleanCred);
-      access = await CafeAccess.findOne({
-        permanentCafePinLookupHash: hash,
-      }).select('+permanentCafePinLookupHash');
+      // Disallow permanent PIN authentication bypass per architectural specification
+      throw new ApiError(
+        400,
+        'PIN_AUTH_DISALLOWED',
+        'Permanent PIN authentication is disallowed. Café context must be securely resolved via unique Café QR or official login URL.'
+      );
     } else if (cleanMethod === 'QR') {
       const hash = hashOpaqueToken(cleanCred);
       access = await CafeAccess.findOne({
@@ -860,13 +859,27 @@ class CafeService {
         linkCredentialHash: hash,
         linkEnabled: true,
       });
+    } else if (cleanMethod === 'SETUP_CODE') {
+      // Internal initial store commissioning: one-time short-lived setup code
+      const hash = hashOpaqueToken(cleanCred);
+      access = await CafeAccess.findOne({
+        oneTimeSetupCodeHash: hash,
+        setupCodeExpiresAt: { $gt: new Date() },
+        setupCodeUsed: false,
+      });
+      if (access) {
+        // Invalidate immediately upon successful use
+        await CafeAccess.updateOne({ _id: access._id }, { setupCodeUsed: true });
+      }
+    } else {
+      throw new ApiError(400, 'INVALID_ACCESS_METHOD', 'Supported access methods are QR, LINK, or SETUP_CODE.');
     }
 
     if (!access) {
       throw new ApiError(
         401,
         'GATEWAY_RESOLUTION_FAILED',
-        cleanMethod === 'PIN' ? 'Invalid Café PIN.' : 'Café Operations access link or QR is invalid.'
+        'Café Operations access link or QR is invalid or expired.'
       );
     }
 

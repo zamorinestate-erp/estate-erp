@@ -5,7 +5,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const cookieParser = require('cookie-parser');
 
 const {
@@ -31,6 +31,7 @@ const {
 } = require('./middleware/errorHandler');
 
 const apiRouter = require('./routes');
+const { getTrustedClientIp, getTrustedProxies } = require('./utils/clientIp');
 
 const SERVICE_NAME =
   'zamorin-cafe-erp-api';
@@ -172,9 +173,9 @@ function createApp(environment) {
 
   app.disable('x-powered-by');
 
-  if (environment.production) {
-    app.set('trust proxy', 1);
-  }
+  // Topology-aware trusted proxy configuration (loopback, linklocal, uniquelocal, plus TRUSTED_PROXY_CIDRS)
+  const trustedProxies = getTrustedProxies(process.env.TRUSTED_PROXY_CIDRS);
+  app.set('trust proxy', trustedProxies);
 
   app.use(requestContext);
   app.use(cookieParser());
@@ -198,7 +199,7 @@ function createApp(environment) {
     limit: process.env.RATE_LIMIT_MAX ? Number(process.env.RATE_LIMIT_MAX) : 50000,
     standardHeaders: 'draft-8',
     legacyHeaders: false,
-    validate: { trustProxy: false },
+    keyGenerator: (req) => ipKeyGenerator(getTrustedClientIp(req)),
   });
 
   const healthHandler = (request, response) =>
@@ -216,31 +217,31 @@ function createApp(environment) {
   app.get('/api/health', healthHandler);
   app.get('/health', healthHandler);
 
-  app.get(
-    '/api/v1/readiness',
-    (request, response) => {
-      const database =
-        getDatabaseState();
+  const { documentStorageAdapter } = require('./services/documentStorageAdapter');
 
-      const ready =
-        database.readyState === 1;
+  const readinessHandler = async (request, response) => {
+    const database = getDatabaseState();
+    const storageState = await documentStorageAdapter.healthCheck().catch(() => ({ status: 'ERROR' }));
+    const dbReady = database.readyState === 1;
+    const storageReady = storageState.status === 'OK';
+    const ready = dbReady && storageReady;
 
-      return response
-        .status(ready ? 200 : 503)
-        .json({
-          success: ready,
-          status: ready
-            ? 'ready'
-            : 'not_ready',
-          service: SERVICE_NAME,
-          database: database.status,
-          timestamp:
-            new Date().toISOString(),
-          correlationId:
-            request.correlationId || null,
-        });
-    }
-  );
+    return response
+      .status(ready ? 200 : 503)
+      .json({
+        success: ready,
+        status: ready ? 'ready' : 'not_ready',
+        service: SERVICE_NAME,
+        database: database.status,
+        storage: storageState.status,
+        timestamp: new Date().toISOString(),
+        correlationId: request.correlationId || null,
+      });
+  };
+
+  app.get('/api/v1/readiness', readinessHandler);
+  app.get('/api/readiness', readinessHandler);
+  app.get('/readiness', readinessHandler);
 
   app.use('/api/', apiLimiter);
   app.use('/api/v1', apiRouter);
@@ -297,6 +298,9 @@ async function startServer() {
       process.exit(1);
     }
   }
+
+  // Validate durable document storage configuration before accepting traffic (Fails safe if unconfigured in production)
+  documentStorageAdapter.validateStartupConfiguration(environment);
 
   const app =
     createApp(environment);

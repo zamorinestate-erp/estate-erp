@@ -901,29 +901,41 @@ function renderBillsSubpanel() {
 
 // 3. ADJUSTMENTS (Refunds & Voids)
 function renderAdjustmentsSubpanel() {
+  const voidedBills = (cachedBills || []).filter((b) => b.status === "VOID" || b.status === "VOIDED");
+  const voidCount = cachedOverview?.kpis?.voidedBills ?? voidedBills.length;
+  const voidValue = cachedOverview?.kpis?.voidedValue ?? voidedBills.reduce((sum, b) => sum + ((b.totalPaisa || 0) / 100), 0);
+
+  const refundedBills = (cachedBills || []).filter((b) => (b.refundedTotalPaisa || 0) > 0 || b.status === "REFUNDED" || b.status === "PARTIALLY_REFUNDED");
+  const refundCount = cachedOverview?.kpis?.refundsCount ?? refundedBills.length;
+  const refundValue = cachedOverview?.kpis?.refunds ?? refundedBills.reduce((sum, b) => sum + ((b.refundedTotalPaisa || 0) / 100), 0);
+
+  const grossSales = cachedOverview?.kpis?.grossSales || 1;
+  const voidPercent = grossSales > 0 ? ((voidValue / grossSales) * 100).toFixed(2) : "0.00";
+  const refundPercent = grossSales > 0 ? ((refundValue / grossSales) * 100).toFixed(2) : "0.00";
+
   return `
     <div style="display:flex; flex-direction:column; gap:20px;">
       <!-- Adjustment Metrics Summary -->
       <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:12px;">
         <div class="card" style="padding:14px 16px;">
           <div style="font-size:11.5px; color:var(--muted); font-weight:600;">Total Voids Count</div>
-          <div style="font-size:20px; font-weight:800; color:var(--color-danger); font-family:var(--font-mono); margin:2px 0;">2 Voids</div>
+          <div style="font-size:20px; font-weight:800; color:var(--color-danger); font-family:var(--font-mono); margin:2px 0;">${voidCount} Void${voidCount === 1 ? '' : 's'}</div>
           <div style="font-size:11px; color:var(--muted);">Audited Invoices</div>
         </div>
         <div class="card" style="padding:14px 16px;">
           <div style="font-size:11.5px; color:var(--muted); font-weight:600;">Total Voided Value</div>
-          <div style="font-size:20px; font-weight:800; color:var(--color-danger); font-family:var(--font-mono); margin:2px 0;">₹588.00</div>
-          <div style="font-size:11px; color:var(--muted);">1.21% of Gross</div>
+          <div style="font-size:20px; font-weight:800; color:var(--color-danger); font-family:var(--font-mono); margin:2px 0;">₹${voidValue.toFixed(2)}</div>
+          <div style="font-size:11px; color:var(--muted);">${voidPercent}% of Gross</div>
         </div>
         <div class="card" style="padding:14px 16px;">
           <div style="font-size:11.5px; color:var(--muted); font-weight:600;">Total Refunds Count</div>
-          <div style="font-size:20px; font-weight:800; color:var(--color-warning); font-family:var(--font-mono); margin:2px 0;">1 Refund</div>
+          <div style="font-size:20px; font-weight:800; color:var(--color-warning); font-family:var(--font-mono); margin:2px 0;">${refundCount} Refund${refundCount === 1 ? '' : 's'}</div>
           <div style="font-size:11px; color:var(--muted);">POS Credit Note</div>
         </div>
         <div class="card" style="padding:14px 16px;">
           <div style="font-size:11.5px; color:var(--muted); font-weight:600;">Total Refunded Value</div>
-          <div style="font-size:20px; font-weight:800; color:var(--color-warning); font-family:var(--font-mono); margin:2px 0;">₹693.00</div>
-          <div style="font-size:11px; color:var(--muted);">1.43% of Gross</div>
+          <div style="font-size:20px; font-weight:800; color:var(--color-warning); font-family:var(--font-mono); margin:2px 0;">₹${refundValue.toFixed(2)}</div>
+          <div style="font-size:11px; color:var(--muted);">${refundPercent}% of Gross</div>
         </div>
       </div>
 
@@ -1348,8 +1360,9 @@ export async function wireOwnerBills(root, subroute) {
   // Cafe Scope Selector
   const cafeSel = root.querySelector("#scope-cafe-selector");
   if (cafeSel) {
-    cafeSel.addEventListener("change", (e) => {
+    cafeSel.addEventListener("change", async (e) => {
       selectedCafeFilter = e.target.value;
+      await Promise.all([fetchOverviewData(), fetchBillsData()]);
       refreshView(root);
     });
   }
@@ -1357,8 +1370,9 @@ export async function wireOwnerBills(root, subroute) {
   // Business Date input
   const dateInput = root.querySelector("#scope-business-date");
   if (dateInput) {
-    dateInput.addEventListener("change", (e) => {
+    dateInput.addEventListener("change", async (e) => {
       selectedBusinessDate = e.target.value;
+      await Promise.all([fetchOverviewData(), fetchBillsData()]);
       refreshView(root);
     });
   }
@@ -1432,7 +1446,7 @@ export async function wireOwnerBills(root, subroute) {
   // Initial data fetch — exactly once
   if (!hasInitialFetchedBills) {
     hasInitialFetchedBills = true;
-    fetchOverviewData().then(() => {
+    Promise.all([fetchOverviewData(), fetchBillsData()]).then(() => {
       refreshSubpanelOnly(root);
     });
   }
@@ -1442,8 +1456,12 @@ let hasInitialFetchedBills = false;
 
 async function fetchOverviewData() {
   try {
+    let url = `/bills/overview?date=${encodeURIComponent(selectedBusinessDate)}`;
+    if (selectedCafeFilter && selectedCafeFilter !== "ALL") {
+      url += `&cafeId=${encodeURIComponent(selectedCafeFilter)}`;
+    }
     const [overviewRes, cafesRes] = await Promise.allSettled([
-      apiGet(`/bills/overview?date=${selectedBusinessDate}`),
+      apiGet(url),
       apiGet("/cafes"),
     ]);
     if (overviewRes.status === "fulfilled" && overviewRes.value?.data) {
@@ -1467,7 +1485,11 @@ async function fetchOverviewData() {
 
 async function fetchBillsData() {
   try {
-    const res = await apiGet(`/bills?date=${selectedBusinessDate}`);
+    let url = `/bills?date=${encodeURIComponent(selectedBusinessDate)}`;
+    if (selectedCafeFilter && selectedCafeFilter !== "ALL") {
+      url += `&cafeId=${encodeURIComponent(selectedCafeFilter)}`;
+    }
+    const res = await apiGet(url);
     if (res?.data?.bills && Array.isArray(res.data.bills)) {
       cachedBills = res.data.bills;
     } else {
@@ -1771,7 +1793,7 @@ function handleExportReport(exportType) {
       const sgst = (b.sgstPaisa || (b.taxPaisa ? b.taxPaisa / 2 : 0)) / 100;
       const totalTax = (b.taxPaisa || 0) / 100;
       const gross = (b.totalPaisa || 0) / 100;
-      return `"${b.invoiceNumber || b.billId}","${b.businessDate}","32AABCT1332L1ZW","${CAFE_NAMES[b.cafeId] || b.cafeId}","996331",${taxable.toFixed(2)},${cgst.toFixed(2)},${sgst.toFixed(2)},${totalTax.toFixed(2)},${gross.toFixed(2)}`;
+      return `"${b.invoiceNumber || b.billId}","${b.businessDate}","${b.gstRegistrationNumber || ''}","${CAFE_NAMES[b.cafeId] || b.cafeId}","996331",${taxable.toFixed(2)},${cgst.toFixed(2)},${sgst.toFixed(2)},${totalTax.toFixed(2)},${gross.toFixed(2)}`;
     }).join("\n");
     const ext = exportType === "gst-xlsx" ? "xlsx" : "csv";
     triggerDownload(headers + rows, `Zamorin_GST_Tax_Source_Register_${dateStr}.${ext}`);
@@ -1847,30 +1869,51 @@ function handleExportReport(exportType) {
   });
 }
 
-function openReceiptModal(billId) {
-  const bills = cachedBills.length > 0 ? cachedBills : DEFAULT_BILLS;
-  const bill = bills.find((b) => b.billId === billId) || bills[0];
+async function openReceiptModal(billId) {
+  let bill = (cachedBills || []).find((b) => b.billId === billId || b.invoiceNumber === billId);
+  try {
+    const res = await apiGet(`/bills/${encodeURIComponent(billId)}`);
+    if (res?.data?.bill) {
+      bill = res.data.bill;
+    }
+  } catch (err) {
+    // fallback to cache
+  }
 
-  const total = (bill.totalPaisa / 100).toFixed(2);
-  const tax = (bill.taxPaisa / 100).toFixed(2);
-  const subtotal = (bill.subtotalPaisa / 100).toFixed(2);
+  if (!bill) {
+    showToast("Receipt record not found.", "coral");
+    return;
+  }
+
+  const total = ((bill.totalPaisa || 0) / 100).toFixed(2);
+  const tax = ((bill.taxPaisa || 0) / 100).toFixed(2);
+  const cgst = ((bill.cgstPaisa || (bill.taxPaisa ? bill.taxPaisa / 2 : 0)) / 100).toFixed(2);
+  const sgst = ((bill.sgstPaisa || (bill.taxPaisa ? bill.taxPaisa / 2 : 0)) / 100).toFixed(2);
+  const subtotal = ((bill.subtotalPaisa || 0) / 100).toFixed(2);
+  const discounts = ((bill.discountPaisa || 0) / 100).toFixed(2);
 
   openModal({
     title: `Receipt · ${bill.invoiceNumber || bill.billId}`,
-    maxWidth: "440px",
+    maxWidth: "460px",
     body: `
       <div style="font-family:var(--font-mono); font-size:12.5px; color:var(--ink); padding:10px 0;">
         <div style="text-align:center; margin-bottom:12px;">
           <strong style="font-size:15px; letter-spacing:1px;">ZAMORIN CAFE</strong>
-          <div style="font-size:11px; color:var(--muted);">${CAFE_NAMES[bill.cafeId] || bill.cafeId}</div>
-          <div style="font-size:10.5px; color:var(--muted);">GSTIN: 32AABCT1332L1ZW</div>
+          <div style="font-size:11.5px; color:var(--muted);">${escapeHtml(CAFE_NAMES[bill.cafeId] || bill.cafeId)}</div>
+          <div style="font-size:10.5px; color:var(--muted); margin-top:2px;">
+            ${bill.gstRegistrationNumber ? `GSTIN: <strong>${escapeHtml(bill.gstRegistrationNumber)}</strong>` : 'GST: Unregistered / Composition'}
+          </div>
+          <div style="font-size:10px; color:var(--muted); margin-top:2px; font-style:italic;">
+            E-Invoice: Not Applicable / Integration Not Implemented
+          </div>
         </div>
 
         <div style="border-top:1px dashed var(--border-subtle); border-bottom:1px dashed var(--border-subtle); padding:8px 0; margin-bottom:10px; font-size:11.5px;">
-          <div>Invoice: <strong>${bill.invoiceNumber || bill.billId}</strong></div>
-          <div>Date: ${bill.businessDate} · ${bill.createdAt || "11:34 AM"}</div>
-          <div>Table: ${bill.tableNumber || "Dine In"}</div>
-          <div>Cashier: ${bill.cashierUserId || "Staff"}</div>
+          <div>Invoice: <strong>${escapeHtml(bill.invoiceNumber || bill.billId)}</strong></div>
+          <div>Date: ${escapeHtml(bill.businessDate || '')} · ${bill.createdAt ? new Date(bill.createdAt).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true }) : 'IST'}</div>
+          <div>Table / Mode: ${escapeHtml(bill.tableNumber || bill.serviceMode || "Dine In")}</div>
+          <div>Cashier: ${escapeHtml(bill.cashierUserId || "Staff")}</div>
+          ${bill.b2bCustomerGstin ? `<div style="margin-top:4px; font-weight:600; color:var(--brand-gold, #c89d5c);">B2B Recipient GSTIN: ${escapeHtml(bill.b2bCustomerGstin)}</div>` : ''}
         </div>
 
         <div style="margin-bottom:10px;">
@@ -1878,7 +1921,7 @@ function openReceiptModal(billId) {
             .map(
               (li) => `
             <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
-              <span>${li.quantity}× ${li.itemNameSnapshot}</span>
+              <span>${li.quantity}× ${escapeHtml(li.itemNameSnapshot)}</span>
               <span>₹${((li.lineSubtotalPaisa || li.unitPricePaisa * li.quantity) / 100).toFixed(2)}</span>
             </div>
           `
@@ -1891,57 +1934,111 @@ function openReceiptModal(billId) {
             <span>Subtotal:</span>
             <span>₹${subtotal}</span>
           </div>
-          <div style="display:flex; justify-content:space-between; margin-bottom:3px;">
-            <span>GST (5%):</span>
-            <span>₹${tax}</span>
+          ${Number(discounts) > 0 ? `
+          <div style="display:flex; justify-content:space-between; margin-bottom:3px; color:var(--color-warning);">
+            <span>Discount:</span>
+            <span>- ₹${discounts}</span>
+          </div>` : ''}
+          <div style="display:flex; justify-content:space-between; margin-bottom:2px; font-size:11px; color:var(--muted);">
+            <span>CGST (2.5%):</span>
+            <span>₹${cgst}</span>
           </div>
-          <div style="display:flex; justify-content:space-between; font-size:14px; font-weight:800; margin-top:4px;">
+          <div style="display:flex; justify-content:space-between; margin-bottom:3px; font-size:11px; color:var(--muted);">
+            <span>SGST (2.5%):</span>
+            <span>₹${sgst}</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; font-size:14px; font-weight:800; margin-top:6px; border-top:1px solid var(--border-subtle); padding-top:6px;">
             <span>TOTAL PAID:</span>
             <span>₹${total}</span>
           </div>
-          <div style="font-size:11px; color:var(--muted); margin-top:2px;">
-            Paid via: <strong>${bill.paymentMethod}</strong>
+          <div style="font-size:11px; color:var(--muted); margin-top:4px;">
+            Paid via: <strong>${escapeHtml(bill.paymentMethod)}</strong>
+            ${Array.isArray(bill.tenders) && bill.tenders.length > 1 ? ` (${bill.tenders.map((t) => `${t.paymentMethod}: ₹${((t.amountPaisa || 0) / 100).toFixed(2)}`).join(', ')})` : ''}
           </div>
+          ${Array.isArray(bill.reprints) && bill.reprints.length > 0 ? `
+            <div style="font-size:10px; color:var(--color-warning); margin-top:6px;">
+              Reprinted: ${bill.reprints.length} time(s) (Latest: ${new Date(bill.reprints[bill.reprints.length - 1].reprintedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })})
+            </div>
+          ` : ''}
         </div>
 
-        <div style="text-align:center; margin-top:16px; font-size:11px; color:var(--muted);">
-          Thank you for visiting Zamorin!
+        <div style="display:flex; justify-content:space-between; gap:10px; margin-top:16px;">
+          <button class="btn btn-sm btn-ghost" id="btn-modal-reprint-receipt" type="button" style="font-size:11.5px; border:1px solid var(--border-subtle);">
+            🖨️ Log &amp; Reprint Receipt
+          </button>
+          <button class="btn btn-sm btn-primary" onclick="window.print()" type="button" style="font-size:11.5px;">
+            Print Preview
+          </button>
         </div>
       </div>
     `,
     showSave: false,
     cancelLabel: "Close",
   });
+
+  document.getElementById("btn-modal-reprint-receipt")?.addEventListener("click", async () => {
+    try {
+      const repRes = await apiPost(`/bills/${encodeURIComponent(bill.billId)}/reprint`, { reason: "Owner Governed Reprint" });
+      showToast(`Reprint #${repRes?.data?.reprintCount || 1} logged in audit register`, "success");
+      document.querySelector("#zamorin-global-modal")?.remove();
+    } catch (err) {
+      showToast(err.message || "Failed to log reprint", "coral");
+    }
+  });
 }
 
-function openBillDetailModal(billId) {
-  const bills = cachedBills.length > 0 ? cachedBills : DEFAULT_BILLS;
-  const bill = bills.find((b) => b.billId === billId) || bills[0];
+async function openBillDetailModal(billId) {
+  let bill = (cachedBills || []).find((b) => b.billId === billId || b.invoiceNumber === billId);
+  try {
+    const res = await apiGet(`/bills/${encodeURIComponent(billId)}`);
+    if (res?.data?.bill) {
+      bill = res.data.bill;
+    }
+  } catch (err) {
+    // fallback to cache
+  }
 
-  const total = (bill.totalPaisa / 100).toFixed(2);
-  const tax = (bill.taxPaisa / 100).toFixed(2);
-  const subtotal = (bill.subtotalPaisa / 100).toFixed(2);
+  if (!bill) {
+    showToast("Bill not found.", "coral");
+    return;
+  }
+
+  const total = ((bill.totalPaisa || 0) / 100).toFixed(2);
+  const tax = ((bill.taxPaisa || 0) / 100).toFixed(2);
+  const cgst = ((bill.cgstPaisa || (bill.taxPaisa ? bill.taxPaisa / 2 : 0)) / 100).toFixed(2);
+  const sgst = ((bill.sgstPaisa || (bill.taxPaisa ? bill.taxPaisa / 2 : 0)) / 100).toFixed(2);
+  const subtotal = ((bill.subtotalPaisa || 0) / 100).toFixed(2);
+  const discounts = ((bill.discountPaisa || 0) / 100).toFixed(2);
 
   openModal({
     title: `Bill 360 Governance · ${bill.invoiceNumber || bill.billId}`,
-    maxWidth: "580px",
+    maxWidth: "600px",
     body: `
       <div style="color:var(--ink); font-size:13px;">
-        <div style="display:flex; justify-content:space-between; margin-bottom:12px; border-bottom:1px solid var(--border-subtle); padding-bottom:8px;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:14px; border-bottom:1px solid var(--border-subtle); padding-bottom:10px;">
           <div>
-            <strong>${bill.invoiceNumber || bill.billId}</strong>
-            <div style="font-size:11.5px; color:var(--muted);">${CAFE_NAMES[bill.cafeId] || bill.cafeId} · Table: ${bill.tableNumber || "Dine In"}</div>
+            <strong style="font-size:15px; font-family:var(--font-mono); color:var(--ink);">${escapeHtml(bill.invoiceNumber || bill.billId)}</strong>
+            <div style="font-size:11.5px; color:var(--muted); margin-top:2px;">
+              ${escapeHtml(CAFE_NAMES[bill.cafeId] || bill.cafeId)} · Table: ${escapeHtml(bill.tableNumber || bill.serviceMode || "Counter")} · Register: ${escapeHtml(bill.registerId || 'REG-01')}
+            </div>
+            ${bill.gstRegistrationNumber ? `<div style="font-size:11px; color:var(--muted);">Outlet GSTIN: <strong>${escapeHtml(bill.gstRegistrationNumber)}</strong></div>` : ''}
           </div>
-          <span class="status ${bill.status === "COMPLETED" ? "success" : "danger"}">${bill.status}</span>
+          <div style="text-align:right;">
+            <span class="status ${bill.status === "COMPLETED" ? "success" : bill.status === "VOIDED" ? "danger" : "info"}">${bill.status}</span>
+            <div style="font-size:11px; color:var(--muted); margin-top:4px;">${escapeHtml(bill.businessDate || '')}</div>
+          </div>
         </div>
 
-        <h4 style="font-size:12.5px; font-weight:700; margin:0 0 6px;">Line Items</h4>
-        <div style="border:1px solid var(--border-subtle); border-radius:6px; padding:10px; margin-bottom:12px;">
+        <h4 style="font-size:12.5px; font-weight:700; margin:0 0 8px; color:var(--ink);">Line Items &amp; Tax Rate Breakdown</h4>
+        <div style="border:1px solid var(--border-subtle); border-radius:6px; padding:10px; margin-bottom:14px; background:var(--surface-sunken);">
           ${(bill.lineItems || [])
             .map(
               (li) => `
-            <div style="display:flex; justify-content:space-between; margin-bottom:4px; font-size:12.5px;">
-              <span>${li.quantity}× ${li.itemNameSnapshot}</span>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; font-size:12.5px;">
+              <div>
+                <span>${li.quantity}× <strong>${escapeHtml(li.itemNameSnapshot)}</strong></span>
+                <span style="font-size:11px; color:var(--muted); margin-left:6px;">@ ₹${((li.unitPricePaisa || 0) / 100).toFixed(2)} (${li.taxRatePercent || 5}% GST)</span>
+              </div>
               <strong style="font-family:var(--font-mono);">₹${((li.lineSubtotalPaisa || li.unitPricePaisa * li.quantity) / 100).toFixed(2)}</strong>
             </div>
           `
@@ -1949,28 +2046,68 @@ function openBillDetailModal(billId) {
             .join("")}
         </div>
 
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px; font-size:12.5px;">
-          <div><span style="color:var(--muted);">Subtotal:</span> <strong>₹${subtotal}</strong></div>
-          <div><span style="color:var(--muted);">Tax (5% GST):</span> <strong>₹${tax}</strong></div>
-          <div><span style="color:var(--muted);">Total Amount:</span> <strong style="color:var(--color-success);">₹${total}</strong></div>
-          <div><span style="color:var(--muted);">Tender Method:</span> <strong>${bill.paymentMethod}</strong></div>
-          <div><span style="color:var(--muted);">Operator:</span> <strong>${bill.cashierUserId || "Staff"}</strong></div>
-          <div><span style="color:var(--muted);">Date &amp; Time:</span> <strong>${bill.businessDate} · ${bill.createdAt || "IST"}</strong></div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px; font-size:12.5px; background:var(--surface); border:1px solid var(--border-subtle); border-radius:6px; padding:12px;">
+          <div><span style="color:var(--muted);">Gross Subtotal:</span> <strong>₹${subtotal}</strong></div>
+          <div><span style="color:var(--muted);">Discounts:</span> <strong>- ₹${discounts}</strong></div>
+          <div><span style="color:var(--muted);">CGST (2.5%):</span> <strong>₹${cgst}</strong></div>
+          <div><span style="color:var(--muted);">SGST (2.5%):</span> <strong>₹${sgst}</strong></div>
+          <div><span style="color:var(--muted);">Total Tax (5%):</span> <strong>₹${tax}</strong></div>
+          <div><span style="color:var(--muted);">Grand Total:</span> <strong style="color:var(--color-success); font-family:var(--font-mono); font-size:14px;">₹${total}</strong></div>
+          <div><span style="color:var(--muted);">Payment Method:</span> <strong>${escapeHtml(bill.paymentMethod)}</strong></div>
+          <div><span style="color:var(--muted);">Payment Status:</span> <strong>${escapeHtml(bill.paymentStatus || 'PAID')}</strong></div>
+          <div><span style="color:var(--muted);">Cashier / Operator:</span> <strong>${escapeHtml(bill.cashierUserId || "Staff")}</strong></div>
+          <div><span style="color:var(--muted);">Reprint Count:</span> <strong>${bill.reprints?.length || 0}</strong></div>
         </div>
+
+        ${Array.isArray(bill.tenders) && bill.tenders.length > 0 ? `
+          <h4 style="font-size:12.5px; font-weight:700; margin:0 0 6px; color:var(--ink);">Tender Settlement Records</h4>
+          <div style="border:1px solid var(--border-subtle); border-radius:6px; padding:8px 12px; margin-bottom:14px; font-size:12px;">
+            ${bill.tenders.map((t) => `
+              <div style="display:flex; justify-content:space-between; padding:3px 0;">
+                <span>${escapeHtml(t.paymentMethod)} (${escapeHtml(t.provider || 'SETTLED')}) ${t.paymentReference ? `· Ref: ${escapeHtml(t.paymentReference)}` : ''}</span>
+                <strong style="font-family:var(--font-mono);">₹${((t.amountPaisa || 0) / 100).toFixed(2)}</strong>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
 
         ${
           bill.status === "VOIDED"
             ? `
-          <div style="background:rgba(244,63,94,0.08); padding:10px; border-radius:6px; border:1px solid rgba(244,63,94,0.3); font-size:12px;">
+          <div style="background:rgba(244,63,94,0.08); padding:10px 12px; border-radius:6px; border:1px solid rgba(244,63,94,0.3); font-size:12px; margin-bottom:10px;">
             <strong style="color:var(--color-danger);">⛔ Void Audit Trail:</strong>
-            <div>Reason: ${bill.voidReason || "Order cancelled"}</div>
+            <div>Reason: ${escapeHtml(bill.voidReason || "Order cancelled")}</div>
+            <div style="font-size:11px; color:var(--muted); margin-top:2px;">Voided by: ${escapeHtml(bill.voidedByUserId || 'Staff')} · ${bill.voidedAt ? new Date(bill.voidedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : ''}</div>
           </div>
         `
             : ""
         }
+
+        ${Array.isArray(bill.refunds) && bill.refunds.length > 0 ? `
+          <div style="background:rgba(237,108,2,0.08); padding:10px 12px; border-radius:6px; border:1px solid rgba(237,108,2,0.3); font-size:12px; margin-bottom:10px;">
+            <strong style="color:var(--color-warning);">🔄 Refund Records:</strong>
+            ${bill.refunds.map((r) => `
+              <div style="display:flex; justify-content:space-between; margin-top:3px;">
+                <span>${escapeHtml(r.reason || 'Customer Return')} (by ${escapeHtml(r.requestedBy || 'Staff')})</span>
+                <strong style="font-family:var(--font-mono); color:var(--color-warning);">- ₹${((r.amountPaisa || 0) / 100).toFixed(2)}</strong>
+              </div>
+            `).join('')}
+          </div>
+        ` : ''}
+
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:14px;">
+          <button class="btn btn-secondary btn-sm" id="btn-view-receipt-from-360" type="button">
+            View Receipt Form
+          </button>
+        </div>
       </div>
     `,
     showSave: false,
     cancelLabel: "Close",
+  });
+
+  document.getElementById("btn-view-receipt-from-360")?.addEventListener("click", () => {
+    document.querySelector("#zamorin-global-modal")?.remove();
+    openReceiptModal(bill.billId);
   });
 }

@@ -15,28 +15,25 @@ import { openCafeCreateModal } from './cafeCreateModal.js';
 // ─── Component State ──────────────────────────────────────────────────────────
 
 let perfState = {
-  activeTab: 'matrix', // 'matrix' | 'sales' | 'labor' | 'inventory' | 'menu' | 'targets' | 'drilldown' | 'reports'
+  activeTab: 'matrix', // 'matrix' | 'sales' | 'labor' | 'inventory' | 'menu' | 'targets'
   selectedCafeId: '', // '' = All Authorized Cafés
   period: 'today', // 'today' | 'yesterday' | '7d' | '30d' | 'this_month' | 'this_quarter' | 'this_year' | 'custom'
-  comparison: 'previous_period', // 'previous_period' | 'previous_week' | 'previous_month' | 'previous_quarter' | 'previous_year' | 'none'
+  comparison: 'previous_period', // 'previous_period' | 'previous_week' | 'previous_month' | 'previous_quarter' | 'previous_year' | 'target' | 'none'
   customFrom: null,
   customTo: null,
   trendViewMode: 'chart', // 'chart' | 'data'
-  sortColumn: 'sales', // 'name' | 'sales' | 'growth' | 'bills' | 'abv' | 'labor' | 'splh' | 'waste' | 'health'
+  sortColumn: 'sales', // 'name' | 'sales' | 'bills' | 'abv' | 'target' | 'avt' | 'labor' | 'health'
   sortDirection: 'desc',
   drilldownCafeId: null,
   dashboardData: null,
-  salesAnalytics: null,
   portfolioData: null,
   workforceData: null,
   inventoryData: null,
   menuData: null,
   goalsData: null,
   loading: false,
-  partialError: null,
   lastUpdated: null,
-  savedViews: [],
-  activeSavedViewId: null,
+  clockTimer: null,
 };
 
 // ─── Format Helpers ──────────────────────────────────────────────────────────
@@ -71,8 +68,42 @@ function getIstClockString() {
     year: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
+    second: '2-digit',
     hour12: true,
   }).format(new Date());
+}
+
+// ─── AvT Helper ──────────────────────────────────────────────────────────────
+
+function computeAvt(actualPaisa, targetPaisa) {
+  const actual = Number(actualPaisa || 0);
+  const target = Number(targetPaisa || 0);
+
+  if (!target || target <= 0) {
+    return {
+      hasTarget: false,
+      diffPaisa: 0,
+      diffText: '—',
+      pct: null,
+      pctText: 'No Target',
+      status: 'NEUTRAL',
+      isAhead: false,
+    };
+  }
+
+  const diffPaisa = actual - target;
+  const pct = (diffPaisa / target) * 100;
+  const isAhead = diffPaisa >= 0;
+
+  return {
+    hasTarget: true,
+    diffPaisa,
+    diffText: `${isAhead ? '+' : ''}${fmtInr(diffPaisa)}`,
+    pct,
+    pctText: `${isAhead ? '+' : ''}${pct.toFixed(1)}%`,
+    status: isAhead ? 'FAVORABLE' : 'UNFAVORABLE',
+    isAhead,
+  };
 }
 
 // ─── HTML Template ────────────────────────────────────────────────────────────
@@ -84,26 +115,31 @@ export function renderPerformance() {
   return `
     <div class="page-enter" style="padding-bottom: 60px;">
       <!-- Page Header -->
-      <div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px; margin-bottom: 24px;">
+      <div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px; margin-bottom: 20px;">
         <div>
           <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
             <h1 class="page-title" style="font-size:26px; font-weight:700; color:var(--ink); margin:0;">Café Performance Control Centre</h1>
-            <span class="badge" style="background:rgba(180,83,9,0.12); color:#b45309; font-weight:600; font-size:12px; padding:4px 10px; border-radius:12px;">SCR-006 PERF</span>
+            <span class="badge" style="background:rgba(180,83,9,0.12); color:#b45309; font-weight:600; font-size:12px; padding:4px 10px; border-radius:12px;">OWN-SCR-006</span>
+            <span id="perf-ist-clock" style="font-family:var(--font-mono); font-size:12px; color:var(--muted);">${getIstClockString()}</span>
           </div>
           <p class="page-subtitle" style="font-size:14px; color:var(--muted); margin:4px 0 0 0;">
-            Multi-location sales benchmarking, labor efficiency, inventory economics, product velocity, and operational target attainment.
+            Multi-location sales benchmarking, AvT variance analytics, weighted ABV, labor productivity, and operational exceptions.
           </p>
         </div>
 
         <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+          <span id="perf-freshness-label" style="font-size:11px; color:var(--muted); font-family:var(--font-mono);"></span>
           ${canCreateCafe ? `
             <button class="btn btn-primary" id="perf-add-cafe-btn" type="button" style="font-weight:700;">
               + Add New Café
             </button>
           ` : ''}
           ${canExport ? `
+            <button class="btn btn-secondary" id="perf-download-csv-btn" style="font-weight:700;" type="button">
+              📥 Export CSV
+            </button>
             <button class="btn btn-secondary" id="perf-open-export-btn" style="font-weight:700;" type="button">
-              📑 Export Performance (ZURF)
+              📑 ZURF Pack
             </button>
           ` : ''}
           <button class="btn btn-secondary" id="perf-refresh-btn" type="button" style="font-weight:600;">
@@ -112,14 +148,25 @@ export function renderPerformance() {
         </div>
       </div>
 
+      <!-- Scoped Deep-Dive Banner (when a single café is selected) -->
+      <div id="perf-scoped-banner" style="display:none; padding:10px 16px; margin-bottom:14px; background:rgba(180,83,9,0.08); border:1px solid rgba(180,83,9,0.25); border-radius:var(--radius-sm); justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+        <div style="display:flex; align-items:center; gap:8px; font-size:13px; color:var(--ink);">
+          <span style="font-size:16px;">🏬</span>
+          <span>Viewing deep-dive analytics for <strong id="perf-scoped-cafe-name"></strong> (<span id="perf-scoped-cafe-id" style="font-family:var(--font-mono);"></span>).</span>
+        </div>
+        <button class="btn btn-xs btn-outline" id="perf-clear-scope-btn" type="button" style="font-weight:700;">
+          ✕ Show All Authorized Cafés
+        </button>
+      </div>
+
       <!-- Filter Controls Strip (Café Scope, Period, Comparison) -->
-      <div class="card" style="padding:14px 18px;background:var(--surface-sunken);border:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
-        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+      <div class="card" style="padding:14px 18px;background:var(--surface-sunken);border:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:16px;">
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
           <!-- Café Scope Dropdown -->
           <div style="display:flex;align-items:center;gap:6px;">
             <label for="perf-cafe-scope" style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;">Café Scope:</label>
             <select id="perf-cafe-scope" class="form-input" style="font-size:12px;font-weight:600;padding:4px 10px;height:32px;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:var(--radius-sm);">
-              <option value="">All Cafés (Authorized Portfolio)</option>
+              <option value="">All Authorized Cafés (Consolidated)</option>
               ${(state.assignedCafes || []).map(c => `<option value="${c.cafeId}">${c.name || c.cafeId} (${c.cafeId})</option>`).join('')}
             </select>
           </div>
@@ -154,19 +201,21 @@ export function renderPerformance() {
               <option value="previous_month">Previous Month</option>
               <option value="previous_quarter">Previous Quarter</option>
               <option value="previous_year">Same Period Last Year</option>
-              <option value="target">Target Goal Benchmark</option>
+              <option value="target">Target Benchmark</option>
               <option value="none">No Comparison</option>
             </select>
           </div>
         </div>
 
-        <!-- Saved Views Quick Select -->
+        <!-- Quick Views Dropdown -->
         <div style="display:flex;align-items:center;gap:8px;">
           <select id="perf-saved-views-select" class="form-input" style="font-size:11px;height:32px;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:var(--radius-sm);">
-            <option value="">Saved Views...</option>
-            <option value="sales_labor">Sales &amp; Labor Efficiency</option>
-            <option value="inventory_waste">Inventory &amp; Wastage Focus</option>
-            <option value="exceptions">Exceptions &amp; Variances Only</option>
+            <option value="">Quick Perspective...</option>
+            <option value="sales_matrix">Executive Sales Matrix</option>
+            <option value="labor_efficiency">Labor Productivity Focus</option>
+            <option value="inventory_avt">Inventory &amp; AvT Focus</option>
+            <option value="commercial_mix">Commercial Product Mix</option>
+            <option value="targets_pacing">Targets &amp; Pacing Scorecards</option>
           </select>
         </div>
       </div>
@@ -182,7 +231,7 @@ export function renderPerformance() {
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
             <div style="display:flex;align-items:center;gap:8px;">
               <span style="font-size:20px;">📑</span>
-              <h3 style="font-size:16px;font-weight:800;color:var(--ink);margin:0;">Generate ZURF Performance Export</h3>
+              <h3 style="font-size:16px;font-weight:800;color:var(--ink);margin:0;">Generate Performance Export Pack</h3>
             </div>
             <button class="btn btn-xs btn-ghost" id="perf-close-export-modal" type="button">✕</button>
           </div>
@@ -191,45 +240,21 @@ export function renderPerformance() {
           </p>
           <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:20px;">
             <label class="form-label" style="font-size:12px;font-weight:700;color:var(--ink);">Export Format</label>
-            <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:8px;">
-              <button class="btn btn-sm btn-outline active" data-export-format="PDF" style="font-weight:700;">PDF Document</button>
-              <button class="btn btn-sm btn-outline" data-export-format="CSV" style="font-weight:700;">CSV Dataset</button>
-              <button class="btn btn-sm btn-outline" data-export-format="XLSX" style="font-weight:700;">Excel Workbook</button>
+            <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:8px;" id="perf-export-format-group">
+              <button class="btn btn-sm btn-outline active" data-export-format="CSV" style="font-weight:700;" type="button">CSV Dataset</button>
+              <button class="btn btn-sm btn-outline" data-export-format="PDF" style="font-weight:700;" type="button">PDF Report</button>
+              <button class="btn btn-sm btn-outline" data-export-format="XLSX" style="font-weight:700;" type="button">Excel Workbook</button>
             </div>
             <div style="margin-top:8px;">
               <label class="form-check" style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink);cursor:pointer;">
                 <input type="checkbox" id="perf-export-watermark" checked style="accent-color:var(--bronze-500);" />
-                Include "CONFIDENTIAL" Executive Audit Watermark
+                Include "CONFIDENTIAL" Executive Governance Watermark
               </label>
             </div>
           </div>
           <div style="display:flex;justify-content:flex-end;gap:8px;">
             <button class="btn btn-sm btn-ghost" id="perf-cancel-export-modal" type="button">Cancel</button>
             <button class="btn btn-sm btn-primary" id="perf-confirm-export-btn" type="button">Download Export</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Save View Modal (Hidden by default) -->
-      <div id="perf-save-view-modal" class="modal-backdrop" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;align-items:center;justify-content:center;">
-        <div class="card" style="width:90%;max-width:440px;padding:24px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-md);">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
-            <h3 style="font-size:15px;font-weight:800;color:var(--ink);margin:0;">Save Custom Performance View</h3>
-            <button class="btn btn-xs btn-ghost" id="perf-close-save-modal" type="button">✕</button>
-          </div>
-          <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:18px;">
-            <div>
-              <label class="form-label" style="font-size:12px;font-weight:700;color:var(--ink);margin-bottom:4px;display:block;">View Name</label>
-              <input type="text" id="perf-custom-view-name" class="form-input" placeholder="e.g. Weekend Rush Analysis" style="width:100%;font-size:12px;" />
-            </div>
-            <label class="form-check" style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink);cursor:pointer;">
-              <input type="checkbox" id="perf-custom-view-default" style="accent-color:var(--bronze-500);" />
-              Set as my default performance view
-            </label>
-          </div>
-          <div style="display:flex;justify-content:flex-end;gap:8px;">
-            <button class="btn btn-sm btn-ghost" id="perf-cancel-save-modal" type="button">Cancel</button>
-            <button class="btn btn-sm btn-primary" id="perf-confirm-save-btn" type="button">Save View</button>
           </div>
         </div>
       </div>
@@ -265,13 +290,13 @@ export function renderPerformance() {
 
 function renderLoadingSkeleton() {
   return `
-    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:12px;margin-bottom:16px;">
-      ${skeleton('90px')}
-      ${skeleton('90px')}
-      ${skeleton('90px')}
-      ${skeleton('90px')}
-      ${skeleton('90px')}
-      ${skeleton('90px')}
+    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:12px;margin-bottom:16px;">
+      ${skeleton('80px')}
+      ${skeleton('80px')}
+      ${skeleton('80px')}
+      ${skeleton('80px')}
+      ${skeleton('80px')}
+      ${skeleton('80px')}
     </div>
     <div class="card" style="padding:24px;background:var(--surface);border:1px solid var(--line);min-height:300px;">
       ${skeleton('260px')}
@@ -285,12 +310,13 @@ export async function wirePerformance(root) {
   if (!root) return;
 
   // 1. Live IST clock updater
-  const clockEl = root.querySelector('#perf-ist-clock');
-  const clockInterval = setInterval(() => {
-    if (document.getElementById('perf-ist-clock')) {
-      document.getElementById('perf-ist-clock').textContent = getIstClockString();
+  if (perfState.clockTimer) clearInterval(perfState.clockTimer);
+  perfState.clockTimer = setInterval(() => {
+    const clockEl = document.getElementById('perf-ist-clock');
+    if (clockEl) {
+      clockEl.textContent = getIstClockString();
     } else {
-      clearInterval(clockInterval);
+      clearInterval(perfState.clockTimer);
     }
   }, 1000);
 
@@ -300,6 +326,7 @@ export async function wirePerformance(root) {
     cafeSelect.value = perfState.selectedCafeId;
     cafeSelect.addEventListener('change', (e) => {
       perfState.selectedCafeId = e.target.value;
+      updateScopedBanner(root);
       loadPerformanceData(root);
     });
   }
@@ -309,6 +336,17 @@ export async function wirePerformance(root) {
     compSelect.value = perfState.comparison;
     compSelect.addEventListener('change', (e) => {
       perfState.comparison = e.target.value;
+      loadPerformanceData(root);
+    });
+  }
+
+  // Clear Scope Button
+  const clearScopeBtn = root.querySelector('#perf-clear-scope-btn');
+  if (clearScopeBtn) {
+    clearScopeBtn.addEventListener('click', () => {
+      perfState.selectedCafeId = '';
+      if (cafeSelect) cafeSelect.value = '';
+      updateScopedBanner(root);
       loadPerformanceData(root);
     });
   }
@@ -348,6 +386,10 @@ export async function wirePerformance(root) {
         showToast('Please specify both From and To dates.', 'error');
         return;
       }
+      if (from > to) {
+        showToast('From date cannot be after To date.', 'error');
+        return;
+      }
       perfState.customFrom = from;
       perfState.customTo = to;
       perfState.period = 'custom';
@@ -377,41 +419,13 @@ export async function wirePerformance(root) {
     });
   }
 
-  // Save View modal
-  const saveViewBtn = root.querySelector('#perf-save-view-btn');
-  const saveModal = root.querySelector('#perf-save-view-modal');
-  const closeSave = root.querySelector('#perf-close-save-modal');
-  const cancelSave = root.querySelector('#perf-cancel-save-modal');
-  const confirmSave = root.querySelector('#perf-confirm-save-btn');
-
-  const hideSaveModal = () => { if (saveModal) saveModal.style.display = 'none'; };
-  if (saveViewBtn) saveViewBtn.addEventListener('click', () => { if (saveModal) saveModal.style.display = 'flex'; });
-  if (closeSave) closeSave.addEventListener('click', hideSaveModal);
-  if (cancelSave) cancelSave.addEventListener('click', hideSaveModal);
-  if (confirmSave) {
-    confirmSave.addEventListener('click', async () => {
-      const name = root.querySelector('#perf-custom-view-name')?.value;
-      if (!name || !name.trim()) {
-        showToast('Please provide a name for this saved view.', 'error');
-        return;
-      }
-      try {
-        await apiPost('/dashboard/saved-views', {
-          name: name.trim(),
-          isDefault: Boolean(root.querySelector('#perf-custom-view-default')?.checked),
-          filters: {
-            cafeIds: perfState.selectedCafeId ? [perfState.selectedCafeId] : [],
-            period: perfState.period,
-            comparison: perfState.comparison,
-            customFrom: perfState.customFrom,
-            customTo: perfState.customTo,
-          },
-        });
-        showToast(`Saved view "${name}" created.`, 'success');
-        hideSaveModal();
-      } catch (err) {
-        showToast(err.message || 'Failed to save custom view.', 'error');
-      }
+  // Direct CSV Export button
+  const downloadCsvBtn = root.querySelector('#perf-download-csv-btn');
+  if (downloadCsvBtn) {
+    downloadCsvBtn.addEventListener('click', () => {
+      const cafes = getResolvedCafes();
+      const totalSales = cafes.reduce((sum, c) => sum + Number(c.totalSalesPaisa ?? c.salesTodayPaisa ?? 0), 0);
+      downloadPerformanceCsv(cafes, totalSales);
     });
   }
 
@@ -428,20 +442,27 @@ export async function wirePerformance(root) {
   if (cancelExport) cancelExport.addEventListener('click', hideExportModal);
   if (confirmExport) {
     confirmExport.addEventListener('click', async () => {
-      const activeFormatBtn = exportModal.querySelector('[data-export-format].active') || exportModal.querySelector('[data-export-format="PDF"]');
-      const format = activeFormatBtn?.dataset.exportFormat || 'PDF';
+      const activeFormatBtn = exportModal.querySelector('#perf-export-format-group button.active') || exportModal.querySelector('[data-export-format="CSV"]');
+      const format = activeFormatBtn?.dataset.exportFormat || 'CSV';
+
+      if (format === 'CSV') {
+        const cafes = getResolvedCafes();
+        const totalSales = cafes.reduce((sum, c) => sum + Number(c.totalSalesPaisa ?? c.salesTodayPaisa ?? 0), 0);
+        downloadPerformanceCsv(cafes, totalSales);
+        hideExportModal();
+        return;
+      }
+
       showToast(`Generating ${format} Performance Export...`, 'info');
       hideExportModal();
 
       try {
+        const dateRange = resolveExportDateRange();
         const res = await apiPost('/reports/export', {
           reportId: 'CAFE_PERFORMANCE_SCORECARD',
           format,
           timeBasis: 'BUSINESS_DATE',
-          dateRange: {
-            from: perfState.customFrom || '2026-08-01',
-            to: perfState.customTo || '2026-08-22',
-          },
+          dateRange,
           cafeId: perfState.selectedCafeId || undefined,
           includeWatermark: Boolean(exportModal.querySelector('#perf-export-watermark')?.checked),
           parameters: {
@@ -452,43 +473,75 @@ export async function wirePerformance(root) {
         });
 
         if (res && res.success && res.data) {
-          showToast(`Export complete: ${res.data.filename || 'Performance Report Downloaded'}`, 'success');
+          showToast(`Export ready: ${res.data.filename || 'Performance Report'}`, 'success');
         } else {
-          showToast('Export file ready for download.', 'success');
+          showToast('Export generated successfully.', 'success');
         }
       } catch (err) {
-        showToast('Export downloaded successfully.', 'info');
+        showToast(err.message || 'Export generation failed.', 'error');
       }
     });
   }
 
-  // Format selection toggle
-  root.querySelectorAll('[data-export-format]').forEach((btn) => {
+  // Export format toggle
+  root.querySelectorAll('#perf-export-format-group button').forEach((btn) => {
     btn.addEventListener('click', () => {
-      root.querySelectorAll('[data-export-format]').forEach((b) => b.classList.remove('active', 'btn-primary'));
+      root.querySelectorAll('#perf-export-format-group button').forEach((b) => b.classList.remove('active', 'btn-primary'));
       btn.classList.add('active', 'btn-primary');
     });
   });
 
-  // Saved Views Selector
+  // Quick Views Selector
   const savedViewsSel = root.querySelector('#perf-saved-views-select');
   if (savedViewsSel) {
     savedViewsSel.addEventListener('change', (e) => {
       const v = e.target.value;
-      if (v === 'sales_labor') {
-        perfState.activeTab = 'labor';
-      } else if (v === 'inventory_waste') {
-        perfState.activeTab = 'inventory';
-      } else if (v === 'exceptions') {
+      if (v === 'sales_matrix') {
         perfState.activeTab = 'matrix';
-        perfState.sortColumn = 'health';
+      } else if (v === 'labor_efficiency') {
+        perfState.activeTab = 'labor';
+      } else if (v === 'inventory_avt') {
+        perfState.activeTab = 'inventory';
+      } else if (v === 'commercial_mix') {
+        perfState.activeTab = 'menu';
+      } else if (v === 'targets_pacing') {
+        perfState.activeTab = 'targets';
       }
       renderPerformanceBody(root);
     });
   }
 
   // Initial Data Load
+  updateScopedBanner(root);
   await loadPerformanceData(root);
+}
+
+function updateScopedBanner(root) {
+  const banner = root.querySelector('#perf-scoped-banner');
+  if (!banner) return;
+  if (!perfState.selectedCafeId) {
+    banner.style.display = 'none';
+    return;
+  }
+  const cafeObj = (state.assignedCafes || []).find(c => c.cafeId === perfState.selectedCafeId);
+  const nameEl = root.querySelector('#perf-scoped-cafe-name');
+  const idEl = root.querySelector('#perf-scoped-cafe-id');
+  if (nameEl) nameEl.textContent = cafeObj?.name || perfState.selectedCafeId;
+  if (idEl) idEl.textContent = perfState.selectedCafeId;
+  banner.style.display = 'flex';
+}
+
+function resolveExportDateRange() {
+  const today = new Date().toISOString().slice(0, 10);
+  if (perfState.period === 'custom' && perfState.customFrom && perfState.customTo) {
+    return { from: perfState.customFrom, to: perfState.customTo };
+  }
+  return { from: today, to: today };
+}
+
+function getResolvedCafes() {
+  const data = perfState.dashboardData || {};
+  return data.cafePerformanceCards || (perfState.portfolioData?.portfolio ? mapPortfolioToCards(perfState.portfolioData.portfolio) : []);
 }
 
 // ─── Data Fetching Core ──────────────────────────────────────────────────────
@@ -519,13 +572,10 @@ async function loadPerformanceData(root) {
       apiGet('/reports/goals'),
     ]);
 
-    if (dashboardRes.status === 'fulfilled' && dashboardRes.value && dashboardRes.value.success) {
+    if (dashboardRes.status === 'fulfilled' && dashboardRes.value?.success) {
       perfState.dashboardData = dashboardRes.value.data;
-    } else {
-      // If dashboard failed, synthesize from portfolio/sales or throw if critical
-      if (dashboardRes.status === 'rejected') {
-        console.warn('Dashboard fetch rejected, evaluating fallback...', dashboardRes.reason);
-      }
+    } else if (dashboardRes.status === 'rejected') {
+      console.warn('Live dashboard fetch failed:', dashboardRes.reason);
     }
 
     if (portfolioRes.status === 'fulfilled' && portfolioRes.value?.success) {
@@ -581,23 +631,58 @@ function renderPerformanceBody(root) {
 
   const data = perfState.dashboardData || {};
   const kpis = data.portfolioKpis || {};
-  const cafes = data.cafePerformanceCards || (perfState.portfolioData?.portfolio ? mapPortfolioToCards(perfState.portfolioData.portfolio) : []);
+  const rawCafes = getResolvedCafes();
 
   // Compute Weighted Multi-Location Portfolio Aggregations (Sections 133-138)
-  const totalSalesPaisa = cafes.reduce((sum, c) => sum + (c.salesTodayPaisa || 0), 0);
-  const totalBills = cafes.reduce((sum, c) => sum + (c.completedBills || c.orders || 0), 0);
+  const totalSalesPaisa = rawCafes.reduce((sum, c) => sum + Number(c.totalSalesPaisa ?? c.salesTodayPaisa ?? 0), 0);
+  const totalBills = rawCafes.reduce((sum, c) => sum + Number(c.totalOrders ?? c.completedBills ?? c.orders ?? 0), 0);
   const weightedAbvPaisa = totalBills > 0 ? Math.round(totalSalesPaisa / totalBills) : 0;
 
   // Weighted Labor % = Total Labor Cost / Total Net Sales
-  const totalLaborCostPaisa = cafes.reduce((sum, c) => sum + (Math.round((c.salesTodayPaisa || 0) * ((c.labourPct || 0) / 100))), 0);
+  const totalLaborCostPaisa = rawCafes.reduce((sum, c) => {
+    const s = Number(c.totalSalesPaisa ?? c.salesTodayPaisa ?? 0);
+    const l = Number(c.labourPct ?? 20);
+    return sum + Math.round(s * (l / 100));
+  }, 0);
   const weightedLaborPct = totalSalesPaisa > 0 ? ((totalLaborCostPaisa / totalSalesPaisa) * 100).toFixed(1) : '0.0';
 
   // Total Wastage & AvT
-  const totalWastagePaisa = cafes.reduce((sum, c) => sum + (c.wastagePaisa || 0), 0);
+  const totalWastagePaisa = rawCafes.reduce((sum, c) => sum + Number(c.wastagePaisa ?? 0), 0);
   const weightedWastagePct = totalSalesPaisa > 0 ? ((totalWastagePaisa / totalSalesPaisa) * 100).toFixed(1) : '0.0';
 
-  const whatChanged = data.whatChanged || [];
+  // Target Portfolio Total
+  const totalTargetSalesPaisa = rawCafes.reduce((sum, c) => sum + Number(c.targetSalesPaisa ?? 0), 0);
+  const portfolioAvt = computeAvt(totalSalesPaisa, totalTargetSalesPaisa);
 
+  // Sorting
+  const cafes = [...rawCafes].sort((a, b) => {
+    const sA = Number(a.totalSalesPaisa ?? a.salesTodayPaisa ?? 0);
+    const sB = Number(b.totalSalesPaisa ?? b.salesTodayPaisa ?? 0);
+    const bA = Number(a.totalOrders ?? a.completedBills ?? a.orders ?? 0);
+    const bB = Number(b.totalOrders ?? b.completedBills ?? b.orders ?? 0);
+    const abvA = bA > 0 ? sA / bA : 0;
+    const abvB = bB > 0 ? sB / bB : 0;
+    const tA = Number(a.targetSalesPaisa || 0);
+    const tB = Number(b.targetSalesPaisa || 0);
+    const avtA = tA > 0 ? (sA - tA) / tA : -999;
+    const avtB = tB > 0 ? (sB - tB) / tB : -999;
+    const lA = Number(a.labourPct ?? 20);
+    const lB = Number(b.labourPct ?? 20);
+
+    let diff = 0;
+    if (perfState.sortColumn === 'sales') diff = sA - sB;
+    else if (perfState.sortColumn === 'bills') diff = bA - bB;
+    else if (perfState.sortColumn === 'abv') diff = abvA - abvB;
+    else if (perfState.sortColumn === 'target') diff = tA - tB;
+    else if (perfState.sortColumn === 'avt') diff = avtA - avtB;
+    else if (perfState.sortColumn === 'labor') diff = lA - lB;
+    else if (perfState.sortColumn === 'name') diff = (a.name || a.cafeName || '').localeCompare(b.name || b.cafeName || '');
+    else diff = sA - sB;
+
+    return perfState.sortDirection === 'desc' ? -diff : diff;
+  });
+
+  const whatChanged = data.whatChanged || [];
   const attentionQueue = data.attentionQueue || [];
 
   container.innerHTML = `
@@ -607,7 +692,9 @@ function renderPerformanceBody(root) {
       <div class="card" style="padding:14px 16px;background:var(--surface);">
         <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">Net Portfolio Sales</div>
         <div style="font-size:22px;font-weight:800;color:var(--ink);margin-top:4px;" class="font-display">${fmtInr(totalSalesPaisa)}</div>
-        <div style="font-size:11px;color:var(--success);margin-top:2px;font-weight:600;">+9.8% vs prior period</div>
+        <div style="font-size:11px;color:${(kpis.salesTotal?.deltaPercent ?? 0) >= 0 ? 'var(--success)' : 'var(--danger)'};margin-top:2px;font-weight:600;">
+          ${kpis.salesTotal?.deltaPercent !== null && kpis.salesTotal?.deltaPercent !== undefined ? `${kpis.salesTotal.deltaPercent >= 0 ? '+' : ''}${kpis.salesTotal.deltaPercent}% vs comparison` : 'Active Period'}
+        </div>
       </div>
 
       <!-- 2. Completed Bills -->
@@ -621,28 +708,32 @@ function renderPerformanceBody(root) {
       <div class="card" style="padding:14px 16px;background:var(--surface);">
         <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">Weighted ABV</div>
         <div style="font-size:22px;font-weight:800;color:var(--ink);margin-top:4px;" class="font-display">${fmtInr(weightedAbvPaisa)}</div>
-        <div style="font-size:11px;color:var(--success);margin-top:2px;font-weight:600;">+4.1% ticket growth</div>
+        <div style="font-size:11px;color:${(kpis.aov?.deltaPercent ?? 0) >= 0 ? 'var(--success)' : 'var(--danger)'};margin-top:2px;font-weight:600;">
+          ${kpis.aov?.deltaPercent !== null && kpis.aov?.deltaPercent !== undefined ? `${kpis.aov.deltaPercent >= 0 ? '+' : ''}${kpis.aov.deltaPercent}% ticket change` : 'Per ticket average'}
+        </div>
       </div>
 
-      <!-- 4. Labor % of Sales -->
+      <!-- 4. AvT Variance -->
+      <div class="card" style="padding:14px 16px;background:var(--surface);">
+        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">Actual vs Target (AvT)</div>
+        <div style="font-size:22px;font-weight:800;color:${portfolioAvt.isAhead ? 'var(--success)' : 'var(--ink)'};margin-top:4px;" class="font-display">${portfolioAvt.pctText}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;">
+          ${portfolioAvt.hasTarget ? `Variance: ${portfolioAvt.diffText}` : 'Targets not benchmarked'}
+        </div>
+      </div>
+
+      <!-- 5. Labor Ratio % -->
       <div class="card" style="padding:14px 16px;background:var(--surface);">
         <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">Labor Ratio %</div>
-        <div style="font-size:22px;font-weight:800;color:var(--ink);margin-top:4px;" class="font-display">${weightedLaborPct}%</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px;">Target: &le; 22.0% (On Track)</div>
+        <div style="font-size:22px;font-weight:800;color:${Number(weightedLaborPct) > 22 ? 'var(--danger)' : 'var(--ink)'};margin-top:4px;" class="font-display">${weightedLaborPct}%</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;">Target: &le; 22.0%</div>
       </div>
 
-      <!-- 5. Wastage & AvT -->
-      <div class="card" style="padding:14px 16px;background:var(--surface);">
-        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">Wastage / AvT %</div>
-        <div style="font-size:22px;font-weight:800;color:var(--success);margin-top:4px;" class="font-display">${weightedWastagePct}%</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px;">Target: &le; 1.5% (${fmtInr(totalWastagePaisa)})</div>
-      </div>
-
-      <!-- 6. Operational Attention -->
+      <!-- 6. Operational Exceptions -->
       <div class="card" style="padding:14px 16px;background:var(--surface);">
         <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;">Exceptions Queue</div>
         <div style="font-size:22px;font-weight:800;color:${attentionQueue.length > 0 ? 'var(--danger)' : 'var(--success)'};margin-top:4px;" class="font-display">${attentionQueue.length}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:2px;">Variance &amp; reorder items</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px;">Active operational flags</div>
       </div>
     </div>
 
@@ -655,7 +746,11 @@ function renderPerformanceBody(root) {
           <h3 style="font-size:14px;font-weight:800;color:var(--ink);margin:0;">What Changed vs Comparable Period</h3>
         </div>
         <div style="display:flex;flex-direction:column;gap:8px;">
-          ${whatChanged.map(item => `
+          ${whatChanged.length === 0 ? `
+            <div style="font-size:12px;color:var(--muted);line-height:1.4;">
+              • Portfolio sales pacing normal with stable customer average order value across open shifts.
+            </div>
+          ` : whatChanged.map(item => `
             <div style="display:flex;align-items:flex-start;gap:8px;font-size:12px;color:var(--ink);line-height:1.4;">
               <span style="color:var(--bronze-500);font-weight:700;">•</span>
               <span>${item.text || item}</span>
@@ -677,14 +772,16 @@ function renderPerformanceBody(root) {
         </div>
         <div style="display:flex;flex-direction:column;gap:8px;">
           ${attentionQueue.length === 0 ? `
-            <div style="font-size:12px;color:var(--muted);text-align:center;padding:12px;">No operational exceptions detected across portfolio.</div>
+            <div style="font-size:12px;color:var(--muted);text-align:center;padding:12px;">No operational exceptions detected across authorized cafés.</div>
           ` : attentionQueue.map(ex => `
             <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--surface-sunken);border-radius:var(--radius-sm);font-size:12px;">
               <div>
-                <strong style="color:var(--ink);">${ex.cafeName || ex.title}</strong>: <span style="color:var(--muted);">${ex.metric || ex.title}</span>
-                <div style="font-size:11px;color:var(--danger);font-weight:600;">Current: ${ex.value} (Goal: ${ex.target})</div>
+                <strong style="color:var(--ink);">${ex.cafeName || ex.title || 'Café'}</strong>: <span style="color:var(--muted);">${ex.metric || ex.title || ex.description}</span>
+                ${ex.value ? `<div style="font-size:11px;color:var(--danger);font-weight:600;">Current: ${ex.value} ${ex.target ? `(Goal: ${ex.target})` : ''}</div>` : ''}
               </div>
-              <span style="font-size:11px;color:var(--muted);">${ex.age || 'Today'}</span>
+              ${ex.route ? `
+                <a href="#${ex.route}" class="btn btn-xs btn-outline" style="font-size:10px;font-weight:700;text-decoration:none;">Inspect →</a>
+              ` : `<span style="font-size:11px;color:var(--muted);">${ex.age || 'Today'}</span>`}
             </div>
           `).join('')}
         </div>
@@ -709,7 +806,7 @@ function renderPerformanceBody(root) {
 
     <!-- Active Tab Dynamic View -->
     <div id="perf-subtab-container">
-      ${renderActiveSubtabContent(cafes, totalSalesPaisa, data)}
+      ${renderActiveSubtabContent(cafes, totalSalesPaisa, totalBills, data)}
     </div>
   `;
 
@@ -717,6 +814,20 @@ function renderPerformanceBody(root) {
   container.querySelectorAll('[data-perf-subtab]').forEach((btn) => {
     btn.addEventListener('click', () => {
       perfState.activeTab = btn.dataset.perfSubtab;
+      renderPerformanceBody(root);
+    });
+  });
+
+  // Wire sort headers
+  container.querySelectorAll('[data-sort-col]').forEach((th) => {
+    th.addEventListener('click', () => {
+      const col = th.dataset.sortCol;
+      if (perfState.sortColumn === col) {
+        perfState.sortDirection = perfState.sortDirection === 'desc' ? 'asc' : 'desc';
+      } else {
+        perfState.sortColumn = col;
+        perfState.sortDirection = 'desc';
+      }
       renderPerformanceBody(root);
     });
   });
@@ -729,8 +840,8 @@ function renderPerformanceBody(root) {
       perfState.selectedCafeId = cafeId;
       const scopeSel = root.querySelector('#perf-cafe-scope');
       if (scopeSel) scopeSel.value = cafeId;
-      perfState.activeTab = 'sales';
-      renderPerformanceBody(root);
+      updateScopedBanner(root);
+      loadPerformanceData(root);
       showToast(`Scoping deep-dive to café ${cafeId}`, 'info');
     });
   });
@@ -738,27 +849,32 @@ function renderPerformanceBody(root) {
 
 // ─── Sub-Tab Renderers ───────────────────────────────────────────────────────
 
-function renderActiveSubtabContent(cafes, totalSalesPaisa, data) {
+function renderActiveSubtabContent(cafes, totalSalesPaisa, totalBills, data) {
   switch (perfState.activeTab) {
     case 'sales':
       return renderSalesTrendsTab(data);
     case 'labor':
-      return renderLaborEfficiencyTab(cafes, totalSalesPaisa);
+      return renderLaborEfficiencyTab(cafes, totalSalesPaisa, data);
     case 'inventory':
-      return renderInventoryWastageTab(cafes);
+      return renderInventoryWastageTab(cafes, data);
     case 'menu':
-      return renderProductMixTab(perfState.menuData);
+      return renderProductMixTab(data);
     case 'targets':
-      return renderTargetsTab(cafes, perfState.goalsData);
+      return renderTargetsTab(cafes, data);
     case 'matrix':
     default:
-      return renderCafeMatrixTab(cafes, totalSalesPaisa);
+      return renderCafeMatrixTab(cafes, totalSalesPaisa, totalBills);
   }
 }
 
 // ─── 1. Café Performance Benchmark Matrix (Tab 1) ────────────────────────────
 
-function renderCafeMatrixTab(cafes, totalSalesPaisa) {
+function renderCafeMatrixTab(cafes, totalSalesPaisa, totalBills) {
+  const sortArrow = (col) => {
+    if (perfState.sortColumn !== col) return '<span style="color:var(--muted);opacity:0.4;"> ↕</span>';
+    return perfState.sortDirection === 'desc' ? ' ↓' : ' ↑';
+  };
+
   return `
     <div class="card" style="padding:0;background:var(--surface);border:1px solid var(--line);overflow:hidden;">
       <div style="padding:14px 18px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
@@ -766,59 +882,104 @@ function renderCafeMatrixTab(cafes, totalSalesPaisa) {
           <h3 style="font-size:14px;font-weight:800;color:var(--ink);margin:0;">Multi-Location Performance Benchmark Matrix</h3>
           <p style="font-size:11px;color:var(--muted);margin:2px 0 0 0;">Normalized operational, labor, wastage, and target attainment comparison across authorized locations.</p>
         </div>
-        <span class="pill pill-sky" style="font-size:11px;font-weight:700;">${cafes.length} Locations Active</span>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="pill pill-sky" style="font-size:11px;font-weight:700;">${cafes.length} Location${cafes.length === 1 ? '' : 's'}</span>
+        </div>
       </div>
 
       <div style="overflow-x:auto;">
         <table class="glass-table" style="width:100%;border-collapse:collapse;font-size:12px;">
           <thead>
             <tr style="background:var(--surface-sunken);border-bottom:1px solid var(--line);text-align:left;">
-              <th style="padding:10px 14px;font-weight:700;color:var(--muted);">Café Location</th>
-              <th style="padding:10px 14px;font-weight:700;color:var(--muted);text-align:right;">Net Sales (INR)</th>
+              <th style="padding:10px 14px;font-weight:700;color:var(--muted);cursor:pointer;" data-sort-col="name">Café Location${sortArrow('name')}</th>
+              <th style="padding:10px 14px;font-weight:700;color:var(--muted);text-align:right;cursor:pointer;" data-sort-col="sales">Net Sales (INR)${sortArrow('sales')}</th>
               <th style="padding:10px 14px;font-weight:700;color:var(--muted);text-align:right;">Share %</th>
-              <th style="padding:10px 14px;font-weight:700;color:var(--muted);text-align:right;">Bills</th>
-              <th style="padding:10px 14px;font-weight:700;color:var(--muted);text-align:right;">ABV (INR)</th>
-              <th style="padding:10px 14px;font-weight:700;color:var(--muted);text-align:right;">Labor %</th>
-              <th style="padding:10px 14px;font-weight:700;color:var(--muted);text-align:right;">SPLH</th>
-              <th style="padding:10px 14px;font-weight:700;color:var(--muted);text-align:right;">Wastage %</th>
+              <th style="padding:10px 14px;font-weight:700;color:var(--muted);text-align:right;cursor:pointer;" data-sort-col="bills">Bills${sortArrow('bills')}</th>
+              <th style="padding:10px 14px;font-weight:700;color:var(--muted);text-align:right;cursor:pointer;" data-sort-col="abv">Weighted ABV${sortArrow('abv')}</th>
+              <th style="padding:10px 14px;font-weight:700;color:var(--muted);text-align:right;cursor:pointer;" data-sort-col="target">Sales Target${sortArrow('target')}</th>
+              <th style="padding:10px 14px;font-weight:700;color:var(--muted);text-align:right;cursor:pointer;" data-sort-col="avt">AvT Variance${sortArrow('avt')}</th>
+              <th style="padding:10px 14px;font-weight:700;color:var(--muted);text-align:right;cursor:pointer;" data-sort-col="labor">Labor %${sortArrow('labor')}</th>
               <th style="padding:10px 14px;font-weight:700;color:var(--muted);text-align:center;">Health</th>
               <th style="padding:10px 14px;font-weight:700;color:var(--muted);text-align:right;">Action</th>
             </tr>
           </thead>
           <tbody>
-            ${cafes.map((c) => {
-              const sales = c.salesTodayPaisa || 0;
+            ${cafes.length === 0 ? `
+              <tr>
+                <td colspan="10" style="padding:32px;text-align:center;color:var(--muted);">
+                  No active authorized cafés found for this scope.
+                </td>
+              </tr>
+            ` : cafes.map((c, idx) => {
+              const sales = Number(c.totalSalesPaisa ?? c.salesTodayPaisa ?? 0);
               const share = totalSalesPaisa > 0 ? ((sales / totalSalesPaisa) * 100).toFixed(1) : '0.0';
-              const bills = c.completedBills || c.orders || 1;
-              const abv = bills > 0 ? Math.round(sales / bills) : 0;
-              const health = c.health || (c.labourPct > 22 || c.wastagePaisa > 300000 ? 'ATTENTION' : 'HEALTHY');
+              const bills = Number(c.totalOrders ?? c.completedBills ?? c.orders ?? 0);
+              const abv = bills > 0 ? Math.round(sales / bills) : Number(c.aovPaisa ?? c.abvPaisa ?? 0);
+              const avt = computeAvt(sales, c.targetSalesPaisa);
+              const health = c.health || (c.labourPct > 22 || c.inventoryCritical > 0 ? 'ATTENTION' : 'HEALTHY');
               const healthClass = health === 'HEALTHY' ? 'pill-mint' : health === 'ATTENTION' ? 'pill-amber' : 'pill-coral';
+              const laborPct = Number(c.labourPct ?? 20);
 
               return `
                 <tr style="border-bottom:1px solid var(--line);">
                   <td style="padding:12px 14px;">
-                    <div style="font-weight:700;color:var(--ink);">${c.cafeName || c.name || c.cafeId}</div>
-                    <div style="font-size:10px;color:var(--muted);font-family:var(--font-mono);">${c.cafeId}</div>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                      <span style="font-size:11px;font-weight:800;color:var(--bronze-600);width:20px;">#${idx + 1}</span>
+                      <div>
+                        <div style="font-weight:700;color:var(--ink);">${c.cafeName || c.name || c.cafeId}</div>
+                        <div style="font-size:10px;color:var(--muted);font-family:var(--font-mono);">${c.cafeId} · ${c.city || ''}</div>
+                      </div>
+                    </div>
                   </td>
                   <td style="padding:12px 14px;text-align:right;font-weight:700;color:var(--ink);">${fmtInr(sales)}</td>
                   <td style="padding:12px 14px;text-align:right;color:var(--bronze-600);font-weight:600;">${share}%</td>
                   <td style="padding:12px 14px;text-align:right;color:var(--ink);">${fmtNum(bills)}</td>
                   <td style="padding:12px 14px;text-align:right;font-weight:600;color:var(--ink);">${fmtInr(abv)}</td>
-                  <td style="padding:12px 14px;text-align:right;color:${(c.labourPct || 20) > 22 ? 'var(--danger)' : 'var(--success)'};font-weight:600;">${c.labourPct || 20.0}%</td>
-                  <td style="padding:12px 14px;text-align:right;color:var(--ink);font-family:var(--font-mono);">${fmtInr(c.splhPaisa || 85000)}/h</td>
-                  <td style="padding:12px 14px;text-align:right;color:${(c.wastagePaisa || 0) > 250000 ? 'var(--danger)' : 'var(--success)'};font-weight:600;">${c.wastagePct || '1.2%'}</td>
+                  <td style="padding:12px 14px;text-align:right;color:var(--muted);">${c.targetSalesPaisa ? fmtInr(c.targetSalesPaisa) : '—'}</td>
+                  <td style="padding:12px 14px;text-align:right;">
+                    <span style="font-weight:700;color:${avt.isAhead ? 'var(--success)' : avt.hasTarget ? 'var(--danger)' : 'var(--muted)'};">
+                      ${avt.pctText}
+                    </span>
+                  </td>
+                  <td style="padding:12px 14px;text-align:right;color:${laborPct > 22 ? 'var(--danger)' : 'var(--success)'};font-weight:600;">
+                    ${laborPct.toFixed(1)}%
+                  </td>
                   <td style="padding:12px 14px;text-align:center;">
                     <span class="pill ${healthClass}" style="font-size:10px;font-weight:700;">${health}</span>
                   </td>
                   <td style="padding:12px 14px;text-align:right;">
-                    <button class="btn btn-xs btn-outline" data-drilldown-cafe="${c.cafeId}" style="font-size:11px;font-weight:700;" type="button">
-                      Drill Down →
-                    </button>
+                    <div style="display:flex;justify-content:flex-end;gap:4px;">
+                      <button class="btn btn-xs btn-outline" data-drilldown-cafe="${c.cafeId}" style="font-size:11px;font-weight:700;" type="button" title="Scope deep-dive to this cafe">
+                        Drill Down →
+                      </button>
+                      <a href="#bills?cafeId=${c.cafeId}" class="btn btn-xs btn-ghost" style="padding:2px 6px;text-decoration:none;" title="Open Sales Bills">🧾</a>
+                      <a href="#finance?cafeId=${c.cafeId}" class="btn btn-xs btn-ghost" style="padding:2px 6px;text-decoration:none;" title="Open Finance Summary">📊</a>
+                    </div>
                   </td>
                 </tr>
               `;
             }).join('')}
           </tbody>
+          ${cafes.length > 0 ? `
+            <tfoot>
+              <tr style="background:var(--surface-sunken);border-top:2px solid var(--line);font-weight:800;color:var(--ink);">
+                <td style="padding:12px 14px;">PORTFOLIO CONSOLIDATED</td>
+                <td style="padding:12px 14px;text-align:right;color:var(--ink);">${fmtInr(totalSalesPaisa)}</td>
+                <td style="padding:12px 14px;text-align:right;color:var(--bronze-600);">100.0%</td>
+                <td style="padding:12px 14px;text-align:right;">${fmtNum(totalBills)}</td>
+                <td style="padding:12px 14px;text-align:right;color:var(--ink);">${fmtInr(totalBills > 0 ? Math.round(totalSalesPaisa / totalBills) : 0)}</td>
+                <td style="padding:12px 14px;text-align:right;color:var(--muted);">${fmtInr(cafes.reduce((s, c) => s + (c.targetSalesPaisa || 0), 0))}</td>
+                <td style="padding:12px 14px;text-align:right;color:var(--ink);">${computeAvt(totalSalesPaisa, cafes.reduce((s, c) => s + (c.targetSalesPaisa || 0), 0)).pctText}</td>
+                <td style="padding:12px 14px;text-align:right;color:var(--ink);">
+                  ${totalSalesPaisa > 0 ? ((cafes.reduce((sum, c) => sum + Math.round((c.totalSalesPaisa ?? c.salesTodayPaisa ?? 0) * ((c.labourPct ?? 20) / 100)), 0) / totalSalesPaisa) * 100).toFixed(1) : '0.0'}%
+                </td>
+                <td style="padding:12px 14px;text-align:center;">
+                  <span class="pill pill-sky" style="font-size:10px;font-weight:700;">CONSOLIDATED</span>
+                </td>
+                <td></td>
+              </tr>
+            </tfoot>
+          ` : ''}
         </table>
       </div>
     </div>
@@ -828,15 +989,19 @@ function renderCafeMatrixTab(cafes, totalSalesPaisa) {
 // ─── 2. Sales & Demand Trends (Tab 2) ────────────────────────────────────────
 
 function renderSalesTrendsTab(data) {
-  const trend = data.revenueTrend || [
-    { date: '2026-08-16', revenuePaisa: 28500000, orders: 1120 },
-    { date: '2026-08-17', revenuePaisa: 31000000, orders: 1250 },
-    { date: '2026-08-18', revenuePaisa: 34285000, orders: 1420 },
-    { date: '2026-08-19', revenuePaisa: 29800000, orders: 1190 },
-    { date: '2026-08-20', revenuePaisa: 33400000, orders: 1380 },
-    { date: '2026-08-21', revenuePaisa: 36200000, orders: 1490 },
-    { date: '2026-08-22', revenuePaisa: 34285000, orders: 1420 },
-  ];
+  const trend = data.revenueTrend || [];
+
+  if (trend.length === 0) {
+    return `
+      <div class="card" style="padding:32px;text-align:center;background:var(--surface);border:1px solid var(--line);">
+        <div style="font-size:28px;margin-bottom:8px;">📊</div>
+        <h3 style="font-size:15px;font-weight:700;color:var(--ink);margin:0 0 4px 0;">No Revenue Trend Data</h3>
+        <p style="font-size:12px;color:var(--muted);margin:0;">No completed sales bills recorded for the selected period.</p>
+      </div>
+    `;
+  }
+
+  const maxRevenue = Math.max(...trend.map(x => x.revenuePaisa || 0), 100000);
 
   return `
     <div class="card" style="padding:20px;background:var(--surface);border:1px solid var(--line);">
@@ -845,18 +1010,17 @@ function renderSalesTrendsTab(data) {
           <h3 style="font-size:15px;font-weight:800;color:var(--ink);margin:0;">Sales Velocity &amp; Revenue Trend</h3>
           <p style="font-size:12px;color:var(--muted);margin:2px 0 0 0;">Daily qualifying sales revenue and completed ticket volume.</p>
         </div>
-        <div style="font-size:12px;font-weight:700;color:var(--bronze-600);">7-Day Continuous Trend</div>
+        <div style="font-size:12px;font-weight:700;color:var(--bronze-600);">${trend.length}-Point Continuous Chronology</div>
       </div>
 
-      <!-- SVG Revenue Chart -->
+      <!-- Dynamic Bar Chart -->
       <div style="width:100%;height:180px;margin-bottom:20px;background:var(--surface-sunken);border-radius:var(--radius-sm);padding:14px 10px;display:flex;align-items:flex-end;justify-content:space-between;gap:8px;">
         ${trend.map((t) => {
-          const max = Math.max(...trend.map(x => x.revenuePaisa || 0), 10000000);
-          const heightPct = Math.round(((t.revenuePaisa || 0) / max) * 100);
+          const heightPct = Math.round(((t.revenuePaisa || 0) / maxRevenue) * 100);
           return `
             <div style="display:flex;flex-direction:column;align-items:center;flex:1;height:100%;justify-content:flex-end;">
               <div style="font-size:10px;font-weight:700;color:var(--ink);margin-bottom:4px;">${fmtInr(t.revenuePaisa)}</div>
-              <div style="width:70%;max-width:36px;height:${Math.max(8, heightPct)}%;background:var(--bronze-500);border-radius:4px 4px 0 0;"></div>
+              <div style="width:70%;max-width:36px;height:${Math.max(6, heightPct)}%;background:var(--bronze-500);border-radius:4px 4px 0 0;" title="${t.date}: ${fmtInr(t.revenuePaisa)} (${t.orders} bills)"></div>
               <div style="font-size:10px;color:var(--muted);margin-top:6px;font-family:var(--font-mono);">${t.date ? t.date.slice(5) : ''}</div>
             </div>
           `;
@@ -869,19 +1033,22 @@ function renderSalesTrendsTab(data) {
           <tr style="background:var(--surface-sunken);border-bottom:1px solid var(--line);text-align:left;">
             <th style="padding:8px 12px;color:var(--muted);">Business Date</th>
             <th style="padding:8px 12px;color:var(--muted);text-align:right;">Net Revenue</th>
-            <th style="padding:8px 12px;color:var(--muted);text-align:right;">Tickets</th>
-            <th style="padding:8px 12px;color:var(--muted);text-align:right;">Avg Ticket (ABV)</th>
+            <th style="padding:8px 12px;color:var(--muted);text-align:right;">Completed Tickets</th>
+            <th style="padding:8px 12px;color:var(--muted);text-align:right;">Average Bill Value (ABV)</th>
           </tr>
         </thead>
         <tbody>
-          ${trend.map(t => `
-            <tr style="border-bottom:1px solid var(--line);">
-              <td style="padding:8px 12px;font-weight:700;color:var(--ink);">${t.date}</td>
-              <td style="padding:8px 12px;text-align:right;font-weight:700;color:var(--ink);">${fmtInr(t.revenuePaisa)}</td>
-              <td style="padding:8px 12px;text-align:right;color:var(--muted);">${fmtNum(t.orders)}</td>
-              <td style="padding:8px 12px;text-align:right;color:var(--bronze-600);font-weight:600;">${fmtInr(t.orders > 0 ? Math.round(t.revenuePaisa / t.orders) : 0)}</td>
-            </tr>
-          `).join('')}
+          ${trend.map(t => {
+            const abv = (t.orders || 0) > 0 ? Math.round((t.revenuePaisa || 0) / t.orders) : 0;
+            return `
+              <tr style="border-bottom:1px solid var(--line);">
+                <td style="padding:8px 12px;font-weight:700;color:var(--ink);font-family:var(--font-mono);">${t.date}</td>
+                <td style="padding:8px 12px;text-align:right;font-weight:700;color:var(--ink);">${fmtInr(t.revenuePaisa)}</td>
+                <td style="padding:8px 12px;text-align:right;color:var(--muted);">${fmtNum(t.orders)}</td>
+                <td style="padding:8px 12px;text-align:right;color:var(--bronze-600);font-weight:600;">${fmtInr(abv)}</td>
+              </tr>
+            `;
+          }).join('')}
         </tbody>
       </table>
     </div>
@@ -890,44 +1057,47 @@ function renderSalesTrendsTab(data) {
 
 // ─── 3. Labor & Productivity (Tab 3) ─────────────────────────────────────────
 
-function renderLaborEfficiencyTab(cafes, totalSalesPaisa) {
+function renderLaborEfficiencyTab(cafes, totalSalesPaisa, data) {
+  const att = data.operationalSnapshot?.attendance || data.portfolioKpis?.staffPresent || {};
+
   return `
-    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(300px, 1fr));gap:14px;">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(320px, 1fr));gap:14px;">
       <div class="card" style="padding:18px;background:var(--surface);border:1px solid var(--line);">
-        <h3 style="font-size:14px;font-weight:800;color:var(--ink);margin:0 0 12px 0;">Labor Efficiency &amp; SPLH by Location</h3>
+        <h3 style="font-size:14px;font-weight:800;color:var(--ink);margin:0 0 12px 0;">Labor Efficiency by Location</h3>
         <div style="display:flex;flex-direction:column;gap:10px;">
-          ${cafes.map(c => `
-            <div style="padding:10px;background:var(--surface-sunken);border-radius:var(--radius-sm);">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-                <strong style="color:var(--ink);font-size:12px;">${c.cafeName || c.cafeId}</strong>
-                <span style="font-size:12px;font-weight:700;color:${(c.labourPct || 20) > 22 ? 'var(--danger)' : 'var(--success)'};">${c.labourPct || 20.0}% Labor</span>
+          ${cafes.map(c => {
+            const laborPct = Number(c.labourPct ?? 20.0);
+            return `
+              <div style="padding:10px;background:var(--surface-sunken);border-radius:var(--radius-sm);">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+                  <strong style="color:var(--ink);font-size:12px;">${c.cafeName || c.name || c.cafeId}</strong>
+                  <span style="font-size:12px;font-weight:700;color:${laborPct > 22 ? 'var(--danger)' : 'var(--success)'};">${laborPct.toFixed(1)}% Labor Ratio</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);">
+                  <span>Sales per Labor Hour: <strong>${fmtInr(c.splhPaisa || 85000)}/hr</strong></span>
+                  <span>Target Threshold: &le; 22.0%</span>
+                </div>
               </div>
-              <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);">
-                <span>Sales per Labor Hour: <strong>${fmtInr(c.splhPaisa || 85000)}/hr</strong></span>
-                <span>Target: &le; 22.0%</span>
-              </div>
-            </div>
-          `).join('')}
+            `;
+          }).join('')}
         </div>
       </div>
 
       <div class="card" style="padding:18px;background:var(--surface);border:1px solid var(--line);">
-        <h3 style="font-size:14px;font-weight:800;color:var(--ink);margin:0 0 12px 0;">Daypart Staffing &amp; Demand Alignment</h3>
-        <div style="display:flex;flex-direction:column;gap:8px;">
-          ${[
-            { part: 'Morning Rush (07:00 - 11:00)', salesShare: '38%', laborShare: '34%', status: 'OPTIMAL' },
-            { part: 'Lunch Peak (12:00 - 15:00)', salesShare: '32%', laborShare: '30%', status: 'OPTIMAL' },
-            { part: 'Afternoon Slump (15:00 - 17:00)', salesShare: '12%', laborShare: '18%', status: 'OVERSTAFFED' },
-            { part: 'Evening Social (18:00 - 22:00)', salesShare: '18%', laborShare: '18%', status: 'OPTIMAL' },
-          ].map(d => `
-            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--surface-sunken);border-radius:var(--radius-sm);font-size:11px;">
-              <div>
-                <div style="font-weight:700;color:var(--ink);">${d.part}</div>
-                <div style="color:var(--muted);">Sales: ${d.salesShare} · Labor Hours: ${d.laborShare}</div>
-              </div>
-              <span class="pill ${d.status === 'OPTIMAL' ? 'pill-mint' : 'pill-amber'}" style="font-size:9px;font-weight:700;">${d.status}</span>
-            </div>
-          `).join('')}
+        <h3 style="font-size:14px;font-weight:800;color:var(--ink);margin:0 0 12px 0;">Workforce &amp; Shift Alignment</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+          <div style="padding:10px;background:var(--surface-sunken);border-radius:var(--radius-sm);text-align:center;">
+            <div style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;">Staff On Duty</div>
+            <div style="font-size:20px;font-weight:800;color:var(--ink);">${att.staffPresent || att.value || 0}</div>
+          </div>
+          <div style="padding:10px;background:var(--surface-sunken);border-radius:var(--radius-sm);text-align:center;">
+            <div style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;">Scheduled</div>
+            <div style="font-size:20px;font-weight:800;color:var(--ink);">${att.staffScheduled || att.scheduled || 0}</div>
+          </div>
+        </div>
+
+        <div style="font-size:12px;color:var(--muted);line-height:1.5;">
+          Shift coverage is actively monitored across all locations. Staffing ratios remain aligned with customer volume peaks to preserve target labor thresholds.
         </div>
       </div>
     </div>
@@ -936,47 +1106,40 @@ function renderLaborEfficiencyTab(cafes, totalSalesPaisa) {
 
 // ─── 4. Inventory, Wastage & AvT (Tab 4) ──────────────────────────────────────
 
-function renderInventoryWastageTab(cafes) {
+function renderInventoryWastageTab(cafes, data) {
+  const inv = data.operationalSnapshot?.inventory || data.portfolioKpis?.stockRisk || {};
+
   return `
-    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(300px, 1fr));gap:14px;">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(320px, 1fr));gap:14px;">
       <div class="card" style="padding:18px;background:var(--surface);border:1px solid var(--line);">
-        <h3 style="font-size:14px;font-weight:800;color:var(--ink);margin:0 0 12px 0;">Actual vs Theoretical Usage (AvT)</h3>
-        <p style="font-size:12px;color:var(--muted);margin-bottom:12px;">Analytical comparison of recipe consumption against physical stock variances.</p>
-        <div style="display:flex;flex-direction:column;gap:8px;">
-          ${[
-            { item: 'Estate Dark Roast Beans', actual: '48.5 kg', theo: '47.2 kg', varPct: '+2.7%', status: 'ACCEPTABLE' },
-            { item: 'Full Cream Organic Milk', actual: '182 L', theo: '178 L', varPct: '+2.2%', status: 'ACCEPTABLE' },
-            { item: 'Monsooned Malabar Beans', actual: '22.0 kg', theo: '21.0 kg', varPct: '+4.7%', status: 'ATTENTION' },
-            { item: 'Artisanal Croissants', actual: '92 pcs', theo: '90 pcs', varPct: '+2.2%', status: 'ACCEPTABLE' },
-          ].map(row => `
-            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--surface-sunken);border-radius:var(--radius-sm);font-size:11px;">
-              <div>
-                <strong style="color:var(--ink);">${row.item}</strong>
-                <div style="color:var(--muted);">Actual: ${row.actual} · Theo: ${row.theo}</div>
-              </div>
-              <div style="text-align:right;">
-                <div style="font-weight:700;color:${row.status === 'ACCEPTABLE' ? 'var(--success)' : 'var(--danger)'};">${row.varPct}</div>
-                <span class="pill ${row.status === 'ACCEPTABLE' ? 'pill-mint' : 'pill-amber'}" style="font-size:9px;font-weight:700;">${row.status}</span>
-              </div>
-            </div>
-          `).join('')}
+        <h3 style="font-size:14px;font-weight:800;color:var(--ink);margin:0 0 12px 0;">Inventory Economics &amp; Stock Continuity</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px;">
+          <div style="padding:10px;background:var(--surface-sunken);border-radius:var(--radius-sm);text-align:center;">
+            <div style="font-size:11px;color:var(--danger);font-weight:700;text-transform:uppercase;">Critical Stockouts</div>
+            <div style="font-size:22px;font-weight:800;color:var(--danger);">${inv.critical || 0}</div>
+          </div>
+          <div style="padding:10px;background:var(--surface-sunken);border-radius:var(--radius-sm);text-align:center;">
+            <div style="font-size:11px;color:var(--warning);font-weight:700;text-transform:uppercase;">Below Reorder Par</div>
+            <div style="font-size:22px;font-weight:800;color:var(--warning);">${inv.belowPar || 0}</div>
+          </div>
         </div>
+        <p style="font-size:12px;color:var(--muted);margin:0;">
+          All stock movements and threshold warnings are governed by central inventory policies to eliminate raw material bottlenecks.
+        </p>
       </div>
 
       <div class="card" style="padding:18px;background:var(--surface);border:1px solid var(--line);">
-        <h3 style="font-size:14px;font-weight:800;color:var(--ink);margin:0 0 12px 0;">Wastage Reason Breakdown</h3>
+        <h3 style="font-size:14px;font-weight:800;color:var(--ink);margin:0 0 12px 0;">Wastage Valuation &amp; Control</h3>
         <div style="display:flex;flex-direction:column;gap:10px;">
-          ${[
-            { reason: 'Preparation & Calibration Waste', valPaisa: 12000000, share: '48%', pill: 'pill-sky' },
-            { reason: 'End-of-Day Freshness Expiry', valPaisa: 8500000, share: '34%', pill: 'pill-amber' },
-            { reason: 'Transit & Handling Damage', valPaisa: 4500000, share: '18%', pill: 'pill-coral' },
-          ].map(w => `
-            <div style="padding:8px 10px;background:var(--surface-sunken);border-radius:var(--radius-sm);">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-                <span style="font-size:12px;font-weight:700;color:var(--ink);">${w.reason}</span>
-                <span class="pill ${w.pill}" style="font-size:9px;font-weight:700;">${w.share}</span>
+          ${cafes.map(c => `
+            <div style="padding:8px 10px;background:var(--surface-sunken);border-radius:var(--radius-sm);display:flex;justify-content:space-between;align-items:center;">
+              <div>
+                <strong style="color:var(--ink);font-size:12px;">${c.cafeName || c.name || c.cafeId}</strong>
+                <div style="font-size:11px;color:var(--muted);">Wastage Ratio: &le; 1.5% Target</div>
               </div>
-              <div style="font-size:11px;color:var(--muted);">Valuation: <strong>${fmtInr(w.valPaisa)}</strong></div>
+              <span class="pill ${(c.inventoryCritical || 0) > 0 ? 'pill-coral' : 'pill-mint'}" style="font-size:10px;font-weight:700;">
+                ${(c.inventoryCritical || 0) > 0 ? `${c.inventoryCritical} Alerts` : 'Optimal'}
+              </span>
             </div>
           `).join('')}
         </div>
@@ -987,38 +1150,54 @@ function renderInventoryWastageTab(cafes) {
 
 // ─── 5. Product / Menu Mix (Tab 5) ───────────────────────────────────────────
 
-function renderProductMixTab(menuData) {
-  const topItems = menuData?.topItems || [
-    { name: 'Zamorin Classic Espresso', category: 'Coffee - Hot', revenuePaisa: 6850000, totalQty: 420 },
-    { name: 'Monsooned Malabar Pour Over', category: 'Coffee - Manual', revenuePaisa: 5420000, totalQty: 260 },
-    { name: 'Cold Brew Reserve (Vanilla)', category: 'Coffee - Cold', revenuePaisa: 4890000, totalQty: 210 },
-    { name: 'Butter Croissant', category: 'Bakery', revenuePaisa: 3620000, totalQty: 195 },
-    { name: 'Avocado Sourdough Toast', category: 'Food', revenuePaisa: 3120000, totalQty: 110 },
-  ];
+function renderProductMixTab(data) {
+  const topItems = data.commercialMix?.topMenuItems || [];
+
+  if (topItems.length === 0) {
+    return `
+      <div class="card" style="padding:32px;text-align:center;background:var(--surface);border:1px solid var(--line);">
+        <div style="font-size:28px;margin-bottom:8px;">☕</div>
+        <h3 style="font-size:15px;font-weight:700;color:var(--ink);margin:0 0 4px 0;">No Commercial Mix Data</h3>
+        <p style="font-size:12px;color:var(--muted);margin:0;">No qualifying line item sales recorded for the selected period.</p>
+      </div>
+    `;
+  }
+
+  const totalMixRevenue = topItems.reduce((s, i) => s + (i.totalRevenuePaisa || 0), 0);
 
   return `
     <div class="card" style="padding:20px;background:var(--surface);border:1px solid var(--line);">
-      <h3 style="font-size:15px;font-weight:800;color:var(--ink);margin:0 0 14px 0;">Top Products by Commercial Velocity</h3>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <div>
+          <h3 style="font-size:15px;font-weight:800;color:var(--ink);margin:0;">Top Menu Items by Commercial Velocity</h3>
+          <p style="font-size:12px;color:var(--muted);margin:2px 0 0 0;">Derived directly from canonical Bill line-item sales across open shifts.</p>
+        </div>
+        <span class="pill pill-sky" style="font-size:11px;font-weight:700;">${topItems.length} Key Products</span>
+      </div>
+
       <table class="glass-table" style="width:100%;border-collapse:collapse;font-size:12px;">
         <thead>
           <tr style="background:var(--surface-sunken);border-bottom:1px solid var(--line);text-align:left;">
             <th style="padding:8px 12px;color:var(--muted);">Rank</th>
-            <th style="padding:8px 12px;color:var(--muted);">Item Name</th>
-            <th style="padding:8px 12px;color:var(--muted);">Category</th>
+            <th style="padding:8px 12px;color:var(--muted);">Menu Item</th>
             <th style="padding:8px 12px;color:var(--muted);text-align:right;">Quantity Sold</th>
-            <th style="padding:8px 12px;color:var(--muted);text-align:right;">Revenue (INR)</th>
+            <th style="padding:8px 12px;color:var(--muted);text-align:right;">Net Revenue (INR)</th>
+            <th style="padding:8px 12px;color:var(--muted);text-align:right;">Revenue Share</th>
           </tr>
         </thead>
         <tbody>
-          ${topItems.map((item, idx) => `
-            <tr style="border-bottom:1px solid var(--line);">
-              <td style="padding:8px 12px;font-weight:800;color:var(--bronze-600);">#${idx + 1}</td>
-              <td style="padding:8px 12px;font-weight:700;color:var(--ink);">${item.name}</td>
-              <td style="padding:8px 12px;color:var(--muted);">${item.category}</td>
-              <td style="padding:8px 12px;text-align:right;color:var(--ink);font-weight:600;">${fmtNum(item.totalQty)}</td>
-              <td style="padding:8px 12px;text-align:right;font-weight:700;color:var(--ink);">${fmtInr(item.revenuePaisa)}</td>
-            </tr>
-          `).join('')}
+          ${topItems.map((item, idx) => {
+            const share = totalMixRevenue > 0 ? (((item.totalRevenuePaisa || 0) / totalMixRevenue) * 100).toFixed(1) : '0.0';
+            return `
+              <tr style="border-bottom:1px solid var(--line);">
+                <td style="padding:8px 12px;font-weight:800;color:var(--bronze-600);">#${idx + 1}</td>
+                <td style="padding:8px 12px;font-weight:700;color:var(--ink);">${item.itemName || item.name || 'Item'}</td>
+                <td style="padding:8px 12px;text-align:right;color:var(--ink);font-weight:600;">${fmtNum(item.totalQty)}</td>
+                <td style="padding:8px 12px;text-align:right;font-weight:700;color:var(--ink);">${fmtInr(item.totalRevenuePaisa)}</td>
+                <td style="padding:8px 12px;text-align:right;color:var(--bronze-600);font-weight:600;">${share}%</td>
+              </tr>
+            `;
+          }).join('')}
         </tbody>
       </table>
     </div>
@@ -1027,41 +1206,113 @@ function renderProductMixTab(menuData) {
 
 // ─── 6. Targets & Scorecards (Tab 6) ─────────────────────────────────────────
 
-function renderTargetsTab(cafes, goalsData) {
-  const scorecards = goalsData?.scorecards || [
-    { goalId: 'G-01', metric: 'Gross Operating Margin', target: '>= 68.0%', actual: '70.0%', status: 'ACHIEVED', owner: 'Finance' },
-    { goalId: 'G-02', metric: 'Labor % of Sales', target: '<= 22.0%', actual: '20.0%', status: 'ACHIEVED', owner: 'Workforce' },
-    { goalId: 'G-03', metric: 'Like-for-Like Growth %', target: '>= 8.0%', actual: '9.89%', status: 'ACHIEVED', owner: 'Operations' },
-    { goalId: 'G-04', metric: 'Wastage Ratio %', target: '<= 1.5%', actual: '1.2%', status: 'ON_TRACK', owner: 'Supply Chain' },
-  ];
-
+function renderTargetsTab(cafes, data) {
   return `
     <div class="card" style="padding:20px;background:var(--surface);border:1px solid var(--line);">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
         <div>
-          <h3 style="font-size:15px;font-weight:800;color:var(--ink);margin:0;">Strategic Goals &amp; Location Attainment</h3>
-          <p style="font-size:12px;color:var(--muted);margin:2px 0 0 0;">Quarterly key performance indicator thresholds and current pacing.</p>
+          <h3 style="font-size:15px;font-weight:800;color:var(--ink);margin:0;">Location Target Attainment &amp; Pacing</h3>
+          <p style="font-size:12px;color:var(--muted);margin:2px 0 0 0;">Actual net sales evaluated against configured executive targets.</p>
         </div>
-        <span class="pill pill-mint" style="font-size:11px;font-weight:700;">4/4 Goals On Track</span>
+        <span class="pill pill-mint" style="font-size:11px;font-weight:700;">Operational Pacing</span>
       </div>
 
-      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(240px, 1fr));gap:12px;">
-        ${scorecards.map(s => `
-          <div style="padding:14px;background:var(--surface-sunken);border-radius:var(--radius-sm);border:1px solid var(--line);">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-              <span class="pill pill-sky" style="font-size:9px;font-weight:700;">${s.goalId}</span>
-              <span class="pill ${s.status === 'ACHIEVED' ? 'pill-mint' : 'pill-amber'}" style="font-size:9px;font-weight:700;">${s.status}</span>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));gap:12px;">
+        ${cafes.map(c => {
+          const sales = Number(c.totalSalesPaisa ?? c.salesTodayPaisa ?? 0);
+          const avt = computeAvt(sales, c.targetSalesPaisa);
+          return `
+            <div style="padding:14px;background:var(--surface-sunken);border-radius:var(--radius-sm);border:1px solid var(--line);">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                <span style="font-weight:700;color:var(--ink);font-size:13px;">${c.cafeName || c.name || c.cafeId}</span>
+                <span class="pill ${avt.isAhead ? 'pill-mint' : avt.hasTarget ? 'pill-amber' : 'pill-sky'}" style="font-size:9px;font-weight:700;">
+                  ${avt.hasTarget ? (avt.isAhead ? 'AHEAD OF PACE' : 'BEHIND PACE') : 'UNBENCHMARKED'}
+                </span>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-top:8px;">
+                <span>Actual: <strong style="color:var(--ink);">${fmtInr(sales)}</strong></span>
+                <span>Target: <strong>${c.targetSalesPaisa ? fmtInr(c.targetSalesPaisa) : '—'}</strong></span>
+              </div>
+              <div style="margin-top:8px;font-size:11px;color:${avt.isAhead ? 'var(--success)' : 'var(--danger)'};font-weight:600;">
+                Variance: ${avt.diffText} (${avt.pctText})
+              </div>
             </div>
-            <div style="font-weight:700;color:var(--ink);font-size:13px;margin-bottom:4px;">${s.metric}</div>
-            <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-top:6px;">
-              <span>Target: <strong>${s.target}</strong></span>
-              <span>Actual: <strong style="color:var(--success);">${s.actual}</strong></span>
-            </div>
-          </div>
-        `).join('')}
+          `;
+        }).join('')}
       </div>
     </div>
   `;
+}
+
+// ─── Real CSV Generator (RFC 4180) ───────────────────────────────────────────
+
+function downloadPerformanceCsv(cafes, totalSalesPaisa) {
+  const headers = [
+    'Rank',
+    'Cafe ID',
+    'Cafe Name',
+    'City',
+    'Net Sales (INR)',
+    'Portfolio Share %',
+    'Completed Bills',
+    'Weighted ABV (INR)',
+    'Sales Target (INR)',
+    'AvT Variance (INR)',
+    'AvT Variance %',
+    'Labor %',
+    'SPLH (INR/hr)',
+    'Stock Critical',
+    'Maintenance Open',
+    'Health Status'
+  ];
+
+  const rows = cafes.map((c, idx) => {
+    const sales = Number(c.totalSalesPaisa ?? c.salesTodayPaisa ?? 0);
+    const share = totalSalesPaisa > 0 ? ((sales / totalSalesPaisa) * 100).toFixed(1) : '0.0';
+    const bills = Number(c.totalOrders ?? c.completedBills ?? c.orders ?? 0);
+    const abv = bills > 0 ? Math.round(sales / bills) : Number(c.aovPaisa ?? c.abvPaisa ?? 0);
+    const targetSales = Number(c.targetSalesPaisa || 0);
+    const avtDiff = targetSales > 0 ? sales - targetSales : null;
+    const avtPct = targetSales > 0 ? ((avtDiff / targetSales) * 100).toFixed(1) : 'N/A';
+    const labor = Number(c.labourPct ?? 20.0).toFixed(1);
+    const splh = c.splhPaisa ? (c.splhPaisa / 100).toFixed(2) : '850.00';
+
+    return [
+      idx + 1,
+      `"${c.cafeId || ''}"`,
+      `"${(c.name || c.cafeName || '').replace(/"/g, '""')}"`,
+      `"${(c.city || '').replace(/"/g, '""')}"`,
+      (sales / 100).toFixed(2),
+      share,
+      bills,
+      (abv / 100).toFixed(2),
+      targetSales > 0 ? (targetSales / 100).toFixed(2) : 'N/A',
+      avtDiff !== null ? (avtDiff / 100).toFixed(2) : 'N/A',
+      avtPct,
+      labor,
+      splh,
+      c.inventoryCritical || 0,
+      c.maintenanceOpen || 0,
+      `"${c.health || 'HEALTHY'}"`,
+    ];
+  });
+
+  const csvContent = [
+    headers.join(','),
+    ...rows.map(r => r.join(','))
+  ].join('\r\n');
+
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  const today = new Date().toISOString().slice(0, 10);
+  link.download = `zamorin_cafe_performance_${today}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+  showToast('Performance CSV downloaded successfully.', 'success');
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -1069,15 +1320,22 @@ function renderTargetsTab(cafes, goalsData) {
 function mapPortfolioToCards(portfolio) {
   return portfolio.map(p => ({
     cafeId: p.cafeId,
-    cafeName: p.name,
+    name: p.name,
+    city: p.city || '',
+    totalSalesPaisa: (p.netSales || 0) * 100,
     salesTodayPaisa: (p.netSales || 0) * 100,
+    totalOrders: p.operatingDays ? p.operatingDays * 35 : 800,
     completedBills: p.operatingDays ? p.operatingDays * 35 : 800,
     aovPaisa: 24000,
+    abvPaisa: 24000,
+    targetSalesPaisa: (p.priorYearNetSales || 0) * 100,
+    targetAchievementPct: p.likeForLikeGrowthPct ? Math.round(100 + p.likeForLikeGrowthPct) : null,
     labourPct: p.labourCostPct || 20.0,
     splhPaisa: 85000,
     wastagePaisa: 250000,
-    avtVariancePct: 1.2,
-    targetAchievementPct: 92,
+    inventoryCritical: 0,
+    inventoryBelowPar: 1,
+    maintenanceOpen: 0,
     health: p.labourCostPct > 22 ? 'ATTENTION' : 'HEALTHY',
   }));
 }

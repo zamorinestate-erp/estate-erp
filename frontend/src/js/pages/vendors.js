@@ -859,10 +859,10 @@ export function wireVendors(container, subroute) {
             </div>
           `);
         } else {
-          showToast("Export generated successfully.", "success");
+          showToast(res?.message || "Failed to generate report.", "error");
         }
       } catch (err) {
-        showToast("Generated compliant ZURF v1 export document.", "success");
+        showToast(err.message || "Failed to generate ZURF export document.", "error");
       }
     });
   }
@@ -1000,13 +1000,15 @@ export function wireVendors(container, subroute) {
         };
         try {
           const res = await apiPatch(`/api/v1/vendors/${vendorId}`, payload);
-          showToast(`Supplier ${vendorId} updated successfully.`, "success");
-          Object.assign(vendor, payload);
-          updateContainer();
+          if (res?.success) {
+            showToast(`Supplier ${vendorId} updated successfully.`, "success");
+            Object.assign(vendor, payload);
+            updateContainer();
+          } else {
+            showToast(res?.message || "Failed to update supplier.", "error");
+          }
         } catch (err) {
-          Object.assign(vendor, payload);
-          showToast(`Supplier ${vendorId} updated successfully.`, "success");
-          updateContainer();
+          showToast(err.message || "Failed to update supplier.", "error");
         }
       });
     });
@@ -1029,14 +1031,16 @@ export function wireVendors(container, subroute) {
         confirmText: isHold ? "Release Hold" : "Place on Hold",
         onConfirm: async () => {
           try {
-            await apiPatch(`/api/v1/vendors/${vendorId}/status`, { status: nextStatus });
-            vendor.status = nextStatus;
-            showToast(`Supplier ${vendorId} status changed to ${nextStatus}.`, "success");
-            updateContainer();
+            const res = await apiPost(`/api/v1/vendors/${vendorId}/status`, { status: nextStatus });
+            if (res?.success) {
+              vendor.status = nextStatus;
+              showToast(`Supplier ${vendorId} status changed to ${nextStatus}.`, "success");
+              updateContainer();
+            } else {
+              showToast(res?.message || "Failed to update status.", "error");
+            }
           } catch (err) {
-            vendor.status = nextStatus;
-            showToast(`Supplier ${vendorId} status changed to ${nextStatus}.`, "success");
-            updateContainer();
+            showToast(err.message || `Failed to update status for ${vendorId}.`, "error");
           }
         },
       });
@@ -1056,16 +1060,17 @@ export function wireVendors(container, subroute) {
         confirmText: "Dispatch Order",
         onConfirm: async () => {
           try {
-            await apiPost(`/api/v1/procurement/orders/${poId}/dispatch`, { status: "DISPATCHED" });
-            po.orderPlacedAt = new Date().toISOString();
-            po.status = "DISPATCHED";
-            showToast(`Purchase Order ${poId} dispatched to supplier.`, "success");
-            updateContainer();
+            const res = await apiPost(`/api/v1/vendors/orders/${poId}/place`, { status: "DISPATCHED" });
+            if (res?.success) {
+              po.orderPlacedAt = new Date().toISOString();
+              po.status = "DISPATCHED";
+              showToast(`Purchase Order ${poId} dispatched to supplier.`, "success");
+              updateContainer();
+            } else {
+              showToast(res?.message || "Failed to dispatch order.", "error");
+            }
           } catch (err) {
-            po.orderPlacedAt = new Date().toISOString();
-            po.status = "DISPATCHED";
-            showToast(`Purchase Order ${poId} dispatched to supplier.`, "success");
-            updateContainer();
+            showToast(err.message || `Failed to dispatch order ${poId}.`, "error");
           }
         },
       });
@@ -1109,22 +1114,22 @@ export function wireVendors(container, subroute) {
         const status = document.getElementById("ack-status")?.value;
         const ref = document.getElementById("ack-ref-no")?.value;
         try {
-          await apiPost(`/api/v1/procurement/orders/${poId}/ack`, {
-            supplierConfirmedDeliveryDate: eta,
-            supplierAcknowledgementStatus: status,
+          const res = await apiPost(`/api/v1/vendors/orders/${poId}/acknowledge`, {
+            confirmedDeliveryDate: eta,
+            status,
             supplierReferenceNumber: ref,
           });
-          po.supplierConfirmedDeliveryDate = eta;
-          po.supplierAcknowledgementStatus = status;
-          po.supplierAcknowledgedAt = new Date().toISOString();
-          showToast(`Supplier acknowledgement recorded for ${poId}.`, "success");
-          updateContainer();
+          if (res?.success) {
+            po.supplierConfirmedDeliveryDate = eta;
+            po.supplierAcknowledgementStatus = status;
+            po.supplierAcknowledgedAt = new Date().toISOString();
+            showToast(`Supplier acknowledgement recorded for ${poId}.`, "success");
+            updateContainer();
+          } else {
+            showToast(res?.message || "Failed to record acknowledgement.", "error");
+          }
         } catch (err) {
-          po.supplierConfirmedDeliveryDate = eta;
-          po.supplierAcknowledgementStatus = status;
-          po.supplierAcknowledgedAt = new Date().toISOString();
-          showToast(`Supplier acknowledgement recorded for ${poId}.`, "success");
-          updateContainer();
+          showToast(err.message || `Failed to record acknowledgement for ${poId}.`, "error");
         }
       });
     });
@@ -1172,23 +1177,30 @@ export function wireVendors(container, subroute) {
         const dcNum = document.getElementById("grn-dc-num")?.value;
         const carrier = document.getElementById("grn-carrier")?.value;
         const qc = document.getElementById("grn-qc-result")?.value;
+        const items = (po.lineItems || []).map((line) => ({
+          itemId: line.itemId,
+          deliveredQty: line.quantity || 1,
+          acceptedQty: qc === "REJECTED" ? 0 : line.quantity || 1,
+          rejectedQty: qc === "REJECTED" ? line.quantity || 1 : 0,
+        }));
         try {
-          await apiPost(`/api/v1/procurement/orders/${poId}/grn`, {
+          const res = await apiPost(`/api/v1/vendors/orders/${poId}/receipts`, {
             deliveryNoteNumber: dcNum,
             carrier,
             inspectionStatus: qc,
+            items,
           });
-          po.receivingStatus = "RECEIVED_PENDING_FINAL_POSTING";
-          po.grnReceipts = po.grnReceipts || [];
-          po.grnReceipts.push({ deliveryNoteNumber: dcNum, receivedAt: new Date().toISOString() });
-          showToast(`GRN created for ${poId}. Pending 3-way match & MASTER stock posting.`, "success");
-          updateContainer();
+          if (res?.success) {
+            po.receivingStatus = "RECEIVED_PENDING_FINAL_POSTING";
+            po.grnReceipts = po.grnReceipts || [];
+            po.grnReceipts.push({ deliveryNoteNumber: dcNum, receivedAt: new Date().toISOString() });
+            showToast(`GRN created for ${poId}. Pending 3-way match & MASTER stock posting.`, "success");
+            updateContainer();
+          } else {
+            showToast(res?.message || "Failed to record GRN.", "error");
+          }
         } catch (err) {
-          po.receivingStatus = "RECEIVED_PENDING_FINAL_POSTING";
-          po.grnReceipts = po.grnReceipts || [];
-          po.grnReceipts.push({ deliveryNoteNumber: dcNum, receivedAt: new Date().toISOString() });
-          showToast(`GRN created for ${poId}. Pending 3-way match & MASTER stock posting.`, "success");
-          updateContainer();
+          showToast(err.message || `Failed to record GRN for ${poId}.`, "error");
         }
       });
     });
@@ -1236,23 +1248,23 @@ export function wireVendors(container, subroute) {
         const total = parseFloat(document.getElementById("inv-total")?.value || "0");
         const irn = document.getElementById("inv-irn")?.value;
         try {
-          await apiPost(`/api/v1/procurement/orders/${poId}/invoices`, {
+          const res = await apiPost(`/api/v1/vendors/orders/${poId}/invoices`, {
             invoiceNumber: invNumber,
             invoiceDate: invDate,
             totalPaisa: Math.round(total * 100),
             irn,
           });
-          po.invoices = po.invoices || [];
-          po.invoices.push({ invoiceNumber: invNumber, totalPaisa: Math.round(total * 100), irn });
-          po.threeWayMatch = { matchStatus: "MATCHED" };
-          showToast(`Supplier invoice ${invNumber} captured. Three-way match verified.`, "success");
-          updateContainer();
+          if (res?.success) {
+            po.invoices = po.invoices || [];
+            po.invoices.push({ invoiceNumber: invNumber, totalPaisa: Math.round(total * 100), irn });
+            po.threeWayMatch = { matchStatus: "MATCHED" };
+            showToast(`Supplier invoice ${invNumber} captured. Three-way match verified.`, "success");
+            updateContainer();
+          } else {
+            showToast(res?.message || "Failed to capture invoice.", "error");
+          }
         } catch (err) {
-          po.invoices = po.invoices || [];
-          po.invoices.push({ invoiceNumber: invNumber, totalPaisa: Math.round(total * 100), irn });
-          po.threeWayMatch = { matchStatus: "MATCHED" };
-          showToast(`Supplier invoice ${invNumber} captured. Three-way match verified.`, "success");
-          updateContainer();
+          showToast(err.message || `Failed to capture invoice for ${poId}.`, "error");
         }
       });
     });
@@ -1267,14 +1279,16 @@ export function wireVendors(container, subroute) {
 
       showToast(`Recalculating 3-way match for ${poId}...`, "info");
       try {
-        await apiPost(`/api/v1/procurement/orders/${poId}/recalculate-match`);
-        if (po.threeWayMatch) po.threeWayMatch.matchStatus = "MATCHED";
-        showToast(`Three-way match calculated: 100% compliant (0 variance).`, "success");
-        updateContainer();
+        const res = await apiGet(`/api/v1/vendors/orders/${poId}/match`);
+        if (res?.success) {
+          if (po.threeWayMatch) po.threeWayMatch.matchStatus = res.data?.matchSummary?.matchStatus || "MATCHED";
+          showToast(`Three-way match calculated: ${res.data?.matchSummary?.matchStatus || "MATCHED"}.`, "success");
+          updateContainer();
+        } else {
+          showToast(res?.message || "Failed to calculate match.", "error");
+        }
       } catch (err) {
-        if (po.threeWayMatch) po.threeWayMatch.matchStatus = "MATCHED";
-        showToast(`Three-way match calculated: 100% compliant (0 variance).`, "success");
-        updateContainer();
+        showToast(err.message || `Failed to calculate match for ${poId}.`, "error");
       }
     });
   });
@@ -1292,14 +1306,16 @@ export function wireVendors(container, subroute) {
         confirmText: "Reject Bank Change",
         onConfirm: async () => {
           try {
-            await apiPost(`/api/v1/vendors/${vendorId}/bank-change/reject`);
-            vendor.pendingBankChange = null;
-            showToast(`Proposed bank details for ${vendorId} rejected.`, "info");
-            updateContainer();
+            const res = await apiPost(`/api/v1/vendors/${vendorId}/bank-change-reject`);
+            if (res?.success) {
+              vendor.pendingBankChange = null;
+              showToast(`Proposed bank details for ${vendorId} rejected.`, "info");
+              updateContainer();
+            } else {
+              showToast(res?.message || "Failed to reject bank change.", "error");
+            }
           } catch (err) {
-            vendor.pendingBankChange = null;
-            showToast(`Proposed bank details for ${vendorId} rejected.`, "info");
-            updateContainer();
+            showToast(err.message || `Failed to reject bank change for ${vendorId}.`, "error");
           }
         },
       });
@@ -1319,24 +1335,21 @@ export function wireVendors(container, subroute) {
         confirmText: "Approve & Activate",
         onConfirm: async () => {
           try {
-            await apiPost(`/api/v1/vendors/${vendorId}/bank-change/approve`);
-            vendor.bankDetails = {
-              bankName: vendor.pendingBankChange.bankName,
-              accountNumberMasked: vendor.pendingBankChange.accountNumberMasked,
-              ifscCode: vendor.pendingBankChange.ifscCode,
-            };
-            vendor.pendingBankChange = null;
-            showToast(`New bank account for ${vendorId} authenticated and active.`, "success");
-            updateContainer();
+            const res = await apiPost(`/api/v1/vendors/${vendorId}/bank-change-approve`);
+            if (res?.success) {
+              vendor.bankDetails = {
+                bankName: vendor.pendingBankChange.bankName,
+                accountNumberMasked: vendor.pendingBankChange.accountNumberMasked,
+                ifscCode: vendor.pendingBankChange.ifscCode,
+              };
+              vendor.pendingBankChange = null;
+              showToast(`New bank account for ${vendorId} authenticated and active.`, "success");
+              updateContainer();
+            } else {
+              showToast(res?.message || "Failed to approve bank change.", "error");
+            }
           } catch (err) {
-            vendor.bankDetails = {
-              bankName: vendor.pendingBankChange.bankName,
-              accountNumberMasked: vendor.pendingBankChange.accountNumberMasked,
-              ifscCode: vendor.pendingBankChange.ifscCode,
-            };
-            vendor.pendingBankChange = null;
-            showToast(`New bank account for ${vendorId} authenticated and active.`, "success");
-            updateContainer();
+            showToast(err.message || `Failed to approve bank change for ${vendorId}.`, "error");
           }
         },
       });
@@ -1359,19 +1372,19 @@ export function wireVendors(container, subroute) {
             });
             if (res?.success) {
               showToast(`Inventory posted successfully! Posting ID: ${res.data?.postingId || "POST-OK"}`, "success");
+              // Update local order
+              const po = (liveOrders || SAMPLE_ORDERS).find((o) => o.purchaseOrderId === poId);
+              if (po) {
+                po.status = "CLOSED";
+                po.receivingStatus = "POSTED_TO_INVENTORY";
+                po.inventoryPosting = { status: "POSTED" };
+              }
+              updateContainer();
             } else {
-              showToast(res?.message || "MASTER approval completed.", "success");
+              showToast(res?.message || "MASTER approval could not be completed.", "error");
             }
-            // Update local order
-            const po = (liveOrders || SAMPLE_ORDERS).find((o) => o.purchaseOrderId === poId);
-            if (po) {
-              po.status = "CLOSED";
-              po.receivingStatus = "POSTED_TO_INVENTORY";
-              po.inventoryPosting = { status: "POSTED" };
-            }
-            updateContainer();
           } catch (err) {
-            showToast(err.message || "Action processed with verified safeguards.", "success");
+            showToast(err.message || "Failed to execute MASTER stock posting.", "error");
           }
         },
       });
@@ -1451,14 +1464,16 @@ export function wireVendors(container, subroute) {
           const res = await apiPost("/api/v1/vendors", payload);
           if (res?.success) {
             showToast(`Supplier ${res.data?.vendor?.vendorId || "registered"} onboarded successfully!`, "success");
-            if (!liveVendors) liveVendors = [...SAMPLE_VENDORS];
+            if (!liveVendors) liveVendors = [];
             liveVendors.unshift(res.data?.vendor || { ...payload, vendorId: `VEN-${Date.now().toString().slice(-4)}`, status: "ACTIVE" });
             updateContainer();
           } else if (res?.code === "DUPLICATE_VENDOR") {
             showToast(`Duplicate Alert: ${res.message}`, "error");
+          } else {
+            showToast(res?.message || "Failed to register supplier.", "error");
           }
         } catch (err) {
-          showToast(`Supplier registered successfully.`, "success");
+          showToast(err.message || "Failed to register supplier.", "error");
         }
       });
     });

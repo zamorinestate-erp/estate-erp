@@ -181,7 +181,8 @@ function createCorrelationId() {
 }
 
 async function generateAuditEventId(
-  organisationId
+  organisationId,
+  session = null
 ) {
   const datePart = new Date()
     .toISOString()
@@ -194,6 +195,7 @@ async function generateAuditEventId(
       `AUDIT_EVENT_${datePart}`,
     prefix: `AE-${datePart}`,
     minimumDigits: 4,
+    session,
   });
 }
 
@@ -231,6 +233,7 @@ async function recordAuditEvent({
   ipAddress = null,
   userAgent = null,
   metadata = {},
+  session = null,
 }) {
   const normalizedOrganisationId =
     normalizeIdentifier(organisationId);
@@ -281,7 +284,8 @@ async function recordAuditEvent({
 
   const auditEventId =
     await generateAuditEventId(
-      normalizedOrganisationId
+      normalizedOrganisationId,
+      session
     );
 
   const eventPayload = {
@@ -342,27 +346,39 @@ async function recordAuditEvent({
   };
 
   const isStubbed = typeof AuditEvent.create === 'function' && AuditEvent.create !== mongoose.Model.create;
-  if (mongoose.connection.readyState !== 1 && !isStubbed) {
+  if (isStubbed) {
+    return session ? AuditEvent.create(eventPayload, { session }) : AuditEvent.create(eventPayload);
+  }
+  if (mongoose.connection.readyState !== 1) {
     return eventPayload;
+  }
+
+  if (session) {
+    const doc = new AuditEvent(eventPayload);
+    await doc.save({ session });
+    return doc;
   }
 
   return AuditEvent.create(eventPayload);
 }
 
-async function recordRequestAudit({
-  request,
-  module,
-  action,
-  entityType,
-  entityId,
-  cafeId = null,
-  before = null,
-  after = null,
-  reason = '',
-  result = 'SUCCESS',
-  riskClassification = 'LOW',
-  metadata = {},
-}) {
+async function recordRequestAudit(payload = {}, options = {}) {
+  const {
+    request,
+    module,
+    action,
+    entityType,
+    entityId,
+    cafeId = null,
+    before = null,
+    after = null,
+    reason = '',
+    result = 'SUCCESS',
+    riskClassification = 'LOW',
+    metadata = {},
+  } = payload;
+  const session = payload.session || options?.session || null;
+
   if (!request?.auth) {
     throw new Error(
       'Authenticated request context is required.'
@@ -412,6 +428,7 @@ async function recordRequestAudit({
       request.get?.('user-agent') ||
       null,
     metadata,
+    session,
   });
 }
 

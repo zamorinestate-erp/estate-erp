@@ -25,6 +25,7 @@ const { recordRequestAudit, recordAuditEvent } = require('../services/auditServi
 const { ZurfService } = require('../services/zurfService');
 const { asyncHandler } = require('../utils/asyncHandler');
 const { ApiError } = require('../utils/ApiError');
+const { executeTransactionWithRetry } = require('../utils/transactionHelper');
 
 // Global emergency disposition pause state
 let _globalDispositionPaused = false;
@@ -88,89 +89,6 @@ async function ensureDefaultRetentionPolicies(organisationId) {
   }
 }
 
-// Helper: Seed initial sample recoverable trash entries if empty
-async function ensureSampleTrashEntries(organisationId, userId, userName) {
-  const count = await TrashEntry.countDocuments({ organisationId });
-  if (count === 0) {
-    const now = new Date();
-    const expiry30 = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
-    const expiry5 = new Date(now.getTime() + 5 * 24 * 60 * 60 * 1000); // Expiring soon
-
-    await TrashEntry.create([
-      {
-        trashId: 'TRASH-202608-00001',
-        organisationId,
-        cafeId: 'ZC-0001',
-        sourceModule: 'INVENTORY',
-        entityType: 'INVENTORY_ITEM',
-        entityId: 'SKU-COF-099',
-        recordReference: 'SKU-COF-099',
-        recordTitle: 'Arabica Specialty Roast - Test Batch 09',
-        originalStatus: 'DRAFT',
-        deletedByUserId: userId,
-        deletedByName: userName || 'Primary Master',
-        deletedAt: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000),
-        deleteReason: 'TEST_DATA',
-        deleteNote: 'Temporary SKU created during recipe calibration.',
-        retentionDurationDays: 30,
-        expiresAt: expiry30,
-        lifecycleStatus: 'RECOVERABLE',
-        payload: { itemId: 'SKU-COF-099', name: 'Arabica Specialty Roast - Test Batch 09', category: 'COFFEE_BEANS' },
-      },
-      {
-        trashId: 'TRASH-202608-00002',
-        organisationId,
-        cafeId: 'GLOBAL',
-        sourceModule: 'VENDOR',
-        entityType: 'VENDOR',
-        entityId: 'VEN-0089',
-        recordReference: 'VEN-0089',
-        recordTitle: 'Nilgiri Fresh Dairy Suppliers (Draft Lead)',
-        originalStatus: 'DRAFT',
-        deletedByUserId: userId,
-        deletedByName: userName || 'Primary Master',
-        deletedAt: new Date(now.getTime() - 25 * 24 * 60 * 60 * 1000),
-        deleteReason: 'DUPLICATE',
-        deleteNote: 'Duplicate vendor record created by mistake.',
-        retentionDurationDays: 30,
-        expiresAt: expiry5,
-        lifecycleStatus: 'EXPIRING_SOON',
-        payload: { vendorId: 'VEN-0089', name: 'Nilgiri Fresh Dairy Suppliers', category: 'DAIRY_FRESH' },
-      },
-      {
-        trashId: 'TRASH-202608-00003',
-        organisationId,
-        cafeId: 'ZC-0001',
-        sourceModule: 'DEPARTMENT_ORDERS',
-        entityType: 'DEPARTMENT_ORDER',
-        entityId: 'DORD-2026-004',
-        recordReference: 'DORD-2026-004',
-        recordTitle: 'University Faculty Club Catering Draft',
-        originalStatus: 'DRAFT',
-        deletedByUserId: userId,
-        deletedByName: userName || 'Primary Master',
-        deletedAt: new Date(now.getTime() - 10 * 24 * 60 * 60 * 1000),
-        deleteReason: 'NO_LONGER_REQUIRED',
-        deleteNote: 'Client postponed faculty event.',
-        retentionDurationDays: 60,
-        expiresAt: new Date(now.getTime() + 50 * 24 * 60 * 60 * 1000),
-        lifecycleStatus: 'ON_HOLD',
-        holdState: 'ACTIVE',
-        holds: [
-          {
-            holdId: 'HOLD-001',
-            reason: 'Audit Review: Verifying advance quote records for corporate bookings.',
-            placedByUserId: userId,
-            placedByName: userName || 'Primary Master',
-            placedAt: now,
-          },
-        ],
-        payload: { orderId: 'DORD-2026-004', institutionName: 'University Faculty Club' },
-      },
-    ]);
-  }
-}
-
 // ═════════════════════════════════════════════════════════════════════════════
 // 1. LIST TRASH ITEMS (Search, Filter, Pagination & Headline KPIs)
 // ═════════════════════════════════════════════════════════════════════════════
@@ -182,7 +100,6 @@ const listTrashItems = asyncHandler(async (request, response) => {
   const assignedCafeIds = auth.assignedCafeIds || [];
 
   await ensureDefaultRetentionPolicies(orgId);
-  await ensureSampleTrashEntries(orgId, auth.userId || 'MU-0001', auth.name || 'Primary Master');
 
   const {
     module: sourceModule,
@@ -407,31 +324,39 @@ const restoreTrashItem = asyncHandler(async (request, response) => {
     throw new ApiError(400, 'CANNOT_RESTORE_DISPOSED', 'Permanently disposed items cannot be restored.');
   }
 
-  // Restore logic based on entity type
-  if (item.entityType === 'INVENTORY_ITEM') {
-    const inv = await GlobalInventoryItem.findOne({ organisationId: orgId, itemId: item.entityId });
-    if (inv) {
-      inv.status = 'DRAFT';
-      inv.archivedAt = null;
-      inv.archiveReason = '';
-      await inv.save();
+  // Restore logic based on entity type and atomic audit
+  await executeTransactionWithRetry(async (session) => {
+    if (item.entityType === 'INVENTORY_ITEM') {
+      const inv = await GlobalInventoryItem.findOne(
+        { organisationId: orgId, itemId: item.entityId },
+        null,
+        session ? { session } : {}
+      );
+      if (inv) {
+        inv.status = 'DRAFT';
+        inv.archivedAt = null;
+        inv.archiveReason = '';
+        await inv.save(session ? { session } : {});
+      }
+    } else if (item.entityType === 'VENDOR') {
+      const ven = await Vendor.findOne(
+        { organisationId: orgId, vendorId: item.entityId },
+        null,
+        session ? { session } : {}
+      );
+      if (ven) {
+        ven.status = 'DRAFT';
+        ven.statusChangedAt = null;
+        ven.statusChangeReason = '';
+        await ven.save(session ? { session } : {});
+      }
     }
-  } else if (item.entityType === 'VENDOR') {
-    const ven = await Vendor.findOne({ organisationId: orgId, vendorId: item.entityId });
-    if (ven) {
-      ven.status = 'DRAFT';
-      ven.statusChangedAt = null;
-      ven.statusChangeReason = '';
-      await ven.save();
-    }
-  }
 
-  item.lifecycleStatus = 'RESTORED';
-  item.restoredAt = new Date();
-  item.restoredByUserId = userId;
-  await item.save();
+    item.lifecycleStatus = 'RESTORED';
+    item.restoredAt = new Date();
+    item.restoredByUserId = userId;
+    await item.save(session ? { session } : {});
 
-  try {
     if (request.auth) {
       await recordRequestAudit({
         request,
@@ -442,9 +367,10 @@ const restoreTrashItem = asyncHandler(async (request, response) => {
         result: 'SUCCESS',
         riskClassification: 'HIGH',
         metadata: { trashId: item.trashId, recordReference: item.recordReference },
+        session,
       });
     }
-  } catch (err) {}
+  });
 
   return response.status(200).json({
     success: true,
@@ -506,12 +432,28 @@ const bulkRestoreTrashItems = asyncHandler(async (request, response) => {
   });
 });
 
+function assertPrimaryMaster(auth, actionName = 'perform this action') {
+  const isPrimary = Boolean(
+    auth &&
+    auth.role === 'MASTER' &&
+    (auth.isPrimaryMaster === true || (auth.isPrimaryMaster !== false && auth.userId === 'MU-0001'))
+  );
+  if (!isPrimary) {
+    throw new ApiError(
+      403,
+      'PRIMARY_MASTER_AUTHORITY_REQUIRED',
+      `Only the Primary Master may ${actionName}.`
+    );
+  }
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 // 6. PRESERVATION HOLDS (Place & Release)
 // ═════════════════════════════════════════════════════════════════════════════
 
 const placePreservationHold = asyncHandler(async (request, response) => {
   const auth = request.auth || request.user || {};
+  assertPrimaryMaster(auth, 'place a preservation hold');
   const orgId = auth.organisationId || 'ORG-ZAMORIN';
   const userId = auth.userId || 'MU-0001';
   const userName = auth.name || 'Primary Master';
@@ -536,21 +478,23 @@ const placePreservationHold = asyncHandler(async (request, response) => {
   }
 
   const holdId = `HOLD-${Date.now().toString().slice(-6)}`;
-  item.holds.push({
-    holdId,
-    reason: reason.trim(),
-    scope,
-    placedByUserId: userId,
-    placedByName: userName,
-    placedAt: new Date(),
-    reviewDate: reviewDate ? new Date(reviewDate) : null,
-  });
+  await executeTransactionWithRetry(async (session) => {
+    if (!item.holds.some((h) => h.holdId === holdId)) {
+      item.holds.push({
+        holdId,
+        reason: reason.trim(),
+        scope,
+        placedByUserId: userId,
+        placedByName: userName,
+        placedAt: new Date(),
+        reviewDate: reviewDate ? new Date(reviewDate) : null,
+      });
+    }
 
-  item.holdState = 'ACTIVE';
-  item.lifecycleStatus = 'ON_HOLD';
-  await item.save();
+    item.holdState = 'ACTIVE';
+    item.lifecycleStatus = 'ON_HOLD';
+    await item.save(session ? { session } : {});
 
-  try {
     if (request.auth) {
       await recordRequestAudit({
         request,
@@ -561,9 +505,10 @@ const placePreservationHold = asyncHandler(async (request, response) => {
         result: 'SUCCESS',
         riskClassification: 'HIGH',
         metadata: { trashId: item.trashId, holdId, reason },
+        session,
       });
     }
-  } catch (err) {}
+  });
 
   return response.status(200).json({
     success: true,
@@ -574,6 +519,7 @@ const placePreservationHold = asyncHandler(async (request, response) => {
 
 const releasePreservationHold = asyncHandler(async (request, response) => {
   const auth = request.auth || request.user || {};
+  assertPrimaryMaster(auth, 'release a preservation hold');
   const orgId = auth.organisationId || 'ORG-ZAMORIN';
   const userId = auth.userId || 'MU-0001';
   const { trashId, holdId } = request.params;
@@ -593,19 +539,19 @@ const releasePreservationHold = asyncHandler(async (request, response) => {
     throw new ApiError(404, 'HOLD_NOT_FOUND', 'Active hold not found on this record.');
   }
 
-  hold.releasedAt = new Date();
-  hold.releasedByUserId = userId;
-  hold.releaseReason = releaseReason || 'Hold conditions satisfied.';
+  await executeTransactionWithRetry(async (session) => {
+    hold.releasedAt = new Date();
+    hold.releasedByUserId = userId;
+    hold.releaseReason = releaseReason || 'Hold conditions satisfied.';
 
-  const remainingActiveHolds = item.holds.filter((h) => !h.releasedAt);
-  if (remainingActiveHolds.length === 0) {
-    item.holdState = 'NONE';
-    item.lifecycleStatus = item.calculateStatus();
-  }
+    const remainingActiveHolds = item.holds.filter((h) => !h.releasedAt);
+    if (remainingActiveHolds.length === 0) {
+      item.holdState = 'NONE';
+      item.lifecycleStatus = item.calculateStatus();
+    }
 
-  await item.save();
+    await item.save(session ? { session } : {});
 
-  try {
     if (request.auth) {
       await recordRequestAudit({
         request,
@@ -616,9 +562,10 @@ const releasePreservationHold = asyncHandler(async (request, response) => {
         result: 'SUCCESS',
         riskClassification: 'HIGH',
         metadata: { trashId: item.trashId, holdId, releaseReason },
+        session,
       });
     }
-  } catch (err) {}
+  });
 
   return response.status(200).json({
     success: true,
@@ -709,6 +656,7 @@ const executeDispositionPurge = asyncHandler(async (request, response) => {
   }
 
   const auth = request.auth || request.user || {};
+  assertPrimaryMaster(auth, 'execute permanent disposition purge');
   const orgId = auth.organisationId || 'ORG-ZAMORIN';
   const userId = auth.userId || 'MU-0001';
   const { trashId } = request.params;
@@ -734,35 +682,43 @@ const executeDispositionPurge = asyncHandler(async (request, response) => {
   };
 
   // Generate safe ZURF Proof of Disposition Certificate (Minimal metadata, zero payload)
-  const certId = await SequenceCounter.generateId({ prefix: 'CERT-DISP', sequenceKey: 'disposition_certificate', organisationId: orgId });
-
-  const cert = await DispositionCertificate.create({
-    certificateId: certId,
+  const now = new Date();
+  const yearMonth = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const certId = await SequenceCounter.generateId({
+    prefix: `CERT-DISP-${yearMonth}`,
+    sequenceKey: `disposition_certificate_${yearMonth}`,
     organisationId: orgId,
-    cafeId: item.cafeId,
-    trashId: item.trashId,
-    sourceModule: item.sourceModule,
-    entityType: item.entityType,
-    entityId: item.entityId,
-    recordReference: item.recordReference,
-    policyId: item.retentionPolicyId,
-    policyVersion: item.retentionPolicyVersion,
-    retentionCompletedAt: item.expiresAt,
-    requestedByUserId: item.deletedByUserId,
-    approvedByUserId: userId,
-    executedByUserId: userId,
-    executedAt: new Date(),
-    propagationStages: propagation,
+    minimumDigits: 5,
   });
 
-  // Permanently erase the serialized payload snapshot
-  item.payload = null;
-  item.attachments = [];
-  item.lifecycleStatus = 'DISPOSED';
-  item.dispositionCertificateId = certId;
-  await item.save();
+  await executeTransactionWithRetry(async (session) => {
+    const cert = new DispositionCertificate({
+      certificateId: certId,
+      organisationId: orgId,
+      cafeId: item.cafeId,
+      trashId: item.trashId,
+      sourceModule: item.sourceModule,
+      entityType: item.entityType,
+      entityId: item.entityId,
+      recordReference: item.recordReference,
+      policyId: item.retentionPolicyId,
+      policyVersion: item.retentionPolicyVersion,
+      retentionCompletedAt: item.expiresAt,
+      requestedByUserId: item.deletedByUserId,
+      approvedByUserId: userId,
+      executedByUserId: userId,
+      executedAt: new Date(),
+      propagationStages: propagation,
+    });
+    await cert.save(session ? { session } : {});
 
-  try {
+    // Permanently erase the serialized payload snapshot
+    item.payload = null;
+    item.attachments = [];
+    item.lifecycleStatus = 'DISPOSED';
+    item.dispositionCertificateId = certId;
+    await item.save(session ? { session } : {});
+
     if (request.auth) {
       await recordRequestAudit({
         request,
@@ -773,9 +729,10 @@ const executeDispositionPurge = asyncHandler(async (request, response) => {
         result: 'SUCCESS',
         riskClassification: 'CRITICAL',
         metadata: { certificateId: certId, trashId: item.trashId, recordReference: item.recordReference },
+        session,
       });
     }
-  } catch (err) {}
+  });
 
   return response.status(200).json({
     success: true,
@@ -863,6 +820,7 @@ const listRetentionPolicies = asyncHandler(async (request, response) => {
 
 const toggleEmergencyDispositionPause = asyncHandler(async (request, response) => {
   const auth = request.auth || request.user || {};
+  assertPrimaryMaster(auth, 'pause emergency disposition');
   const orgId = auth.organisationId || 'ORG-ZAMORIN';
   const userId = auth.userId || 'MU-0001';
   const { pause, reason } = request.body;

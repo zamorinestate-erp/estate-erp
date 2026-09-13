@@ -9,7 +9,7 @@
 
 const express = require('express');
 const { authenticate } = require('../middleware/authenticate');
-const { authorize } = require('../middleware/authorize');
+const { authorize, requirePrimaryMaster } = require('../middleware/authorize');
 const {
   listTrashItems,
   getTrashItemDetails,
@@ -30,6 +30,7 @@ const {
 const router = express.Router();
 
 router.use(authenticate);
+router.use(requirePrimaryMaster);
 
 // ── Overview & Query ─────────────────────────────────────────────────────────
 router.get('/', listTrashItems);

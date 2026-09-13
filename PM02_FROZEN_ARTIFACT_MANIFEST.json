@@ -1,0 +1,290 @@
+{
+  "programme": "ZAMORIN_CAFE_ERP",
+  "subsystem": "CONSOLIDATED_REPORTS_AND_ANALYTICS",
+  "frozenStages": "PM-02A_THROUGH_PM-02M",
+  "candidateStage": "PM-02N_FROZEN",
+  "generatedAt": "2026-09-10T16:51:05.457Z",
+  "invariants": {
+    "CUSTOM_REPORT_ARBITRARY_DATABASE_QUERY": 0,
+    "CUSTOM_REPORT_UNSUPPORTED_DIMENSION_ACCEPTED": 0,
+    "CUSTOM_REPORT_SUMS_NON_ADDITIVE_METRIC": 0,
+    "SAVED_VIEW_STORED_CAFE_IDS_USED_AS_AUTHORITY": 0,
+    "SAVED_VIEW_RETAINS_REVOKED_CAFE_ACCESS": 0,
+    "REPORT_PACK_SINGLE_AUTH_CHECK_GRANTS_ALL_ITEMS": 0,
+    "ARBITRARY_REPORT_PACK_SCORE": 0,
+    "PM02M_REINTRODUCES_CSV_EXPORT": 0,
+    "SCHEDULED_REPORT_USES_STALE_CREATION_TIME_AUTHORITY": 0,
+    "REPORT_SUBSCRIPTION_DUPLICATE_DELIVERY": 0,
+    "CUSTOM_REPORT_ALLOWS_SEMANTICALLY_INVALID_VISUAL": 0,
+    "CUSTOM_REPORT_HTML_INJECTION": 0,
+    "CUSTOM_REPORT_STORED_XSS": 0,
+    "REPORT_SIGNOFF_ALTERS_METRIC_TRUTH": 0,
+    "SHARED_REPORT_LAST_WRITE_SILENTLY_OVERWRITES_CONCURRENT_EDIT": 0,
+    "CUSTOM_REPORT_MUTATES_CANONICAL_REPORT_DEFINITION": 0,
+    "SAVED_REPORT_EXPORT_REVEALS_REVOKED_SCOPE": 0,
+    "REPORT_PACK_SILENT_TRUNCATION": 0,
+    "PM02M_REPORT_PACK_N_PLUS_ONE": 0,
+    "CUSTOM_REPORT_CROSS_SCOPE_CACHE_LEAK": 0,
+    "CUSTOM_REPORT_CLIENT_SUPPLIED_ACTOR_TRUSTED": 0,
+    "CUSTOM_REPORT_CLIENT_ORGANISATION_AUTHORITY": 0,
+    "SHARED_REPORT_VIEW_PERMISSION_GRANTS_EDIT": 0,
+    "FAKE_REPORT_SUBSCRIPTION_DELIVERY_SUCCESS": 0,
+    "IN_MEMORY_TIMER_PRESENTED_AS_DURABLE_REPORT_SUBSCRIPTION": 0,
+    "DEAD_PM02M_CONTROLS": 0,
+    "MISREPRESENTED_PM02M_CONTROLS": 0,
+    "UNEXPLAINED_FROZEN_TEST_LOSS": 0,
+    "NONATOMIC_VERSION_CHECK_ALLOWS_LOST_UPDATE": 0,
+    "REPORT_PACK_SCREEN_EXPORT_VALUE_DRIFT": 0,
+    "SENSITIVE_REPORT_PAYLOAD_STORED_IN_LOCALSTORAGE": 0,
+    "STAFF_ENTERPRISE_SHARED_REPORT_VIEW_ACCESS": 0,
+    "STAFF_CAN_CLONE_ENTERPRISE_SHARED_REPORT": 0,
+    "CUSTOM_REPORT_UI_HAS_NO_BASE_REPORT_SELECTOR": 0,
+    "CUSTOM_REPORT_UI_HAS_NO_METRIC_SELECTOR": 0,
+    "CUSTOM_REPORT_UI_HAS_NO_DIMENSION_SELECTOR": 0,
+    "HARDCODED_UNVERIFIED_GSTIN_IN_PRODUCTION_EXPORT": 0,
+    "HARDCODED_SINGLE_ORGANISATION_LEGAL_IDENTITY_IN_MULTI_TENANT_EXPORT": 0,
+    "REPORT_PACK_CROSS_ORG_LEGAL_IDENTITY_LEAK": 0,
+    "REPORT_PACK_DEDUP_COLLAPSES_DIFFERENT_FILTERS": 0,
+    "REPORT_PACK_DEDUP_COLLAPSES_DIFFERENT_METRIC_CONFIGURATION": 0,
+    "UNAUTHORIZED_REPORT_PACK_ITEM_METADATA_LEAK": 0,
+    "CUSTOM_REPORT_PLAIN_TEXT_RENDERED_THROUGH_UNSAFE_HTML_SINK": 0,
+    "USER_LABEL_EXPORTED_AS_SPREADSHEET_FORMULA": 0,
+    "OWNER_REPORTING_PRODUCTIVITY_CROSS_CAFE_AUTHORITY": 0,
+    "OWNER_PRIMARY_MASTER_AUTHORITY_CONFLATED": 0,
+    "OWNER_EMPTY_ASSIGNED_CAFES_DEFAULTS_TO_ALL": 0,
+    "STAFF_PERSONAL_VIEW_BYPASSES_ENTERPRISE_REPORT_DENIAL": 0,
+    "PM02M_REWRITES_FROZEN_TEST_MATRIX": 0,
+    "FROZEN_ARTIFACT_MANIFEST_SILENTLY_REBASELINED": 0,
+    "REPORT_PACK_FINGERPRINT_OMITS_CAFE_SCOPE": 0,
+    "REPORT_PACK_FINGERPRINT_OMITS_TENANT_SCOPE": 0,
+    "REPORT_PACK_RESULT_REUSED_ACROSS_AUTHORIZATION_SCOPE": 0,
+    "PM02M_CREATES_SECOND_COMPARISON_TAXONOMY": 0,
+    "PM02M_CREATES_SECOND_DIMENSION_TAXONOMY": 0,
+    "GENERIC_TEXT_MASQUERADES_AS_LEGAL_NAME": 0,
+    "PM02M_INVARIANT_COUNT_MISMATCH": 0,
+    "STAFF_PRIVATE_VISIBILITY_GRANTS_ENTERPRISE_REPORT_ACCESS": 0,
+    "STAFF_PRIVATE_REPORT_USES_UNAUTHORIZED_METRIC": 0,
+    "STAFF_PRIVATE_REPORT_USES_UNAUTHORIZED_DIMENSION": 0,
+    "REPORTING_PRODUCTIVITY_USES_NONCANONICAL_ASSIGNED_CAFE_FIELD": 0,
+    "CLIENT_CAFE_ASSIGNMENT_USED_AS_REPORT_AUTHORITY": 0,
+    "MISSING_ORGANISATION_CONTEXT_DEFAULTS_TO_SHARED_SYNTHETIC_TENANT": 0,
+    "REPORT_PACK_FINGERPRINT_OMITS_BASE_REPORT_ID": 0,
+    "REPORT_PACK_FINGERPRINT_OMITS_REPORT_VERSION": 0,
+    "REPORT_PACK_FINGERPRINT_OMITS_TOP_N": 0,
+    "REPORT_PACK_FINGERPRINT_OMITS_RESULT_AFFECTING_SORT": 0,
+    "PM02M_CUSTOM_DIMENSIONS_DIFFER_FROM_FROZEN_DIMENSION_REGISTRY": 0,
+    "PM02M_PERSISTS_DIMENSION_ALIAS_AS_CANONICAL_ID": 0,
+    "CUSTOM_FORMULA_ENGINE": "NOT_IMPLEMENTED",
+    "SUBSCRIPTION_INFRASTRUCTURE": "NOT_IMPLEMENTED_SOURCE_MISSING"
+  },
+  "frozen": {
+    "backend/test/pm02aReportingFoundation.test.js": {
+      "path": "backend/test/pm02aReportingFoundation.test.js",
+      "sha256": "75606c61fb32cb208e69a803807de7bbd0a66705f3d850066bb58ac807afa456",
+      "sizeBytes": 43617,
+      "lines": 977
+    },
+    "backend/test/pm02bCoreCalculations.test.js": {
+      "path": "backend/test/pm02bCoreCalculations.test.js",
+      "sha256": "351c1bf0bb5cb38fc163509b8bf0054512833bc8957ad1cd6f4528e167774621",
+      "sizeBytes": 32195,
+      "lines": 719
+    },
+    "backend/test/pm02cReportCatalogue.test.js": {
+      "path": "backend/test/pm02cReportCatalogue.test.js",
+      "sha256": "26d55b64e10b18280ce838aa427f8c9dc8a4fa335fd1402011792022d646ebf3",
+      "sizeBytes": 59844,
+      "lines": 1319
+    },
+    "backend/test/pm02dSalesIntelligence.test.js": {
+      "path": "backend/test/pm02dSalesIntelligence.test.js",
+      "sha256": "d1fdee7be1f80a5f8a50bb009f7a6c0778d01c62db3833cc0e8c9b6aeae7fb5e",
+      "sizeBytes": 71668,
+      "lines": 1658
+    },
+    "backend/test/pm02eInventoryProcurementVendor.test.js": {
+      "path": "backend/test/pm02eInventoryProcurementVendor.test.js",
+      "sha256": "d50d61c0dfd3f3a1f0a396bae93884a2024a7142bd55b168c4a2b3ffce2d4106",
+      "sizeBytes": 123054,
+      "lines": 2648
+    },
+    "backend/test/pm02fFinanceIntelligence.test.js": {
+      "path": "backend/test/pm02fFinanceIntelligence.test.js",
+      "sha256": "72f86104a35774299cfccfd71ffbf0288f3fd42222c5149941fedf081bcb09ba",
+      "sizeBytes": 18230,
+      "lines": 257
+    },
+    "backend/test/pm02gWorkforceAttendancePayroll.test.js": {
+      "path": "backend/test/pm02gWorkforceAttendancePayroll.test.js",
+      "sha256": "a2e86fa32c6e5602c01935e604d1ede951ece8d238b10fcd653992bd623dc8c1",
+      "sizeBytes": 57574,
+      "lines": 1357
+    },
+    "backend/test/pm02hCustomerPosServiceIntelligence.test.js": {
+      "path": "backend/test/pm02hCustomerPosServiceIntelligence.test.js",
+      "sha256": "f2a2b39e82a67c0453a92727e7e305bad980ad84137f7e1f87e187772007bd10",
+      "sizeBytes": 77722,
+      "lines": 1484
+    },
+    "backend/test/pm02iMultiCafeBenchmarking.test.js": {
+      "path": "backend/test/pm02iMultiCafeBenchmarking.test.js",
+      "sha256": "4235120540c5d156f3081dda3e53404eb153b8a679bb1c70bc78cc529812b1e6",
+      "sizeBytes": 47605,
+      "lines": 1193
+    },
+    "backend/test/pm02jAdvancedDiagnostics.test.js": {
+      "path": "backend/test/pm02jAdvancedDiagnostics.test.js",
+      "sha256": "4a2a8871abb97c0350977d845785cc751fbaecdd0725640689934ca1814df7cc",
+      "sizeBytes": 52166,
+      "lines": 1209
+    },
+    "backend/test/pm02kForecastScenarioIntelligence.test.js": {
+      "path": "backend/test/pm02kForecastScenarioIntelligence.test.js",
+      "sha256": "ba39391870053f5c34cfb69f145c4b8d7c16907dc3876a5a7efab3463a80b5c9",
+      "sizeBytes": 88300,
+      "lines": 1693
+    },
+    "backend/test/pm02lReconciliationGovernanceTrust.test.js": {
+      "path": "backend/test/pm02lReconciliationGovernanceTrust.test.js",
+      "sha256": "6a25e8e0b7b8c85a5ae2c555fa7813a6d1f03cdc254d2663e14d7cfbd3bb26b1",
+      "sizeBytes": 61720,
+      "lines": 1300
+    },
+    "backend/src/models/CustomReport.js": {
+      "path": "backend/src/models/CustomReport.js",
+      "sha256": "0a81fcb57a7892c113a6778a1048320739841447f531bb8c2d6baad6589dda4b",
+      "sizeBytes": 11148,
+      "lines": 374
+    },
+    "backend/src/models/ReportPack.js": {
+      "path": "backend/src/models/ReportPack.js",
+      "sha256": "ed85d401aafaaa36064d621d05b7d81ee25002ba683bc6166098c683aa66f9eb",
+      "sizeBytes": 8246,
+      "lines": 286
+    },
+    "backend/src/models/ReportFavourite.js": {
+      "path": "backend/src/models/ReportFavourite.js",
+      "sha256": "4a18167fb7722ef9ce826c1789fb6f4312df67da44c9ab85b33667226be9a513",
+      "sizeBytes": 2775,
+      "lines": 112
+    },
+    "backend/src/controllers/reportingProductivityController.js": {
+      "path": "backend/src/controllers/reportingProductivityController.js",
+      "sha256": "b1d6089a42298c517b9913b2bfccefe71394791f6a54ddafd8fdda24be1287e0",
+      "sizeBytes": 58470,
+      "lines": 1565
+    },
+    "backend/src/routes/reportingProductivityRoutes.js": {
+      "path": "backend/src/routes/reportingProductivityRoutes.js",
+      "sha256": "685b449758587d330f71ef62647adbee224a2af8d5414080a97f3bcecbe235f8",
+      "sizeBytes": 3412,
+      "lines": 77
+    },
+    "backend/src/reporting/calculations/reportingProductivityCalculations.js": {
+      "path": "backend/src/reporting/calculations/reportingProductivityCalculations.js",
+      "sha256": "5e301abc7a6da1a0120349744ba52feba58cf93821ce7d38312269166deaefff",
+      "sizeBytes": 34811,
+      "lines": 800
+    },
+    "backend/src/utils/exportGenerators.js": {
+      "path": "backend/src/utils/exportGenerators.js",
+      "sha256": "12f77a76fd5165ec6e84187cdd0807bfa9bc733d43c389295a09bf75ba72d1a2",
+      "sizeBytes": 23038,
+      "lines": 544
+    },
+    "backend/test/pm02mReportingProductivity.test.js": {
+      "path": "backend/test/pm02mReportingProductivity.test.js",
+      "sha256": "2b9b323f1c4245f4b6d62a56d430ec137f15453377452e374f1ac2827e21a09e",
+      "sizeBytes": 114230,
+      "lines": 2585
+    },
+    "frontend/src/js/pages/reportsAnalytics.js": {
+      "path": "frontend/src/js/pages/reportsAnalytics.js",
+      "sha256": "71f22dc2c31071cf034bf6898bc620186f84199832c155b9de74b5ee1033e1f8",
+      "sizeBytes": 550076,
+      "lines": 9405
+    }
+  },
+  "candidate": {},
+  "sharedFilesEvolution": {
+    "backend/src/utils/exportGenerators.js": {
+      "path": "backend/src/utils/exportGenerators.js",
+      "pm02l_frozen_sha256": "1da8a1636193b860eca20decb70efb1db309f53a3e907e3c56afd1ac2d6361b9",
+      "pm02l_sizeBytes": 21925,
+      "pm02m_candidate_sha256": "12f77a76fd5165ec6e84187cdd0807bfa9bc733d43c389295a09bf75ba72d1a2",
+      "pm02m_sizeBytes": 23038,
+      "reason": "PM-02M report pack ZIP and custom report export builder with legal name fallback sanitization"
+    },
+    "frontend/src/js/pages/reportsAnalytics.js": {
+      "path": "frontend/src/js/pages/reportsAnalytics.js",
+      "pm02l_frozen_sha256": "c9f08af222988e4dc22985349b136513abd27a0aa58e8fe495295b250394792b",
+      "pm02l_sizeBytes": 104463,
+      "pm02m_candidate_sha256": "71f22dc2c31071cf034bf6898bc620186f84199832c155b9de74b5ee1033e1f8",
+      "pm02m_sizeBytes": 550076,
+      "reason": "PM-02M governed custom report builder UI, saved views panel, comparison taxonomy alignment, and staff UI restrictions"
+    },
+    "backend/src/routes/index.js": {
+      "path": "backend/src/routes/index.js",
+      "pm02l_frozen_sha256": "21a621a0591fd9c0be9ad28d1ecad93ff912c3026bb413b8fa20fa023ce9719c",
+      "pm02l_sizeBytes": 5071,
+      "pm02m_candidate_sha256": "a20c30607af7bc48879e61c7941d81642975d000372f3f16615d1c5545e173bb",
+      "pm02m_sizeBytes": 5310,
+      "reason": "Mount reportingProductivityRoutes at /api/reporting-productivity"
+    }
+  },
+  "certification": {
+    "stage": "PM-02N",
+    "status": "CERTIFIED_AND_FROZEN",
+    "testSuite": "backend/test/pm02nFinalReportsCertification.test.js"
+  },
+  "pm02nInvariants": {
+    "PRODUCTION_FAKE_REPORT_DATA": 0,
+    "REPORTS_CSV_PRODUCTION_PATH": 0,
+    "REPORTS_FRONTEND_BACKEND_ROUTE_MISMATCH": 0,
+    "REPORTS_DEPLOYMENT_PROXY_ROUTE_MISMATCH": 0,
+    "DEAD_REPORTS_CONTROL": 0,
+    "MISREPRESENTED_REPORTS_CONTROL": 0,
+    "REPORTS_FRONTEND_UNCAUGHT_RUNTIME_ERROR": 0,
+    "GRAPH_USES_SYNTHETIC_PRODUCTION_DATA": 0,
+    "GRAPH_RENDER_NAN_OR_INFINITY": 0,
+    "GRAPH_FILTER_NOT_APPLIED_TO_SOURCE": 0,
+    "REPORT_SCREEN_PDF_XLSX_VALUE_DRIFT": 0,
+    "UNAVAILABLE_FINANCIAL_METRIC_REPORTED_AS_ACTUAL": 0,
+    "OWNER_REPORTS_CROSS_CAFE_LEAK": 0,
+    "CAFE_ADMIN_REPORTS_CROSS_CAFE_LEAK": 0,
+    "STAFF_ENTERPRISE_REPORT_ACCESS": 0,
+    "NORMAL_MASTER_PRIMARY_MASTER_PRIVILEGE_BYPASS": 0,
+    "REPORTS_CROSS_ORG_LEAK": 0,
+    "REPORTS_IDOR_BYPASS": 0,
+    "REPORTS_CLIENT_AUTHORITY_SPOOF": 0,
+    "WORKFORCE_PRIVATE_DATA_LEAK": 0,
+    "CUSTOM_REPORT_MUTATES_CANONICAL_REGISTRY": 0,
+    "SAVED_REPORT_RETAINS_REVOKED_SCOPE": 0,
+    "REPORT_PACK_AUTHORIZATION_BYPASS": 0,
+    "REPORT_PACK_FINGERPRINT_COLLISION_FOR_DIFFERENT_RESULT": 0,
+    "SOURCE_OUTAGE_NORMALIZED_TO_ZERO": 0,
+    "PM02N_CANONICAL_CATEGORY_DRIFT": 0,
+    "PM02N_UNAUTHORIZED_FEATURE_EXPANSION": 0,
+    "PM02N_SILENTLY_REBASELINES_FROZEN_ARTIFACT": 0,
+    "PM02N_MODIFIES_FROZEN_REPORT_TEST": 0,
+    "UNEXPLAINED_FROZEN_TEST_LOSS": 0,
+    "FINAL_CERTIFICATION_HIDES_KNOWN_UNAVAILABLE_CAPABILITY": 0,
+    "PM02N_REPORT_REGISTRY_SUMMARY_MISMATCH": 0,
+    "PM02N_FINAL_UI_TEST_USES_REAL_BROWSER_ENGINE": 1,
+    "REPORTS_REAL_BROWSER_RUNTIME_ERROR": 0,
+    "CAFE_ADMIN_REPORTING_PORTFOLIO_COLLAPSED_TO_SINGLE_CAFE": 0,
+    "PM02N_REPORT_SCOPE_CHANGE_WEAKENS_POS_DEVICE_BOUNDARY": 0,
+    "PM02N_REDEFINES_GLOBAL_ACTUALITY": 0,
+    "PM02N_REDEFINES_GLOBAL_DATA_QUALITY": 0,
+    "PM02N_SIMPLIFIES_PARTIAL_REFUND_TO_NO_REFUND": 0,
+    "PM02N_RECOMPUTES_TAX_OUTSIDE_FROZEN_SALES_PROVIDER": 0,
+    "PM02N_OMITS_OR_REDEFINES_CANONICAL_TENDER": 0,
+    "PM02N_USES_SHIFT_ROLE_AS_HISTORICAL_PAYROLL_ROLE": 0,
+    "CURRENT_ROLE_USED_AS_HISTORICAL_PAYROLL_ROLE": 0,
+    "PM02N_EXPORT_CONTROL_POINTS_TO_NONEXISTENT_ROUTE": 0,
+    "IMPLEMENTED_FORECASTING_MISLABELED_RESERVED_NOT_IMPLEMENTED": 0,
+    "AVAILABLE_REPORT_IMPLIES_NONEXISTENT_REPORT_SCHEDULER": 0,
+    "PM02N_FINAL_INVARIANT_COUNT_MISMATCH": 0,
+    "FINAL_ROLE_LEDGER_CONFLATES_PRIMARY_AND_NORMAL_MASTER": 0
+  }
+}

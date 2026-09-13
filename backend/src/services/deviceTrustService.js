@@ -279,6 +279,11 @@ class DeviceTrustService {
 
     await reg.save();
 
+    try {
+      const deviceService = require('../cafe-operations/services/deviceService');
+      await deviceService.transitionLifecycle(reg.deviceId, 'REVOKED', { reason, actorEmployeeId: masterUserId });
+    } catch (_) {}
+
     // Immediately terminate any active operator sessions on this device
     const { OperatorSession } = require('../models/OperatorSession');
     await OperatorSession.updateMany(

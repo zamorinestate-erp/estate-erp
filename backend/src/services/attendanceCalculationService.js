@@ -15,27 +15,91 @@ function calculateAttendanceMetrics({
   scheduledDurationMinutes = null,
   gracePeriodMinutes = 15,
   approvedOvertimeMinutes = 0,
+  deductUnclassifiedBreaks = true,
 } = {}) {
-  // Normalize break minutes
+  // Normalize break minutes, merge overlapping intervals, and track classifications
   let breakMinutes = 0;
-  if (Array.isArray(breaks)) {
-    for (const b of breaks) {
-      if (typeof b.durationMinutes === 'number' && b.durationMinutes > 0) {
-        breakMinutes += b.durationMinutes;
-      } else if (b.startedAt && (b.endedAt || checkOutAt)) {
-        const effectiveEnd = b.endedAt || checkOutAt;
-        const bStart = new Date(b.startedAt).getTime();
-        const bEnd = new Date(effectiveEnd).getTime();
-        if (!isNaN(bStart) && !isNaN(bEnd) && bEnd > bStart) {
-          const dur = Math.floor((bEnd - bStart) / 60000);
-          breakMinutes += dur;
-          if (!b.endedAt) {
-            b.endedAt = typeof effectiveEnd === 'string' ? effectiveEnd : new Date(effectiveEnd).toISOString();
-            b.durationMinutes = dur;
-          }
+  let paidBreakMinutes = 0;
+  let unpaidBreakMinutes = 0;
+  let unclassifiedBreakMinutes = 0;
+
+  if (Array.isArray(breaks) && breaks.length > 0) {
+    // Process break records, completing open breaks if checkOutAt is present
+    const normalizedBreaks = breaks.map((b) => {
+      let bStart = b.startedAt ? new Date(b.startedAt).getTime() : null;
+      let effectiveEnd = b.endedAt || checkOutAt;
+      let bEnd = effectiveEnd ? new Date(effectiveEnd).getTime() : null;
+
+      let dur = typeof b.durationMinutes === 'number' && b.durationMinutes > 0
+        ? b.durationMinutes
+        : (bStart && bEnd && !isNaN(bStart) && !isNaN(bEnd) && bEnd > bStart
+            ? Math.floor((bEnd - bStart) / 60000)
+            : 0);
+
+      if (!b.endedAt && effectiveEnd) {
+        b.endedAt = typeof effectiveEnd === 'string' ? effectiveEnd : new Date(effectiveEnd).toISOString();
+        b.durationMinutes = dur;
+      }
+
+      const isPaid = b.isPaid === true || b.isDeductible === false || b.breakType === 'PAID';
+      const isExplicitUnpaid = b.isPaid === false || b.isDeductible === true || b.breakType === 'UNPAID';
+
+      return {
+        record: b,
+        startMs: bStart && !isNaN(bStart) ? bStart : null,
+        endMs: bEnd && !isNaN(bEnd) ? bEnd : null,
+        durationMinutes: dur,
+        isPaid,
+        isExplicitUnpaid,
+        isUnclassified: !isPaid && !isExplicitUnpaid,
+      };
+    });
+
+    // Merge overlapping intervals for timestamp-based breaks to avoid double-deductions
+    const timedBreaks = normalizedBreaks.filter((nb) => nb.startMs !== null && nb.endMs !== null && nb.endMs > nb.startMs);
+    const untimedBreaks = normalizedBreaks.filter((nb) => nb.startMs === null || nb.endMs === null || nb.endMs <= nb.startMs);
+
+    if (timedBreaks.length > 0) {
+      timedBreaks.sort((a, b) => a.startMs - b.startMs);
+      const mergedIntervals = [];
+      let cur = { startMs: timedBreaks[0].startMs, endMs: timedBreaks[0].endMs };
+
+      for (let i = 1; i < timedBreaks.length; i++) {
+        const nextB = timedBreaks[i];
+        if (nextB.startMs <= cur.endMs) {
+          cur.endMs = Math.max(cur.endMs, nextB.endMs);
+        } else {
+          mergedIntervals.push(cur);
+          cur = { startMs: nextB.startMs, endMs: nextB.endMs };
         }
       }
+      mergedIntervals.push(cur);
+
+      const mergedTimedMinutes = mergedIntervals.reduce((sum, inv) => sum + Math.floor((inv.endMs - inv.startMs) / 60000), 0);
+      const untimedMinutes = untimedBreaks.reduce((sum, nb) => sum + nb.durationMinutes, 0);
+      breakMinutes = mergedTimedMinutes + untimedMinutes;
+    } else {
+      breakMinutes = normalizedBreaks.reduce((sum, nb) => sum + nb.durationMinutes, 0);
     }
+
+    for (const nb of normalizedBreaks) {
+      if (nb.isPaid) {
+        paidBreakMinutes += nb.durationMinutes;
+      } else if (nb.isExplicitUnpaid) {
+        unpaidBreakMinutes += nb.durationMinutes;
+      } else {
+        unclassifiedBreakMinutes += nb.durationMinutes;
+      }
+    }
+  }
+
+  // Deductible breaks: paid breaks are never deducted; unclassified breaks follow deductUnclassifiedBreaks policy
+  let deductibleBreakMinutes = 0;
+  if (paidBreakMinutes === 0) {
+    deductibleBreakMinutes = (deductUnclassifiedBreaks || unpaidBreakMinutes > 0) ? breakMinutes : 0;
+  } else {
+    const rawDeductible = unpaidBreakMinutes + (deductUnclassifiedBreaks ? unclassifiedBreakMinutes : 0);
+    deductibleBreakMinutes = Math.min(breakMinutes, Math.max(0, breakMinutes - paidBreakMinutes, rawDeductible));
   }
 
   // Determine scheduled duration
@@ -129,14 +193,19 @@ function calculateAttendanceMetrics({
   }
 
   const grossMinutes = Math.max(0, Math.floor((outTime - inTime) / 60000));
-  const totalWorkedMinutes = Math.max(0, grossMinutes - breakMinutes);
+  const totalWorkedMinutes = Math.max(0, grossMinutes - deductibleBreakMinutes);
   const regularMinutes = Math.min(totalWorkedMinutes, scheduledMinutes);
   const detectedOvertimeMinutes = Math.max(0, totalWorkedMinutes - scheduledMinutes);
   const approvedOT = Number(approvedOvertimeMinutes) || 0;
 
   return {
     grossMinutes,
+    grossPresenceMinutes: grossMinutes,
     breakMinutes,
+    paidBreakMinutes,
+    unpaidBreakMinutes,
+    unclassifiedBreakMinutes,
+    deductibleBreakMinutes,
     breaks,
     totalWorkedMinutes,
     workedMinutes: totalWorkedMinutes,
@@ -152,6 +221,8 @@ function calculateAttendanceMetrics({
     earlyDepartureMinutes,
     payableMinutes: totalWorkedMinutes,
     scheduledMinutes,
+    hasUnclassifiedBreaks: unclassifiedBreakMinutes > 0,
+    workedMinutesQuality: unclassifiedBreakMinutes > 0 ? 'PARTIAL_SOURCE' : 'AVAILABLE',
     status: 'COMPLETED',
   };
 }

@@ -12,6 +12,7 @@ const {
   submitProbationReview,
   addEmployeeSkill,
   assignEmployeeTraining,
+  listFoodSafetyTrainings,
   generateEmployeeLetter,
   initiateOffboarding,
   getWorkforceIntegrity,
@@ -269,7 +270,13 @@ router.post(
   addEmployeeSkill
 );
 
-// 12. Training Assignment
+// 12. Training Assignment & Food Safety Verification (R02-05)
+router.get(
+  '/food-safety/trainings',
+  authorize('EMPLOYEE:READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  listFoodSafetyTrainings
+);
+
 router.post(
   '/:userId/training',
   authorize('EMPLOYEE:WRITE', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),

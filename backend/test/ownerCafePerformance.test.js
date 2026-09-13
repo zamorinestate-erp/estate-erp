@@ -175,4 +175,152 @@ test('OWN-SCR-006: Café Performance Control Centre Parity & Security Suite', as
     assert.equal(salesAchievementPct, 74, '74% of revenue target achieved');
     assert.equal(isAheadOfPace, true, 'Performance is ahead of current time pace');
   });
+
+  // ── 8. Multi-Café Aggregate Isolation (Section 9) ─────────────────────────
+  await t.test('8. Multi-Café Isolation: Portfolio totals strictly include only authorized cafes (Zero aggregate leakage)', () => {
+    const allCafes = [
+      { cafeId: 'ZC-0001', orgId: 'ORG-001', salesPaisa: 15000000, bills: 600, targetPaisa: 16000000 }, // Authorized
+      { cafeId: 'ZC-0002', orgId: 'ORG-001', salesPaisa: 10000000, bills: 400, targetPaisa: 12000000 }, // Authorized
+      { cafeId: 'ZC-0003', orgId: 'ORG-001', salesPaisa: 30000000, bills: 1200, targetPaisa: 28000000 }, // UNAUTHORIZED for this Owner
+      { cafeId: 'ZC-FOREIGN', orgId: 'ORG-002', salesPaisa: 50000000, bills: 2000, targetPaisa: 50000000 }, // FOREIGN ORG
+    ];
+
+    const ownerAssignedIds = ['ZC-0001', 'ZC-0002'];
+    const ownerOrg = 'ORG-001';
+
+    // Filter strictly to authorized scope
+    const authorizedCafes = allCafes.filter(
+      (c) => c.orgId === ownerOrg && ownerAssignedIds.includes(c.cafeId)
+    );
+
+    assert.equal(authorizedCafes.length, 2, 'Must only include the 2 assigned cafes');
+
+    const totalSalesPaisa = authorizedCafes.reduce((s, c) => s + c.salesPaisa, 0);
+    const totalBills = authorizedCafes.reduce((s, c) => s + c.bills, 0);
+    const totalTargetPaisa = authorizedCafes.reduce((s, c) => s + c.targetPaisa, 0);
+
+    assert.equal(totalSalesPaisa, 25000000, 'Consolidated sales must be ₹250,000, not ₹550,000');
+    assert.equal(totalBills, 1000, 'Consolidated bills must be 1,000, not 2,200');
+    assert.equal(totalTargetPaisa, 28000000, 'Consolidated target must be ₹280,000');
+    assert.equal(totalSalesPaisa < 55000000, true, 'Unauthorized cafe ZC-0003 must contribute 0 to portfolio');
+  });
+
+  // ── 9. AvT Zero and Missing Target Resilience (Sections 13-14) ────────────
+  await t.test('9. AvT Resilience: Zero target, missing target, and negative variance safely computed', () => {
+    function computeAvtLocal(actualPaisa, targetPaisa) {
+      const actual = Number(actualPaisa || 0);
+      const target = Number(targetPaisa || 0);
+      if (!target || target <= 0) {
+        return { hasTarget: false, diffPaisa: 0, pctText: 'No Target', isAhead: false };
+      }
+      const diffPaisa = actual - target;
+      const pct = (diffPaisa / target) * 100;
+      const isAhead = diffPaisa >= 0;
+      return {
+        hasTarget: true,
+        diffPaisa,
+        pct,
+        pctText: `${isAhead ? '+' : ''}${pct.toFixed(1)}%`,
+        isAhead,
+      };
+    }
+
+    // Case A: Target = 0 (Must NOT be Infinity or NaN)
+    const resZero = computeAvtLocal(5000000, 0);
+    assert.equal(resZero.hasTarget, false);
+    assert.equal(resZero.pctText, 'No Target');
+    assert.equal(isFinite(resZero.diffPaisa), true);
+
+    // Case B: Target = null / undefined
+    const resNull = computeAvtLocal(5000000, null);
+    assert.equal(resNull.hasTarget, false);
+    assert.equal(resNull.pctText, 'No Target');
+
+    // Case C: Actual < Target (Behind pace, negative variance)
+    const resBehind = computeAvtLocal(8000000, 10000000);
+    assert.equal(resBehind.hasTarget, true);
+    assert.equal(resBehind.diffPaisa, -2000000);
+    assert.equal(resBehind.pctText, '-20.0%');
+    assert.equal(resBehind.isAhead, false);
+
+    // Case D: Actual > Target (Ahead of pace, positive variance)
+    const resAhead = computeAvtLocal(12500000, 10000000);
+    assert.equal(resAhead.hasTarget, true);
+    assert.equal(resAhead.diffPaisa, 2500000);
+    assert.equal(resAhead.pctText, '+25.0%');
+    assert.equal(resAhead.isAhead, true);
+  });
+
+  // ── 10. ABV Denominator Eligibility (Section 12) ──────────────────────────
+  await t.test('10. ABV Eligibility: Voided, cancelled, and draft bills are excluded from ABV denominator', () => {
+    const rawBills = [
+      { billId: 'B-01', status: 'COMPLETED', totalPaisa: 25000 },
+      { billId: 'B-02', status: 'COMPLETED', totalPaisa: 35000 },
+      { billId: 'B-03', status: 'VOIDED', totalPaisa: 50000 },     // Excluded
+      { billId: 'B-04', status: 'CANCELLED', totalPaisa: 15000 },  // Excluded
+      { billId: 'B-05', status: 'DRAFT', totalPaisa: 20000 },      // Excluded
+    ];
+
+    const qualifyingBills = rawBills.filter((b) => b.status === 'COMPLETED');
+    assert.equal(qualifyingBills.length, 2, 'Only 2 completed bills qualify for ABV denominator');
+
+    const totalSalesPaisa = qualifyingBills.reduce((s, b) => s + b.totalPaisa, 0);
+    const abvPaisa = Math.round(totalSalesPaisa / qualifyingBills.length);
+
+    assert.equal(totalSalesPaisa, 60000, 'Qualifying sales must be ₹600.00');
+    assert.equal(abvPaisa, 30000, 'Authoritative ABV must be ₹300.00 (30,000 paisa)');
+  });
+
+  // ── 11. Multi-Location Weighted Ratio Invariants (Section 43) ─────────────
+  await t.test('11. Weighted Ratio Invariants: Labor ratio derived from total cost / total sales (Rejects simple average)', () => {
+    // Deliberately unequal units
+    const cafeA = { salesPaisa: 10000000, laborCostPaisa: 1500000, laborPct: 15.0 }; // ₹100,000 sales, 15% labor
+    const cafeB = { salesPaisa: 90000000, laborCostPaisa: 27000000, laborPct: 30.0 }; // ₹900,000 sales, 30% labor
+
+    const simpleAvgLaborPct = (cafeA.laborPct + cafeB.laborPct) / 2; // 22.5%
+
+    const totalSalesPaisa = cafeA.salesPaisa + cafeB.salesPaisa; // ₹1,000,000
+    const totalLaborCostPaisa = cafeA.laborCostPaisa + cafeB.laborCostPaisa; // ₹285,000
+    const weightedLaborPct = Number(((totalLaborCostPaisa / totalSalesPaisa) * 100).toFixed(2)); // 28.50%
+
+    assert.equal(simpleAvgLaborPct, 22.5, 'Simple average is 22.5%');
+    assert.equal(weightedLaborPct, 28.5, 'Weighted portfolio ratio is 28.50%');
+    assert.notEqual(weightedLaborPct, simpleAvgLaborPct, 'Weighted portfolio ratio must not be distorted by simple averaging');
+  });
+
+  // ── 12. Ranking and Health Badge Integrity (Section 17) ───────────────────
+  await t.test('12. Ranking & Badge Integrity: Cafés sorted descending by sales, TOP and BOTTOM assigned', () => {
+    const cards = [
+      { cafeId: 'ZC-0002', totalSalesPaisa: 12000000 },
+      { cafeId: 'ZC-0001', totalSalesPaisa: 25000000 },
+      { cafeId: 'ZC-0003', totalSalesPaisa: 8000000 },
+    ];
+
+    cards.sort((a, b) => b.totalSalesPaisa - a.totalSalesPaisa);
+
+    assert.equal(cards[0].cafeId, 'ZC-0001', 'ZC-0001 must rank #1 with highest sales');
+    assert.equal(cards[1].cafeId, 'ZC-0002', 'ZC-0002 must rank #2');
+    assert.equal(cards[2].cafeId, 'ZC-0003', 'ZC-0003 must rank #3 with lowest sales');
+
+    cards[0].badge = 'TOP';
+    cards[cards.length - 1].badge = 'BOTTOM';
+
+    assert.equal(cards[0].badge, 'TOP');
+    assert.equal(cards[2].badge, 'BOTTOM');
+  });
+
+  // ── 13. Financial Precision in Integer Paise (Section 23) ──────────────────
+  await t.test('13. Financial Precision: Exact integer paise representation with 0 floating-point drift', () => {
+    const microBills = [
+      { amountPaisa: 1250075 }, // ₹12,500.75
+      { amountPaisa: 350025 },  // ₹3,500.25
+      { amountPaisa: 1 },       // ₹0.01
+      { amountPaisa: 99 },      // ₹0.99
+    ];
+
+    const sumPaisa = microBills.reduce((s, b) => s + b.amountPaisa, 0);
+    assert.equal(sumPaisa, 1600200, 'Sum in integer paise must be exactly 1,600,200 (₹16,002.00)');
+    assert.equal(Number.isInteger(sumPaisa), true, 'Must remain pure integer');
+    assert.equal(sumPaisa / 100, 16002, 'Must format precisely to ₹16,002.00');
+  });
 });

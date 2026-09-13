@@ -317,6 +317,31 @@ const menuItemSchema = new mongoose.Schema(
       isVerified: { type: Boolean, default: false },
     },
 
+    prepStation: {
+      type: String,
+      enum: ['HOT_KITCHEN', 'BEVERAGE_BAR', 'BAKERY_COLD', 'DESSERT', 'EXPEDITER', 'ALL'],
+      default: 'HOT_KITCHEN',
+      index: true,
+    },
+
+    foodSafetyNotes: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+
+    fssaiCategoryNumber: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+
+    targetPrepTimeMinutes: {
+      type: Number,
+      min: 1,
+      default: 15,
+    },
+
     availableCafeIds: {
       type: [String],
       default: [],

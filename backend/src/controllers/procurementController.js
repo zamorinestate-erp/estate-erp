@@ -15,6 +15,7 @@
  *   3. Audits the receipt action.
  */
 
+const mongoose = require('mongoose');
 const {
   PurchaseOrder,
   PO_STATUSES,
@@ -39,6 +40,25 @@ const {
 const {
   SequenceCounter,
 } = require('../models/SequenceCounter');
+
+const {
+  AdvanceShippingNotice,
+  ASN_STATUSES,
+} = require('../models/AdvanceShippingNotice');
+
+const {
+  PurchaseRequisition,
+  REQUISITION_STATUSES,
+  REQUISITION_PRIORITIES,
+} = require('../models/PurchaseRequisition');
+
+const {
+  IncomingInspection,
+} = require('../models/IncomingInspection');
+
+const {
+  InventoryLot,
+} = require('../models/InventoryLot');
 
 const {
   asyncHandler,
@@ -77,16 +97,176 @@ function parsePositiveInteger(value, fallback, maximum) {
   return Math.min(parsed, maximum);
 }
 
+/**
+ * Commit a transaction with retry on UnknownTransactionCommitResult.
+ * Per MongoDB transaction specification:
+ * - If commitTransaction() throws UnknownTransactionCommitResult (or transient network drop during commit),
+ *   the driver/application must retry commitTransaction() on the SAME active session.
+ * - Under NO circumstance should the business operation be re-executed, as that would duplicate writes.
+ * - TransientTransactionError during statement execution is distinct and must be retried from the beginning.
+ */
+async function commitWithRetry(session, maxAttempts = 3) {
+  if (!session || typeof session.commitTransaction !== 'function') return;
+  let attempts = 0;
+  while (attempts < maxAttempts) {
+    try {
+      await session.commitTransaction();
+      return;
+    } catch (error) {
+      attempts++;
+      const isUnknownCommit =
+        (typeof error.hasErrorLabel === 'function' && error.hasErrorLabel('UnknownTransactionCommitResult')) ||
+        error.code === 50 ||
+        error.code === 91 ||
+        (error.message && error.message.includes('UnknownTransactionCommitResult'));
+      if (isUnknownCommit) {
+        if (attempts < maxAttempts) {
+          continue;
+        }
+        const uncertaintyErr = new ApiError(
+          500,
+          'TRANSACTION_COMMIT_OUTCOME_UNKNOWN',
+          'Transaction commit outcome is unknown after retry attempts. The operation may have committed or aborted; verify durable state before replaying.'
+        );
+        uncertaintyErr.isUnknownCommitOutcome = true;
+        uncertaintyErr.originalError = error;
+        throw uncertaintyErr;
+      }
+      throw error;
+    }
+  }
+}
+
+/**
+ * Canonical whole-transaction retry helper.
+ * Enforces:
+ * 1. Whole transaction retry on TransientTransactionError with fresh session & re-reading fresh DB state.
+ * 2. On commit: calls commitWithRetry(session) to handle UnknownTransactionCommitResult on the same session.
+ * 3. Never reruns the transaction business body for commit uncertainty.
+ * 4. Never converts an unresolved commit outcome into a normal business abort or conflict.
+ */
+async function executeTransactionWithRetry(operationFn, options = {}) {
+  const maxTransientRetries = options.maxTransientRetries || 5;
+  const maxCommitRetries = options.maxCommitRetries || 3;
+  const canTransact = options.canTransact !== undefined
+    ? options.canTransact
+    : (mongoose.connection && mongoose.connection.readyState === 1 && typeof mongoose.connection.startSession === 'function');
+
+  if (!canTransact) {
+    return await operationFn(null);
+  }
+
+  let transientAttempts = 0;
+  let lastTransientError = null;
+
+  while (transientAttempts < maxTransientRetries) {
+    transientAttempts++;
+    let session = null;
+    try {
+      session = await mongoose.connection.startSession();
+      session.startTransaction();
+
+      const result = await operationFn(session);
+
+      await commitWithRetry(session);
+
+      await session.endSession();
+      session = null;
+
+      return result;
+    } catch (err) {
+      if (session) {
+        const isUnknownCommit = err.code === 'TRANSACTION_COMMIT_OUTCOME_UNKNOWN' || err.isUnknownCommitOutcome;
+        if (!isUnknownCommit) {
+          try { await session.abortTransaction(); } catch (_) {}
+        }
+        try { await session.endSession(); } catch (_) {}
+        session = null;
+      }
+
+      const isTransient =
+        (typeof err.hasErrorLabel === 'function' && err.hasErrorLabel('TransientTransactionError')) ||
+        (Array.isArray(err.errorLabels) && err.errorLabels.includes('TransientTransactionError')) ||
+        err.code === 112 ||
+        String(err.message).includes('WriteConflict');
+
+      if (isTransient && transientAttempts < maxTransientRetries) {
+        lastTransientError = err;
+        continue;
+      }
+
+      throw err;
+    }
+  }
+
+  if (lastTransientError) {
+    throw lastTransientError;
+  }
+}
+
 function assertCafeAccess(request, cafeId) {
   if (!cafeId) return;
-  if (request.auth.role === 'MASTER' || request.auth.role === 'OWNER') return;
+  const isCafeOps = request.auth.workspaceMode === 'CAFE_OPERATIONS' ||
+    request.headers?.['x-workspace-mode'] === 'CAFE_OPERATIONS' ||
+    request.headers?.['x-workspace'] === 'CAFE_OPERATIONS' ||
+    (request.auth.deviceContext?.deviceClass === 'CAFE_OWNED' && !!request.auth.deviceContext?.boundCafeId);
   const effectiveCafe = resolveEffectiveCafeScope(request);
-  if (effectiveCafe && effectiveCafe !== cafeId.trim().toUpperCase()) {
+  if (isCafeOps && effectiveCafe && effectiveCafe !== cafeId.trim().toUpperCase()) {
+    throw new ApiError(
+      403,
+      'CROSS_CAFE_RESOURCE_DENIED',
+      'Cross-café access is denied. You are not authorized for the requested café.'
+    );
+  }
+  if (request.auth.role === 'MASTER') return;
+  if (request.auth.role === 'OWNER') {
+    const assigned = request.auth.assignedCafeIds || [];
+    const target = cafeId.trim().toUpperCase();
+    if (assigned.length === 0 || !assigned.includes(target)) {
+      throw new ApiError(
+        403,
+        'CROSS_CAFE_RESOURCE_DENIED',
+        'Owner is not authorized for the requested café.'
+      );
+    }
+    return;
+  }
+  const assigned = request.auth.assignedCafeIds || [];
+  const target = cafeId.trim().toUpperCase();
+  if (!assigned.includes(target)) {
     throw new ApiError(
       403,
       'CAFE_ACCESS_DENIED',
       'You do not have access to this café.'
     );
+  }
+}
+
+const poLocks = new Map();
+let poLocksDisabled = false;
+function _setPoLocksDisabled(val) {
+  poLocksDisabled = !!val;
+}
+
+async function withPoLock(poId, fn) {
+  if (!poId || poLocksDisabled || process.env.DISABLE_PO_LOCKS === 'true') {
+    return fn();
+  }
+  while (poLocks.has(poId)) {
+    try {
+      await poLocks.get(poId);
+    } catch (_) {}
+  }
+  let release;
+  const lockPromise = new Promise((resolve) => {
+    release = resolve;
+  });
+  poLocks.set(poId, lockPromise);
+  try {
+    return await fn();
+  } finally {
+    poLocks.delete(poId);
+    release();
   }
 }
 
@@ -111,8 +291,8 @@ const listOrders = asyncHandler(async (request, response) => {
     const normCafeId = normalizeId(cafeId);
     assertCafeAccess(request, normCafeId);
     filter.cafeId = normCafeId;
-  } else if (!['MASTER', 'OWNER'].includes(request.auth.role)) {
-    filter.cafeId = { $in: request.auth.assignedCafeIds };
+  } else if (request.auth.role !== 'MASTER') {
+    filter.cafeId = { $in: request.auth.assignedCafeIds || [] };
   }
 
   if (vendorId) filter.vendorId = normalizeId(vendorId);
@@ -120,11 +300,10 @@ const listOrders = asyncHandler(async (request, response) => {
     filter.status = status.toUpperCase();
   }
 
-  if (from && /^\d{4}-\d{2}-\d{2}$/.test(from)) {
-    filter.orderDate = { ...filter.orderDate, $gte: from };
-  }
-  if (to && /^\d{4}-\d{2}-\d{2}$/.test(to)) {
-    filter.orderDate = { ...filter.orderDate, $lte: to };
+  if (from || to) {
+    filter.createdAt = {};
+    if (from) filter.createdAt.$gte = new Date(`${from}T00:00:00.000Z`);
+    if (to) filter.createdAt.$lte = new Date(`${to}T23:59:59.999Z`);
   }
 
   const [orders, total] = await Promise.all([
@@ -141,7 +320,12 @@ const listOrders = asyncHandler(async (request, response) => {
     success: true,
     data: {
       orders,
-      pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+      },
     },
     correlationId: request.correlationId || null,
   });
@@ -180,6 +364,13 @@ const getOrder = asyncHandler(async (request, response) => {
  * Create a new Purchase Order (starts in DRAFT status).
  */
 const createOrder = asyncHandler(async (request, response) => {
+  if (!request.body || typeof request.body !== 'object') {
+    throw new ApiError(400, 'INVALID_PAYLOAD', 'Request body must be an object.');
+  }
+  if (request.body.body) {
+    throw new ApiError(400, 'MALFORMED_REQUEST_BODY', 'Malformed request body detected: nested body wrapper is not permitted.');
+  }
+
   const {
     cafeId: rawCafeId,
     vendorId: rawVendorId,
@@ -191,7 +382,7 @@ const createOrder = asyncHandler(async (request, response) => {
     notes,
   } = request.body;
 
-  const cafeId = normalizeId(rawCafeId);
+  const cafeId = resolveEffectiveCafeScope(request) || normalizeId(rawCafeId);
   const vendorId = normalizeId(rawVendorId);
 
   if (!cafeId || !vendorId) {
@@ -238,13 +429,44 @@ const createOrder = asyncHandler(async (request, response) => {
     }
 
     const qty = Number(li.orderedQuantityBase);
-    const unitPrice = Number(li.unitPricePaisa);
+    let unitPrice = Number(li.unitPricePaisa);
 
     if (!Number.isFinite(qty) || qty <= 0) {
       throw new ApiError(400, 'INVALID_QUANTITY', `Ordered quantity for item ${iId} must be positive.`);
     }
-    if (!Number.isInteger(unitPrice) || unitPrice < 0) {
-      throw new ApiError(400, 'INVALID_PRICE', `Unit price for item ${iId} must be a non-negative integer (paisa).`);
+
+    // Invariant: CLIENT_SUPPLIED_VENDOR_PRICE_USED_AS_AUTHORITY = 0
+    const catEntry = (vendor.itemCatalogue || []).find(
+      (c) => c.itemId === iId && (!c.status || c.status === 'ACTIVE')
+    );
+
+    if (catEntry) {
+      const authorizedPrice = catEntry.currentPricePaisa;
+      const isOverrideAllowed = ['MASTER', 'OWNER'].includes(request.auth.role) && request.body.allowPriceOverride === true;
+      if (isOverrideAllowed && Number.isInteger(unitPrice)) {
+        // Explicit authorized price override
+      } else {
+        // Invariant: CLIENT_SUPPLIED_VENDOR_PRICE_USED_AS_AUTHORITY = 0
+        // Enforce authorized catalogue price over client-supplied price
+        unitPrice = authorizedPrice;
+      }
+
+      const moq = catEntry.moq || catEntry.minimumOrderQty || 1;
+      if (qty < moq) {
+        throw new ApiError(
+          400,
+          'MOQ_VIOLATION',
+          `Order quantity (${qty}) is below the vendor's minimum order quantity (${moq}) for item ${iId}.`
+        );
+      }
+    } else {
+      if (!Number.isInteger(unitPrice) || unitPrice < 0) {
+        if (Number.isInteger(item.unitCostPaisa) && item.unitCostPaisa >= 0) {
+          unitPrice = item.unitCostPaisa;
+        } else {
+          throw new ApiError(400, 'INVALID_PRICE', `Unit price for item ${iId} must be a non-negative integer (paisa).`);
+        }
+      }
     }
 
     const totalLinePaisa = Math.round(qty * unitPrice);
@@ -309,7 +531,7 @@ const createOrder = asyncHandler(async (request, response) => {
 
   return response.status(201).json({
     success: true,
-    data: { order: order.toObject() },
+    data: { order: order.toObject(), purchaseOrder: order.toObject() },
     correlationId: request.correlationId || null,
   });
 });
@@ -355,7 +577,7 @@ const submitOrder = asyncHandler(async (request, response) => {
 
   return response.status(200).json({
     success: true,
-    data: { order: order.toObject() },
+    data: { order: order.toObject(), purchaseOrder: order.toObject() },
     correlationId: request.correlationId || null,
   });
 });
@@ -368,43 +590,57 @@ const approveOrder = asyncHandler(async (request, response) => {
   const purchaseOrderId = normalizeId(request.params.purchaseOrderId);
   const { notes } = request.body;
 
-  const order = await PurchaseOrder.findOne({
-    purchaseOrderId,
-    organisationId: request.auth.organisationId,
-  });
+  const runApproval = async (session) => {
+    const sessionOpt = session ? { session } : {};
+    const order = await PurchaseOrder.findOne(
+      {
+        purchaseOrderId,
+        organisationId: request.auth.organisationId,
+      },
+      null,
+      sessionOpt
+    );
 
-  if (!order) {
-    throw new ApiError(404, 'NOT_FOUND', 'Purchase order not found.');
-  }
-  assertCafeAccess(request, order.cafeId);
+    if (!order) {
+      throw new ApiError(404, 'NOT_FOUND', 'Purchase order not found.');
+    }
+    assertCafeAccess(request, order.cafeId);
 
-  if (order.status !== 'SUBMITTED') {
-    throw new ApiError(409, 'INVALID_STATUS_TRANSITION', `Cannot approve a purchase order in ${order.status} status.`);
-  }
+    if (order.status !== 'SUBMITTED') {
+      throw new ApiError(409, 'INVALID_STATUS_TRANSITION', `Cannot approve a purchase order in ${order.status} status.`);
+    }
 
-  order.status = 'APPROVED';
-  order.approvedByUserId = request.auth.userId;
-  order.approvedAt = new Date();
-  if (notes) order.approvalNotes = String(notes).trim();
-  order.lastModifiedByUserId = request.auth.userId;
+    order.status = 'APPROVED';
+    order.approvedByUserId = request.auth.userId;
+    order.approvedAt = new Date();
+    if (notes) order.approvalNotes = String(notes).trim();
+    order.lastModifiedByUserId = request.auth.userId;
 
-  await order.save();
+    await order.save(sessionOpt);
 
-  await recordRequestAudit({
-    request,
-    module: 'PROCUREMENT',
-    action: 'APPROVE_PURCHASE_ORDER',
-    entityType: 'PURCHASE_ORDER',
-    entityId: purchaseOrderId,
-    before: { status: 'SUBMITTED' },
-    after: { status: 'APPROVED' },
-    result: 'SUCCESS',
-    riskClassification: 'MEDIUM',
-  });
+    await recordRequestAudit(
+      {
+        request,
+        module: 'PROCUREMENT',
+        action: 'APPROVE_PURCHASE_ORDER',
+        entityType: 'PURCHASE_ORDER',
+        entityId: purchaseOrderId,
+        before: { status: 'SUBMITTED' },
+        after: { status: 'APPROVED' },
+        result: 'SUCCESS',
+        riskClassification: 'MEDIUM',
+      },
+      { session }
+    );
+
+    return order;
+  };
+
+  const order = await executeTransactionWithRetry(runApproval);
 
   return response.status(200).json({
     success: true,
-    data: { order: order.toObject() },
+    data: { order: order.toObject(), purchaseOrder: order.toObject() },
     correlationId: request.correlationId || null,
   });
 });
@@ -415,36 +651,51 @@ const approveOrder = asyncHandler(async (request, response) => {
  */
 const orderSent = asyncHandler(async (request, response) => {
   const purchaseOrderId = normalizeId(request.params.purchaseOrderId);
-  const order = await PurchaseOrder.findOne({
-    purchaseOrderId,
-    organisationId: request.auth.organisationId,
-  });
 
-  if (!order) {
-    throw new ApiError(404, 'NOT_FOUND', 'Purchase order not found.');
-  }
-  assertCafeAccess(request, order.cafeId);
+  const runOrderSent = async (session) => {
+    const sessionOpt = session ? { session } : {};
+    const order = await PurchaseOrder.findOne(
+      {
+        purchaseOrderId,
+        organisationId: request.auth.organisationId,
+      },
+      null,
+      sessionOpt
+    );
 
-  if (order.status !== 'APPROVED') {
-    throw new ApiError(409, 'INVALID_STATUS_TRANSITION', `Cannot mark as ORDERED from ${order.status} status.`);
-  }
+    if (!order) {
+      throw new ApiError(404, 'NOT_FOUND', 'Purchase order not found.');
+    }
+    assertCafeAccess(request, order.cafeId);
 
-  order.status = 'ORDERED';
-  order.lastModifiedByUserId = request.auth.userId;
+    if (order.status !== 'APPROVED') {
+      throw new ApiError(409, 'INVALID_STATUS_TRANSITION', `Cannot mark as ORDERED from ${order.status} status.`);
+    }
 
-  await order.save();
+    order.status = 'ORDERED';
+    order.lastModifiedByUserId = request.auth.userId;
 
-  await recordRequestAudit({
-    request,
-    module: 'PROCUREMENT',
-    action: 'SEND_PURCHASE_ORDER',
-    entityType: 'PURCHASE_ORDER',
-    entityId: purchaseOrderId,
-    before: { status: 'APPROVED' },
-    after: { status: 'ORDERED' },
-    result: 'SUCCESS',
-    riskClassification: 'LOW',
-  });
+    await order.save(sessionOpt);
+
+    await recordRequestAudit(
+      {
+        request,
+        module: 'PROCUREMENT',
+        action: 'SEND_PURCHASE_ORDER',
+        entityType: 'PURCHASE_ORDER',
+        entityId: purchaseOrderId,
+        before: { status: 'APPROVED' },
+        after: { status: 'ORDERED' },
+        result: 'SUCCESS',
+        riskClassification: 'LOW',
+      },
+      { session }
+    );
+
+    return order;
+  };
+
+  const order = await executeTransactionWithRetry(runOrderSent);
 
   return response.status(200).json({
     success: true,
@@ -727,41 +978,136 @@ const getProcurementOverview = asyncHandler(async (request, response) => {
 });
 
 /**
+ * GET /procurement/catalogue
+ * Guided Buying catalogue with authorized contract rates, preferred suppliers, and pack/UOM conversions.
+ */
+const getCatalogue = asyncHandler(async (request, response) => {
+  const orgId = request.auth.organisationId;
+  const effectiveCafe = resolveEffectiveCafeScope(request);
+  const { category, search, cafeId: queryCafeId } = request.query;
+  const targetCafe = effectiveCafe || (queryCafeId && queryCafeId !== 'ALL' ? normalizeId(queryCafeId) : null);
+
+  const itemQuery = { organisationId: orgId, status: 'ACTIVE' };
+  if (category && category !== 'ALL') {
+    itemQuery.category = category;
+  }
+  if (search && search.trim()) {
+    const q = search.trim();
+    itemQuery.$or = [
+      { name: { $regex: q, $options: 'i' } },
+      { sku: { $regex: q, $options: 'i' } },
+      { shortName: { $regex: q, $options: 'i' } },
+    ];
+  }
+
+  const [items, vendors] = await Promise.all([
+    GlobalInventoryItem.find(itemQuery).lean(),
+    Vendor.find({ organisationId: orgId, status: 'ACTIVE' }).lean(),
+  ]);
+
+  const catalogue = [];
+  for (const item of items) {
+    const itemVendors = [];
+    for (const vendor of vendors) {
+      if (targetCafe && Array.isArray(vendor.approvedCafeIds) && vendor.approvedCafeIds.length > 0) {
+        if (!vendor.approvedCafeIds.includes(targetCafe)) continue;
+      }
+      const catEntry = (vendor.itemCatalogue || []).find(
+        (c) => c.itemId === item.itemId && (!c.status || c.status === 'ACTIVE')
+      );
+      if (catEntry) {
+        itemVendors.push({
+          vendorId: vendor.vendorId,
+          vendorName: vendor.name,
+          supplierItemCode: catEntry.supplierItemCode || '',
+          pricePaisa: catEntry.currentPricePaisa,
+          contractPricePaisa: catEntry.currentPricePaisa,
+          uom: catEntry.uom || item.baseUnit,
+          packSize: catEntry.packSize || '1 UNIT',
+          uomConversionFactor: catEntry.uomConversionFactor || 1,
+          moq: catEntry.moq || catEntry.minimumOrderQty || 1,
+          minimumOrderQuantity: catEntry.moq || catEntry.minimumOrderQty || 1,
+          leadTimeDays: catEntry.leadTimeDays || 2,
+          sourcePriority: catEntry.sourcePriority || 'APPROVED',
+          taxPercent: catEntry.taxPercent || 5,
+        });
+      }
+    }
+
+    itemVendors.sort((a, b) => {
+      if (a.sourcePriority === 'PREFERRED' && b.sourcePriority !== 'PREFERRED') return -1;
+      if (b.sourcePriority === 'PREFERRED' && a.sourcePriority !== 'PREFERRED') return 1;
+      return a.pricePaisa - b.pricePaisa;
+    });
+
+    const preferred = itemVendors[0] || null;
+    const authorizedPricePaisa = preferred ? preferred.pricePaisa : (item.unitCostPaisa || 0);
+
+    catalogue.push({
+      itemId: item.itemId,
+      sku: item.sku,
+      name: item.name,
+      shortName: item.shortName || item.name,
+      category: item.category,
+      baseUnit: item.baseUnit,
+      packSize: preferred?.packSize || `${item.packSize || 1} ${item.baseUnit}`,
+      moq: preferred?.moq || preferred?.minimumOrderQuantity || 1,
+      minimumOrderQuantity: preferred?.moq || preferred?.minimumOrderQuantity || 1,
+      leadTimeDays: preferred?.leadTimeDays || 2,
+      criticality: item.criticality || 'STANDARD',
+      shelfLifeDays: item.shelfLifeDays || 30,
+      authorizedPricePaisa,
+      contractPricePaisa: authorizedPricePaisa,
+      preferredVendorId: preferred?.vendorId || null,
+      preferredVendorName: preferred?.vendorName || 'No Vendor Contracted',
+      supplierItemCode: preferred?.supplierItemCode || '',
+      approvedVendors: itemVendors,
+      approvedSubstituteItemIds: item.approvedSubstituteItemIds || [],
+      conversions: item.conversions || [],
+      isAvailableForCafe: itemVendors.length > 0,
+    });
+  }
+
+  return response.status(200).json({
+    success: true,
+    data: {
+      catalogue,
+      totalItems: catalogue.length,
+      cafeId: targetCafe || 'ORGANISATION_WIDE',
+    },
+    correlationId: request.correlationId || null,
+  });
+});
+
+/**
  * GET /procurement/requisitions
  * List purchase requisitions / internal demand.
  */
 const listPurchaseRequisitions = asyncHandler(async (request, response) => {
   const orgId = request.auth.organisationId;
+  const effectiveCafe = resolveEffectiveCafeScope(request);
+  const { cafeId, status } = request.query;
+
+  const filter = { organisationId: orgId };
+  if (effectiveCafe) {
+    filter.cafeId = effectiveCafe;
+  } else if (cafeId && cafeId !== 'ALL') {
+    assertCafeAccess(request, cafeId);
+    filter.cafeId = normalizeId(cafeId);
+  } else if (!['MASTER', 'OWNER'].includes(request.auth.role)) {
+    filter.cafeId = { $in: request.auth.assignedCafeIds };
+  }
+  if (status && REQUISITION_STATUSES.includes(status.toUpperCase())) {
+    filter.status = status.toUpperCase();
+  }
+
+  const requisitions = await PurchaseRequisition.find(filter)
+    .sort({ createdAt: -1 })
+    .lean();
+
   return response.status(200).json({
     success: true,
-    data: {
-      requisitions: [
-        {
-          requisitionId: 'PRQ-2026-0001',
-          organisationId: orgId,
-          cafeId: 'ZC-0001',
-          requesterId: request.auth.userId,
-          title: 'Specialty Arabica Green Beans Bulk Restock',
-          status: 'APPROVED',
-          priority: 'HIGH',
-          estimatedAmountPaise: 4500000,
-          requiredByDate: '2026-08-25',
-          createdAt: new Date().toISOString(),
-        },
-        {
-          requisitionId: 'PRQ-2026-0002',
-          organisationId: orgId,
-          cafeId: 'ZC-0002',
-          requesterId: request.auth.userId,
-          title: 'Biodegradable Takeaway Hot Cups (12oz)',
-          status: 'PENDING_APPROVAL',
-          priority: 'NORMAL',
-          estimatedAmountPaise: 1800000,
-          requiredByDate: '2026-08-28',
-          createdAt: new Date().toISOString(),
-        },
-      ],
-    },
+    data: { requisitions, count: requisitions.length },
     correlationId: request.correlationId || null,
   });
 });
@@ -771,12 +1117,50 @@ const listPurchaseRequisitions = asyncHandler(async (request, response) => {
  * Create a new purchase requisition.
  */
 const createPurchaseRequisition = asyncHandler(async (request, response) => {
-  const { title, cafeId, priority = 'NORMAL', estimatedAmountPaise = 0, items = [], notes = '' } = request.body || {};
+  if (request.body && request.body.body) {
+    throw new ApiError(400, 'MALFORMED_REQUEST_BODY', 'Malformed request body detected: nested body wrapper is not permitted.');
+  }
+  const {
+    title,
+    cafeId: rawCafeId,
+    priority = 'NORMAL',
+    estimatedAmountPaise = 0,
+    items = [],
+    notes = '',
+    requiredByDate,
+  } = request.body || {};
+
   if (!title) {
     throw new ApiError(400, 'VALIDATION_ERROR', 'Requisition title is required.');
   }
 
-  const requisitionId = `PRQ-2026-${String(Math.floor(Math.random() * 9000) + 1000)}`;
+  const effectiveCafe = resolveEffectiveCafeScope(request);
+  const cafeId = effectiveCafe || normalizeId(rawCafeId) || 'ZC-0001';
+  assertCafeAccess(request, cafeId);
+
+  const datePart = getIstBusinessDate().replace(/-/g, '');
+  const requisitionId = await SequenceCounter.generateId({
+    organisationId: request.auth.organisationId,
+    sequenceKey: `PRQ_${datePart}`,
+    prefix: `PRQ-${datePart}`,
+    minimumDigits: 4,
+  });
+
+  const prq = new PurchaseRequisition({
+    requisitionId,
+    organisationId: request.auth.organisationId,
+    cafeId,
+    requesterId: request.auth.userId,
+    title: title.trim(),
+    priority: REQUISITION_PRIORITIES.includes(priority) ? priority : 'NORMAL',
+    estimatedAmountPaise: Number(estimatedAmountPaise) || 0,
+    requiredByDate: requiredByDate && /^\d{4}-\d{2}-\d{2}$/.test(requiredByDate) ? requiredByDate : null,
+    items,
+    notes: typeof notes === 'string' ? notes.trim() : '',
+    status: 'SUBMITTED',
+  });
+
+  await prq.save();
 
   await recordRequestAudit({
     request,
@@ -791,20 +1175,220 @@ const createPurchaseRequisition = asyncHandler(async (request, response) => {
 
   return response.status(201).json({
     success: true,
-    data: {
-      requisition: {
+    data: { requisition: prq.toObject() },
+    correlationId: request.correlationId || null,
+  });
+});
+
+/**
+ * POST /procurement/requisitions/:requisitionId/convert-to-po
+ * Convert an approved purchase requisition into an active Draft Purchase Order.
+ */
+const convertRequisitionToPo = asyncHandler(async (request, response) => {
+  const requisitionId = normalizeId(request.params.requisitionId);
+  const { vendorId: rawVendorId, expectedDeliveryDate, terms = '', notes = '' } = request.body || {};
+
+  const canTransact = (mongoose.connection && mongoose.connection.readyState === 1 && typeof mongoose.connection.startSession === 'function');
+  if (!canTransact && (process.env.NODE_ENV === 'production' || request.headers?.['x-require-transaction'] === 'true')) {
+    throw new ApiError(
+      503,
+      'DATABASE_TRANSACTION_UNAVAILABLE',
+      'Database transaction capability is required for requisition conversion in production.'
+    );
+  }
+
+  const runConversion = async (session) => {
+    const sessionOpt = session ? { session } : {};
+    const prq = await PurchaseRequisition.findOne(
+      {
         requisitionId,
-        title,
-        cafeId: cafeId || 'ZC-0001',
-        requesterId: request.auth.userId,
-        priority,
-        estimatedAmountPaise: Number(estimatedAmountPaise) || 0,
-        status: 'SUBMITTED',
-        items,
-        notes,
-        createdAt: new Date().toISOString(),
+        organisationId: request.auth.organisationId,
       },
-    },
+      null,
+      sessionOpt
+    );
+
+    if (!prq) {
+      throw new ApiError(404, 'REQUISITION_NOT_FOUND', `Requisition ${requisitionId} not found.`);
+    }
+    assertCafeAccess(request, prq.cafeId);
+
+    if (prq.convertedPurchaseOrderId || prq.status === 'CONVERTED_TO_PO') {
+      throw new ApiError(409, 'ALREADY_CONVERTED', `Requisition has already been converted to PO ${prq.convertedPurchaseOrderId || ''}.`);
+    }
+
+    // Check if durable PO already exists for this requisition (e.g. following commit uncertainty replay)
+    const existingPo = await PurchaseOrder.findOne(
+      { requisitionId: prq.requisitionId, organisationId: request.auth.organisationId },
+      null,
+      sessionOpt
+    );
+    if (existingPo) {
+      prq.convertedPurchaseOrderId = existingPo.purchaseOrderId;
+      prq.status = 'CONVERTED_TO_PO';
+      await prq.save(sessionOpt);
+      throw new ApiError(409, 'ALREADY_CONVERTED', `Requisition has already been converted to PO ${existingPo.purchaseOrderId}.`);
+    }
+
+    if (prq.status !== 'APPROVED') {
+      throw new ApiError(400, 'NOT_APPROVED', `Requisition must be in APPROVED status to convert to PO (current: ${prq.status}).`);
+    }
+
+    let lockedPrq = prq;
+    if (!session) {
+      lockedPrq = await PurchaseRequisition.findOneAndUpdate(
+        {
+          requisitionId,
+          organisationId: request.auth.organisationId,
+          status: 'APPROVED',
+          $or: [
+            { convertedPurchaseOrderId: null },
+            { convertedPurchaseOrderId: { $exists: false } },
+            { convertedPurchaseOrderId: '' },
+          ],
+        },
+        {
+          $set: {
+            status: 'CONVERTING',
+            convertedAt: new Date(),
+          },
+        },
+        { new: true }
+      );
+
+      if (!lockedPrq) {
+        const current = await PurchaseRequisition.findOne({
+          requisitionId,
+          organisationId: request.auth.organisationId,
+        }, null, sessionOpt);
+        if (current && (current.convertedPurchaseOrderId || current.status === 'CONVERTED_TO_PO' || current.status === 'CONVERTING')) {
+          if (current.convertedPurchaseOrderId) {
+            const existingOrder = await PurchaseOrder.findOne({
+              purchaseOrderId: current.convertedPurchaseOrderId,
+              organisationId: request.auth.organisationId,
+            }, null, sessionOpt);
+            if (existingOrder) {
+              return {
+                isIdempotentReplay: true,
+                order: existingOrder,
+                prq: current,
+                poId: existingOrder.purchaseOrderId,
+                vendorId: existingOrder.vendorId,
+              };
+            }
+          }
+          throw new ApiError(409, 'ALREADY_CONVERTED', `Requisition has already been converted to PO ${current.convertedPurchaseOrderId || ''}.`);
+        }
+        throw new ApiError(400, 'NOT_APPROVED', 'Requisition must be in APPROVED status to convert to PO.');
+      }
+    }
+
+    const vendorId = normalizeId(rawVendorId || prq.items?.[0]?.preferredVendorId);
+    if (!vendorId) {
+      throw new ApiError(400, 'VENDOR_REQUIRED', 'Vendor ID is required to convert requisition to Purchase Order.');
+    }
+
+    const vendor = await Vendor.findOne(
+      {
+        vendorId,
+        organisationId: request.auth.organisationId,
+        status: 'ACTIVE',
+      },
+      null,
+      sessionOpt
+    ).lean();
+    if (!vendor) {
+      throw new ApiError(404, 'VENDOR_NOT_FOUND', 'Active vendor not found.');
+    }
+
+    const datePart = getIstBusinessDate().replace(/-/g, '');
+    const poId = await SequenceCounter.generateId({
+      organisationId: request.auth.organisationId,
+      sequenceKey: `PO_${datePart}`,
+      prefix: `PO-${datePart}`,
+      minimumDigits: 4,
+    });
+
+    let subtotalPaisa = 0;
+    const lineItems = [];
+    for (const item of prq.items || []) {
+      const catEntry = (vendor.itemCatalogue || []).find((c) => c.itemId === item.itemId && (!c.status || c.status === 'ACTIVE'));
+      const unitPrice = catEntry ? catEntry.currentPricePaisa : (item.estimatedUnitPricePaisa || 0);
+      const lineTotal = Math.round((Number(item.quantity) || 1) * unitPrice);
+      subtotalPaisa += lineTotal;
+      lineItems.push({
+        itemId: item.itemId,
+        itemNameSnapshot: item.itemNameSnapshot || item.itemId,
+        baseUnit: item.uom || 'unit',
+        orderedQuantityBase: Number(item.quantity) || 1,
+        receivedQuantityBase: 0,
+        activeAsnReservedQuantityBase: 0,
+        unitPricePaisa: unitPrice,
+        totalLinePaisa: lineTotal,
+        lineNotes: `Converted from PRQ ${requisitionId}`,
+      });
+    }
+
+    const order = new PurchaseOrder({
+      purchaseOrderId: poId,
+      organisationId: request.auth.organisationId,
+      cafeId: prq.cafeId,
+      vendorId,
+      vendorNameSnapshot: vendor.name,
+      lineItems,
+      subtotalPaisa,
+      taxPaisa: 0,
+      discountPaisa: 0,
+      totalPaisa: subtotalPaisa,
+      status: 'DRAFT',
+      orderDate: getIstBusinessDate(),
+      expectedDeliveryDate: expectedDeliveryDate || prq.requiredByDate || null,
+      terms,
+      notes: notes || `Auto-converted from requisition ${requisitionId}: ${prq.title}`,
+      requisitionId: prq.requisitionId,
+      createdByUserId: request.auth.userId,
+    });
+
+    try {
+      await order.save(sessionOpt);
+      lockedPrq.convertedPurchaseOrderId = poId;
+      lockedPrq.status = 'CONVERTED_TO_PO';
+      lockedPrq.convertedAt = new Date();
+      await lockedPrq.save(sessionOpt);
+
+      await recordRequestAudit({
+        request,
+        module: 'PROCUREMENT',
+        action: 'CONVERT_PRQ_TO_PO',
+        entityType: 'PURCHASE_REQUISITION',
+        entityId: requisitionId,
+        after: { requisitionId, purchaseOrderId: poId, vendorId },
+        result: 'SUCCESS',
+        riskClassification: 'LOW',
+        session,
+      });
+
+      return { order, prq: lockedPrq, poId, vendorId };
+    } catch (saveErr) {
+      if (!session) {
+        try {
+          await PurchaseRequisition.updateOne(
+            { requisitionId, organisationId: request.auth.organisationId },
+            { $set: { status: 'APPROVED', convertedAt: null, convertedPurchaseOrderId: null } }
+          );
+        } catch (_) {}
+      }
+      throw saveErr;
+    }
+  };
+
+  const result = await executeTransactionWithRetry(runConversion, { canTransact });
+
+  const orderObj = result.order?.toObject ? result.order.toObject() : result.order;
+  const prqObj = result.prq?.toObject ? result.prq.toObject() : result.prq;
+  return response.status(result.isIdempotentReplay ? 200 : 201).json({
+    success: true,
+    data: { purchaseOrder: orderObj, requisition: prqObj, isIdempotentReplay: !!result.isIdempotentReplay },
     correlationId: request.correlationId || null,
   });
 });
@@ -817,18 +1401,7 @@ const listRfqs = asyncHandler(async (request, response) => {
   return response.status(200).json({
     success: true,
     data: {
-      rfqs: [
-        {
-          rfqId: 'RFQ-2026-0001',
-          title: 'Q3 Specialty Milk & Oat Dairy Sourcing',
-          status: 'EVALUATION',
-          invitedVendorsCount: 3,
-          responsesCount: 3,
-          deadline: '2026-08-22',
-          lowestQuotationPaise: 3800000,
-          currency: 'INR',
-        },
-      ],
+      rfqs: [],
     },
     correlationId: request.correlationId || null,
   });
@@ -874,68 +1447,1005 @@ const createRfq = asyncHandler(async (request, response) => {
 });
 
 /**
- * GET /procurement/grns
- * List Goods Receipt Notes.
+ * GET /procurement/asns
+ * List Advance Shipping Notices.
  */
-const listGoodsReceipts = asyncHandler(async (request, response) => {
+const listAsns = asyncHandler(async (request, response) => {
+  const orgId = request.auth.organisationId;
+  const effectiveCafe = resolveEffectiveCafeScope(request);
+  const { purchaseOrderId, vendorId, cafeId, status } = request.query;
+
+  const filter = { organisationId: orgId };
+  if (effectiveCafe) {
+    filter.cafeId = effectiveCafe;
+  } else if (cafeId && cafeId !== 'ALL') {
+    assertCafeAccess(request, cafeId);
+    filter.cafeId = normalizeId(cafeId);
+  } else if (!['MASTER', 'OWNER'].includes(request.auth.role)) {
+    filter.cafeId = { $in: request.auth.assignedCafeIds };
+  }
+
+  if (purchaseOrderId) filter.purchaseOrderId = normalizeId(purchaseOrderId);
+  if (vendorId) filter.vendorId = normalizeId(vendorId);
+  if (status && ASN_STATUSES.includes(status.toUpperCase())) {
+    filter.status = status.toUpperCase();
+  }
+
+  const asns = await AdvanceShippingNotice.find(filter)
+    .sort({ createdAt: -1 })
+    .lean();
+
   return response.status(200).json({
     success: true,
-    data: {
-      grns: [
+    data: { asns, count: asns.length },
+    correlationId: request.correlationId || null,
+  });
+});
+
+/**
+ * GET /procurement/asns/:asnNumber
+ * Get detail of a specific ASN.
+ */
+const getAsn = asyncHandler(async (request, response) => {
+  const asnNumber = normalizeId(request.params.asnNumber);
+  const asn = await AdvanceShippingNotice.findOne({
+    asnNumber,
+    organisationId: request.auth.organisationId,
+  }).lean();
+
+  if (!asn) {
+    throw new ApiError(404, 'NOT_FOUND', 'Advance Shipping Notice not found.');
+  }
+  assertCafeAccess(request, asn.cafeId);
+
+  return response.status(200).json({
+    success: true,
+    data: { asn },
+    correlationId: request.correlationId || null,
+  });
+});
+
+/**
+ * POST /procurement/asns
+ * Create a new Advance Shipping Notice against an authorized PO.
+ */
+const createAsn = asyncHandler(async (request, response) => {
+  const orgId = request.auth.organisationId;
+  const {
+    purchaseOrderId: rawPoId,
+    asnNumber: rawAsnNumber,
+    vendorReference = '',
+    dispatchDate,
+    expectedArrivalDate,
+    carrier = '',
+    vehicleNumber = '',
+    trackingNumber = '',
+    driverName = '',
+    driverPhone = '',
+    status = '',
+    lineItems = [],
+    notes = '',
+  } = request.body || {};
+
+  const purchaseOrderId = normalizeId(rawPoId);
+  if (!purchaseOrderId) {
+    throw new ApiError(400, 'PO_REQUIRED', 'Purchase order ID is required.');
+  }
+
+  const callerSession = request.dbSession || null;
+  const canTransact = !!(mongoose.connection && mongoose.connection.readyState === 1 && typeof mongoose.connection.startSession === 'function');
+  const requireTxn = process.env.NODE_ENV === 'production' || request.headers?.['x-require-transaction'] === 'true';
+
+  if (!callerSession && !canTransact && requireTxn) {
+    throw new ApiError(
+      503,
+      'DATABASE_TRANSACTION_UNAVAILABLE',
+      'Database transaction capability is required for advance shipping notice reservation in production.'
+    );
+  }
+
+  const runOperation = async (session) => {
+    const sessionOpt = session ? { session } : {};
+    let po = null;
+    let originalReservations = [];
+    try {
+      po = await PurchaseOrder.findOne(
         {
-          grnId: 'GRN-2026-0001',
-          purchaseOrderId: 'PO-2026-0001',
-          vendorName: 'Wayanad Organic Estates',
-          cafeId: 'ZC-0001',
-          receivedDate: '2026-08-18',
-          condition: 'GOOD',
-          itemsCount: 3,
-          totalReceivedValuePaise: 4500000,
-          qualityStatus: 'PASSED',
+          purchaseOrderId,
+          organisationId: orgId,
         },
-      ],
+        null,
+        sessionOpt
+      );
+
+      if (!po) {
+        throw new ApiError(404, 'PO_NOT_FOUND', `Purchase order ${purchaseOrderId} not found in this organisation.`);
+      }
+
+      originalReservations = (po.lineItems || []).map((l) => ({
+        itemId: l.itemId,
+        activeAsnReservedQuantityBase: Number(l.activeAsnReservedQuantityBase) || 0,
+      }));
+
+      assertCafeAccess(request, po.cafeId);
+
+      // Invariant: ASN_ACCEPTS_FOREIGN_OR_UNRELATED_PO = 0
+      const eligibleStatuses = ['APPROVED', 'ORDERED', 'ORDER_PLACED', 'ACKNOWLEDGED', 'DISPATCHED', 'PARTIALLY_RECEIVED'];
+      if (!eligibleStatuses.includes(po.status)) {
+        throw new ApiError(
+          400,
+          'INVALID_PO_STATE',
+          `Cannot create ASN for purchase order in ${po.status} status. Order must be approved or dispatched.`
+        );
+      }
+
+      if (!Array.isArray(lineItems) || lineItems.length === 0) {
+        throw new ApiError(400, 'LINE_ITEMS_REQUIRED', 'At least one line item is required in the ASN.');
+      }
+
+      const datePart = getIstBusinessDate().replace(/-/g, '');
+      let asnNumber = normalizeId(rawAsnNumber);
+      if (!asnNumber) {
+        asnNumber = await SequenceCounter.generateId({
+          organisationId: orgId,
+          sequenceKey: `ASN_${datePart}`,
+          prefix: `ASN-${datePart}`,
+          minimumDigits: 4,
+        });
+      }
+
+      // Invariant: DUPLICATE_ASN_CREATES_DUPLICATE_RECEIVING_OBLIGATION = 0
+      const existingConditions = [{ asnNumber }];
+      if (vendorReference && vendorReference.trim()) {
+        existingConditions.push({ vendorReference: vendorReference.trim() });
+      }
+
+      const existingAsn = await AdvanceShippingNotice.findOne(
+        {
+          organisationId: orgId,
+          vendorId: po.vendorId,
+          $or: existingConditions,
+        },
+        null,
+        sessionOpt
+      );
+      if (existingAsn) {
+        if (rawAsnNumber && existingAsn.asnNumber === asnNumber && existingAsn.purchaseOrderId === purchaseOrderId) {
+          return {
+            isIdempotentReplay: true,
+            asn: existingAsn,
+            po,
+            asnLines: existingAsn.lineItems,
+            asnNumber: existingAsn.asnNumber,
+          };
+        }
+        throw new ApiError(
+          409,
+          'DUPLICATE_ASN',
+          `Advance Shipping Notice already exists with number ${asnNumber} or vendor reference ${vendorReference}.`
+        );
+      }
+
+      const asnLines = [];
+      for (const item of lineItems) {
+        const itemId = normalizeId(item.itemId);
+        const shippedQty = Number(item.shippedQuantityBase !== undefined ? item.shippedQuantityBase : item.shippedQuantity);
+        if (!itemId || !Number.isFinite(shippedQty) || shippedQty <= 0) {
+          throw new ApiError(400, 'INVALID_LINE_ITEM', 'Each line item must have a valid itemId and positive shippedQuantity.');
+        }
+
+        const poLine = (po.lineItems || []).find((l) => l.itemId === itemId);
+        if (!poLine) {
+          throw new ApiError(
+            400,
+            'ITEM_NOT_ON_PO',
+            `Item ${itemId} is not part of purchase order ${purchaseOrderId}.`
+          );
+        }
+
+        const ordered = Number(poLine.orderedQuantityBase) || 0;
+        const received = Number(poLine.receivedQuantityBase) || 0;
+        const alreadyReserved = Number(poLine.activeAsnReservedQuantityBase) || 0;
+        const availableToAdvise = Math.max(0, ordered - received - alreadyReserved);
+
+        if (shippedQty > availableToAdvise) {
+          throw new ApiError(
+            400,
+            'OVER_SHIPMENT_DETECTED',
+            `Shipped quantity (${shippedQty}) exceeds available order balance (${availableToAdvise}) for item ${itemId}. Ordered: ${ordered}, Received: ${received}, Active ASN Reserved: ${alreadyReserved}.`
+          );
+        }
+
+        poLine.activeAsnReservedQuantityBase = alreadyReserved + shippedQty;
+
+        asnLines.push({
+          itemId,
+          itemNameSnapshot: poLine.itemNameSnapshot || item.itemNameSnapshot || itemId,
+          uom: poLine.baseUnit || item.uom || 'unit',
+          shippedQuantityBase: shippedQty,
+          receivedQuantityBase: 0,
+          lotNumber: item.lotNumber || null,
+          manufacturingDate: item.manufacturingDate || null,
+          expiryDate: item.expiryDate || null,
+          temperatureRequirementCelsius: item.temperatureRequirementCelsius || null,
+        });
+      }
+
+      const asn = new AdvanceShippingNotice({
+        asnNumber,
+        organisationId: orgId,
+        cafeId: po.cafeId,
+        vendorId: po.vendorId,
+        purchaseOrderId,
+        vendorReference: (vendorReference || '').trim(),
+        dispatchDate: dispatchDate || null,
+        expectedArrivalDate: expectedArrivalDate || null,
+        carrier: (carrier || '').trim(),
+        vehicleNumber: (vehicleNumber || '').trim(),
+        trackingNumber: (trackingNumber || '').trim(),
+        driverName: (driverName || '').trim(),
+        driverPhone: (driverPhone || '').trim(),
+        lineItems: asnLines,
+        status: status && ASN_STATUSES.includes(status.toUpperCase()) ? status.toUpperCase() : 'SUBMITTED',
+        notes: (notes || '').trim(),
+        createdByUserId: request.auth.userId,
+      });
+
+      if (!po.advanceShippingNoticeIds) po.advanceShippingNoticeIds = [];
+      if (!po.advanceShippingNoticeIds.includes(asnNumber)) {
+        po.advanceShippingNoticeIds.push(asnNumber);
+      }
+      if (po.status === 'APPROVED' || po.status === 'ORDERED' || po.status === 'ORDER_PLACED') {
+        po.status = 'DISPATCHED';
+      }
+      await po.save(sessionOpt);
+
+      await asn.save(sessionOpt);
+
+      await recordRequestAudit({
+        request,
+        module: 'PROCUREMENT',
+        action: 'CREATE_ADVANCE_SHIPPING_NOTICE',
+        entityType: 'ASN',
+        entityId: asnNumber,
+        after: { asnNumber, purchaseOrderId, linesCount: asnLines.length },
+        result: 'SUCCESS',
+        riskClassification: 'LOW',
+        session,
+      });
+
+      return { asn, po, asnLines, asnNumber };
+    } catch (err) {
+      if (!session && po && Array.isArray(originalReservations)) {
+        for (const orig of originalReservations) {
+          const l = (po.lineItems || []).find((line) => line.itemId === orig.itemId);
+          if (l) l.activeAsnReservedQuantityBase = orig.activeAsnReservedQuantityBase;
+        }
+      }
+      throw err;
+    }
+  };
+
+  let result;
+  if (callerSession) {
+    result = await withPoLock(purchaseOrderId, () => runOperation(callerSession));
+  } else {
+    result = await executeTransactionWithRetry(
+      (session) => withPoLock(purchaseOrderId, () => runOperation(session)),
+      { canTransact }
+    );
+  }
+
+  return response.status(result.isIdempotentReplay ? 200 : 201).json({
+    success: true,
+    data: {
+      asn: result.asn.toObject ? result.asn.toObject() : result.asn,
+      purchaseOrder: result.po.toObject ? result.po.toObject() : result.po,
+      isIdempotentReplay: !!result.isIdempotentReplay,
     },
     correlationId: request.correlationId || null,
   });
 });
 
 /**
- * POST /procurement/grns
- * Create a formal Goods Receipt Note.
+ * POST /procurement/asns/:asnNumber/status
+ * Transition ASN status (e.g. IN_TRANSIT, ARRIVED).
  */
-const createGoodsReceipt = asyncHandler(async (request, response) => {
-  const { purchaseOrderId, deliveryNoteNumber = '', condition = 'GOOD', lineItems = [], notes = '' } = request.body || {};
-  if (!purchaseOrderId) {
-    throw new ApiError(400, 'VALIDATION_ERROR', 'Purchase Order ID is required for GRN creation.');
+const updateAsnStatus = asyncHandler(async (request, response) => {
+  const asnNumber = normalizeId(request.params.asnNumber);
+  const { status, notes = '' } = request.body;
+  if (!status || !ASN_STATUSES.includes(status.toUpperCase())) {
+    throw new ApiError(400, 'VALIDATION_ERROR', `Invalid ASN status. Must be one of: ${ASN_STATUSES.join(', ')}`);
   }
 
-  const grnId = `GRN-2026-${String(Math.floor(Math.random() * 9000) + 1000)}`;
+  const asn = await AdvanceShippingNotice.findOne({
+    asnNumber,
+    organisationId: request.auth.organisationId,
+  });
+  if (!asn) {
+    throw new ApiError(404, 'NOT_FOUND', 'Advance Shipping Notice not found.');
+  }
+  assertCafeAccess(request, asn.cafeId);
+
+  const prev = asn.status;
+  asn.status = status.toUpperCase();
+  if (notes) asn.notes = (asn.notes ? asn.notes + ' | ' : '') + notes.trim();
+  await asn.save();
 
   await recordRequestAudit({
     request,
     module: 'PROCUREMENT',
-    action: 'CREATE_GOODS_RECEIPT_NOTE',
-    entityType: 'GOODS_RECEIPT',
-    entityId: grnId,
-    reason: notes || `Goods received against ${purchaseOrderId}`,
+    action: 'UPDATE_ASN_STATUS',
+    entityType: 'ADVANCE_SHIPPING_NOTICE',
+    entityId: asnNumber,
+    before: { status: prev },
+    after: { status: asn.status },
     result: 'SUCCESS',
-    riskClassification: 'MEDIUM',
+    riskClassification: 'LOW',
   });
 
-  return response.status(201).json({
+  return response.status(200).json({
     success: true,
-    data: {
-      grn: {
-        grnId,
+    data: { asn: asn.toObject() },
+    correlationId: request.correlationId || null,
+  });
+});
+
+/**
+ * POST /procurement/asns/:asnNumber/cancel
+ * Cancel an Advance Shipping Notice before physical receipt.
+ */
+const cancelAsn = asyncHandler(async (request, response) => {
+  const asnNumber = normalizeId(request.params.asnNumber);
+  const { reason = '' } = request.body;
+
+  const externalSession = request.dbSession || null;
+
+  const runCancel = async (session) => {
+    const sessionOpt = session ? { session } : {};
+    const asn = await AdvanceShippingNotice.findOne(
+      {
+        asnNumber,
+        organisationId: request.auth.organisationId,
+      },
+      null,
+      sessionOpt
+    );
+    if (!asn) {
+      throw new ApiError(404, 'NOT_FOUND', 'Advance Shipping Notice not found.');
+    }
+    assertCafeAccess(request, asn.cafeId);
+
+    if (['RECEIVED', 'CANCELLED'].includes(asn.status)) {
+      throw new ApiError(400, 'INVALID_STATE', `Cannot cancel ASN in ${asn.status} status.`);
+    }
+
+    asn.status = 'CANCELLED';
+    asn.cancellationReason = reason.trim() || 'Cancelled by operator.';
+    asn.cancelledByUserId = request.auth.userId;
+    asn.cancelledAt = new Date();
+    await asn.save(sessionOpt);
+
+    // Invariant: ASN_RESERVATION_NOT_RELEASED_OR_DOUBLE_RELEASED = 0
+    // Invariant: ASN_CANCEL_AND_RESERVATION_RELEASE_NOT_ATOMIC = 0
+    // Release durable reservation on PO line items exactly once upon cancellation in the same transaction
+    const po = await PurchaseOrder.findOne(
+      {
+        purchaseOrderId: asn.purchaseOrderId,
+        organisationId: request.auth.organisationId,
+      },
+      null,
+      sessionOpt
+    );
+    if (po && Array.isArray(po.lineItems)) {
+      for (const l of asn.lineItems || []) {
+        const poLine = po.lineItems.find((pl) => pl.itemId === l.itemId);
+        if (poLine) {
+          const unreceived = Math.max(0, (Number(l.shippedQuantityBase) || 0) - (Number(l.receivedQuantityBase) || 0));
+          poLine.activeAsnReservedQuantityBase = Math.max(0, (Number(poLine.activeAsnReservedQuantityBase) || 0) - unreceived);
+        }
+      }
+      await po.save(sessionOpt);
+    }
+
+    await recordRequestAudit({
+      request,
+      module: 'PROCUREMENT',
+      action: 'CANCEL_ASN',
+      entityType: 'ADVANCE_SHIPPING_NOTICE',
+      entityId: asnNumber,
+      after: { status: 'CANCELLED', reason },
+      result: 'SUCCESS',
+      riskClassification: 'LOW',
+      session,
+    });
+
+    return asn;
+  };
+
+  let asn;
+  if (externalSession) {
+    asn = await runCancel(externalSession);
+  } else {
+    asn = await executeTransactionWithRetry(runCancel);
+  }
+
+  return response.status(200).json({
+    success: true,
+    data: { asn: asn.toObject ? asn.toObject() : asn },
+    correlationId: request.correlationId || null,
+  });
+});
+
+/**
+ * GET /procurement/grns
+ * List Goods Receipt Notes.
+ */
+const listGoodsReceipts = asyncHandler(async (request, response) => {
+  const orgId = request.auth.organisationId;
+  const effectiveCafe = resolveEffectiveCafeScope(request);
+  const { cafeId, purchaseOrderId } = request.query;
+
+  const poQuery = {
+    organisationId: orgId,
+    'grnReceipts.0': { $exists: true },
+  };
+
+  if (effectiveCafe) {
+    poQuery.cafeId = effectiveCafe;
+  } else if (cafeId && cafeId !== 'ALL') {
+    assertCafeAccess(request, cafeId);
+    poQuery.cafeId = normalizeId(cafeId);
+  } else if (request.auth.role !== 'MASTER') {
+    poQuery.cafeId = { $in: request.auth.assignedCafeIds || [] };
+  }
+
+  if (purchaseOrderId) poQuery.purchaseOrderId = normalizeId(purchaseOrderId);
+
+  const orders = await PurchaseOrder.find(poQuery)
+    .select('purchaseOrderId cafeId vendorId vendorNameSnapshot grnReceipts lineItems')
+    .lean();
+
+  const grns = [];
+  for (const po of orders) {
+    for (const g of po.grnReceipts || []) {
+      const itemsCount = (g.items || []).length;
+      let totalReceivedValuePaise = 0;
+      for (const item of g.items || []) {
+        const poLine = (po.lineItems || []).find((l) => l.itemId === item.itemId);
+        const unitPrice = poLine ? (poLine.unitPricePaisa || 0) : 0;
+        totalReceivedValuePaise += Math.round((Number(item.acceptedQty) || 0) * unitPrice);
+      }
+      grns.push({
+        grnId: g.grnId,
+        purchaseOrderId: po.purchaseOrderId,
+        vendorId: po.vendorId,
+        vendorName: po.vendorNameSnapshot || po.vendorId,
+        cafeId: po.cafeId,
+        receivedDate: g.receivedAt ? new Date(g.receivedAt).toISOString().slice(0, 10) : getIstBusinessDate(),
+        condition: g.status === 'ACCEPTED' ? 'GOOD' : 'PARTIAL',
+        itemsCount,
+        totalReceivedValuePaise,
+        qualityStatus: g.items?.some((i) => (Number(i.rejectedQty) || 0) > 0) ? 'PARTIAL_REJECTION' : 'PASSED',
+        items: g.items,
+        deliveryNoteNumber: g.deliveryNoteNumber || '',
+        notes: g.notes || '',
+      });
+    }
+  }
+
+  grns.sort((a, b) => new Date(b.receivedDate) - new Date(a.receivedDate));
+
+  return response.status(200).json({
+    success: true,
+    data: { grns, count: grns.length },
+    correlationId: request.correlationId || null,
+  });
+});
+
+/**
+ * POST /procurement/grns
+ * Create a formal Goods Receipt Note with inspection checks, lot tracking, and quarantine isolation.
+ */
+const createGoodsReceipt = asyncHandler(async (request, response) => {
+  const {
+    purchaseOrderId: rawPoId,
+    asnNumber: rawAsnNumber,
+    deliveryNoteNumber = '',
+    condition = 'GOOD',
+    items = [],
+    notes = '',
+    idempotencyKey: rawIdempotencyKey,
+  } = request.body || {};
+
+  const purchaseOrderId = normalizeId(rawPoId);
+  if (!purchaseOrderId) {
+    throw new ApiError(400, 'VALIDATION_ERROR', 'Purchase Order ID is required for GRN creation.');
+  }
+
+  const canTransact = (mongoose.connection && mongoose.connection.readyState === 1 && typeof mongoose.connection.startSession === 'function');
+  if (!canTransact && (process.env.NODE_ENV === 'production' || request.headers?.['x-require-transaction'] === 'true')) {
+    throw new ApiError(
+      503,
+      'DATABASE_TRANSACTION_UNAVAILABLE',
+      'Database transaction capability is required for goods receipt in production.'
+    );
+  }
+
+  return await withPoLock(purchaseOrderId, async () => {
+    // Phase 1: Pre-transaction validation of request inputs
+    if (!Array.isArray(items) || items.length === 0) {
+      throw new ApiError(400, 'ITEMS_REQUIRED', 'At least one receipt line item is required.');
+    }
+
+    const idempotencyKey = normalizeId(
+      rawIdempotencyKey || request.headers?.['idempotency-key'] || deliveryNoteNumber
+    );
+
+    // Phase 2: Execute transaction with retry for TransientTransactionError & UnknownTransactionCommitResult
+    const txnResult = await executeTransactionWithRetry(async (session) => {
+      const sessionOpt = session ? { session } : {};
+      const compensatingActions = [];
+
+      // Read fresh PO inside transaction
+      const po = await PurchaseOrder.findOne({
+        purchaseOrderId,
+        organisationId: request.auth.organisationId,
+      }, null, sessionOpt);
+
+      if (!po) {
+        throw new ApiError(404, 'NOT_FOUND', `Purchase order ${purchaseOrderId} not found.`);
+      }
+
+      assertCafeAccess(request, po.cafeId);
+
+      if (['CLOSED', 'CANCELLED'].includes(po.status)) {
+        throw new ApiError(400, 'INVALID_STATE', `Cannot receive items against ${po.status} purchase order.`);
+      }
+
+      // Invariant: DUPLICATE_GRN_DOUBLE_INCREMENTS_INVENTORY = 0 (Idempotency & Duplicate Replay Guard)
+      const rawDeliveryNote = normalizeId(deliveryNoteNumber);
+      if (idempotencyKey || rawDeliveryNote) {
+        const existingReceipt = (po.grnReceipts || []).find(
+          (g) => (idempotencyKey && g.idempotencyKey && g.idempotencyKey === idempotencyKey) ||
+                 (rawDeliveryNote && g.deliveryNoteNumber && g.deliveryNoteNumber.trim().toUpperCase() === rawDeliveryNote) ||
+                 (idempotencyKey && g.deliveryNoteNumber && g.deliveryNoteNumber.trim().toUpperCase() === idempotencyKey)
+        );
+        if (existingReceipt) {
+          return {
+            isIdempotentReplay: true,
+            grnId: existingReceipt.grnId,
+            purchaseOrderId: po.purchaseOrderId,
+            deliveryNoteNumber: existingReceipt.deliveryNoteNumber,
+            status: po.status,
+            items: existingReceipt.items,
+          };
+        }
+      }
+
+      let asn = null;
+      if (rawAsnNumber) {
+        const asnNumber = normalizeId(rawAsnNumber);
+        asn = await AdvanceShippingNotice.findOne({
+          asnNumber,
+          organisationId: request.auth.organisationId,
+        }, null, sessionOpt);
+        if (!asn) {
+          throw new ApiError(404, 'ASN_NOT_FOUND', `ASN ${asnNumber} not found.`);
+        }
+        if (asn.purchaseOrderId !== po.purchaseOrderId) {
+          throw new ApiError(400, 'ASN_PO_MISMATCH', `ASN ${asnNumber} belongs to ${asn.purchaseOrderId}, not ${po.purchaseOrderId}.`);
+        }
+        if (asn.status === 'CANCELLED') {
+          throw new ApiError(400, 'INVALID_ASN_STATE', `Cannot receive items against CANCELLED ASN ${asnNumber}.`);
+        }
+      }
+
+      // Line item validation & reconciliation
+      for (const item of items) {
+        const itemId = normalizeId(item.itemId);
+        const poLine = (po.lineItems || []).find((l) => l.itemId === itemId);
+        if (!poLine) {
+          throw new ApiError(400, 'INVALID_LINE_ITEM', `Item ${itemId} is not on purchase order ${purchaseOrderId}.`);
+        }
+
+        const deliveredQty = Number(item.deliveredQty ?? item.receivedQuantity);
+        const acceptedQty = Number(item.acceptedQty ?? item.acceptedQuantity);
+        const rejectedQty = Number(item.rejectedQty ?? item.rejectedQuantity);
+
+        if (!Number.isFinite(deliveredQty) || deliveredQty < 0 ||
+            !Number.isFinite(acceptedQty) || acceptedQty < 0 ||
+            !Number.isFinite(rejectedQty) || rejectedQty < 0) {
+          throw new ApiError(400, 'INVALID_RECEIPT_QUANTITY', 'Received, accepted, and rejected quantities must be non-negative numbers.');
+        }
+
+        // Invariant: RECEIVING_QUANTITY_RECONCILIATION_ERROR = 0
+        if (acceptedQty + rejectedQty !== deliveredQty) {
+          throw new ApiError(
+            400,
+            'RECEIVING_QUANTITY_RECONCILIATION_ERROR',
+            `Reconciliation error for item ${itemId}: accepted (${acceptedQty}) + rejected (${rejectedQty}) does not equal delivered quantity (${deliveredQty}).`
+          );
+        }
+
+        // Invariant: CONCURRENT_GRN_OVER_RECEIVES_PO = 0
+        const currentReceived = Number(poLine.receivedQuantityBase) || 0;
+        const ordered = Number(poLine.orderedQuantityBase) || 0;
+        if (currentReceived + acceptedQty > ordered) {
+          throw new ApiError(
+            400,
+            'CONCURRENT_OVER_RECEIPT',
+            `Receipt of ${acceptedQty} exceeds remaining open quantity of ${ordered - currentReceived} for item ${itemId}. Over-receipt is prohibited.`
+          );
+        }
+
+        // Invariant: ASN_RECEIPT_EXCEEDS_ADVISED_QUANTITY_WITHOUT_EXCEPTION = 0
+        if (asn) {
+          const asnLine = (asn.lineItems || []).find((l) => l.itemId === itemId);
+          if (!asnLine) {
+            throw new ApiError(400, 'ASN_LINE_MISMATCH', `Item ${itemId} is not advised in ASN ${asn.asnNumber}.`);
+          }
+          const remainingAdvised = Math.max(0, (Number(asnLine.shippedQuantityBase) || 0) - (Number(asnLine.receivedQuantityBase) || 0));
+          if (deliveredQty > remainingAdvised) {
+            throw new ApiError(
+              400,
+              'ASN_RECEIPT_EXCEEDS_ADVISED',
+              `Received quantity (${deliveredQty}) exceeds remaining unreceived ASN advised quantity (${remainingAdvised}) for item ${itemId}.`
+            );
+          }
+        }
+      }
+
+      const datePart = getIstBusinessDate().replace(/-/g, '');
+      const grnId = await SequenceCounter.generateId({
+        organisationId: request.auth.organisationId,
+        sequenceKey: `GRN_${datePart}`,
+        prefix: `GRN-${datePart}`,
+        minimumDigits: 4,
+      });
+
+      const now = new Date();
+      const businessDate = getIstBusinessDate();
+      const grnItems = [];
+      const movementsCreated = [];
+
+      try {
+        for (const item of items) {
+          const itemId = normalizeId(item.itemId);
+          const poLine = (po.lineItems || []).find((l) => l.itemId === itemId);
+          const deliveredQty = Number(item.deliveredQty ?? item.receivedQuantity);
+          const acceptedQty = Number(item.acceptedQty ?? item.acceptedQuantity);
+          const rejectedQty = Number(item.rejectedQty ?? item.rejectedQuantity);
+          const tempCelsius = item.temperatureCelsius !== undefined && item.temperatureCelsius !== null ? Number(item.temperatureCelsius) : null;
+          const packaging = item.packagingCondition || 'INTACT';
+          const quality = item.qualityCondition || 'ACCEPTABLE';
+
+          poLine.receivedQuantityBase = (poLine.receivedQuantityBase || 0) + acceptedQty;
+
+          const inspectionId = await SequenceCounter.generateId({
+            organisationId: request.auth.organisationId,
+            sequenceKey: `INSP_${datePart}`,
+            prefix: `INSP-${datePart}`,
+            minimumDigits: 4,
+          });
+
+          const decision = rejectedQty > 0 ? (acceptedQty > 0 ? 'PARTIAL_ACCEPT' : 'REJECT') : 'ACCEPT';
+          const inspRecord = new IncomingInspection({
+            inspectionId,
+            organisationId: request.auth.organisationId,
+            cafeId: po.cafeId,
+            vendorId: po.vendorId,
+            vendorName: po.vendorNameSnapshot || po.vendorId,
+            poReference: po.purchaseOrderId,
+            itemId,
+            itemName: poLine.itemNameSnapshot || itemId,
+            supplierLot: item.lotNumber || '',
+            expiryDate: item.expiryDate ? new Date(item.expiryDate).toISOString().slice(0, 10) : null,
+            receivedQuantity: deliveredQty,
+            acceptedQuantity: acceptedQty,
+            rejectedQuantity: rejectedQty,
+            unit: poLine.baseUnit || 'kg',
+            temperatureCelsius: tempCelsius,
+            packagingCondition: packaging,
+            qualityCondition: quality,
+            decision,
+            rejectionReason: item.rejectionReason || '',
+            inspectedByUserId: request.auth.userId,
+            inspectedAt: now,
+          });
+          await inspRecord.save(sessionOpt);
+          if (!session) {
+            compensatingActions.push(async () => {
+              await IncomingInspection.deleteOne({ inspectionId });
+            });
+          }
+
+          if (acceptedQty > 0) {
+            let config = await CafeInventoryConfig.findOne({
+              organisationId: request.auth.organisationId,
+              cafeId: po.cafeId,
+              itemId,
+            }, null, sessionOpt);
+
+            const balanceBefore = config ? (config.currentQuantityBase || 0) : 0;
+            const balanceAfter = balanceBefore + acceptedQty;
+
+            await CafeInventoryConfig.findOneAndUpdate(
+              {
+                organisationId: request.auth.organisationId,
+                cafeId: po.cafeId,
+                itemId,
+              },
+              {
+                $inc: {
+                  currentQuantityBase: acceptedQty,
+                  availableQuantityBase: acceptedQty,
+                },
+                $set: {
+                  lastModifiedByUserId: request.auth.userId,
+                },
+              },
+              { upsert: true, new: true, ...sessionOpt }
+            );
+            if (!session) {
+              compensatingActions.push(async () => {
+                await CafeInventoryConfig.findOneAndUpdate(
+                  { organisationId: request.auth.organisationId, cafeId: po.cafeId, itemId },
+                  { $inc: { currentQuantityBase: -acceptedQty, availableQuantityBase: -acceptedQty } }
+                );
+              });
+            }
+
+            const movId = await SequenceCounter.generateId({
+              organisationId: request.auth.organisationId,
+              sequenceKey: `STOCK_MOVEMENT_${datePart}`,
+              prefix: `SMOV-${datePart}`,
+              minimumDigits: 4,
+            });
+
+            const movRecord = new StockMovement({
+              movementId: movId,
+              organisationId: request.auth.organisationId,
+              cafeId: po.cafeId,
+              itemId,
+              movementType: 'RECEIPT',
+              quantityBase: acceptedQty,
+              balanceBeforeBase: balanceBefore,
+              balanceAfterBase: balanceAfter,
+              quantityDelta: acceptedQty,
+              balanceBefore,
+              balanceAfter,
+              businessDate,
+              serverTimestamp: now,
+              status: 'ACTIVE',
+              sourceModule: 'PROCUREMENT',
+              sourceRecordId: grnId,
+              description: `Goods receipt ${grnId} for PO ${po.purchaseOrderId}`,
+              performedByUserId: request.auth.userId,
+              createdByUserId: request.auth.userId,
+              createdByRole: request.auth.role,
+              correlationId: request.correlationId || null,
+            });
+            await movRecord.save(sessionOpt);
+            if (!session) {
+              compensatingActions.push(async () => {
+                await StockMovement.deleteOne({ movementId: movId });
+              });
+            }
+
+            movementsCreated.push(movId);
+
+            if (request.headers?.['x-simulate-lot-failure'] === 'true' || request.body?.simulateLotFailure) {
+              throw new Error('SIMULATED_LOT_CREATION_FAILURE');
+            }
+
+            const lotId = await SequenceCounter.generateId({
+              organisationId: request.auth.organisationId,
+              sequenceKey: `LOT_${datePart}`,
+              prefix: `LOT-${datePart}`,
+              minimumDigits: 4,
+            });
+
+            const expiry = item.expiryDate
+              ? new Date(item.expiryDate).toISOString().slice(0, 10)
+              : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+            const lotRecord = new InventoryLot({
+              organisationId: request.auth.organisationId,
+              lotId,
+              supplierLot: item.lotNumber || `SLOT-${Date.now().toString().slice(-6)}`,
+              itemId,
+              cafeId: po.cafeId,
+              vendorId: po.vendorId,
+              procurementReference: po.purchaseOrderId,
+              receivingInspectionId: inspectionId,
+              storageLocation: 'Main Store',
+              mfgDate: item.manufacturingDate ? new Date(item.manufacturingDate).toISOString().slice(0, 10) : null,
+              expiryDate: expiry,
+              unit: poLine.baseUnit || 'units',
+              initialQuantity: acceptedQty,
+              quantityBase: acceptedQty,
+              remainingQuantity: acceptedQty,
+              receivedAt: now,
+              status: 'AVAILABLE',
+            });
+            await lotRecord.save(sessionOpt);
+            if (!session) {
+              compensatingActions.push(async () => {
+                await InventoryLot.deleteOne({ lotId });
+              });
+            }
+          }
+
+          if (rejectedQty > 0) {
+            const qLotId = await SequenceCounter.generateId({
+              organisationId: request.auth.organisationId,
+              sequenceKey: `LOT_Q_${datePart}`,
+              prefix: `LOTQ-${datePart}`,
+              minimumDigits: 4,
+            });
+
+            const qLotDoc = new InventoryLot({
+              organisationId: request.auth.organisationId,
+              lotId: qLotId,
+              supplierLot: item.lotNumber || `REJ-${Date.now().toString().slice(-6)}`,
+              itemId,
+              cafeId: po.cafeId,
+              vendorId: po.vendorId,
+              procurementReference: po.purchaseOrderId,
+              receivingInspectionId: inspectionId,
+              storageLocation: 'Quarantine Holding Bay',
+              expiryDate: item.expiryDate ? new Date(item.expiryDate).toISOString().slice(0, 10) : businessDate,
+              unit: poLine.baseUnit || 'units',
+              initialQuantity: rejectedQty,
+              quantityBase: rejectedQty,
+              remainingQuantity: rejectedQty,
+              receivedAt: now,
+              status: 'QUARANTINE',
+              quarantineReason: item.rejectionReason || 'Failed dock receiving inspection',
+              quarantineDate: now,
+              quarantinedByUserId: request.auth.userId,
+              dispositionStatus: 'RETURN_TO_VENDOR',
+            });
+            await qLotDoc.save(sessionOpt);
+            if (!session) {
+              compensatingActions.push(async () => {
+                await InventoryLot.deleteOne({ lotId: qLotId });
+              });
+            }
+          }
+
+          grnItems.push({
+            itemId,
+            deliveredQty,
+            acceptedQty,
+            rejectedQty,
+            lotNumber: item.lotNumber || null,
+            manufacturingDate: item.manufacturingDate || null,
+            expiryDate: item.expiryDate || null,
+            rejectionReason: item.rejectionReason || null,
+          });
+
+          if (asn) {
+            const asnLine = (asn.lineItems || []).find((l) => l.itemId === itemId);
+            if (asnLine) {
+              asnLine.receivedQuantityBase = (asnLine.receivedQuantityBase || 0) + deliveredQty;
+            }
+            // Release active ASN reservation
+            poLine.activeAsnReservedQuantityBase = Math.max(
+              0,
+              (Number(poLine.activeAsnReservedQuantityBase) || 0) - deliveredQty
+            );
+          }
+        }
+
+        if (asn) {
+          asn.receivedAt = now;
+          asn.receivedByUserId = request.auth.userId;
+          asn.grnReferenceId = grnId;
+          const allAsnReceived = (asn.lineItems || []).every(
+            (l) => (Number(l.receivedQuantityBase) || 0) >= (Number(l.shippedQuantityBase) || 0)
+          );
+          asn.status = allAsnReceived ? 'RECEIVED' : 'PARTIALLY_RECEIVED';
+          await asn.save(sessionOpt);
+        }
+
+        if (!po.grnReceipts) po.grnReceipts = [];
+        po.grnReceipts.push({
+          grnId,
+          idempotencyKey: idempotencyKey || grnId,
+          deliveryNoteNumber,
+          receivedAt: now,
+          receivedByUserId: request.auth.userId,
+          items: grnItems,
+          notes,
+          status: grnItems.some((g) => g.rejectedQty > 0) ? 'PARTIAL' : 'ACCEPTED',
+        });
+
+        const allLinesFulfilled = (po.lineItems || []).every(
+          (l) => (Number(l.receivedQuantityBase) || 0) >= (Number(l.orderedQuantityBase) || 0)
+        );
+        po.status = allLinesFulfilled ? 'RECEIVED' : 'PARTIALLY_RECEIVED';
+        po.receivingStatus = po.status;
+        po.receivedDate = businessDate;
+
+        if (!po.milestones) po.milestones = [];
+        po.milestones.push({
+          milestoneKey: 'GRN_RECORDED',
+          label: `Physical Goods Receipt (${grnId})`,
+          timestamp: now,
+          actorUserId: request.auth.userId,
+          details: `Goods receipt recorded with inspection and lot creation. Status: ${po.status}.`,
+        });
+
+        await po.save(sessionOpt);
+
+        await recordRequestAudit({
+          request,
+          module: 'PROCUREMENT',
+          action: 'CREATE_GOODS_RECEIPT_NOTE',
+          entityType: 'GOODS_RECEIPT',
+          entityId: grnId,
+          after: {
+            grnId,
+            purchaseOrderId,
+            itemsCount: grnItems.length,
+            movementsCreatedCount: movementsCreated.length,
+          },
+          result: 'SUCCESS',
+          riskClassification: 'MEDIUM',
+          session,
+        });
+
+        return {
+          grnId,
+          poStatus: po.status,
+          now,
+          grnItems,
+          movementsCreated,
+        };
+      } catch (innerError) {
+        if (!session) {
+          for (const rollback of compensatingActions.reverse()) {
+            try {
+              await rollback();
+            } catch (_) {}
+          }
+        }
+        throw innerError;
+      }
+    });
+
+    if (txnResult.isIdempotentReplay) {
+      return response.status(200).json({
+        success: true,
+        data: {
+          grnId: txnResult.grnId,
+          purchaseOrderId: txnResult.purchaseOrderId,
+          deliveryNoteNumber: txnResult.deliveryNoteNumber,
+          status: txnResult.status,
+          isIdempotentReplay: true,
+          items: txnResult.items,
+          message: 'Idempotent replay: Goods receipt already recorded.',
+        },
+        correlationId: request.correlationId || null,
+      });
+    }
+
+    return response.status(201).json({
+      success: true,
+      data: {
+        grnId: txnResult.grnId,
         purchaseOrderId,
         deliveryNoteNumber,
-        condition,
-        receivedByUserId: request.auth.userId,
-        receivedAt: new Date().toISOString(),
-        qualityStatus: 'PASSED',
+        status: txnResult.poStatus,
+        receivedAt: txnResult.now.toISOString(),
+        items: txnResult.grnItems,
+        movementsCreated: txnResult.movementsCreated,
+        message: 'Goods received, inspected, lots registered, and stock updated successfully.',
       },
-    },
-    correlationId: request.correlationId || null,
+      correlationId: request.correlationId || null,
+    });
   });
 });
 
@@ -944,25 +2454,54 @@ const createGoodsReceipt = asyncHandler(async (request, response) => {
  * 3-Way matching summary between PO, GRN, and Invoices.
  */
 const getMatchingSummary = asyncHandler(async (request, response) => {
+  const orgId = request.auth.organisationId;
+  const effectiveCafe = resolveEffectiveCafeScope(request);
+
+  const poQuery = {
+    organisationId: orgId,
+    'invoices.0': { $exists: true },
+  };
+  if (effectiveCafe) poQuery.cafeId = effectiveCafe;
+
+  const orders = await PurchaseOrder.find(poQuery)
+    .select('purchaseOrderId cafeId vendorId totalPaisa threeWayMatch invoices grnReceipts status')
+    .lean();
+
+  let matchedCount = 0;
+  let withinToleranceCount = 0;
+  let exceptionsCount = 0;
+  const recentMatches = [];
+
+  for (const po of orders) {
+    const mStatus = po.threeWayMatch?.matchStatus || 'PENDING';
+    if (mStatus === 'MATCHED') matchedCount++;
+    else if (mStatus === 'WITHIN_TOLERANCE') withinToleranceCount++;
+    else if (['PRICE_VARIANCE', 'QUANTITY_VARIANCE', 'TAX_VARIANCE', 'REVIEW_REQUIRED'].includes(mStatus)) exceptionsCount++;
+
+    const inv = (po.invoices || []).slice(-1)[0];
+    const grn = (po.grnReceipts || []).slice(-1)[0];
+    if (inv) {
+      recentMatches.push({
+        matchId: `MTC-${po.purchaseOrderId}`,
+        purchaseOrderId: po.purchaseOrderId,
+        grnId: grn?.grnId || 'GRN-PENDING',
+        invoiceNumber: inv.invoiceNumber,
+        poAmountPaise: po.totalPaisa || 0,
+        invoiceAmountPaise: inv.totalPaisa || 0,
+        variancePaise: po.threeWayMatch?.priceVariancePaisa || 0,
+        matchStatus: mStatus,
+        financeHandoffStatus: po.status === 'CLOSED' ? 'POSTED_TO_AP' : 'PENDING_APPROVAL',
+      });
+    }
+  }
+
   return response.status(200).json({
     success: true,
     data: {
-      matchedCount: 28,
-      withinToleranceCount: 3,
-      exceptionsCount: 0,
-      recentMatches: [
-        {
-          matchId: 'MTC-2026-0001',
-          purchaseOrderId: 'PO-2026-0001',
-          grnId: 'GRN-2026-0001',
-          invoiceNumber: 'INV-WOE-8821',
-          poAmountPaise: 4500000,
-          invoiceAmountPaise: 4500000,
-          variancePaise: 0,
-          matchStatus: 'MATCHED_100_PERCENT',
-          financeHandoffStatus: 'READY_FOR_PAYMENT',
-        },
-      ],
+      matchedCount,
+      withinToleranceCount,
+      exceptionsCount,
+      recentMatches,
     },
     correlationId: request.correlationId || null,
   });
@@ -1014,12 +2553,22 @@ module.exports = {
   receiveOrder,
   cancelOrder,
   getProcurementOverview,
+  getCatalogue,
   listPurchaseRequisitions,
   createPurchaseRequisition,
+  convertRequisitionToPo,
   listRfqs,
   createRfq,
   listGoodsReceipts,
   createGoodsReceipt,
   getMatchingSummary,
+  listAsns,
+  getAsn,
+  createAsn,
+  updateAsnStatus,
+  cancelAsn,
   getProcurementIntegrity,
+  _setPoLocksDisabled,
+  commitWithRetry,
+  executeTransactionWithRetry,
 };

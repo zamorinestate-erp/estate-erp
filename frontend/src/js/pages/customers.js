@@ -659,11 +659,11 @@ let hasInitialFetchedCustomers = false;
 async function loadCustomerData() {
   try {
     const [ovRes, listRes, rewRes, fbRes, progRes, cafesRes] = await Promise.all([
-      apiGet("/api/v1/customers/overview").catch(() => null),
-      apiGet("/api/v1/customers").catch(() => null),
-      apiGet("/api/v1/customers/rewards/catalogue").catch(() => null),
-      apiGet("/api/v1/customers/feedback").catch(() => null),
-      apiGet("/api/v1/customers/programme/current").catch(() => null),
+      apiGet("/customers/overview").catch(() => null),
+      apiGet("/customers").catch(() => null),
+      apiGet("/customers/rewards/catalogue").catch(() => null),
+      apiGet("/customers/feedback").catch(() => null),
+      apiGet("/customers/programme/current").catch(() => null),
       apiGet("/cafes").catch(() => null),
     ]);
 
@@ -752,7 +752,7 @@ function openRegisterCustomerModal(root) {
     }
 
     try {
-      await apiPost("/api/v1/customers", { name, phone, email, preferredCafeId });
+      await apiPost("/customers", { name, phone, email, preferredCafeId });
       showToast("Guest profile created successfully.", "success");
       modal.close();
       await loadCustomerData();
@@ -844,13 +844,13 @@ function openAdjustPointsModal(cust, root) {
     }
 
     try {
-      await apiPost(`/api/v1/customers/${cust.customerId}/points/adjust`, { pointsDelta, reason });
+      await apiPost(`/customers/${cust.customerId}/loyalty/adjust`, { pointsDelta, reason });
       showToast("Points adjusted successfully.", "success");
       modal.close();
       await loadCustomerData();
       rerender(root);
     } catch (err) {
-      showToast(err.message || "Failed to adjust points.", "error");
+      showToast(err.message || "Failed to adjust points.", "coral");
     }
   });
 }
@@ -891,7 +891,7 @@ function openMergeModal(root) {
     }
 
     try {
-      await apiPost("/api/v1/customers/merge", { primaryCustomerId, duplicateCustomerId });
+      await apiPost("/customers/merge", { primaryCustomerId, duplicateCustomerId });
       showToast("Profiles merged successfully.", "success");
       modal.close();
       await loadCustomerData();
@@ -950,7 +950,7 @@ function openCreateRewardModal(root) {
     }
 
     try {
-      await apiPost("/api/v1/customers/rewards", { name, pointsRequired: points, category, status: "ACTIVE" });
+      await apiPost("/customers/rewards", { name, pointsRequired: points, category, status: "ACTIVE" });
       showToast("Reward item added to catalogue.", "success");
       modal.close();
       await loadCustomerData();
@@ -1057,16 +1057,13 @@ function openRecordFeedbackModal(root) {
     }
 
     try {
-      await apiPost("/api/v1/customers/feedback", { rating, comments: notes, customerPhone: phone });
+      await apiPost("/customers/feedback", { rating, comments: notes, customerPhone: phone });
       showToast("Guest feedback recorded successfully.", "success");
       modal.close();
       await loadCustomerData();
       rerender(root);
-    } catch {
-      showToast("Guest feedback recorded successfully.", "success");
-      modal.close();
-      await loadCustomerData();
-      rerender(root);
+    } catch (err) {
+      showToast(err?.message || "Failed to record guest feedback.", "coral");
     }
   });
 }
@@ -1075,10 +1072,10 @@ function openRecordFeedbackModal(root) {
 async function runLoyaltyAudit(root) {
   showToast("Executing loyalty ledger invariant audit...", "info");
   try {
-    const res = await apiGet("/api/v1/customers/audit/integrity");
-    showToast("Loyalty ledger invariant audit: 100% PASS. Zero point discrepancies detected.", "success");
-  } catch {
-    showToast("Loyalty ledger invariant audit: 100% PASS. Zero point discrepancies detected.", "success");
+    const res = await apiGet("/customers/integrity/status");
+    showToast(`Loyalty ledger audit complete: status ${res?.data?.integrityStatus || 'HEALTHY'}.`, "success");
+  } catch (err) {
+    showToast(err?.message || "Loyalty ledger audit failed", "coral");
   }
 }
 

@@ -8,11 +8,14 @@
 const express = require('express');
 const { authenticate } = require('../middleware/authenticate');
 const { authorize } = require('../middleware/authorize');
+const { attachDeviceContext } = require('../middleware/deviceContext');
 const {
   getBillsOverview,
   listBills,
   getBill,
+  getBillPdf,
   createBill,
+  syncOfflineBills,
   reprintBill,
   voidBill,
   refundBill,
@@ -33,6 +36,7 @@ const {
 const router = express.Router();
 
 router.use(authenticate);
+router.use(attachDeviceContext);
 
 // Overview & Registers
 router.get('/overview', getBillsOverview);
@@ -56,10 +60,12 @@ router.post('/register/session/close', closeRegisterSession);
 
 // Bill Listing & Detail
 router.get('/', listBills);
+router.get('/:billId/pdf', getBillPdf);
 router.get('/:billId', getBill);
 
 // POS Sale Creation & Settlement
 router.post('/', createBill);
+router.post('/offline-sync', syncOfflineBills);
 router.post('/:billId/split', splitBill);
 
 // Post-Sale Adjustments

@@ -30,7 +30,15 @@ const getPassbookOverview = asyncHandler(async (req, res) => {
   const integrityData = await PassbookService.runIntegrityAudit(org);
 
   // Get active cafes summary
-  const cafes = await Cafe.find({ organisationId: org, status: 'ACTIVE' }).lean();
+  const cafeFilter = { organisationId: org, status: 'ACTIVE' };
+  if (req.auth.role === 'OWNER') {
+    const assigned = (req.auth.assignedCafeIds || []).map((c) => String(c).trim().toUpperCase()).filter(Boolean);
+    if (!assigned.length) {
+      throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'Owner has no assigned cafés.');
+    }
+    cafeFilter.cafeId = { $in: assigned };
+  }
+  const cafes = await Cafe.find(cafeFilter).lean();
   const cafePositions = cafes.map((c) => {
     const cafeAccounts = accountsData.accounts.filter(
       (a) => a.scopeType === 'ORGANISATION_GLOBAL' || (a.assignedCafeIds || []).includes(c.cafeId) || a.primaryCafeId === c.cafeId
@@ -89,7 +97,25 @@ const getPassbookOverview = asyncHandler(async (req, res) => {
 
 const listAccounts = asyncHandler(async (req, res) => {
   const org = req.auth.organisationId || 'ZAMORIN';
-  const result = await PassbookService.getAccountsSummary(org, req.query);
+  const query = { ...req.query };
+  if (req.auth.role === 'OWNER') {
+    const assigned = (req.auth.assignedCafeIds || []).map((c) => String(c).trim().toUpperCase()).filter(Boolean);
+    if (!assigned.length) {
+      throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'Owner has no assigned cafés.');
+    }
+    if (query.cafeId && query.cafeId !== 'ALL') {
+      if (!assigned.includes(query.cafeId.trim().toUpperCase())) {
+        throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'You do not have access to this café.');
+      }
+    }
+  }
+  const result = await PassbookService.getAccountsSummary(org, query);
+  if (req.auth.role === 'OWNER') {
+    const assigned = (req.auth.assignedCafeIds || []).map((c) => String(c).trim().toUpperCase());
+    result.accounts = (result.accounts || []).filter(
+      (a) => a.scopeType === 'ORGANISATION_GLOBAL' || (a.assignedCafeIds || []).some((c) => assigned.includes(c)) || (a.primaryCafeId && assigned.includes(a.primaryCafeId))
+    );
+  }
   res.status(200).json({ success: true, data: result });
 });
 
@@ -135,7 +161,19 @@ const rebuildAccountBalance = asyncHandler(async (req, res) => {
 
 const listTransactions = asyncHandler(async (req, res) => {
   const org = req.auth.organisationId || 'ZAMORIN';
-  const result = await PassbookService.listTransactions(org, req.query);
+  const query = { ...req.query };
+  if (req.auth.role === 'OWNER') {
+    const assigned = (req.auth.assignedCafeIds || []).map((c) => String(c).trim().toUpperCase()).filter(Boolean);
+    if (!assigned.length) {
+      throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'Owner has no assigned cafés.');
+    }
+    if (query.cafeId && query.cafeId !== 'ALL') {
+      if (!assigned.includes(query.cafeId.trim().toUpperCase())) {
+        throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'You do not have access to this café.');
+      }
+    }
+  }
+  const result = await PassbookService.listTransactions(org, query);
   res.status(200).json({ success: true, data: result });
 });
 

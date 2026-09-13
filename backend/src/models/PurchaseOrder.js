@@ -103,6 +103,12 @@ const poLineItemSchema = new mongoose.Schema(
       default: 0,
     },
 
+    activeAsnReservedQuantityBase: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+
     unitPricePaisa: {
       type: Number,
       required: true,
@@ -157,6 +163,7 @@ const grnItemSchema = new mongoose.Schema(
 const grnSchema = new mongoose.Schema(
   {
     grnId: { type: String, required: true, trim: true, uppercase: true },
+    idempotencyKey: { type: String, trim: true, uppercase: true, default: null },
     deliveryNoteNumber: { type: String, trim: true, default: '' },
     receivedAt: { type: Date, default: Date.now },
     receivedByUserId: { type: String, required: true, trim: true, uppercase: true },
@@ -285,6 +292,13 @@ const purchaseOrderSchema = new mongoose.Schema(
       default: null,
     },
 
+    requisitionId: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      index: true,
+    },
+
     // ── Line items ────────────────────────────────────────────────────────────
     lineItems: {
       type: [poLineItemSchema],
@@ -362,7 +376,21 @@ const purchaseOrderSchema = new mongoose.Schema(
       enum: ['PENDING', 'PARTIALLY_RECEIVED', 'RECEIVED_PENDING_FINAL_POSTING', 'POSTED_TO_INVENTORY'],
       default: 'PENDING',
     },
-    grnReceipts: [grnSchema],
+    grnReceipts: {
+      type: [grnSchema],
+      default: [],
+      validate: [
+        {
+          validator: function (receipts) {
+            if (!Array.isArray(receipts)) return true;
+            const keys = receipts.map((r) => r.idempotencyKey).filter(Boolean);
+            return new Set(keys).size === keys.length;
+          },
+          message: 'Duplicate idempotencyKey within the same purchase order grnReceipts is prohibited.',
+        },
+      ],
+    },
+    advanceShippingNoticeIds: [{ type: String, trim: true, uppercase: true }],
     invoices: [supplierInvoiceRefSchema],
 
     // ── 3-Way Match & MASTER Approval & Inventory Posting ─────────────────────
@@ -446,6 +474,15 @@ purchaseOrderSchema.index(
 purchaseOrderSchema.index(
   { organisationId: 1, vendorId: 1, status: 1 },
   { name: 'org_vendor_status' }
+);
+
+purchaseOrderSchema.index(
+  { organisationId: 1, requisitionId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { requisitionId: { $type: 'string' } },
+    name: 'org_requisition_unique',
+  }
 );
 
 // ── Normalisation ────────────────────────────────────────────────────────────

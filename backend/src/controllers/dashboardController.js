@@ -35,8 +35,10 @@ const { RegisterSession } = require('../models/RegisterSession');
 const { PersonalLedgerEntry } = require('../models/PersonalLedger');
 const { SequenceCounter } = require('../models/SequenceCounter');
 const { AuditEvent } = require('../models/AuditEvent');
+const OperationalExceptionService = require('../services/operationalExceptionService');
 const { asyncHandler } = require('../utils/asyncHandler');
 const { ApiError } = require('../utils/ApiError');
+const { resolveEffectiveCafeScope } = require('../utils/cafeScope');
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
 
@@ -829,8 +831,11 @@ const getDashboardData = asyncHandler(async (request, response) => {
       city: cafe.city,
       health,
       totalSalesPaisa: sales.totalSalesPaisa,
+      salesTodayPaisa: sales.totalSalesPaisa,
       totalOrders: sales.totalOrders,
+      completedBills: sales.totalOrders,
       aovPaisa: sales.aovPaisa,
+      abvPaisa: sales.aovPaisa,
       targetSalesPaisa: target?.salesTargetPaisa || null,
       targetAchievementPct,
       inventoryCritical: invAlerts.critical,
@@ -1570,8 +1575,9 @@ async function getCafeRecentActivity(orgId, cafeId, limit = 8) {
 const getCafeOpsDashboard = asyncHandler(async (request, response) => {
   const auth = request.auth;
 
-  // §100 — CAFE_ADMIN only
-  if (auth.role !== 'CAFE_ADMIN') {
+  // Authorised roles for Cafe Operations Dashboard
+  const allowedRoles = ['CAFE_ADMIN', 'STAFF', 'MASTER', 'OWNER'];
+  if (!allowedRoles.includes(auth.role)) {
     throw new ApiError(
       403,
       'CAFE_OPS_ACCESS_DENIED',
@@ -1579,10 +1585,10 @@ const getCafeOpsDashboard = asyncHandler(async (request, response) => {
     );
   }
 
-  // §8, §9 — Derive cafe from server-authoritative auth context ONLY
-  // Query params are intentionally ignored for cafe selection.
+  // Derive cafe from server-authoritative context (device binding / operator session / authorized assigned cafe)
+  request.auth.workspaceMode = request.auth.workspaceMode || 'CAFE_OPERATIONS';
+  const cafeId = resolveEffectiveCafeScope(request);
   const orgId = auth.organisationId;
-  const cafeId = auth.primaryCafeId;
 
   if (!cafeId) {
     throw new ApiError(
@@ -1778,6 +1784,7 @@ const getCafeOpsDashboard = asyncHandler(async (request, response) => {
   return response.status(200).json({
     success: true,
     data: {
+      cafeId: cafe.cafeId,
       // §18 cafe context
       cafeContext: {
         cafeId: cafe.cafeId,
@@ -1843,10 +1850,28 @@ const getCafeOpsDashboard = asyncHandler(async (request, response) => {
   });
 });
 
+// ── Operational Exception Centre (R02-08) ───────────────────────────────────
+const getOperationalExceptions = asyncHandler(async (request, response) => {
+  const { organisationId } = request.auth;
+  const cafeId = resolveEffectiveCafeScope(request);
+
+  const result = await OperationalExceptionService.getCafeExceptions({
+    organisationId,
+    cafeId,
+  });
+
+  return response.status(200).json({
+    success: true,
+    data: result,
+    correlationId: request.correlationId || null,
+  });
+});
+
 module.exports = {
   getDashboardMetrics,
   getDashboardData,
   getCafeOpsDashboard,
+  getOperationalExceptions,
   listSavedViews,
   createSavedView,
   updateSavedView,

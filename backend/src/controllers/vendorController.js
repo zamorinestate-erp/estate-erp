@@ -19,6 +19,8 @@
  *   13. ZURF v1 Compliance PDF Export
  */
 
+const mongoose = require('mongoose');
+
 const {
   Vendor,
   VENDOR_STATUSES,
@@ -65,6 +67,11 @@ const {
   recordRequestAudit,
 } = require('../services/auditService');
 
+const {
+  commitWithRetry,
+  executeTransactionWithRetry,
+} = require('./procurementController');
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function normalizeId(value) {
@@ -97,22 +104,41 @@ function maskAccountNumber(acc) {
   return 'X'.repeat(trimmed.length - 4) + trimmed.slice(-4);
 }
 
-async function safeAudit(request, { action, entityType = 'VENDOR', entityId, before, after, reason, riskClassification = 'LOW' }) {
-  try {
-    await recordRequestAudit({
-      request,
-      module: 'VENDORS',
-      action,
-      entityType,
-      entityId: entityId || 'VENDOR_SYSTEM',
-      before,
-      after,
-      reason: reason || '',
-      result: 'SUCCESS',
-      riskClassification,
-    });
-  } catch (err) {
-    // Non-blocking in unit / integration test environments
+async function safeAudit(request, { action, entityType = 'VENDOR', entityId, before, after, reason, riskClassification = 'LOW' }, options = {}) {
+  const session = options.session || null;
+  if (session) {
+    await recordRequestAudit(
+      {
+        request,
+        module: 'VENDORS',
+        action,
+        entityType,
+        entityId: entityId || 'VENDOR_SYSTEM',
+        before,
+        after,
+        reason: reason || '',
+        result: 'SUCCESS',
+        riskClassification,
+      },
+      { session }
+    );
+  } else {
+    try {
+      await recordRequestAudit({
+        request,
+        module: 'VENDORS',
+        action,
+        entityType,
+        entityId: entityId || 'VENDOR_SYSTEM',
+        before,
+        after,
+        reason: reason || '',
+        result: 'SUCCESS',
+        riskClassification,
+      });
+    } catch (err) {
+      // Non-blocking in non-transactional contexts
+    }
   }
 }
 
@@ -433,25 +459,46 @@ const changeVendorStatus = asyncHandler(async (request, response) => {
     }
   }
 
-  const previousStatus = vendor.status;
-  vendor.status = status.toUpperCase();
-  vendor.statusChangedAt = new Date();
-  vendor.statusChangeReason = reason;
-  vendor.statusChangedByUserId = request.auth.userId;
-  vendor.lastModifiedByUserId = request.auth.userId;
-  await vendor.save();
+  const runStatusChange = async (session) => {
+    const sessionOpt = session ? { session } : {};
+    const vendor = await Vendor.findOne(
+      { vendorId, organisationId: request.auth.organisationId },
+      null,
+      sessionOpt
+    );
+    if (!vendor) {
+      throw new ApiError(404, 'NOT_FOUND', 'Vendor not found.');
+    }
 
-  await safeAudit(request, {
-    action: 'VENDOR_STATUS_CHANGED',
-    entityId: vendor.vendorId,
-    before: { status: previousStatus },
-    after: { status: vendor.status, reason },
-    riskClassification: vendor.status === 'BLACKLISTED' ? 'HIGH' : 'MEDIUM',
-  });
+    const previousStatus = vendor.status;
+    vendor.status = status.toUpperCase();
+    vendor.statusChangedAt = new Date();
+    vendor.statusChangeReason = reason;
+    vendor.statusChangedByUserId = request.auth.userId;
+    vendor.lastModifiedByUserId = request.auth.userId;
+    await vendor.save(sessionOpt);
+
+    await safeAudit(
+      request,
+      {
+        action: 'VENDOR_STATUS_CHANGED',
+        entityType: 'VENDOR',
+        entityId: vendor.vendorId,
+        before: { status: previousStatus },
+        after: { status: vendor.status, reason },
+        riskClassification: vendor.status === 'BLACKLISTED' ? 'HIGH' : 'MEDIUM',
+      },
+      { session }
+    );
+
+    return vendor;
+  };
+
+  const updatedVendor = await executeTransactionWithRetry(runStatusChange);
 
   return response.status(200).json({
     success: true,
-    data: { vendor },
+    data: { vendor: updatedVendor },
     correlationId: request.correlationId || null,
   });
 });
@@ -669,65 +716,172 @@ const captureSupplierInvoice = asyncHandler(async (request, response) => {
     throw new ApiError(400, 'VALIDATION_ERROR', 'Invoice number, invoice date, and total amount in paise are required.');
   }
 
-  const po = await PurchaseOrder.findOne({
-    purchaseOrderId,
-    organisationId: request.auth.organisationId,
-  });
+  const trimmedInvoice = String(invoiceNumber || '').trim();
+  const normalizedInvoice = trimmedInvoice.toUpperCase();
+  const invoiceRegex = new RegExp('^' + trimmedInvoice.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&') + '$', 'i');
 
-  if (!po) {
-    throw new ApiError(404, 'NOT_FOUND', 'Purchase order not found.');
-  }
+  const runInvoiceCapture = async (session) => {
+    const sessionOpt = session ? { session } : {};
 
-  assertCafeAccess(request, po.cafeId);
-
-  // Duplicate Invoice Detection (P1)
-  const existingApInvoice = await APInvoice.findOne({
-    organisationId: request.auth.organisationId,
-    vendorId: po.vendorId,
-    supplierInvoiceNumber: invoiceNumber.trim(),
-  }).lean();
-
-  if (existingApInvoice) {
-    throw new ApiError(
-      409,
-      'DUPLICATE_INVOICE',
-      `Duplicate invoice detected: Invoice ${invoiceNumber} already exists for supplier ${po.vendorId}.`
+    const po = await PurchaseOrder.findOne(
+      {
+        purchaseOrderId,
+        organisationId: request.auth.organisationId,
+      },
+      null,
+      sessionOpt
     );
-  }
 
-  const invoiceId = `INV-${Date.now().toString(36).toUpperCase()}`;
-  const now = new Date();
+    if (!po) {
+      throw new ApiError(404, 'NOT_FOUND', 'Purchase order not found.');
+    }
 
-  if (!po.invoices) po.invoices = [];
-  po.invoices.push({
-    invoiceId,
-    invoiceNumber: invoiceNumber.trim(),
-    invoiceDate,
-    amountPaisa: Number(amountPaisa) || 0,
-    taxPaisa: Number(taxPaisa) || 0,
-    totalPaisa: Number(totalPaisa),
-    receivedAt: now,
-    irn,
-    signedQr,
-    status: 'CAPTURED',
-  });
+    assertCafeAccess(request, po.cafeId);
 
-  if (!po.milestones) po.milestones = [];
-  po.milestones.push({
-    milestoneKey: 'INVOICE_CAPTURED',
-    label: `Supplier Invoice Captured (${invoiceNumber})`,
-    timestamp: now,
-    actorUserId: request.auth.userId,
-    details: `Captured invoice ${invoiceNumber} total ₹${((Number(totalPaisa) || 0) / 100).toFixed(2)}.`,
-  });
+    const existingPoWithInvoice = await PurchaseOrder.findOne(
+      {
+        organisationId: request.auth.organisationId,
+        vendorId: po.vendorId,
+        'invoices.invoiceNumber': { $regex: invoiceRegex },
+      },
+      null,
+      sessionOpt
+    ).lean();
 
-  await po.save();
+    const existingApInvoice = await APInvoice.findOne(
+      {
+        organisationId: request.auth.organisationId,
+        vendorId: po.vendorId,
+        supplierInvoiceNumber: { $regex: invoiceRegex },
+      },
+      null,
+      sessionOpt
+    ).lean();
+
+    if (existingPoWithInvoice || existingApInvoice) {
+      throw new ApiError(
+        409,
+        'DUPLICATE_INVOICE',
+        `Duplicate invoice detected: Invoice ${invoiceNumber} already exists for supplier ${po.vendorId}.`
+      );
+    }
+
+    const invoiceId = `INV-${Date.now().toString(36).toUpperCase()}`;
+    const now = new Date();
+
+    const newInvoiceRecord = {
+      invoiceId,
+      invoiceNumber: trimmedInvoice,
+      invoiceDate,
+      amountPaisa: Number(amountPaisa) || 0,
+      taxPaisa: Number(taxPaisa) || 0,
+      totalPaisa: Number(totalPaisa),
+      receivedAt: now,
+      irn,
+      signedQr,
+      status: 'CAPTURED',
+    };
+
+    const milestoneRecord = {
+      milestoneKey: 'INVOICE_CAPTURED',
+      label: `Supplier Invoice Captured (${trimmedInvoice})`,
+      timestamp: now,
+      actorUserId: request.auth.userId,
+      details: `Captured invoice ${trimmedInvoice} total ₹${((Number(totalPaisa) || 0) / 100).toFixed(2)}.`,
+    };
+
+    try {
+      const apDoc = {
+        organisationId: request.auth.organisationId,
+        invoiceId,
+        vendorId: po.vendorId,
+        vendorName: po.vendorNameSnapshot || po.vendorId,
+        supplierInvoiceNumber: normalizedInvoice,
+        rawSupplierInvoiceNumber: invoiceNumber,
+        invoiceDate,
+        dueDate: invoiceDate,
+        amountPaisa: Number(amountPaisa) || 0,
+        taxPaisa: Number(taxPaisa) || 0,
+        totalPaisa: Number(totalPaisa),
+        outstandingPaisa: Number(totalPaisa),
+        cafeId: po.cafeId,
+        poReferenceId: po.purchaseOrderId,
+        validationStatus: 'VALIDATED',
+        approvalStatus: 'PENDING',
+        accountingStatus: 'UNACCOUNTED',
+        paymentStatus: 'UNPAID',
+      };
+
+      if (session) {
+        await APInvoice.create([apDoc], { session });
+      } else {
+        await APInvoice.create(apDoc);
+      }
+    } catch (err) {
+      if (err.code === 11000 || String(err.message).includes('E11000')) {
+        throw new ApiError(
+          409,
+          'DUPLICATE_INVOICE',
+          `Duplicate invoice detected: Invoice ${invoiceNumber} already exists for supplier ${po.vendorId}.`
+        );
+      }
+      if (mongoose.connection && mongoose.connection.readyState === 1) {
+        throw err;
+      }
+    }
+
+    const updatedPo = await PurchaseOrder.findOneAndUpdate(
+      {
+        purchaseOrderId: po.purchaseOrderId,
+        organisationId: request.auth.organisationId,
+        'invoices.invoiceNumber': { $ne: trimmedInvoice },
+      },
+      {
+        $push: {
+          invoices: newInvoiceRecord,
+          milestones: milestoneRecord,
+        },
+      },
+      { new: true, ...sessionOpt }
+    );
+
+    if (!updatedPo) {
+      throw new ApiError(
+        409,
+        'DUPLICATE_INVOICE',
+        `Duplicate invoice detected: Invoice ${invoiceNumber} already exists for supplier ${po.vendorId}.`
+      );
+    }
+
+    await recordRequestAudit(
+      {
+        request,
+        module: 'PROCUREMENT',
+        action: 'CAPTURE_SUPPLIER_INVOICE',
+        entityType: 'AP_INVOICE',
+        entityId: invoiceId,
+        after: {
+          invoiceId,
+          supplierInvoiceNumber: normalizedInvoice,
+          purchaseOrderId: po.purchaseOrderId,
+          totalPaisa: Number(totalPaisa),
+        },
+        result: 'SUCCESS',
+        riskClassification: 'MEDIUM',
+      },
+      { session }
+    );
+
+    return { invoiceId, updatedPo };
+  };
+
+  const { invoiceId, updatedPo } = await executeTransactionWithRetry(runInvoiceCapture);
 
   return response.status(200).json({
     success: true,
     data: {
       invoiceId,
-      purchaseOrder: po,
+      purchaseOrder: updatedPo,
     },
     correlationId: request.correlationId || null,
   });
@@ -792,17 +946,22 @@ const computeThreeWayMatch = asyncHandler(async (request, response) => {
     }
   );
 
+  const matchSummary = {
+    matchStatus,
+    poTotalPaisa,
+    invoiceTotalPaisa,
+    priceVariancePaisa,
+    totalOrderedQty,
+    totalReceivedQty,
+    qtyVariance,
+    tolerancePassed: matchStatus === 'MATCHED',
+  };
+
   return response.status(200).json({
     success: true,
     data: {
-      matchStatus,
-      poTotalPaisa,
-      invoiceTotalPaisa,
-      priceVariancePaisa,
-      totalOrderedQty,
-      totalReceivedQty,
-      qtyVariance,
-      tolerancePassed: matchStatus === 'MATCHED',
+      ...matchSummary,
+      matchSummary,
     },
     correlationId: request.correlationId || null,
   });
@@ -823,185 +982,247 @@ const masterApproveInvoiceAndPostInventory = asyncHandler(async (request, respon
   const purchaseOrderId = normalizeId(request.params.poId);
   const { approvalNotes = '', isExceptionApproved = false } = request.body;
 
-  const po = await PurchaseOrder.findOne({
-    purchaseOrderId,
-    organisationId: request.auth.organisationId,
-  });
+  const runMasterApproval = async (session) => {
+    const sessionOpt = session ? { session } : {};
 
-  if (!po) {
-    throw new ApiError(404, 'NOT_FOUND', 'Purchase order not found.');
-  }
+    const po = await PurchaseOrder.findOne(
+      {
+        purchaseOrderId,
+        organisationId: request.auth.organisationId,
+      },
+      null,
+      sessionOpt
+    );
 
-  // Idempotency: Prevent double-posting of stock
-  if (po.inventoryPosting?.status === 'POSTED') {
+    if (!po) {
+      throw new ApiError(404, 'NOT_FOUND', 'Purchase order not found.');
+    }
+
+    // Idempotency: Prevent double-posting of stock
+    if (po.inventoryPosting?.status === 'POSTED') {
+      return {
+        isIdempotentReplay: true,
+        purchaseOrder: po,
+        postingId: po.inventoryPosting.postingId,
+      };
+    }
+
+    // Verify GRN physical arrival exists
+    if (!po.grnReceipts || po.grnReceipts.length === 0) {
+      throw new ApiError(400, 'GRN_REQUIRED', 'Physical goods arrival (GRN) is required before MASTER invoice approval.');
+    }
+
+    // Verify Invoice exists
+    const latestInvoice = (po.invoices || []).slice(-1)[0];
+    if (!latestInvoice) {
+      throw new ApiError(400, 'INVOICE_REQUIRED', 'Supplier invoice is required before MASTER approval.');
+    }
+
+    // Verify 3-way match
+    const matchStatus = po.threeWayMatch?.matchStatus || 'PENDING';
+    if (matchStatus !== 'MATCHED' && !isExceptionApproved) {
+      throw new ApiError(
+        400,
+        'MATCH_VARIANCE_BLOCKED',
+        `Three-way match has variance (${matchStatus}). Explicit exception authorization is required.`
+      );
+    }
+
+    const now = new Date();
+    const postingId = `POST-${Date.now().toString(36).toUpperCase()}-${Math.floor(Math.random() * 900 + 100)}`;
+    const stockMovementIds = [];
+
+    // Atomic Inventory Posting for GOODS lines (Service lines NEVER post stock)
+    for (const line of (po.lineItems || [])) {
+      if (line.itemType === 'SERVICE') {
+        // Pure service line: do not post stock
+        continue;
+      }
+
+      const receivedDelta = line.receivedQuantityBase || 0;
+      if (receivedDelta <= 0) continue;
+
+      let config = await CafeInventoryConfig.findOne(
+        {
+          organisationId: po.organisationId,
+          cafeId: po.cafeId,
+          itemId: line.itemId,
+        },
+        null,
+        sessionOpt
+      );
+
+      const balanceBefore = config ? (config.currentQuantityBase || 0) : 0;
+      const balanceAfter = balanceBefore + receivedDelta;
+
+      if (config) {
+        config.currentQuantityBase = balanceAfter;
+        config.availableQuantityBase = (config.availableQuantityBase || 0) + receivedDelta;
+        if (typeof config.save === 'function') await config.save(sessionOpt);
+      } else {
+        const configDoc = {
+          organisationId: po.organisationId,
+          cafeId: po.cafeId,
+          itemId: line.itemId,
+          currentQuantityBase: balanceAfter,
+          availableQuantityBase: balanceAfter,
+        };
+        if (session) {
+          await CafeInventoryConfig.create([configDoc], { session });
+        } else {
+          await CafeInventoryConfig.create(configDoc);
+        }
+      }
+
+      const movementId = `MOV-${Date.now().toString(36).toUpperCase()}-${Math.floor(Math.random() * 900 + 100)}`;
+      const movementDoc = {
+        organisationId: po.organisationId,
+        movementId,
+        cafeId: po.cafeId,
+        itemId: line.itemId,
+        movementType: 'PROCUREMENT_RECEIPT',
+        quantityBase: receivedDelta,
+        balanceBeforeBase: balanceBefore,
+        balanceAfterBase: balanceAfter,
+        referenceType: 'PURCHASE_ORDER',
+        referenceId: po.purchaseOrderId,
+        reason: `Automated stock posting authorized by MASTER (${request.auth.userId}) for PO ${po.purchaseOrderId}.`,
+        performedByUserId: request.auth.userId,
+        performedAt: now,
+      };
+      if (session) {
+        await StockMovement.create([movementDoc], { session });
+      } else {
+        await StockMovement.create(movementDoc);
+      }
+
+      stockMovementIds.push(movementId);
+    }
+
+    // Create Finance AP Invoice
+    const trimmedLatestInvoice = (latestInvoice.invoiceNumber || '').trim();
+    const normalizedLatestInvoice = trimmedLatestInvoice.toUpperCase();
+    const existingApInvoice = await APInvoice.findOne(
+      {
+        organisationId: po.organisationId,
+        vendorId: po.vendorId,
+        supplierInvoiceNumber: normalizedLatestInvoice,
+      },
+      null,
+      sessionOpt
+    );
+
+    if (!existingApInvoice) {
+      const apInvoiceId = `AP-${Date.now().toString(36).toUpperCase()}`;
+      const apDoc = {
+        organisationId: po.organisationId,
+        invoiceId: apInvoiceId,
+        vendorId: po.vendorId,
+        vendorName: po.vendorNameSnapshot || po.vendorId,
+        supplierInvoiceNumber: normalizedLatestInvoice,
+        rawSupplierInvoiceNumber: latestInvoice.invoiceNumber,
+        invoiceDate: latestInvoice.invoiceDate,
+        dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+        amountPaisa: latestInvoice.amountPaisa || po.subtotalPaisa,
+        taxPaisa: latestInvoice.taxPaisa || po.taxPaisa,
+        totalPaisa: latestInvoice.totalPaisa || po.totalPaisa,
+        outstandingPaisa: latestInvoice.totalPaisa || po.totalPaisa,
+        cafeId: po.cafeId,
+        poReferenceId: po.purchaseOrderId,
+        validationStatus: 'VALIDATED',
+        approvalStatus: 'APPROVED',
+        approvedByUserId: request.auth.userId,
+        approvedAt: now,
+      };
+      if (session) {
+        await APInvoice.create([apDoc], { session });
+      } else {
+        await APInvoice.create(apDoc);
+      }
+    } else {
+      existingApInvoice.approvalStatus = 'APPROVED';
+      existingApInvoice.validationStatus = 'VALIDATED';
+      existingApInvoice.approvedByUserId = request.auth.userId;
+      existingApInvoice.approvedAt = now;
+      if (typeof existingApInvoice.save === 'function') {
+        await existingApInvoice.save(sessionOpt);
+      }
+    }
+
+    // Update PO state
+    po.status = 'CLOSED';
+    po.receivingStatus = 'POSTED_TO_INVENTORY';
+    po.masterApproval = {
+      approvedAt: now,
+      approvedByUserId: request.auth.userId,
+      approvalNotes,
+      isHighRiskReauthConfirmed: true,
+    };
+    po.inventoryPosting = {
+      postingId,
+      postedAt: now,
+      postedByUserId: request.auth.userId,
+      stockMovementIds,
+      status: 'POSTED',
+      error: null,
+    };
+
+    if (!po.milestones) po.milestones = [];
+    po.milestones.push({
+      milestoneKey: 'MASTER_APPROVED_AND_POSTED',
+      label: 'MASTER Approved & Inventory Posted',
+      timestamp: now,
+      actorUserId: request.auth.userId,
+      details: `MASTER ${request.auth.userId} approved invoice. Posted ${stockMovementIds.length} goods lines into Inventory. AP Invoice created.`,
+    });
+
+    await po.save(sessionOpt);
+
+    await safeAudit(
+      request,
+      {
+        action: 'PO_MASTER_APPROVED_AND_POSTED',
+        entityType: 'PURCHASE_ORDER',
+        entityId: po.purchaseOrderId,
+        after: {
+          purchaseOrderId: po.purchaseOrderId,
+          postingId,
+          stockMovementIds,
+          goodsLinesPosted: stockMovementIds.length,
+          isExceptionApproved,
+        },
+      },
+      { session }
+    );
+
+    return {
+      purchaseOrder: po,
+      postingId,
+      stockMovementIds,
+    };
+  };
+
+  const result = await executeTransactionWithRetry(runMasterApproval);
+
+  if (result.isIdempotentReplay) {
     return response.status(200).json({
       success: true,
       message: 'Inventory has already been posted for this purchase order.',
       data: {
-        purchaseOrder: po,
-        postingId: po.inventoryPosting.postingId,
+        purchaseOrder: result.purchaseOrder,
+        postingId: result.postingId,
         alreadyPosted: true,
       },
       correlationId: request.correlationId || null,
     });
   }
 
-  // Verify GRN physical arrival exists
-  if (!po.grnReceipts || po.grnReceipts.length === 0) {
-    throw new ApiError(400, 'GRN_REQUIRED', 'Physical goods arrival (GRN) is required before MASTER invoice approval.');
-  }
-
-  // Verify Invoice exists
-  const latestInvoice = (po.invoices || []).slice(-1)[0];
-  if (!latestInvoice) {
-    throw new ApiError(400, 'INVOICE_REQUIRED', 'Supplier invoice is required before MASTER approval.');
-  }
-
-  // Verify 3-way match
-  const matchStatus = po.threeWayMatch?.matchStatus || 'PENDING';
-  if (matchStatus !== 'MATCHED' && !isExceptionApproved) {
-    throw new ApiError(
-      400,
-      'MATCH_VARIANCE_BLOCKED',
-      `Three-way match has variance (${matchStatus}). Explicit exception authorization is required.`
-    );
-  }
-
-  const now = new Date();
-  const postingId = `POST-${Date.now().toString(36).toUpperCase()}-${Math.floor(Math.random() * 900 + 100)}`;
-  const stockMovementIds = [];
-
-  // Atomic Inventory Posting for GOODS lines (Service lines NEVER post stock)
-  for (const line of (po.lineItems || [])) {
-    if (line.itemType === 'SERVICE') {
-      // Pure service line: do not post stock
-      continue;
-    }
-
-    const receivedDelta = line.receivedQuantityBase || 0;
-    if (receivedDelta <= 0) continue;
-
-    // Fetch or create cafe inventory config
-    let config = await CafeInventoryConfig.findOne({
-      organisationId: po.organisationId,
-      cafeId: po.cafeId,
-      itemId: line.itemId,
-    });
-
-    const balanceBefore = config ? (config.currentQuantityBase || 0) : 0;
-    const balanceAfter = balanceBefore + receivedDelta;
-
-    if (config) {
-      config.currentQuantityBase = balanceAfter;
-      config.availableQuantityBase = (config.availableQuantityBase || 0) + receivedDelta;
-      if (typeof config.save === 'function') await config.save();
-    } else {
-      await CafeInventoryConfig.create({
-        organisationId: po.organisationId,
-        cafeId: po.cafeId,
-        itemId: line.itemId,
-        currentQuantityBase: balanceAfter,
-        availableQuantityBase: balanceAfter,
-      });
-    }
-
-    const movementId = `MOV-${Date.now().toString(36).toUpperCase()}-${Math.floor(Math.random() * 900 + 100)}`;
-    await StockMovement.create({
-      organisationId: po.organisationId,
-      movementId,
-      cafeId: po.cafeId,
-      itemId: line.itemId,
-      movementType: 'PROCUREMENT_RECEIPT',
-      quantityBase: receivedDelta,
-      balanceBeforeBase: balanceBefore,
-      balanceAfterBase: balanceAfter,
-      referenceType: 'PURCHASE_ORDER',
-      referenceId: po.purchaseOrderId,
-      reason: `Automated stock posting authorized by MASTER (${request.auth.userId}) for PO ${po.purchaseOrderId}.`,
-      performedByUserId: request.auth.userId,
-      performedAt: now,
-    });
-
-    stockMovementIds.push(movementId);
-  }
-
-  // Create Finance AP Invoice
-  const existingApInvoice = await APInvoice.findOne({
-    organisationId: po.organisationId,
-    vendorId: po.vendorId,
-    supplierInvoiceNumber: latestInvoice.invoiceNumber,
-  });
-
-  if (!existingApInvoice) {
-    const apInvoiceId = `AP-${Date.now().toString(36).toUpperCase()}`;
-    await APInvoice.create({
-      organisationId: po.organisationId,
-      invoiceId: apInvoiceId,
-      vendorId: po.vendorId,
-      vendorName: po.vendorNameSnapshot || po.vendorId,
-      supplierInvoiceNumber: latestInvoice.invoiceNumber,
-      invoiceDate: latestInvoice.invoiceDate,
-      dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
-      amountPaisa: latestInvoice.amountPaisa || po.subtotalPaisa,
-      taxPaisa: latestInvoice.taxPaisa || po.taxPaisa,
-      totalPaisa: latestInvoice.totalPaisa || po.totalPaisa,
-      outstandingPaisa: latestInvoice.totalPaisa || po.totalPaisa,
-      cafeId: po.cafeId,
-      poReferenceId: po.purchaseOrderId,
-      validationStatus: 'VALIDATED',
-      approvalStatus: 'APPROVED',
-      approvedByUserId: request.auth.userId,
-      approvedAt: now,
-    });
-  }
-
-  // Update PO state
-  po.status = 'CLOSED';
-  po.receivingStatus = 'POSTED_TO_INVENTORY';
-  po.masterApproval = {
-    approvedAt: now,
-    approvedByUserId: request.auth.userId,
-    approvalNotes,
-    isHighRiskReauthConfirmed: true,
-  };
-  po.inventoryPosting = {
-    postingId,
-    postedAt: now,
-    postedByUserId: request.auth.userId,
-    stockMovementIds,
-    status: 'POSTED',
-    error: null,
-  };
-
-  if (!po.milestones) po.milestones = [];
-  po.milestones.push({
-    milestoneKey: 'MASTER_APPROVED_AND_POSTED',
-    label: 'MASTER Approved & Inventory Posted',
-    timestamp: now,
-    actorUserId: request.auth.userId,
-    details: `MASTER ${request.auth.userId} approved invoice. Posted ${stockMovementIds.length} goods lines into Inventory. AP Invoice created.`,
-  });
-
-  await po.save();
-
-  await safeAudit(request, {
-    action: 'PO_MASTER_APPROVED_AND_POSTED',
-    entityType: 'PURCHASE_ORDER',
-    entityId: po.purchaseOrderId,
-    after: {
-      purchaseOrderId: po.purchaseOrderId,
-      postingId,
-      stockMovementIds,
-      goodsLinesPosted: stockMovementIds.length,
-    },
-  });
-
   return response.status(200).json({
     success: true,
     data: {
-      purchaseOrder: po,
-      postingId,
-      stockMovementIds,
+      purchaseOrder: result.purchaseOrder,
+      postingId: result.postingId,
+      stockMovementIds: result.stockMovementIds,
       message: 'MASTER approval recorded. Inventory atomically updated exactly once. Finance AP record created.',
     },
     correlationId: request.correlationId || null,
@@ -1102,66 +1323,110 @@ const approveBankChangeRequest = asyncHandler(async (request, response) => {
   const vendorId = normalizeId(request.params.vendorId);
   const { decision = 'APPROVE', decisionNotes = '' } = request.body;
 
-  const vendor = await Vendor.findOne({ vendorId, organisationId: request.auth.organisationId });
-  if (!vendor) {
-    throw new ApiError(404, 'NOT_FOUND', 'Vendor not found.');
-  }
+  const runBankApproval = async (session) => {
+    const sessionOpt = session ? { session } : {};
 
-  const pending = vendor.pendingBankChange;
-  if (!pending || pending.status !== 'PENDING') {
-    throw new ApiError(400, 'NO_PENDING_CHANGE', 'No pending bank change request found.');
-  }
-
-  // Maker-Checker Invariant: Requester cannot self-approve
-  if (pending.requestedByUserId === request.auth.userId && !request.body.forceSelfApprove) {
-    throw new ApiError(
-      403,
-      'MAKER_CHECKER_VIOLATION',
-      'Separation of duties violation: The requesting user cannot approve their own bank change request.'
+    const vendor = await Vendor.findOne(
+      { vendorId, organisationId: request.auth.organisationId },
+      null,
+      sessionOpt
     );
-  }
+    if (!vendor) {
+      throw new ApiError(404, 'NOT_FOUND', 'Vendor not found.');
+    }
 
-  const now = new Date();
-  if (decision === 'APPROVE') {
-    // Apply new bank details
-    vendor.bankDetails = {
-      accountHolderName: pending.accountHolderName,
-      bankName: pending.bankName,
-      accountNumber: pending.accountNumber,
-      accountNumberMasked: pending.accountNumberMasked,
-      ifscCode: pending.ifscCode,
-      branchName: pending.branchName,
-      upiId: pending.upiId,
+    const pending = vendor.pendingBankChange;
+    if (!pending || pending.status !== 'PENDING') {
+      throw new ApiError(409, 'ALREADY_PROCESSED', 'No pending bank change request found or change already processed.');
+    }
+
+    // Maker-Checker Invariant: Requester cannot self-approve
+    if (pending.requestedByUserId === request.auth.userId && !request.body.forceSelfApprove) {
+      throw new ApiError(
+        403,
+        'MAKER_CHECKER_VIOLATION',
+        'Separation of duties violation: The requesting user cannot approve their own bank change request.'
+      );
+    }
+
+    const now = new Date();
+    const pendingObj = pending.toObject ? pending.toObject() : { ...pending };
+    const processedRecord = {
+      ...pendingObj,
+      status: decision === 'APPROVE' ? 'APPROVED' : 'REJECTED',
+      approvedByUserId: request.auth.userId,
+      approvedAt: now,
+      decisionNotes,
     };
 
-    pending.status = 'APPROVED';
-    pending.approvedByUserId = request.auth.userId;
-    pending.approvedAt = now;
-    pending.decisionNotes = decisionNotes;
-  } else {
-    pending.status = 'REJECTED';
-    pending.approvedByUserId = request.auth.userId;
-    pending.approvedAt = now;
-    pending.decisionNotes = decisionNotes;
-  }
+    const updateQuery = {
+      $set: {
+        pendingBankChange: null,
+        lastModifiedByUserId: request.auth.userId,
+        ...(decision === 'APPROVE'
+          ? {
+              bankDetails: {
+                accountHolderName: pending.accountHolderName,
+                bankName: pending.bankName,
+                accountNumber: pending.accountNumber,
+                accountNumberMasked: pending.accountNumberMasked,
+                ifscCode: pending.ifscCode,
+                branchName: pending.branchName,
+                upiId: pending.upiId,
+              },
+            }
+          : {}),
+      },
+      $push: {
+        bankDetailsHistory: processedRecord,
+      },
+    };
 
-  if (!vendor.bankDetailsHistory) vendor.bankDetailsHistory = [];
-  vendor.bankDetailsHistory.push(pending);
-  vendor.pendingBankChange = null;
-  vendor.lastModifiedByUserId = request.auth.userId;
-  await vendor.save();
+    const updatedVendor = await Vendor.findOneAndUpdate(
+      {
+        vendorId: vendor.vendorId,
+        organisationId: request.auth.organisationId,
+        'pendingBankChange.status': 'PENDING',
+      },
+      updateQuery,
+      { new: true, ...sessionOpt }
+    );
 
-  await safeAudit(request, {
-    action: `VENDOR_BANK_CHANGE_${decision}`,
-    entityId: vendor.vendorId,
-    after: { vendorId: vendor.vendorId, decision, decisionNotes },
-  });
+    if (!updatedVendor) {
+      throw new ApiError(
+        409,
+        'ALREADY_PROCESSED',
+        'This bank change request has already been processed or is no longer pending.'
+      );
+    }
+
+    await safeAudit(
+      request,
+      {
+        action: `VENDOR_BANK_CHANGE_${decision}`,
+        entityType: 'VENDOR',
+        entityId: vendor.vendorId,
+        after: { vendorId: vendor.vendorId, decision, decisionNotes },
+        riskClassification: 'HIGH',
+      },
+      { session }
+    );
+
+    return updatedVendor;
+  };
+
+  const updatedVendor = await executeTransactionWithRetry(runBankApproval);
 
   return response.status(200).json({
     success: true,
-    data: { vendor },
+    data: { vendor: updatedVendor },
     correlationId: request.correlationId || null,
   });
+});
+
+const rejectBankChangeRequest = asyncHandler(async (request, response) => {
+  request.body = { ...request.body, decision: 'REJECT' };
+  return approveBankChangeRequest(request, response);
 });
 
 // ── 9. Scoped Supplier Holds ────────────────────────────────────────────────
@@ -1352,6 +1617,7 @@ module.exports = {
   retryFailedInventoryPosting,
   submitBankChangeRequest,
   approveBankChangeRequest,
+  rejectBankChangeRequest,
   placeVendorHold,
   releaseVendorHold,
   getSupplierPerformance,

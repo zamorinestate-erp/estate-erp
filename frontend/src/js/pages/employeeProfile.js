@@ -10,6 +10,7 @@ import { ApiClientError, apiGet, apiPatch, apiPost } from "../apiClient.js";
 import { skeleton, showToast } from "../components.js";
 import { state } from "../state.js";
 import { setupModalA11y } from "../utils/modalA11y.js";
+import { openChangePasswordModal } from "../components/changePasswordModal.js";
 
 let activeRequest = null;
 let currentProfileData = null;
@@ -1361,7 +1362,7 @@ function wireTabEvents(root) {
 
   // Change password prompt
   root.querySelector("[data-change-password-prompt]")?.addEventListener("click", () => {
-    location.hash = "#settings/security";
+    openChangePasswordModal();
   });
 
   // Upload modal trigger -> navigates to Document Hub

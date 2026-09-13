@@ -694,9 +694,9 @@ let hasInitialFetchedAssets = false;
 async function loadLiveAssetData() {
   try {
     const [ovRes, assetRes, woRes, cafesRes] = await Promise.all([
-      apiGet("/api/v1/assets/overview").catch(() => null),
-      apiGet("/api/v1/assets").catch(() => null),
-      apiGet("/api/v1/assets/work-orders").catch(() => null),
+      apiGet("/assets/overview").catch(() => null),
+      apiGet("/assets").catch(() => null),
+      apiGet("/assets/work-orders").catch(() => null),
       apiGet("/cafes").catch(() => null),
     ]);
 
@@ -1053,7 +1053,7 @@ function openRegisterAssetWizard(root) {
         try {
           submitBtn.disabled = true;
           submitBtn.textContent = "Registering...";
-          await apiPost("/api/v1/assets", formData).catch(() => null);
+          await apiPost("/assets", formData);
         } catch (err) {
           // ignore offline
         }
@@ -1136,8 +1136,7 @@ function openAssetDetailModal(root, assetId) {
     confirmAction(
       `Apply Safety Hold on ${asset.name}? This will immediately mark the equipment Out of Service.`,
       async () => {
-        await apiPost(`/api/v1/assets/${asset.assetId}/safety-hold`, { isHoldActive: true, reason: "Safety hold applied by Master" });
-        showToast("Safety Hold applied.", "warning");
+        await apiPost(`/assets/${asset.assetId}/safety-hold`, { isHoldActive: true, reason: "Safety hold applied by Master" });
         await loadLiveAssetData();
         rerender(root);
       }
@@ -1149,8 +1148,7 @@ function openAssetDetailModal(root, assetId) {
     confirmAction(
       `Permanently Retire ${asset.name}? This action is restricted to Primary Master authority.`,
       async () => {
-        await apiPost(`/api/v1/assets/${asset.assetId}/retire`, { reason: "End of Life capital retirement" });
-        showToast("Asset retired successfully.", "success");
+        await apiPost(`/assets/${asset.assetId}/retire`, { reason: "End of Life capital retirement" });
         await loadLiveAssetData();
         rerender(root);
       }
@@ -1190,7 +1188,7 @@ function openTransferAssetModal(root, assetId) {
     const toCafeId = modal.querySelector("#transfer-dest-cafe")?.value;
     const reason = modal.querySelector("#transfer-reason")?.value;
     try {
-      await apiPost(`/api/v1/assets/${assetId}/transfer`, { toCafeId, reason });
+      await apiPost(`/assets/${assetId}/transfer`, { toCafeId, reason });
       showToast(`Asset successfully transferred to ${toCafeId}.`, "success");
       modal.close();
       await loadLiveAssetData();
@@ -1279,7 +1277,7 @@ function openCreateWorkOrderModal(root, defaultAssetId = "") {
     };
 
     try {
-      await apiPost("/api/v1/assets/work-orders", { assetId, title, workType, priority, description }).catch(() => null);
+      await apiPost("/assets/work-orders", { assetId, title, workType, priority, description });
     } catch (err) {}
 
     cachedWorkOrders.unshift(newWo);
@@ -1361,18 +1359,18 @@ function openUpdateWorkOrderModal(root, woId) {
     const notes = modal.querySelector("#uwo-notes")?.value;
 
     try {
-      await apiPost(`/api/v1/assets/work-orders/${woId}/resolve`, { status, blocker, notes });
+      await apiPost(`/assets/work-orders/${woId}/resolve`, { status, blocker, notes });
       showToast(`Work order ${woId} updated successfully to ${status}.`, "success");
+      const targetWo = cachedWorkOrders.find((w) => w.workOrderId === woId);
+      if (targetWo) {
+        targetWo.status = status;
+        targetWo.blocker = blocker;
+      }
+      modal.close();
+      rerender(root);
     } catch (err) {
-      showToast(`Work order ${woId} updated successfully (Local).`, "success");
+      showToast(err?.message || `Failed to update work order ${woId}`, "coral");
     }
-    const targetWo = cachedWorkOrders.find((w) => w.workOrderId === woId);
-    if (targetWo) {
-      targetWo.status = status;
-      targetWo.blocker = blocker;
-    }
-    modal.close();
-    rerender(root);
   });
 }
 
@@ -1448,13 +1446,14 @@ function openRecordInspectionModal(root) {
     const verdict = modal.querySelector("#insp-verdict")?.value;
     const notes = modal.querySelector("#insp-notes")?.value;
     try {
-      await apiPost("/api/v1/assets/inspections", { assetId, verdict, notes });
+      await apiPost("/assets/inspections", { assetId, verdict, notes });
       showToast(`Inspection logged for ${assetId}: ${verdict}.`, "success");
+      modal.close();
+      await loadLiveAssetData();
+      rerender(root);
     } catch (err) {
-      showToast(`Inspection logged for ${assetId}: ${verdict} (Local).`, "success");
+      showToast(err?.message || `Failed to log inspection for ${assetId}`, "coral");
     }
-    modal.close();
-    rerender(root);
   });
 }
 

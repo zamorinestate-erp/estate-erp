@@ -41,6 +41,9 @@ const financeRoutes =
 const reportRoutes =
   require('./reportRoutes');
 
+const reportingProductivityRoutes =
+  require('./reportingProductivityRoutes');
+
 const payrollRoutes =
   require('./payrollRoutes');
 
@@ -112,6 +115,9 @@ const adminRoutes =
 
 const settingsRoutes =
   require('./settingsRoutes');
+
+const kdsRoutes =
+  require('./kdsRoutes');
 
 const shiftRoutes =
   require('./shiftRoutes');
@@ -204,6 +210,11 @@ router.use(
 router.use(
   '/reports',
   reportRoutes
+);
+
+router.use(
+  '/reporting-productivity',
+  reportingProductivityRoutes
 );
 
 router.use(
@@ -358,6 +369,11 @@ router.use(
 router.use(
   '/settings',
   settingsRoutes
+);
+
+router.use(
+  '/kds',
+  kdsRoutes
 );
 
 router.use(

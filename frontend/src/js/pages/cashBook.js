@@ -1635,17 +1635,34 @@ function openReverseModal(txId) {
     form.onsubmit = async (e) => {
       e.preventDefault();
       const reason = modalRoot.querySelector("#rev-reason")?.value;
+      if (!reason || !reason.trim()) {
+        showToast("Reversal reason is mandatory.", "coral");
+        return;
+      }
+      const submitBtn = form.querySelector('button[type="submit"]');
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Reversing...";
+      }
       try {
-        const res = await apiPost(`/cash-transactions/${txId}/reverse`, { reason });
+        const res = await apiPost(`/cash-transactions/${txId}/reverse`, { reason: reason.trim() });
         if (res?.success) {
           showToast("Transaction reversed successfully.", "mint");
           close();
-          loadData();
+          await loadData();
         } else {
           showToast(res?.error?.message || "Reversal failed.", "coral");
+          if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = "Confirm Reversal";
+          }
         }
       } catch (err) {
-        showToast("Error: " + err.message, "coral");
+        showToast("Error: " + (err.message || "Reversal failed"), "coral");
+        if (submitBtn) {
+          submitBtn.disabled = false;
+          submitBtn.textContent = "Confirm Reversal";
+        }
       }
     };
   }

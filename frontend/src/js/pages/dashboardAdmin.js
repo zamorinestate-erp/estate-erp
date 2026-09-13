@@ -725,10 +725,12 @@ export async function hydrateAdminDashboard(root) {
   }
 
   try {
-    // Fetch dedicated single-cafe dashboard payload (Â§8, Â§99)
+    // Fetch dedicated single-cafe dashboard payload (§8, §99)
     let payload = null;
     try {
-      const res = await apiGet("/dashboard/cafe-ops");
+      const activeCafe = state.activeCafeId || state.boundCafeId || state.selectedCafeId || '';
+      const endpoint = activeCafe ? `/dashboard/cafe-ops?cafeId=${encodeURIComponent(activeCafe)}` : "/dashboard/cafe-ops";
+      const res = await apiGet(endpoint);
       if (res?.success && res?.data) {
         payload = res.data;
       }

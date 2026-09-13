@@ -120,6 +120,11 @@ const stockMovementSchema = new mongoose.Schema(
       maxlength: 250,
       default: '',
     },
+    description: {
+      type: String,
+      trim: true,
+      default: '',
+    },
     referenceType: {
       type: String,
       trim: true,

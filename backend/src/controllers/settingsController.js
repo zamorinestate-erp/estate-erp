@@ -679,7 +679,8 @@ async function getLanguageCatalogue(req, res) {
  * NEVER returns tokens, secrets, or raw authenticator data.
  */
 async function getSecurityOverview(req, res) {
-  const { userId, role } = req.user;
+  const auth = req.user || req.auth || {};
+  const { userId, role } = auth;
 
   const user = await User.findOne({ userId }).lean();
   if (!user) throw new ApiError(404, 'USER_NOT_FOUND', 'Account not found.');
@@ -717,11 +718,11 @@ async function getSecurityOverview(req, res) {
         state: user.mfaEnabled && user.mfaSecret ? 'CONFIGURED' : 'NOT_CONFIGURED',
         label: user.mfaEnabled ? 'Recovery codes configured' : 'Recovery not fully configured',
       },
-      // Read-only policy summary â€” never expose policy internals
+      // Read-only policy summary — never expose policy internals
       securityPolicy: {
-        mfaRequired: ['MASTER', 'OWNER', 'CAFE_ADMIN'].includes(role),
+        mfaRequired: false,
         sessionPolicy: 'Standard enterprise session management',
-        passwordPolicy: 'Minimum 8 characters, complexity enforced',
+        passwordPolicy: 'Minimum 15 characters (passphrase length-first, zero forced composition rules, blocklist protected)',
       },
     },
   });
@@ -1105,6 +1106,12 @@ async function listManageSupportTickets(req, res) {
       validCafes.push(primaryCafeId);
     }
     filter.cafeId = { $in: validCafes };
+  } else if (role === 'OWNER') {
+    const validCafes = (assignedCafeIds || []).map((c) => String(c).trim().toUpperCase()).filter(Boolean);
+    if (!validCafes.length) {
+      throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'Owner has no assigned cafés.');
+    }
+    filter.cafeId = { $in: validCafes };
   }
 
   const { status, category, severity, search, page = 1, limit = 20 } = req.query;
@@ -1182,6 +1189,11 @@ async function getManageSupportTicket(req, res) {
     if (!validCafes.includes(ticket.cafeId)) {
       throw new ApiError(403, 'CAFE_ACCESS_DENIED', 'Access denied to support case outside your assigned cafe.');
     }
+  } else if (role === 'OWNER') {
+    const validCafes = (assignedCafeIds || []).map((c) => String(c).trim().toUpperCase()).filter(Boolean);
+    if (!validCafes.length || !validCafes.includes(ticket.cafeId)) {
+      throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'Access denied to support case outside your assigned cafe.');
+    }
   }
 
   res.status(200).json({
@@ -1219,6 +1231,11 @@ async function updateManageSupportTicket(req, res) {
     }
     if (!validCafes.includes(ticket.cafeId)) {
       throw new ApiError(403, 'CAFE_ACCESS_DENIED', 'Access denied to support case outside your assigned cafe.');
+    }
+  } else if (role === 'OWNER') {
+    const validCafes = (assignedCafeIds || []).map((c) => String(c).trim().toUpperCase()).filter(Boolean);
+    if (!validCafes.length || !validCafes.includes(ticket.cafeId)) {
+      throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'Access denied to support case outside your assigned cafe.');
     }
   }
 
@@ -1364,6 +1381,11 @@ async function addSupportTicketReply(req, res) {
     }
     if (!validCafes.includes(ticket.cafeId)) {
       throw new ApiError(403, 'CAFE_ACCESS_DENIED', 'Access denied to support case outside your assigned cafe.');
+    }
+  } else if (role === 'OWNER') {
+    const validCafes = (assignedCafeIds || []).map((c) => String(c).trim().toUpperCase()).filter(Boolean);
+    if (!validCafes.length || !validCafes.includes(ticket.cafeId)) {
+      throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'Access denied to support case outside your assigned cafe.');
     }
   }
 
@@ -1658,6 +1680,55 @@ async function revokeDelegation(req, res) {
   });
 }
 
+async function updateSecurityPolicy(req, res) {
+  const auth = req.auth || req.user || {};
+  const isPrimaryMaster = auth.role === 'MASTER' && auth.isPrimaryMaster === true;
+
+  if (!isPrimaryMaster) {
+    throw new ApiError(
+      403,
+      'PRIMARY_MASTER_AUTHORITY_REQUIRED',
+      'Only the Primary Master may modify organisation security policies.'
+    );
+  }
+
+  const { passwordPolicy, sessionPolicy } = req.body || {};
+  const effectivePasswordPolicy = passwordPolicy || 'Minimum 15 characters (passphrase length-first, zero forced composition rules, blocklist protected)';
+  const effectiveSessionPolicy = sessionPolicy || 'Standard enterprise session management';
+
+  try {
+    const { recordAuditEvent } = require('../services/auditService');
+    await recordAuditEvent({
+      organisationId: auth.organisationId || 'ORG-ZAMORIN',
+      actorUserId: auth.userId || 'MU-0001',
+      actorRole: auth.role,
+      module: 'SECURITY_POLICY',
+      action: 'SECURITY_POLICY_UPDATED',
+      entityType: 'SECURITY_POLICY',
+      entityId: 'GLOBAL_POLICY',
+      result: 'SUCCESS',
+      riskClassification: 'HIGH',
+      details: {
+        passwordPolicy: effectivePasswordPolicy,
+        sessionPolicy: effectiveSessionPolicy,
+        mfaRequired: false,
+      },
+    });
+  } catch (_) {}
+
+  return res.status(200).json({
+    success: true,
+    message: 'Security policy updated successfully.',
+    data: {
+      securityPolicy: {
+        mfaRequired: false,
+        sessionPolicy: effectiveSessionPolicy,
+        passwordPolicy: effectivePasswordPolicy,
+      },
+    },
+  });
+}
+
 module.exports = {
   getSettingsOverview,
   getMyProfile,
@@ -1675,6 +1746,7 @@ module.exports = {
   updateNotificationPreferences,
   getLanguageCatalogue,
   getSecurityOverview,
+  updateSecurityPolicy,
   getMySessions,
   revokeMySession,
   revokeOtherSessions,

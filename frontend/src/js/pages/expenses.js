@@ -34,6 +34,73 @@ async function loadCafesIfEmpty() {
   }
 }
 
+function normalizeExpenseForView(e) {
+  const catLabels = {
+    COFFEE_RAW_MATERIALS: "Coffee & Raw Ingredients",
+    DAIRY_FRESH_MILK: "Dairy & Fresh Milk",
+    EQUIPMENT_MAINTENANCE: "Equipment & Maintenance",
+    PACKAGING_DISPOSABLES: "Packaging & Disposables",
+    UTILITIES: "Utilities & Power",
+    STAFF_WELFARE: "Staff Welfare & Refreshments",
+  };
+  const cafe = cachedCafes.find((c) => c.cafeId === e.cafeId);
+  return {
+    id: e.expenseId || e.id || "—",
+    category: e.category,
+    categoryLabel: catLabels[e.category] || e.category || "General",
+    payee: e.vendorName || e.payee || "Unknown Payee",
+    invoiceRef: e.invoiceNumber || e.invoiceRef || "—",
+    cafeId: e.cafeId,
+    cafeName: cafe?.name || e.cafeName || e.cafeId || "—",
+    date: e.businessDate || (e.createdAt ? e.createdAt.slice(0, 10) : new Date().toISOString().slice(0, 10)),
+    paymentSource: e.paymentSource === "COMPANY_BANK_UPI" ? "Bank UPI" : e.paymentSource === "PETTY_CASH" ? "Petty Cash" : e.paymentSource === "CORPORATE_CARD" ? "Corporate Card" : (e.paymentSource || "Cash"),
+    paymentSourceCode: e.paymentSource,
+    amount: e.amount || (e.totalPaisa ? e.totalPaisa / 100 : 0),
+    status: e.status || "SUBMITTED",
+    fileProof: e.evidence?.[0]?.fileName || e.fileProof || "",
+    hash: e.evidence?.[0]?.fileHash || e.hash || "",
+    policyCheck: "COMPLIANT",
+    notes: e.description || e.notes || "",
+    approvedBy: e.approvalSnapshot?.approvedBy || e.approvedBy || "",
+    approvedAt: e.approvalSnapshot?.approvedAt ? new Date(e.approvalSnapshot.approvedAt).toISOString().replace("T", " ").slice(0, 16) : "",
+  };
+}
+
+let isExpensesLoading = false;
+
+async function loadExpensesData(root) {
+  if (isExpensesLoading) return;
+  isExpensesLoading = true;
+  try {
+    await loadCafesIfEmpty();
+    const [expensesRes, requestsRes, cardsRes, advancesRes] = await Promise.allSettled([
+      apiGet("/expenses"),
+      apiGet("/expenses/requests"),
+      apiGet("/expenses/cards"),
+      apiGet("/expenses/advances"),
+    ]);
+
+    if (expensesRes.status === "fulfilled" && expensesRes.value?.expenses) {
+      EXPENSE_VOUCHERS = expensesRes.value.expenses.map(normalizeExpenseForView);
+    }
+    if (requestsRes.status === "fulfilled" && requestsRes.value?.requests) {
+      PRE_SPEND_REQUESTS = requestsRes.value.requests;
+    }
+    if (cardsRes.status === "fulfilled" && cardsRes.value?.transactions) {
+      CARD_TRANSACTIONS = cardsRes.value.transactions;
+    }
+    if (advancesRes.status === "fulfilled" && advancesRes.value?.advances) {
+      CASH_ADVANCES = advancesRes.value.advances;
+    }
+    refreshSubpanelOnly(root);
+  } catch (err) {
+    console.error("Failed to load real expense data:", err);
+    showToast("Failed to load live expenses from server", "coral");
+  } finally {
+    isExpensesLoading = false;
+  }
+}
+
 // Helper to normalize subroutes
 function normalizeSubroute(route) {
   if (!route) return "overview";
@@ -943,6 +1010,10 @@ export function wireExpenses(container, subroute) {
   const root = container || document;
   loadCafesIfEmpty();
 
+  if (EXPENSE_VOUCHERS.length === 0 && !isExpensesLoading) {
+    loadExpensesData(root);
+  }
+
   // 1. Expense Hub Tile Buttons
   root.querySelectorAll("[data-exp-hub-tile]").forEach((btn) => {
     btn.addEventListener("click", (e) => {
@@ -972,9 +1043,9 @@ export function wireExpenses(container, subroute) {
     openRecordExpenseModal(root);
   });
 
-  root.querySelector("#refresh-expenses-btn")?.addEventListener("click", () => {
+  root.querySelector("#refresh-expenses-btn")?.addEventListener("click", async () => {
+    await loadExpensesData(root);
     showToast("Operating expenses and approval queues refreshed", "mint");
-    refreshExpensesView(root);
   });
 
   // 5. Ledger Search & Filter Inputs
@@ -1012,20 +1083,21 @@ export function wireExpenses(container, subroute) {
     });
   });
 
-  root.querySelector("#btn-approve-voucher")?.addEventListener("click", (e) => {
+  root.querySelector("#btn-approve-voucher")?.addEventListener("click", async (e) => {
     const id = e.currentTarget.dataset.id;
-    const v = EXPENSE_VOUCHERS.find((item) => item.id === id);
-    if (v) {
-      v.status = "APPROVED";
-      v.approvedBy = state.auth?.user?.name || "Zamorin Master";
-      v.approvedAt = new Date().toISOString().replace("T", " ").slice(0, 16);
+    if (!id) return;
+    try {
+      const res = await apiPost(`/expenses/${id}/decision`, { decision: "APPROVE", reason: "Approved from Approvals Workbench" });
       showToast(`Voucher ${id} approved & queued for Accounts Payable!`, "success");
-      refreshSubpanelOnly(root);
+      await loadExpensesData(root);
+    } catch (err) {
+      showToast(err?.message || `Failed to approve voucher ${id}`, "coral");
     }
   });
 
   root.querySelector("#btn-return-voucher")?.addEventListener("click", (e) => {
     const id = e.currentTarget.dataset.id;
+    if (!id) return;
     openModal({
       title: `Return Voucher · ${id}`,
       maxWidth: "460px",
@@ -1037,11 +1109,14 @@ export function wireExpenses(container, subroute) {
       `,
       primaryLabel: "Return to Draft",
       onPrimary: async () => {
-        const v = EXPENSE_VOUCHERS.find((item) => item.id === id);
-        if (v) {
-          v.status = "SUBMITTED";
+        const modalEl = document.querySelector("#zamorin-global-modal");
+        const reason = modalEl?.querySelector("#return-reason-input")?.value?.trim() || "Clarification requested";
+        try {
+          const res = await apiPost(`/expenses/${id}/decision`, { decision: "RETURN", reason });
           showToast(`Voucher ${id} returned to requester with clarification request.`, "warning");
-          refreshSubpanelOnly(root);
+          await loadExpensesData(root);
+        } catch (err) {
+          showToast(err?.message || `Failed to return voucher ${id}`, "coral");
         }
       },
     });
@@ -1049,6 +1124,7 @@ export function wireExpenses(container, subroute) {
 
   root.querySelector("#btn-reject-voucher")?.addEventListener("click", (e) => {
     const id = e.currentTarget.dataset.id;
+    if (!id) return;
     openModal({
       title: `Reject Voucher · ${id}`,
       maxWidth: "460px",
@@ -1060,11 +1136,14 @@ export function wireExpenses(container, subroute) {
       `,
       primaryLabel: "Confirm Rejection",
       onPrimary: async () => {
-        const v = EXPENSE_VOUCHERS.find((item) => item.id === id);
-        if (v) {
-          v.status = "REJECTED";
+        const modalEl = document.querySelector("#zamorin-global-modal");
+        const reason = modalEl?.querySelector("#reject-reason-input")?.value?.trim() || "Rejected by manager";
+        try {
+          const res = await apiPost(`/expenses/${id}/decision`, { decision: "REJECT", reason });
           showToast(`Voucher ${id} has been formally rejected.`, "coral");
-          refreshSubpanelOnly(root);
+          await loadExpensesData(root);
+        } catch (err) {
+          showToast(err?.message || `Failed to reject voucher ${id}`, "coral");
         }
       },
     });
@@ -1106,22 +1185,36 @@ export function wireExpenses(container, subroute) {
   });
 
   // 10. Corporate Cards & Cash Advances Actions
-  root.querySelector("#btn-sync-card-feed")?.addEventListener("click", () => {
-    showToast("Syncing with banking gateway feeds...", "info");
-    setTimeout(() => {
-      showToast("Card feeds updated: 0 new mismatches found", "success");
-    }, 600);
+  root.querySelector("#btn-sync-card-feed")?.addEventListener("click", async () => {
+    try {
+      const res = await apiGet("/expenses/cards");
+      if (res?.transactions) {
+        CARD_TRANSACTIONS = res.transactions;
+        showToast(`Card feeds updated: ${CARD_TRANSACTIONS.length} transactions loaded`, "success");
+        refreshSubpanelOnly(root);
+      }
+    } catch (err) {
+      showToast(err?.message || "Failed to sync card feed", "coral");
+    }
   });
 
   root.querySelectorAll(".btn-match-card-txn").forEach((btn) => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", async () => {
       const id = btn.dataset.id;
-      const txn = CARD_TRANSACTIONS.find((t) => t.id === id);
-      if (txn) {
-        txn.status = "MATCHED";
-        txn.matchedVoucher = "EX-20260822-AUTO";
-        showToast(`Card transaction ${id} matched to voucher successfully!`, "success");
-        refreshSubpanelOnly(root);
+      const voucherId = EXPENSE_VOUCHERS[0]?.id;
+      if (!voucherId) {
+        showToast("No expense vouchers available to match.", "coral");
+        return;
+      }
+      try {
+        await apiPost("/expenses/cards/match", {
+          transactionId: id,
+          expenseId: voucherId,
+        });
+        showToast(`Card transaction ${id} matched to voucher ${voucherId}!`, "success");
+        await loadExpensesData(root);
+      } catch (err) {
+        showToast(err?.message || `Failed to match card transaction ${id}`, "coral");
       }
     });
   });
@@ -1131,14 +1224,18 @@ export function wireExpenses(container, subroute) {
   });
 
   root.querySelectorAll(".btn-settle-advance").forEach((btn) => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", async () => {
       const id = btn.dataset.id;
-      const adv = CASH_ADVANCES.find((a) => a.id === id);
-      if (adv) {
-        adv.status = "SETTLED";
-        adv.returnedAmount = adv.disbursedAmount - adv.spentAmount;
-        showToast(`Advance float ${id} settled with returned cash balance of ₹${adv.returnedAmount.toLocaleString("en-IN")}`, "success");
-        refreshSubpanelOnly(root);
+      try {
+        await apiPost("/expenses/advances/liquidate", {
+          advanceId: id,
+          expenseIds: [],
+          returnedBalancePaisa: 0,
+        });
+        showToast(`Advance float ${id} liquidation recorded!`, "success");
+        await loadExpensesData(root);
+      } catch (err) {
+        showToast(err?.message || `Failed to settle advance ${id}`, "coral");
       }
     });
   });
@@ -1173,11 +1270,13 @@ export function wireExpenses(container, subroute) {
   });
 
   // 12. Integrity Actions
-  root.querySelector("#btn-run-integrity-audit")?.addEventListener("click", () => {
-    showToast("Running deterministic 16-point integrity scan...", "info");
-    setTimeout(() => {
-      showToast("Audit complete: 16/16 checks PASSED with 0 warnings!", "success");
-    }, 500);
+  root.querySelector("#btn-run-integrity-audit")?.addEventListener("click", async () => {
+    try {
+      const res = await apiGet("/expenses/integrity");
+      showToast(`Audit complete: status ${res?.status || "HEALTHY"} with ${res?.issuesFound || 0} issues`, "success");
+    } catch (err) {
+      showToast(err?.message || "Failed to run integrity audit", "coral");
+    }
   });
 
   root.querySelector("#btn-export-ap-batch")?.addEventListener("click", () => {
@@ -1275,37 +1374,28 @@ function openRecordExpenseModal(root) {
         return;
       }
 
-      const catLabels = {
-        COFFEE_RAW_MATERIALS: "Coffee & Raw Ingredients",
-        DAIRY_FRESH_MILK: "Dairy & Fresh Milk",
-        EQUIPMENT_MAINTENANCE: "Equipment & Maintenance",
-        PACKAGING_DISPOSABLES: "Packaging & Disposables",
-        UTILITIES: "Utilities & Power",
-        STAFF_WELFARE: "Staff Welfare & Refreshments",
-      };
-
-      const newVoucher = {
-        id: `EX-20260826-${(100 + EXPENSE_VOUCHERS.length).toString()}`,
+      const payload = {
+        cafeId: cafeId || cachedCafes[0]?.cafeId || state.activeCafeId || "",
         category: cat,
-        categoryLabel: catLabels[cat] || cat,
-        payee,
-        invoiceRef: `Manual #${Math.floor(1000 + Math.random() * 9000)}`,
-        cafeId,
-        cafeName: cachedCafes.find((c) => c.cafeId === cafeId)?.name || cafeId || "—",
-        date: new Date().toISOString().split("T")[0],
-        paymentSource: source === "COMPANY_BANK_UPI" ? "Bank UPI" : source === "PETTY_CASH" ? "Petty Cash" : "Corporate Card",
-        paymentSourceCode: source,
+        vendorName: payee,
         amount,
-        status: "SUBMITTED",
-        fileProof: "Uploaded_Voucher_Proof.pdf",
-        hash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-        policyCheck: "COMPLIANT",
-        notes: desc || "Operational voucher recorded.",
+        paymentSource: source,
+        paymentMethod: source === "PETTY_CASH" ? "CASH" : source === "COMPANY_BANK_UPI" ? "UPI" : source === "CORPORATE_CARD" ? "CARD" : "CASH",
+        description: desc || "Operational expense voucher",
+        invoiceNumber: `INV-${Date.now().toString().slice(-6)}`,
       };
 
-      EXPENSE_VOUCHERS.unshift(newVoucher);
-      showToast(`Expense voucher ${newVoucher.id} recorded and submitted for approval!`, "success");
-      refreshSubpanelOnly(root);
+      try {
+        const res = await apiPost("/expenses", payload);
+        if (res?.expense) {
+          showToast(`Expense voucher ${res.expense.expenseId} recorded and submitted for approval!`, "success");
+          await loadExpensesData(root);
+        } else {
+          showToast(res?.message || "Expense submission failed", "coral");
+        }
+      } catch (err) {
+        showToast(err?.message || "Failed to save expense voucher", "coral");
+      }
     },
   });
 
@@ -1420,23 +1510,21 @@ function openCreateSpendRequestModal(root) {
         return;
       }
 
-      const newReq = {
-        id: `REQ-2026-${(1040 + PRE_SPEND_REQUESTS.length).toString()}`,
-        purpose,
-        department: dept,
-        requester: state.auth?.user?.name || "Store Supervisor",
-        cafeId: cachedCafes[0]?.cafeId || "",
-        estimatedAmount: est,
-        actualSpent: 0.0,
-        status: "SUBMITTED",
-        date: new Date().toISOString().split("T")[0],
-        validTill: new Date(Date.now() + 30 * 86400000).toISOString().split("T")[0],
-        justification: just,
-      };
-
-      PRE_SPEND_REQUESTS.unshift(newReq);
-      showToast(`Pre-spend request ${newReq.id} submitted for approval!`, "success");
-      refreshSubpanelOnly(root);
+      try {
+        const res = await apiPost("/expenses/requests", {
+          cafeId: cachedCafes[0]?.cafeId || state.activeCafeId || "",
+          department: dept,
+          category: "OPERATIONAL",
+          purpose,
+          estimatedAmount: est,
+          validUntil: new Date(Date.now() + 30 * 86400000).toISOString().split("T")[0],
+          justification: just || "Operational necessity",
+        });
+        showToast(`Pre-spend request ${res?.request?.requestId || "REQ"} submitted for approval!`, "success");
+        await loadExpensesData(root);
+      } catch (err) {
+        showToast(err?.message || "Failed to submit requisition", "coral");
+      }
     },
   });
 }
@@ -1511,24 +1599,19 @@ function openDisburseFloatModal(root) {
         return;
       }
 
-      const newFloat = {
-        id: `FLT-2026-${(100 + CASH_ADVANCES.length).toString()}`,
-        employee,
-        role: "Store Staff",
-        cafeId,
-        cafeName: cachedCafes.find((c) => c.cafeId === cafeId)?.name || cafeId || "—",
-        disbursedAmount: amount,
-        spentAmount: 0.0,
-        returnedAmount: 0.0,
-        disbursedDate: new Date().toISOString().split("T")[0],
-        settledDate: null,
-        status: "ACTIVE",
-        purpose: purpose || "Operational advance float.",
-      };
-
-      CASH_ADVANCES.unshift(newFloat);
-      showToast(`Float ${newFloat.id} disbursed to ${employee}!`, "success");
-      refreshSubpanelOnly(root);
+      try {
+        const res = await apiPost("/expenses/advances", {
+          recipientUserId: employee,
+          cafeId: cafeId || cachedCafes[0]?.cafeId || "",
+          amount,
+          purpose: purpose || "Operational advance float",
+          returnDueDate: new Date(Date.now() + 14 * 86400000).toISOString().split("T")[0],
+        });
+        showToast(`Advance float ${res?.advance?.advanceId || "disbursed"} issued to ${employee}!`, "success");
+        await loadExpensesData(root);
+      } catch (err) {
+        showToast(err?.message || "Failed to disburse advance float", "coral");
+      }
     },
   });
 }

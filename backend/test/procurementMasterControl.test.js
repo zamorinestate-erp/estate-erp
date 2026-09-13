@@ -14,6 +14,7 @@ const { User } = require('../src/models/User');
 const { AuditEvent } = require('../src/models/AuditEvent');
 const { RolePermission } = require('../src/models/RolePermission');
 const { SequenceCounter } = require('../src/models/SequenceCounter');
+const { PurchaseRequisition } = require('../src/models/PurchaseRequisition');
 const authService = require('../src/services/authService');
 const auditService = require('../src/services/auditService');
 
@@ -296,6 +297,15 @@ test('SCR-020: Procurement Master Control & Source-to-Pay Integration Suite', as
   });
 
   t.mock.method(PurchaseOrder, 'countDocuments', async () => mockOrders.length);
+
+  const mockRequisitions = [];
+  PurchaseRequisition.prototype.save = async function () {
+    mockRequisitions.push(this);
+    return this;
+  };
+  t.mock.method(PurchaseRequisition, 'findOne', async (query) => {
+    return mockRequisitions.find((r) => r.requisitionId === query?.requisitionId) || null;
+  });
 
   let createdPoId = null;
 

@@ -451,6 +451,13 @@ const DEFAULT_PERMISSION_RULES = [
   { role: 'MASTER', permissionCode: 'REPORTS_EXPORT', module: 'REPORTS', resource: 'REPORT', action: 'EXPORT', effect: 'ALLOW', scope: 'ORGANISATION', description: 'MASTER may export ZURF corporate reports.' },
   { role: 'OWNER', permissionCode: 'REPORTS_EXPORT', module: 'REPORTS', resource: 'REPORT', action: 'EXPORT', effect: 'ALLOW', scope: 'ORGANISATION', description: 'OWNER may export ZURF corporate reports.' },
   { role: 'CAFE_ADMIN', permissionCode: 'REPORTS_EXPORT', module: 'REPORTS', resource: 'REPORT', action: 'EXPORT', effect: 'ALLOW', scope: 'ASSIGNED_CAFES', description: 'CAFE_ADMIN may export ZURF reports for assigned cafes.' },
+  // Offline Risk Configuration (R02C)
+  { role: 'MASTER', permissionCode: 'OFFLINE_RISK_CONFIG_READ', module: 'OPERATIONS', resource: 'OFFLINE_RISK_CONFIG', action: 'READ', effect: 'ALLOW', scope: 'ORGANISATION', description: 'MASTER may read organisation-wide offline risk configuration.' },
+  { role: 'MASTER', permissionCode: 'OFFLINE_RISK_CONFIG_WRITE', module: 'OPERATIONS', resource: 'OFFLINE_RISK_CONFIG', action: 'WRITE', effect: 'ALLOW', scope: 'ORGANISATION', description: 'MASTER may govern organisation-wide offline risk configuration and cafe overrides.' },
+  { role: 'OWNER', permissionCode: 'OFFLINE_RISK_CONFIG_READ', module: 'OPERATIONS', resource: 'OFFLINE_RISK_CONFIG', action: 'READ', effect: 'ALLOW', scope: 'ORGANISATION', description: 'OWNER may read organisation-wide offline risk configuration.' },
+  { role: 'CAFE_ADMIN', permissionCode: 'OFFLINE_RISK_CONFIG_READ', module: 'OPERATIONS', resource: 'OFFLINE_RISK_CONFIG', action: 'READ', effect: 'ALLOW', scope: 'ASSIGNED_CAFES', description: 'CAFE_ADMIN may read effective offline risk configuration.' },
+  { role: 'CAFE_ADMIN', permissionCode: 'OFFLINE_RISK_CONFIG_WRITE', module: 'OPERATIONS', resource: 'OFFLINE_RISK_CONFIG', action: 'WRITE', effect: 'ALLOW', scope: 'ASSIGNED_CAFES', description: 'CAFE_ADMIN may configure authorized cafe-specific offline risk overrides.' },
+  { role: 'STAFF', permissionCode: 'OFFLINE_RISK_CONFIG_READ', module: 'OPERATIONS', resource: 'OFFLINE_RISK_CONFIG', action: 'READ', effect: 'ALLOW', scope: 'SELF', description: 'STAFF may view effective operational offline risk thresholds for current register session.' },
 ];
 
 const PRIMARY_MASTER_DESIGNATION_REASON =

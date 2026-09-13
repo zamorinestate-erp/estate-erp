@@ -26,16 +26,17 @@ const getCompanyIdentity = asyncHandler(async (request, response) => {
 const unlockCompanyIdentity = asyncHandler(async (request, response) => {
   const role = request.auth?.role;
   const isPrimary = Boolean(request.auth?.isPrimaryMaster || request.auth?.isPrimary);
+  const isOwner = role === 'OWNER';
 
-  if (role !== 'MASTER' && role !== 'OWNER') {
-    throw new ApiError(403, 'ACCESS_DENIED', 'Only Primary Master and Owner have authority to unlock Organisation Identity.');
+  if (!isPrimary && !isOwner) {
+    throw new ApiError(403, 'PRIMARY_MASTER_AUTHORITY_REQUIRED', 'Only Primary Master and Owner have authority to unlock Organisation Identity.');
   }
 
   return response.status(200).json({
     success: true,
     data: {
       unlocked: true,
-      unlockedBy: request.auth?.name || 'Primary Master',
+      unlockedBy: request.auth?.name || (isOwner ? 'Owner' : 'Primary Master'),
       role,
       isPrimary,
       expiresInSeconds: 900, // 15 minutes session token
@@ -48,8 +49,11 @@ const unlockCompanyIdentity = asyncHandler(async (request, response) => {
 // ─── 3. PUT /api/v1/settings/company-identity ─────────────────────────────────
 const updateCompanyIdentity = asyncHandler(async (request, response) => {
   const role = request.auth?.role;
-  if (role !== 'MASTER' && role !== 'OWNER') {
-    throw new ApiError(403, 'ACCESS_DENIED', 'Only Primary Master and Owner can save modifications to Organisation Identity.');
+  const isPrimary = Boolean(request.auth?.isPrimaryMaster || request.auth?.isPrimary);
+  const isOwner = role === 'OWNER';
+
+  if (!isPrimary && !isOwner) {
+    throw new ApiError(403, 'PRIMARY_MASTER_AUTHORITY_REQUIRED', 'Only Primary Master and Owner can save modifications to Organisation Identity.');
   }
 
   const { updates, changeReason } = request.body;

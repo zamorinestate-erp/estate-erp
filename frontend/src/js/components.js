@@ -442,8 +442,9 @@ export function wireBell(root) {
     globalCafeSel.addEventListener("change", (e) => {
       const newCafeId = e.target.value;
       state.selectedCafeId = newCafeId;
+      state.currentCafeId = (newCafeId && newCafeId !== "ALL") ? newCafeId : "";
       if (state.user) {
-        state.user.primaryCafeId = newCafeId;
+        state.user.primaryCafeId = (newCafeId && newCafeId !== "ALL") ? newCafeId : "";
         const selOpt = globalCafeSel.options[globalCafeSel.selectedIndex];
         const optText = selOpt ? selOpt.textContent.trim() : "";
         const cleanName = optText.includes("·") ? optText.split("·").slice(1).join("·").trim() : optText;
@@ -822,11 +823,15 @@ export function toggleMobileDrawer() {
 }
 
 /* -------------------------------------------------------------------------
-   Universal Modal Manager (Design System v2)
+   Universal Modal Manager (Design System v2) — Accessible & Focus-Trapped
    ------------------------------------------------------------------------- */
 let currentModalResolve = null;
+let lastFocusedElementBeforeModal = null;
+let activeModalKeydownHandler = null;
 
 export function openModal(options = {}) {
+  // Capture the element that triggered the modal for WCAG focus restoration
+  lastFocusedElementBeforeModal = document.activeElement;
   closeModal();
 
   let root = document.getElementById("modal-root");
@@ -839,10 +844,12 @@ export function openModal(options = {}) {
   const modalEl = document.createElement("div");
   modalEl.className = "modal-backdrop open";
   modalEl.id = "zamorin-global-modal";
+  modalEl.setAttribute("role", "dialog");
+  modalEl.setAttribute("aria-modal", "true");
 
   if (typeof options === "string") {
     modalEl.innerHTML = `
-      <div class="modal-window" style="max-width:760px; max-height:85vh; overflow-y:auto; padding:24px; position:relative;">
+      <div class="modal-window" role="document" style="max-width:760px; max-height:85vh; overflow-y:auto; padding:24px; position:relative;">
         <button class="modal-close-btn" data-modal-cancel type="button" aria-label="Close"
           style="position:absolute; top:16px; right:16px; background:none; border:none; color:var(--muted); cursor:pointer; font-size:18px;">
           ${icon("x")}
@@ -861,10 +868,13 @@ export function openModal(options = {}) {
       maxWidth = "560px",
     } = options;
 
+    const titleId = "zamorin-modal-title-" + Math.random().toString(36).slice(2, 8);
+    modalEl.setAttribute("aria-labelledby", titleId);
+
     modalEl.innerHTML = `
-      <div class="modal-window" style="max-width:${maxWidth}">
+      <div class="modal-window" role="document" style="max-width:${maxWidth}">
         <div class="modal-header">
-          <h3 class="modal-title">${title}</h3>
+          <h3 class="modal-title" id="${titleId}">${title}</h3>
           <button class="modal-close-btn" data-modal-cancel type="button" aria-label="Close">
             ${icon("x")}
           </button>
@@ -918,29 +928,70 @@ export function openModal(options = {}) {
     }
   });
 
-  // Escape key listener
-  const escHandler = (e) => {
+  // WCAG 2.2 Focus Trap and Escape Key Handler
+  activeModalKeydownHandler = (e) => {
     if (e.key === "Escape") {
       closeModal();
-      document.removeEventListener("keydown", escHandler);
       if (typeof options.onCancel === "function") options.onCancel();
+      return;
+    }
+
+    if (e.key === "Tab") {
+      const focusableElements = Array.from(
+        modalEl.querySelectorAll(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )
+      ).filter((el) => el.offsetParent !== null || el.offsetWidth > 0 || el.offsetHeight > 0);
+
+      if (focusableElements.length === 0) {
+        e.preventDefault();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (e.shiftKey) {
+        if (document.activeElement === firstElement || !modalEl.contains(document.activeElement)) {
+          lastElement.focus();
+          e.preventDefault();
+        }
+      } else {
+        if (document.activeElement === lastElement || !modalEl.contains(document.activeElement)) {
+          firstElement.focus();
+          e.preventDefault();
+        }
+      }
     }
   };
-  document.addEventListener("keydown", escHandler);
+  document.addEventListener("keydown", activeModalKeydownHandler);
 
   modalEl.close = closeModal;
 
-  // Focus first input
+  // Focus entry into modal (first editable field or primary action)
   setTimeout(() => {
-    modalEl.querySelector("input, select, textarea, button.btn-primary")?.focus();
-  }, 100);
+    const initialTarget = modalEl.querySelector("input, select, textarea, button.btn-primary, button[data-modal-save], button.modal-close-btn");
+    initialTarget?.focus();
+  }, 60);
 
   return modalEl;
 }
 
 export function closeModal() {
+  if (activeModalKeydownHandler) {
+    document.removeEventListener("keydown", activeModalKeydownHandler);
+    activeModalKeydownHandler = null;
+  }
   const existing = document.getElementById("zamorin-global-modal");
   if (existing) existing.remove();
+
+  // Restore focus to opener element
+  if (lastFocusedElementBeforeModal && typeof lastFocusedElementBeforeModal.focus === "function") {
+    try {
+      lastFocusedElementBeforeModal.focus();
+    } catch (_) {}
+    lastFocusedElementBeforeModal = null;
+  }
 }
 
 /* -------------------------------------------------------------------------
@@ -1359,6 +1410,7 @@ export function wireCafeContextStrip(root = document, onCafeChange = null) {
   ctxCafeSel.addEventListener("change", (e) => {
     const newCafeId = e.target.value;
     state.selectedCafeId = newCafeId;
+    state.currentCafeId = (newCafeId && newCafeId !== "ALL") ? newCafeId : "";
     state.activeCafe = newCafeId;
 
     if (state.user) {
@@ -2252,17 +2304,52 @@ export function openUniversalDocumentModal({
         return false;
       }
 
-      showToast("Document uploaded and recorded successfully!", "success");
+      // Authoritative multipart/form-data transmission
+      let serverDoc = null;
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('relatedModule', options.relatedModule || 'PROCUREMENT');
+        formData.append('relatedRecordId', options.relatedRecordId || ref || `DOC-${Date.now()}`);
+        formData.append('documentType', category || documentType);
+        formData.append('documentNumber', ref || '');
+        formData.append('entityName', vendor || '');
+        formData.append('amountPaisa', Math.round((parseFloat(amount) || 0) * 100));
+        formData.append('notes', notes || '');
+        if (options.cafeId) formData.append('cafeId', options.cafeId);
+
+        const token = localStorage.getItem('zamorin_auth_token') || sessionStorage.getItem('zamorin_auth_token');
+        const headers = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const uploadRes = await fetch('/api/v1/files/documents/attach', {
+          method: 'POST',
+          headers,
+          body: formData,
+        });
+        const json = await uploadRes.json();
+        if (!uploadRes.ok) {
+          throw new Error(json?.message || json?.error?.message || 'File upload failed.');
+        }
+        serverDoc = json?.data;
+      } catch (srvErr) {
+        console.warn('Backend document registration notice:', srvErr?.message);
+        showToast(srvErr?.message || 'Failed to upload document.', 'coral');
+        return false;
+      }
+
+      showToast("Document recorded and secured in Document Hub!", "success");
       if (typeof onUploadSuccess === "function") {
         onUploadSuccess({
           file,
           fileName: file.name,
           fileSize: file.size,
           category,
-          refNumber: ref || `DOC-${Date.now().toString().slice(-6)}`,
-          vendor: vendor || "Direct Upload",
+          refNumber: ref || serverDoc?.documentNumber || `DOC-${Date.now().toString().slice(-6)}`,
+          vendor: vendor || serverDoc?.entityName || "Direct Upload",
           amount: parseFloat(amount) || 0,
           notes,
+          documentId: serverDoc?.documentId || null,
           uploadedAt: new Date().toISOString(),
         });
       }

@@ -25,19 +25,62 @@ function resolveEffectiveCafeScope(request) {
   }
 
   const { role, assignedCafeIds, deviceContext } = request.auth;
-  const requestedCafe = (request.query?.cafeId || request.body?.cafeId || request.params?.cafeId || '').trim().toUpperCase();
+
+  const requestedCafe = (
+    request.query?.cafeId ||
+    request.body?.cafeId ||
+    request.params?.cafeId ||
+    ''
+  ).trim().toUpperCase();
 
   // Determine explicit workspace mode or derive from active CAFE_OWNED device context
   const isCafeOperationsDevice = deviceContext?.deviceClass === 'CAFE_OWNED' && !!deviceContext?.boundCafeId;
-  const isCafeOperationsWorkspace = request.auth.workspaceMode === 'CAFE_OPERATIONS' || 
-    request.headers?.['x-workspace-mode'] === 'CAFE_OPERATIONS' || 
-    isCafeOperationsDevice || 
+  const isCafeOperationsWorkspace = request.auth.workspaceMode === 'CAFE_OPERATIONS' ||
+    request.headers?.['x-workspace-mode'] === 'CAFE_OPERATIONS' ||
+    request.headers?.['x-workspace'] === 'CAFE_OPERATIONS' ||
+    String(request.headers?.['x-workspace-mode'] || '').toUpperCase() === 'CAFE_OPERATIONS' ||
+    String(request.headers?.['x-workspace'] || '').toUpperCase() === 'CAFE_OPERATIONS' ||
+    request.query?.workspaceMode === 'CAFE_OPERATIONS' ||
+    isCafeOperationsDevice ||
     role === 'CAFE_ADMIN';
 
   // 1. CAFE_OPERATIONS WORKSPACE MODE:
   // Strictly bound to the trusted device's boundCafeId for ALL roles (including MASTER operating in Cafe Operations)
   if (isCafeOperationsWorkspace) {
-    const boundCafe = (deviceContext?.boundCafeId || assignedCafeIds?.[0] || '').trim().toUpperCase();
+    let boundCafe = (
+      deviceContext?.boundCafeId ||
+      request.auth.operatorSession?.cafeId ||
+      request.auth.effectiveCafeId ||
+      request.headers?.['x-cafe-id'] ||
+      ''
+    ).trim().toUpperCase();
+
+    // If no explicit hardware device or operator session binding is active:
+    if (!boundCafe) {
+      if (requestedCafe && requestedCafe !== 'ALL') {
+        const isAuthorizedForRequested =
+          role === 'MASTER' ||
+          (role === 'OWNER' && (assignedCafeIds?.includes(requestedCafe) || request.auth.primaryCafeId === requestedCafe)) ||
+          (Array.isArray(assignedCafeIds) && assignedCafeIds.includes(requestedCafe)) ||
+          request.auth.primaryCafeId === requestedCafe;
+
+        if (isAuthorizedForRequested) {
+          boundCafe = requestedCafe;
+        } else {
+          throw new ApiError(
+            403,
+            'CROSS_CAFE_RESOURCE_DENIED',
+            'Cross-café access is denied. You are not authorized for the requested café.'
+          );
+        }
+      } else {
+        boundCafe = (
+          (role === 'CAFE_ADMIN' ? (request.auth.primaryCafeId || assignedCafeIds?.[0]) : (assignedCafeIds?.[0] || request.auth.primaryCafeId)) ||
+          ''
+        ).trim().toUpperCase();
+      }
+    }
+
     if (!boundCafe) {
       throw new ApiError(
         403,
@@ -46,11 +89,19 @@ function resolveEffectiveCafeScope(request) {
       );
     }
 
-    if (requestedCafe && requestedCafe !== 'ALL' && requestedCafe !== boundCafe) {
+    if (deviceContext?.boundCafeId && requestedCafe && requestedCafe !== 'ALL' && requestedCafe !== deviceContext.boundCafeId) {
       throw new ApiError(
         403,
         'CROSS_CAFE_RESOURCE_DENIED',
         'Cross-café access is denied. This device is not authorized for the requested café.'
+      );
+    }
+
+    if (requestedCafe && requestedCafe !== 'ALL' && requestedCafe !== boundCafe) {
+      throw new ApiError(
+        403,
+        'CROSS_CAFE_RESOURCE_DENIED',
+        'Cross-café access is denied. You are not authorized for the requested café.'
       );
     }
 

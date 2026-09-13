@@ -938,8 +938,8 @@ async function renderReceiptsTab(wrap) {
         });
         showToast("Goods received and batch lot created successfully.", "success");
       } catch (err) {
-        console.warn("Goods receipt API offline, recording locally:", err);
-        showToast("Goods received and batch lot created (Local GRN).", "success");
+        showToast(err?.message || "Failed to receive goods", "coral");
+        return;
       }
 
       // Add to live log table
@@ -1456,15 +1456,15 @@ async function loadTransfersData(wrap) {
       try {
         await apiPost(`/inventory/transfers/${id}/dispatch`, {});
         showToast(`Transfer ${id} dispatched and marked in-transit.`, "success");
+        const item = DEFAULT_TRANSFERS.find((t) => t.transferId === id);
+        if (item) {
+          item.status = "IN_TRANSIT";
+          item.dispatchedQty = item.requestedQty;
+        }
+        loadTransfersData(wrap);
       } catch (err) {
-        showToast(`Transfer ${id} dispatched (Local).`, "success");
+        showToast(err?.message || `Failed to dispatch transfer ${id}`, "coral");
       }
-      const item = DEFAULT_TRANSFERS.find((t) => t.transferId === id);
-      if (item) {
-        item.status = "IN_TRANSIT";
-        item.dispatchedQty = item.requestedQty;
-      }
-      loadTransfersData(wrap);
     });
   });
 
@@ -1474,14 +1474,14 @@ async function loadTransfersData(wrap) {
       try {
         await apiPost(`/inventory/transfers/${id}/receive`, {});
         showToast(`Transfer ${id} received at destination café.`, "success");
+        const item = DEFAULT_TRANSFERS.find((t) => t.transferId === id);
+        if (item) {
+          item.status = "COMPLETED";
+        }
+        loadTransfersData(wrap);
       } catch (err) {
-        showToast(`Transfer ${id} received (Local).`, "success");
+        showToast(err?.message || `Failed to receive transfer ${id}`, "coral");
       }
-      const item = DEFAULT_TRANSFERS.find((t) => t.transferId === id);
-      if (item) {
-        item.status = "COMPLETED";
-      }
-      loadTransfersData(wrap);
     });
   });
 }
@@ -1603,14 +1603,14 @@ async function loadReservationsData(wrap) {
       try {
         await apiPost(`/inventory/reservations/${id}/release`, {});
         showToast(`Reservation ${id} released. Available stock restored.`, "success");
+        const item = DEFAULT_RESERVATIONS.find((r) => r.reservationId === id);
+        if (item) {
+          item.status = "RELEASED";
+        }
+        loadReservationsData(wrap);
       } catch (err) {
-        showToast(`Reservation ${id} released (Local). Available stock restored.`, "success");
+        showToast(err?.message || `Failed to release reservation ${id}`, "coral");
       }
-      const item = DEFAULT_RESERVATIONS.find((r) => r.reservationId === id);
-      if (item) {
-        item.status = "RELEASED";
-      }
-      loadReservationsData(wrap);
     });
   });
 }
@@ -1733,14 +1733,14 @@ async function loadCountsData(wrap) {
       try {
         await apiPost(`/inventory/counts/${id}/approve`, {});
         showToast(`Cycle count ${id} approved and stock ledger adjusted.`, "success");
+        const item = DEFAULT_COUNTS.find((c) => c.countId === id);
+        if (item) {
+          item.status = "POSTED";
+        }
+        loadCountsData(wrap);
       } catch (err) {
-        showToast(`Cycle count ${id} approved and posted (Local).`, "success");
+        showToast(err?.message || `Failed to approve count ${id}`, "coral");
       }
-      const item = DEFAULT_COUNTS.find((c) => c.countId === id);
-      if (item) {
-        item.status = "POSTED";
-      }
-      loadCountsData(wrap);
     });
   });
 }
@@ -1929,8 +1929,8 @@ async function renderWastageTab(wrap) {
         });
         showToast("Wastage logged and stock deducted atomically.", "success");
       } catch (err) {
-        console.warn("Wastage API offline, recording locally:", err);
-        showToast("Wastage logged and stock deducted (Local Write-off).", "success");
+        showToast(err?.message || "Failed to log wastage", "coral");
+        return;
       }
 
       // Add to live wastage log

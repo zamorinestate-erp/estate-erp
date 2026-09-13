@@ -271,6 +271,8 @@ test('SCR-025: Supplier & Vendor Management Master Lifecycle Contract Suite', as
   const origPOFindOne = PurchaseOrder.findOne;
   const origPOFind = PurchaseOrder.find;
   const origPOUpdateOne = PurchaseOrder.updateOne;
+  const origPOFindOneAndUpdate = PurchaseOrder.findOneAndUpdate;
+  const origVendorFindOneAndUpdate = Vendor.findOneAndUpdate;
   const origConfigFindOne = CafeInventoryConfig.findOne;
   const origMovementCreate = StockMovement.create;
   const origAPInvoiceFindOne = APInvoice.findOne;
@@ -410,6 +412,51 @@ test('SCR-025: Supplier & Vendor Management Master Lifecycle Contract Suite', as
     return { modifiedCount: 1 };
   };
 
+  PurchaseOrder.findOneAndUpdate = async function (filter, update) {
+    const po = inMemoryPOs.find((p) => p.purchaseOrderId === filter.purchaseOrderId);
+    if (!po) return null;
+    if (filter['invoices.invoiceNumber']?.$ne) {
+      const forbidden = filter['invoices.invoiceNumber'].$ne;
+      if (po.invoices?.some((inv) => inv.invoiceNumber === forbidden)) {
+        return null;
+      }
+    }
+    if (update.$push) {
+      for (const [key, val] of Object.entries(update.$push)) {
+        if (!po[key]) po[key] = [];
+        po[key].push(val);
+      }
+    }
+    if (update.$set) {
+      Object.assign(po, update.$set);
+    }
+    return po;
+  };
+
+  Vendor.findOneAndUpdate = async function (filter, update) {
+    const v = inMemoryVendors.find((vnd) => vnd.vendorId === filter.vendorId);
+    if (!v) return null;
+    if (filter['pendingBankChange.status'] && v.pendingBankChange?.status !== filter['pendingBankChange.status']) {
+      return null;
+    }
+    if (update.$set) {
+      for (const [key, val] of Object.entries(update.$set)) {
+        if (key.includes('.')) {
+          const parts = key.split('.');
+          let target = v;
+          for (let i = 0; i < parts.length - 1; i++) {
+            if (!target[parts[i]]) target[parts[i]] = {};
+            target = target[parts[i]];
+          }
+          target[parts[parts.length - 1]] = val;
+        } else {
+          v[key] = val;
+        }
+      }
+    }
+    return v;
+  };
+
   CafeInventoryConfig.findOne = function (filter) {
     const cfg = inMemoryInventoryConfigs.find((c) => c.itemId === filter.itemId);
     return {
@@ -468,9 +515,11 @@ test('SCR-025: Supplier & Vendor Management Master Lifecycle Contract Suite', as
     Vendor.find = origVendorFind;
     Vendor.findOne = origVendorFindOne;
     Vendor.create = origVendorCreate;
+    Vendor.findOneAndUpdate = origVendorFindOneAndUpdate;
     PurchaseOrder.findOne = origPOFindOne;
     PurchaseOrder.find = origPOFind;
     PurchaseOrder.updateOne = origPOUpdateOne;
+    PurchaseOrder.findOneAndUpdate = origPOFindOneAndUpdate;
     CafeInventoryConfig.findOne = origConfigFindOne;
     StockMovement.create = origMovementCreate;
     APInvoice.findOne = origAPInvoiceFindOne;

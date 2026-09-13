@@ -94,35 +94,20 @@ export function renderCafeGatewayPage() {
         ` : ''}
 
         ${!gatewayContextToken || isEnteringCafePin ? `
-          <!-- Gateway Mode 1: Enter 6-digit Permanent Café PIN -->
+          <!-- Gateway Mode 1: Branch Location Resolution Required -->
           <div id="gw-pin-container" style="text-align:center;">
-            <div style="font-size:13.5px;font-weight:700;margin-bottom:4px;color:var(--ink);">Location Identification</div>
-            <p style="font-size:12px;color:var(--muted, #9e978e);margin:0 0 18px 0;">
-              Enter the permanent 6-digit Café PIN for this branch to resolve gateway access.
+            <div style="font-size:14px;font-weight:700;margin-bottom:6px;color:var(--ink);">Branch Location Resolution Required</div>
+            <p style="font-size:12.5px;color:var(--muted, #9e978e);margin:0 0 18px 0;line-height:1.5;">
+              Please scan the official branch QR code or open your unique Café login URL to sign into this location.
             </p>
 
-            <div style="margin-bottom:20px;">
-              <div id="gw-pin-dots" style="display:flex;justify-content:center;align-items:center;min-height:30px;margin-bottom:16px;">
-                ${renderPinDots(pinCount)}
+            <div style="background:var(--surface, #1e1d1b);border:1px solid var(--line, #33302c);border-radius:10px;padding:16px;margin-bottom:20px;text-align:left;">
+              <div style="font-size:12px;font-weight:700;color:var(--bronze-400, #d4a359);margin-bottom:4px;">Initial Outlet Commissioning</div>
+              <div style="font-size:11.5px;color:var(--muted);margin-bottom:12px;">If you have a one-time short-lived setup code for new register setup, enter it below:</div>
+              <div style="display:flex;gap:8px;">
+                <input type="text" id="gw-setup-code-input" class="input" placeholder="Enter setup code" maxlength="12" style="flex:1;text-align:center;font-family:var(--font-mono);letter-spacing:0.1em;background:var(--surface-sunken, #121110);border:1px solid var(--line-strong, #3d3935);color:var(--ink);border-radius:6px;padding:8px;" />
+                <button type="button" id="gw-setup-code-submit-btn" class="btn btn-primary" style="padding:8px 16px;font-weight:700;">Resolve</button>
               </div>
-            </div>
-
-            <!-- Keypad -->
-            <div id="gw-keypad" style="display:grid;grid-template-columns:repeat(3, 1fr);gap:10px;max-width:280px;margin:0 auto 20px auto;">
-              ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => `
-                <button type="button" class="btn btn-secondary gw-key-btn" data-key="${n}" style="height:50px;font-size:18px;font-weight:700;border-radius:10px;background:var(--surface, #1e1d1b);border:1px solid var(--line, #33302c);color:var(--ink);">
-                  ${n}
-                </button>
-              `).join('')}
-              <button type="button" class="btn btn-ghost gw-key-btn" data-key="clear" style="height:50px;font-size:12px;font-weight:600;border-radius:10px;color:var(--muted);">
-                CLEAR
-              </button>
-              <button type="button" class="btn btn-secondary gw-key-btn" data-key="0" style="height:50px;font-size:18px;font-weight:700;border-radius:10px;background:var(--surface, #1e1d1b);border:1px solid var(--line, #33302c);color:var(--ink);">
-                0
-              </button>
-              <button type="button" class="btn btn-secondary gw-key-btn" data-key="back" style="height:50px;font-size:16px;border-radius:10px;background:var(--surface, #1e1d1b);border:1px solid var(--line, #33302c);color:var(--ink);">
-                ⌫
-              </button>
             </div>
 
             <div style="border-top:1px solid var(--line, #33302c);padding-top:16px;margin-top:16px;text-align:center;">
@@ -271,42 +256,49 @@ export function wireCafeGatewayPage(container, { onSignInSuccess } = {}) {
       if (submitBtn) {
         submitBtn.disabled = gatewayState.busy || gatewayState.pinDigits.length !== 6;
       }
-
-      // If in Mode 1 (Permanent PIN entry), automatically resolve when 6 digits are typed
-      if ((!gatewayState.gatewayContextToken || gatewayState.isEnteringCafePin) && gatewayState.pinDigits.length === 6) {
-        const pin = gatewayState.pinDigits.join('');
-        gatewayState.busy = true;
-        gatewayState.error = '';
-        rerender();
-
-        try {
-          const res = await apiPost('/cafe-access/resolve', {
-            method: 'PIN',
-            credential: pin,
-          });
-
-          const data = res?.data || res;
-          if (!data?.gatewayContextToken) {
-            throw new Error('Cafe Operations access is unavailable.');
-          }
-
-          gatewayState.gatewayContextToken = data.gatewayContextToken;
-          gatewayState.cafe = data.cafe;
-          gatewayState.expiresAt = data.expiresAt;
-          gatewayState.isEnteringCafePin = false;
-          gatewayState.pinDigits = [];
-          gatewayState.busy = false;
-          gatewayState.error = '';
-          rerender();
-        } catch (err) {
-          gatewayState.busy = false;
-          gatewayState.pinDigits = [];
-          gatewayState.error = err?.message || 'Cafe Operations access is unavailable.';
-          rerender();
-        }
-      }
     });
   }
+
+  // One-time setup code submission for initial commissioning
+  const setupCodeBtn = container.querySelector('#gw-setup-code-submit-btn');
+  const setupCodeInput = container.querySelector('#gw-setup-code-input');
+  setupCodeBtn?.addEventListener('click', async () => {
+    const code = setupCodeInput?.value?.trim();
+    if (!code) {
+      gatewayState.error = 'Please enter your one-time setup code.';
+      rerender();
+      return;
+    }
+    gatewayState.busy = true;
+    gatewayState.error = '';
+    rerender();
+
+    try {
+      const res = await apiPost('/cafe-access/resolve', {
+        method: 'SETUP_CODE',
+        credential: code,
+      });
+
+      const data = res?.data || res;
+      if (!data?.gatewayContextToken) {
+        throw new Error('Cafe Operations access is unavailable.');
+      }
+
+      gatewayState.gatewayContextToken = data.gatewayContextToken;
+      gatewayState.cafe = data.cafe;
+      gatewayState.expiresAt = data.expiresAt;
+      gatewayState.isEnteringCafePin = false;
+      gatewayState.pinDigits = [];
+      gatewayState.busy = false;
+      gatewayState.error = '';
+      rerender();
+    } catch (err) {
+      gatewayState.busy = false;
+      gatewayState.error = err?.message || 'Invalid or expired setup code.';
+      rerender();
+    }
+  });
+
 
   // Mode 2: Employee Sign-In form submission
   const form = container.querySelector('#gw-employee-form');
@@ -416,9 +408,10 @@ export function wireCafeGatewayPage(container, { onSignInSuccess } = {}) {
     });
   }
 
-  // Switch / Re-enter PIN button
+  // Switch Location / Re-scan button
   container.querySelector('#gw-switch-pin-btn')?.addEventListener('click', () => {
-    gatewayState.isEnteringCafePin = true;
+    gatewayState.gatewayContextToken = null;
+    gatewayState.isEnteringCafePin = false;
     gatewayState.pinDigits = [];
     gatewayState.error = '';
     rerender();
@@ -426,9 +419,9 @@ export function wireCafeGatewayPage(container, { onSignInSuccess } = {}) {
 }
 
 /**
- * Resolves a QR or Link token or PIN and mounts the public gateway screen.
+ * Resolves a QR or Link token and mounts the public gateway screen.
  */
-export async function mountPublicCafeGateway(mountParent, { method, token, pin } = {}) {
+export async function mountPublicCafeGateway(mountParent, { method, token } = {}) {
   const container = mountParent || document.getElementById('app') || document.body;
 
   if (method && token) {

@@ -330,7 +330,7 @@ const personalLedgerSchema = new mongoose.Schema(
       type: String,
       trim: true,
       maxlength: 200,
-      default: '',
+      default: null,
     },
 
     // ── Splits & Multi-line Allocations ──────────────────────────────────────
@@ -491,12 +491,44 @@ const personalLedgerSchema = new mongoose.Schema(
       maxlength: 150,
       default: null,
     },
+
+    idempotencyKey: {
+      type: String,
+      trim: true,
+      index: true,
+      sparse: true,
+      default: null,
+    },
   },
   {
     timestamps: true,
     versionKey: 'version',
     optimisticConcurrency: true,
     collection: 'personal_ledger_entries',
+  }
+);
+
+personalLedgerSchema.index(
+  {
+    organisationId: 1,
+    idempotencyKey: 1,
+  },
+  {
+    name: 'org_idempotency_key',
+    unique: true,
+    sparse: true,
+  }
+);
+
+personalLedgerSchema.index(
+  {
+    organisationId: 1,
+    externalReference: 1,
+  },
+  {
+    name: 'org_external_reference_unique',
+    unique: true,
+    sparse: true,
   }
 );
 
@@ -552,6 +584,17 @@ personalLedgerSchema.pre('validate', function normalisePersonalLedgerFields() {
     if (this[field] && typeof this[field] === 'string') {
       this[field] = this[field].trim().toUpperCase();
     }
+  }
+
+  if (this.idempotencyKey && typeof this.idempotencyKey === 'string') {
+    this.idempotencyKey = this.idempotencyKey.trim();
+  }
+
+  if (this.externalReference && typeof this.externalReference === 'string') {
+    this.externalReference = this.externalReference.trim();
+    if (!this.externalReference) this.externalReference = null;
+  } else if (!this.externalReference) {
+    this.externalReference = null;
   }
 
   if (this.entryType) {
@@ -627,7 +670,12 @@ personalLedgerSchema.statics.calculateBalance =
       status: 'ACTIVE',
     };
 
-    if (accountHolderId) {
+    if (accountHolderId && ownerUserId) {
+      matchFilter.$or = [
+        { accountHolderId: accountHolderId.trim().toUpperCase() },
+        { ownerUserId: ownerUserId.trim().toUpperCase() },
+      ];
+    } else if (accountHolderId) {
       matchFilter.accountHolderId = accountHolderId.trim().toUpperCase();
     } else if (ownerUserId) {
       matchFilter.ownerUserId = ownerUserId.trim().toUpperCase();

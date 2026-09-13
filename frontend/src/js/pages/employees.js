@@ -7,6 +7,7 @@ import { apiGet, apiPost } from "../apiClient.js";
 import { showToast, openModal, renderModuleErrorState } from "../components.js";
 import { state } from "../state.js";
 import { navigate } from "../router.js";
+import { exportCentreModal } from "../components/exportCentreModal.js";
 
 let activeSubpanel = "overview";
 let liveOverview = null;
@@ -411,7 +412,10 @@ function renderDirectorySubpanel() {
             <option value="NOTICE_PERIOD" ${selectedStatus === 'NOTICE_PERIOD' ? 'selected' : ''}>Notice Period</option>
             <option value="EXITED" ${selectedStatus === 'EXITED' ? 'selected' : ''}>Exited</option>
           </select>
-          <button class="btn btn-ghost" id="export-directory-btn" style="font-size:13px;" title="Export Directory">Export CSV</button>
+          <button class="btn btn-secondary" id="export-directory-btn" style="font-size:12.5px; display:flex; align-items:center; gap:6px;" title="Export Directory">
+            <span>📥</span>
+            <span>Export Register</span>
+          </button>
         </div>
       </div>
 
@@ -420,6 +424,7 @@ function renderDirectorySubpanel() {
         <table style="width:100%; border-collapse:collapse; font-size:13px; text-align:left;">
           <thead>
             <tr style="border-bottom:2px solid rgba(0,0,0,0.06); color:var(--muted); font-size:11px; text-transform:uppercase;">
+              <th style="padding:10px 14px; width:45px;">Sl. No.</th>
               <th style="padding:10px 14px;">Employee</th>
               <th style="padding:10px 14px;">Job Title / Position</th>
               <th style="padding:10px 14px;">Department</th>
@@ -432,8 +437,9 @@ function renderDirectorySubpanel() {
             </tr>
           </thead>
           <tbody>
-            ${filtered.map(emp => `
+            ${filtered.map((emp, idx) => `
               <tr style="border-bottom:1px solid rgba(0,0,0,0.04); transition:background 0.15s ease;" onmouseover="this.style.background='#fafaf9'" onmouseout="this.style.background='transparent'">
+                <td style="padding:12px 14px; color:var(--muted); font-size:11px; font-weight:600;">${idx + 1}</td>
                 <td style="padding:12px 14px;">
                   <div style="font-weight:600; color:var(--ink);">${emp.name}</div>
                   <div style="font-size:11px; color:var(--muted);">${emp.userId} · ${emp.email}</div>
@@ -1784,3 +1790,164 @@ function openLetterGeneratorModal() {
     rerenderCurrentSubpanel();
   });
 }
+
+function rerenderCurrentSubpanel() {
+  const area = document.getElementById("workforce-content-area");
+  if (area) {
+    area.innerHTML = renderActiveSubpanel();
+    wireEmployees(area, activeSubpanel);
+  }
+}
+
+export function openOnboardEmployeeModal() {
+  openModal(`
+    <div style="padding:24px; max-width:640px; width:100%; color:var(--ink); max-height:85vh; overflow-y:auto;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px; border-bottom:1px solid rgba(0,0,0,0.08); padding-bottom:12px;">
+        <div>
+          <span style="font-size:11px; font-weight:700; color:#b45309; text-transform:uppercase; letter-spacing:0.5px;">Workforce Enrollment &amp; Readiness</span>
+          <h2 style="font-size:20px; font-weight:700; margin:4px 0 0;">New Employee Registration</h2>
+        </div>
+        <button class="btn btn-ghost" onclick="document.getElementById('modal-root').innerHTML=''" style="padding:4px 8px;">✕</button>
+      </div>
+
+      <form id="onboard-emp-form" style="display:flex; flex-direction:column; gap:16px;">
+        <!-- 1. Personal & Identity -->
+        <div style="background:#f8fafc; padding:14px; border-radius:8px; border:1px solid #e2e8f0;">
+          <div style="font-size:12px; font-weight:700; color:#475569; text-transform:uppercase; margin-bottom:8px;">1. Personal &amp; Contact Details</div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div>
+              <label style="font-size:11.5px; font-weight:600; display:block; margin-bottom:4px;">Legal Full Name *</label>
+              <input type="text" id="oe-name" required placeholder="e.g. Arun Nair" style="width:100%; padding:8px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:12.5px;" />
+            </div>
+            <div>
+              <label style="font-size:11.5px; font-weight:600; display:block; margin-bottom:4px;">Preferred / Display Name</label>
+              <input type="text" id="oe-pref" placeholder="e.g. Arun" style="width:100%; padding:8px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:12.5px;" />
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:8px;">
+            <div>
+              <label style="font-size:11.5px; font-weight:600; display:block; margin-bottom:4px;">Email Address *</label>
+              <input type="email" id="oe-email" required placeholder="arun.nair@zamorin.cafe" style="width:100%; padding:8px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:12.5px;" />
+            </div>
+            <div>
+              <label style="font-size:11.5px; font-weight:600; display:block; margin-bottom:4px;">Phone Number *</label>
+              <input type="text" id="oe-phone" required placeholder="+91 98450 12345" style="width:100%; padding:8px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:12.5px;" />
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. Employment Information -->
+        <div style="background:#f8fafc; padding:14px; border-radius:8px; border:1px solid #e2e8f0;">
+          <div style="font-size:12px; font-weight:700; color:#475569; text-transform:uppercase; margin-bottom:8px;">2. Role, Department &amp; Café Assignment</div>
+          <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;">
+            <div>
+              <label style="font-size:11.5px; font-weight:600; display:block; margin-bottom:4px;">Department</label>
+              <select id="oe-dept" style="width:100%; padding:8px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:12.5px;">
+                <option value="Barista">Barista Operations</option>
+                <option value="Kitchen">Kitchen / Culinary</option>
+                <option value="Service">Floor &amp; Guest Service</option>
+                <option value="Management">Store Management</option>
+              </select>
+            </div>
+            <div>
+              <label style="font-size:11.5px; font-weight:600; display:block; margin-bottom:4px;">Designation</label>
+              <input type="text" id="oe-desig" value="Junior Barista" style="width:100%; padding:8px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:12.5px;" />
+            </div>
+            <div>
+              <label style="font-size:11.5px; font-weight:600; display:block; margin-bottom:4px;">System Role</label>
+              <select id="oe-role" style="width:100%; padding:8px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:12.5px;">
+                <option value="STAFF">STAFF (Employee)</option>
+                <option value="CAFE_ADMIN">CAFE_ADMIN (Store Lead)</option>
+              </select>
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:8px;">
+            <div>
+              <label style="font-size:11.5px; font-weight:600; display:block; margin-bottom:4px;">Primary Café</label>
+              <select id="oe-cafe" style="width:100%; padding:8px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:12.5px;">
+                ${liveCafes.map(c => `<option value="${c.cafeId}">${c.name || c.cafeId}</option>`).join('') || '<option value="ZC-0001">Kozhikode Roastery</option>'}
+              </select>
+            </div>
+            <div>
+              <label style="font-size:11.5px; font-weight:600; display:block; margin-bottom:4px;">Date of Joining *</label>
+              <input type="date" id="oe-joining" required value="${new Date().toISOString().split('T')[0]}" style="width:100%; padding:8px 10px; border:1px solid #cbd5e1; border-radius:6px; font-size:12.5px;" />
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. Statutory & Digital Personal Data Protection Act, 2023 Privacy -->
+        <div style="background:#f8fafc; padding:14px; border-radius:8px; border:1px solid #e2e8f0;">
+          <div style="font-size:12px; font-weight:700; color:#475569; text-transform:uppercase; margin-bottom:8px;">3. Statutory Compliance &amp; DPDP Privacy Notice</div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <label style="display:flex; align-items:center; gap:8px; font-size:12px; cursor:pointer;">
+              <input type="checkbox" id="oe-epf" checked /> EPF Applicable (UAN Linkage)
+            </label>
+            <label style="display:flex; align-items:center; gap:8px; font-size:12px; cursor:pointer;">
+              <input type="checkbox" id="oe-esi" checked /> ESI Insurance Applicable
+            </label>
+          </div>
+          <div style="margin-top:10px; padding:10px; background:#fff; border:1px solid #cbd5e1; border-radius:6px; font-size:11px; color:#64748b; line-height:1.4;">
+            <strong>Digital Personal Data Protection Act, 2023 &amp; Rules, 2025 Notice:</strong> Personal and payroll data collected herein is used strictly for employment administration, statutory compliance, and payroll disbursement. Sensitive financial details are masked to non-payroll users.
+          </div>
+          <label style="display:flex; align-items:center; gap:8px; font-size:11.5px; margin-top:8px; font-weight:600; color:#1e293b; cursor:pointer;">
+            <input type="checkbox" id="oe-dpdp-consent" required checked /> Employee acknowledges Privacy &amp; Processing Notice
+          </label>
+        </div>
+
+        <!-- 4. Readiness Checklist -->
+        <div style="background:#f1f5f9; padding:12px; border-radius:8px; font-size:11.5px; color:#475569;">
+          <div style="font-weight:700; margin-bottom:4px; color:#0f172a;">Onboarding Checklist:</div>
+          <div>✓ Identity &amp; Contact Verified &nbsp;•&nbsp; ✓ Role &amp; Shift Assigned &nbsp;•&nbsp; ✓ Initial Training Queued &nbsp;•&nbsp; ✓ DPDP Consent Logged</div>
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:8px;">
+          <button class="btn btn-ghost" type="button" onclick="document.getElementById('modal-root').innerHTML=''">Cancel</button>
+          <button class="btn btn-primary" type="submit" id="oe-submit-btn">+ Onboard Employee</button>
+        </div>
+      </form>
+    </div>
+  `);
+
+  document.getElementById("onboard-emp-form")?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const submitBtn = document.getElementById("oe-submit-btn");
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Provisioning Employee...";
+    }
+
+    const payload = {
+      name: document.getElementById("oe-name").value.trim(),
+      preferredName: document.getElementById("oe-pref").value.trim(),
+      email: document.getElementById("oe-email").value.trim().toLowerCase(),
+      phone: document.getElementById("oe-phone").value.trim(),
+      department: document.getElementById("oe-dept").value,
+      designation: document.getElementById("oe-desig").value.trim(),
+      role: document.getElementById("oe-role").value,
+      primaryCafeId: document.getElementById("oe-cafe").value,
+      assignedCafeIds: [document.getElementById("oe-cafe").value],
+      joiningDate: document.getElementById("oe-joining").value,
+    };
+
+    try {
+      const res = await apiPost("/employees", payload);
+      const newEmp = res?.data?.user || {
+        userId: res?.data?.userId || `ST-${String(liveEmployees.length + 1).padStart(4, "0")}`,
+        ...payload,
+        employmentStatus: "PROBATION"
+      };
+
+      liveEmployees.unshift(newEmp);
+      showToast(`Employee "${payload.name}" successfully onboarded (${newEmp.userId})!`, "success");
+      document.getElementById("modal-root").innerHTML = "";
+      rerenderCurrentSubpanel();
+    } catch (err) {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "+ Onboard Employee";
+      }
+      showToast(err?.message || "Failed to onboard employee", "coral");
+    }
+  });
+}
+

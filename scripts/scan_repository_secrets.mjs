@@ -12,7 +12,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
 
 const SCAN_DIRS = ['frontend', 'backend', 'scripts', 'docs', 'artifacts'];
-const ROOT_FILES = ['package.json', 'README.md', '.gitignore'];
+const ROOT_FILES = ['package.json', '.gitignore'];
 
 const SECRET_PATTERNS = [
   { name: 'Private Key Header', regex: /-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/ },

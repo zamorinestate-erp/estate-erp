@@ -6,10 +6,14 @@ const { StockMovement } = require('../models/StockMovement');
 const { InventoryLot } = require('../models/InventoryLot');
 const { StockTransfer } = require('../models/StockTransfer');
 const { InventoryCycleCount } = require('../models/InventoryCycleCount');
+const { IncomingInspection } = require('../models/IncomingInspection');
 const { RecallNotice } = require('../models/RecallNotice');
 const { WastageRecord } = require('../models/WastageRecord');
 const { Cafe } = require('../models/Cafe');
 const { SequenceCounter } = require('../models/SequenceCounter');
+const { FefoService } = require('../services/fefoService');
+const { InventoryLotService } = require('../services/inventoryLotService');
+const RecallTraceService = require('../services/recallTraceService');
 const { ApiError } = require('../utils/ApiError');
 const { asyncHandler } = require('../utils/asyncHandler');
 
@@ -17,9 +21,20 @@ const { resolveEffectiveCafeScope, assertResourceCafeOwnership } = require('../u
 
 function assertCafeAccess(request, cafeId) {
   if (!cafeId) return;
+  const isCafeOps = request?.auth?.workspaceMode === 'CAFE_OPERATIONS' ||
+    request?.headers?.['x-workspace-mode'] === 'CAFE_OPERATIONS' ||
+    request?.headers?.['x-workspace'] === 'CAFE_OPERATIONS' ||
+    (request?.auth?.deviceContext?.deviceClass === 'CAFE_OWNED' && !!request?.auth?.deviceContext?.boundCafeId);
+  const effectiveCafe = resolveEffectiveCafeScope(request);
+  if (isCafeOps && effectiveCafe && effectiveCafe !== cafeId.trim().toUpperCase()) {
+    throw new ApiError(
+      403,
+      'CROSS_CAFE_RESOURCE_DENIED',
+      `Cross-café access is denied. You are not authorized for café ${cafeId}.`
+    );
+  }
   const role = request?.auth?.role;
   if (role === 'MASTER' || role === 'OWNER') return;
-  const effectiveCafe = resolveEffectiveCafeScope(request);
   if (effectiveCafe && effectiveCafe !== cafeId.trim().toUpperCase()) {
     throw new ApiError(
       403,
@@ -809,6 +824,235 @@ const createRecall = asyncHandler(async (request, response) => {
   });
 });
 
+const traceForward = asyncHandler(async (request, response) => {
+  const { organisationId } = request.auth;
+  const { lotId, supplierLot, itemId } = request.query;
+
+  const result = await RecallTraceService.traceForward({
+    organisationId,
+    lotId,
+    supplierLot,
+    itemId,
+  });
+
+  return response.status(200).json({
+    success: true,
+    data: result,
+  });
+});
+
+const traceBackward = asyncHandler(async (request, response) => {
+  const { organisationId } = request.auth;
+  const { billId, menuItemId, cafeId } = request.query;
+
+  const result = await RecallTraceService.traceBackward({
+    organisationId,
+    billId,
+    menuItemId,
+    cafeId,
+  });
+
+  return response.status(200).json({
+    success: true,
+    data: result,
+  });
+});
+
+// 8b. Incoming Material Inspection (R02-02)
+const recordIncomingInspection = asyncHandler(async (request, response) => {
+  const { organisationId, userId } = request.auth;
+  const {
+    cafeId,
+    vendorId,
+    vendorName,
+    poReference,
+    itemId,
+    itemName,
+    supplierLot,
+    expiryDate,
+    receivedQuantity,
+    acceptedQuantity,
+    rejectedQuantity,
+    unit,
+    temperatureCelsius,
+    packagingCondition,
+    qualityCondition,
+    decision,
+    rejectionReason,
+    remarks,
+  } = request.body || {};
+
+  if (!cafeId || !itemId || receivedQuantity === undefined) {
+    throw new ApiError(400, 'VALIDATION_FAILED', 'Café, Item, and receivedQuantity are required.');
+  }
+
+  assertCafeAccess(request, cafeId);
+
+  const inspection = await InventoryLotService.recordIncomingInspection({
+    organisationId,
+    cafeId: cafeId.trim().toUpperCase(),
+    vendorId,
+    vendorName,
+    poReference,
+    itemId: itemId.trim().toUpperCase(),
+    itemName,
+    supplierLot,
+    expiryDate,
+    receivedQuantity: Number(receivedQuantity),
+    acceptedQuantity: acceptedQuantity !== undefined ? Number(acceptedQuantity) : undefined,
+    rejectedQuantity: rejectedQuantity !== undefined ? Number(rejectedQuantity) : undefined,
+    unit,
+    temperatureCelsius: temperatureCelsius !== undefined ? Number(temperatureCelsius) : null,
+    packagingCondition,
+    qualityCondition,
+    decision,
+    rejectionReason,
+    inspectedByUserId: userId,
+    remarks,
+  });
+
+  return response.status(201).json({
+    success: true,
+    inspection,
+  });
+});
+
+const listIncomingInspections = asyncHandler(async (request, response) => {
+  const { organisationId } = request.auth;
+  const { cafeId, itemId, limit = 50 } = request.query || {};
+
+  const filter = { organisationId };
+  if (cafeId) {
+    const cleanCafe = cafeId.trim().toUpperCase();
+    assertCafeAccess(request, cleanCafe);
+    filter.cafeId = cleanCafe;
+  }
+  if (itemId) filter.itemId = itemId.trim().toUpperCase();
+
+  const inspections = await IncomingInspection.find(filter)
+    .sort({ inspectedAt: -1 })
+    .limit(Number(limit))
+    .lean();
+
+  return response.status(200).json({ inspections });
+});
+
+// 8c. Lot Quarantine & Release (R02-10 & Section 54-55)
+const quarantineLot = asyncHandler(async (request, response) => {
+  const { organisationId, userId } = request.auth;
+  const { lotId } = request.params;
+  const { cafeId, reason } = request.body || {};
+
+  if (!cafeId) throw new ApiError(400, 'CAFE_ID_REQUIRED', 'cafeId is required.');
+  assertCafeAccess(request, cafeId);
+
+  const lot = await InventoryLotService.quarantineLot({
+    organisationId,
+    cafeId: cafeId.trim().toUpperCase(),
+    lotId,
+    reason,
+    userId,
+  });
+
+  return response.status(200).json({
+    success: true,
+    message: `Lot ${lotId} quarantined successfully.`,
+    lot,
+  });
+});
+
+const releaseLot = asyncHandler(async (request, response) => {
+  const { organisationId, userId } = request.auth;
+  const { lotId } = request.params;
+  const { cafeId, releaseReason } = request.body || {};
+
+  if (!cafeId) throw new ApiError(400, 'CAFE_ID_REQUIRED', 'cafeId is required.');
+  assertCafeAccess(request, cafeId);
+
+  const lot = await InventoryLotService.releaseLot({
+    organisationId,
+    cafeId: cafeId.trim().toUpperCase(),
+    lotId,
+    releaseReason,
+    userId,
+  });
+
+  return response.status(200).json({
+    success: true,
+    message: `Lot ${lotId} released from quarantine.`,
+    lot,
+  });
+});
+
+// 8d. Lot Disposition (Section 57)
+const disposeLot = asyncHandler(async (request, response) => {
+  const { organisationId, userId } = request.auth;
+  const { lotId } = request.params;
+  const { cafeId, dispositionStatus, dispositionReason } = request.body || {};
+
+  if (!cafeId) throw new ApiError(400, 'CAFE_ID_REQUIRED', 'cafeId is required.');
+  assertCafeAccess(request, cafeId);
+
+  const lot = await InventoryLotService.disposeLot({
+    organisationId,
+    cafeId: cafeId.trim().toUpperCase(),
+    lotId,
+    dispositionStatus,
+    dispositionReason,
+    userId,
+  });
+
+  return response.status(200).json({
+    success: true,
+    message: `Lot ${lotId} disposition complete: ${dispositionStatus}.`,
+    lot,
+  });
+});
+
+// 8e. FEFO Planning & Deduction API (R02-02, Section 18)
+const planFefoDeduction = asyncHandler(async (request, response) => {
+  const { organisationId } = request.auth;
+  const { cafeId, itemId, requiredQuantity, businessDate } = request.body || {};
+
+  if (!cafeId || !itemId || !requiredQuantity) {
+    throw new ApiError(400, 'VALIDATION_FAILED', 'cafeId, itemId, and requiredQuantity are required.');
+  }
+
+  assertCafeAccess(request, cafeId);
+
+  const plan = await FefoService.planFefoDeduction({
+    organisationId,
+    cafeId: cafeId.trim().toUpperCase(),
+    itemId: itemId.trim().toUpperCase(),
+    requiredQuantity: Number(requiredQuantity),
+    businessDate,
+  });
+
+  return response.status(200).json({
+    success: true,
+    plan,
+  });
+});
+
+const getFefoAlerts = asyncHandler(async (request, response) => {
+  const { organisationId } = request.auth;
+  const { cafeId, thresholdDays = 7, businessDate } = request.query || {};
+
+  if (cafeId) assertCafeAccess(request, cafeId);
+
+  const alerts = await FefoService.getExpiryAlerts({
+    organisationId,
+    cafeId: cafeId ? cafeId.trim().toUpperCase() : 'CAFE-001',
+    thresholdDays: Number(thresholdDays),
+    businessDate,
+  });
+
+  return response.status(200).json({
+    success: true,
+    alerts,
+  });
+});
+
 // 9. Replenishment Recommendations
 const getReplenishmentRecommendations = asyncHandler(async (request, response) => {
   const { organisationId } = request.auth;
@@ -911,6 +1155,7 @@ const approveCycleCount = asyncHandler(async (request, response) => {
   if (!count) {
     throw new ApiError(404, 'COUNT_NOT_FOUND', 'Cycle count record not found.');
   }
+  assertCafeAccess(request, count.cafeId);
 
   for (const itm of count.items) {
     if (itm.varianceQty !== 0) {
@@ -1331,8 +1576,17 @@ module.exports = {
   receiveTransfer,
   listLots,
   getExpirySchedule,
+  recordIncomingInspection,
+  listIncomingInspections,
+  quarantineLot,
+  releaseLot,
+  disposeLot,
+  planFefoDeduction,
+  getFefoAlerts,
   listRecalls,
   createRecall,
+  traceForward,
+  traceBackward,
   getReplenishmentRecommendations,
   listCycleCounts,
   submitCycleCount,

@@ -323,6 +323,7 @@ const blockedOperations = [
   'updateMany',
   'findOneAndUpdate',
   'replaceOne',
+  'findOneAndReplace',
   'deleteOne',
   'deleteMany',
   'findOneAndDelete',
@@ -334,6 +335,36 @@ blockedOperations.forEach((operation) => {
       'Audit events are immutable and cannot be changed or deleted.'
     );
   });
+});
+
+// Block document-instance deleteOne (doc.deleteOne())
+auditEventSchema.pre('deleteOne', { document: true, query: false }, function blockDocDeleteOne() {
+  throw new Error(
+    'Audit events are immutable and cannot be deleted via document instance.'
+  );
+});
+
+// Block save() on modified (existing) documents — insert-only guard
+auditEventSchema.pre('save', function blockAuditUpdate() {
+  if (!this.isNew) {
+    throw new Error(
+      'Audit events are immutable. save() is only allowed for new insertions.'
+    );
+  }
+});
+
+// Block bulkWrite mutations — iterate ops and reject any update/delete/replace
+auditEventSchema.pre('bulkWrite', function blockBulkWriteMutation(next) {
+  const ops = this.getOptions?.()?.ops || [];
+  for (const op of ops) {
+    const opKey = Object.keys(op)[0];
+    if (['updateOne', 'updateMany', 'deleteOne', 'deleteMany', 'replaceOne'].includes(opKey)) {
+      throw new Error(
+        'Audit events are immutable. bulkWrite mutation operations are not permitted.'
+      );
+    }
+  }
+  if (typeof next === 'function') next();
 });
 
 const AuditEvent =

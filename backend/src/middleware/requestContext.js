@@ -33,6 +33,10 @@ function requestContext(request, response, next) {
   request.correlationId = correlationId;
   request.requestStartedAt = new Date();
 
+  if (typeof response.setHeader === 'function') {
+    response.setHeader('x-correlation-id', correlationId);
+  }
+
   const startTime = process.hrtime.bigint();
   const originalEnd = response.end;
   response.end = function (...args) {

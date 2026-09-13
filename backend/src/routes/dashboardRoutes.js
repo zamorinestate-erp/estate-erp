@@ -17,11 +17,13 @@
 
 const express = require('express');
 const { authenticate } = require('../middleware/authenticate');
+const { attachDeviceContext } = require('../middleware/deviceContext');
 
 const {
   getDashboardData,
   getDashboardMetrics,
   getCafeOpsDashboard,
+  getOperationalExceptions,
   listSavedViews,
   createSavedView,
   updateSavedView,
@@ -33,10 +35,14 @@ const {
 const router = express.Router();
 
 router.use(authenticate);
+router.use(attachDeviceContext);
 
 // ── ADM-SCR-001: Cafe Operations Dashboard ───────────────────────────────────
-// CAFE_ADMIN only. Server derives cafe from auth.primaryCafeId — no query override.
+// Server derives effective cafe from trusted context (device / operator / assigned cafe).
 router.get('/cafe-ops', getCafeOpsDashboard);
+
+// ── Operational Exception Centre (R02-08) ───────────────────────────────────
+router.get('/operational-exceptions', getOperationalExceptions);
 
 // ── Main dashboard data ──────────────────────────────────────────────────────
 router.get('/', getDashboardData);

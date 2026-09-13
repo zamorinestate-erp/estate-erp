@@ -7,10 +7,12 @@
  */
 
 const { Shift } = require('../models/Shift');
+const { ShiftHandover } = require('../models/ShiftHandover');
 const { SequenceCounter } = require('../models/SequenceCounter');
 const { asyncHandler } = require('../utils/asyncHandler');
 const { ApiError } = require('../utils/ApiError');
 const { recordRequestAudit } = require('../services/auditService');
+const { resolveEffectiveCafeScope } = require('../utils/cafeScope');
 
 function normalizeIdentifier(v) {
   return typeof v === 'string' ? v.trim().toUpperCase() : '';
@@ -36,7 +38,19 @@ const listShifts = asyncHandler(async (request, response) => {
 
   if (request.query.cafeId) {
     const cafeId = normalizeIdentifier(request.query.cafeId);
+    if (request.auth.role === 'OWNER') {
+      const authorizedCafes = (request.auth.assignedCafeIds || []).map((c) => String(c).trim().toUpperCase()).filter(Boolean);
+      if (!authorizedCafes.includes(cafeId)) {
+        throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'You do not have access to this café.');
+      }
+    }
     filter.$or = [{ cafeId }, { cafeId: null }];
+  } else if (request.auth.role === 'OWNER') {
+    const authorizedCafes = (request.auth.assignedCafeIds || []).map((c) => String(c).trim().toUpperCase()).filter(Boolean);
+    if (!authorizedCafes.length) {
+      throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'Owner has no assigned cafés.');
+    }
+    filter.$or = [{ cafeId: { $in: authorizedCafes } }, { cafeId: null }];
   }
 
   if (request.query.isActive !== undefined) {
@@ -61,6 +75,13 @@ const getShift = asyncHandler(async (request, response) => {
 
   const shift = await Shift.findOne({ organisationId, shiftId }).lean();
   if (!shift) throw new ApiError(404, 'SHIFT_NOT_FOUND', 'Shift not found.');
+
+  if (request.auth.role === 'OWNER' && shift.cafeId) {
+    const authorizedCafes = (request.auth.assignedCafeIds || []).map((c) => String(c).trim().toUpperCase()).filter(Boolean);
+    if (!authorizedCafes.includes(shift.cafeId)) {
+      throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'You do not have access to this café.');
+    }
+  }
 
   return response.status(200).json({
     success: true,
@@ -91,6 +112,14 @@ const createShift = asyncHandler(async (request, response) => {
   const startTime = validateTimeString(rawStart, 'startTime');
   const endTime = validateTimeString(rawEnd, 'endTime');
   const cafeId = rawCafeId ? normalizeIdentifier(rawCafeId) : null;
+
+  // If cafeId supplied and caller is OWNER, verify access
+  if (cafeId && request.auth.role === 'OWNER') {
+    const authorizedCafes = (request.auth.assignedCafeIds || []).map((c) => String(c).trim().toUpperCase()).filter(Boolean);
+    if (!authorizedCafes.includes(cafeId)) {
+      throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'You do not have access to this café.');
+    }
+  }
 
   // If cafeId supplied and caller is CAFE_ADMIN, verify access
   if (cafeId && request.auth.role === 'CAFE_ADMIN') {
@@ -156,6 +185,13 @@ const updateShift = asyncHandler(async (request, response) => {
   const shiftId = normalizeIdentifier(request.params.shiftId);
   const shift = await Shift.findOne({ organisationId: request.auth.organisationId, shiftId });
   if (!shift) throw new ApiError(404, 'SHIFT_NOT_FOUND', 'Shift not found.');
+
+  if (request.auth.role === 'OWNER' && shift.cafeId) {
+    const authorizedCafes = (request.auth.assignedCafeIds || []).map((c) => String(c).trim().toUpperCase()).filter(Boolean);
+    if (!authorizedCafes.includes(shift.cafeId)) {
+      throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'You do not have access to this shift.');
+    }
+  }
 
   if (request.auth.role === 'CAFE_ADMIN' && shift.cafeId) {
     if (!request.auth.assignedCafeIds?.includes(shift.cafeId)) {
@@ -228,6 +264,12 @@ const deactivateShift = asyncHandler(async (request, response) => {
   const shiftId = normalizeIdentifier(request.params.shiftId);
   const shift = await Shift.findOne({ organisationId: request.auth.organisationId, shiftId });
   if (!shift) throw new ApiError(404, 'SHIFT_NOT_FOUND', 'Shift not found.');
+  if (request.auth.role === 'OWNER' && shift.cafeId) {
+    const authorizedCafes = (request.auth.assignedCafeIds || []).map((c) => String(c).trim().toUpperCase()).filter(Boolean);
+    if (!authorizedCafes.includes(shift.cafeId)) {
+      throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'You do not have access to this shift.');
+    }
+  }
   if (!shift.isActive) {
     return response.status(200).json({ success: true, message: 'Shift is already inactive.', data: { shift: shift.toObject() } });
   }
@@ -259,6 +301,12 @@ const activateShift = asyncHandler(async (request, response) => {
   const shiftId = normalizeIdentifier(request.params.shiftId);
   const shift = await Shift.findOne({ organisationId: request.auth.organisationId, shiftId });
   if (!shift) throw new ApiError(404, 'SHIFT_NOT_FOUND', 'Shift not found.');
+  if (request.auth.role === 'OWNER' && shift.cafeId) {
+    const authorizedCafes = (request.auth.assignedCafeIds || []).map((c) => String(c).trim().toUpperCase()).filter(Boolean);
+    if (!authorizedCafes.includes(shift.cafeId)) {
+      throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'You do not have access to this shift.');
+    }
+  }
 
   shift.isActive = true;
   await shift.save();
@@ -276,6 +324,159 @@ const activateShift = asyncHandler(async (request, response) => {
   });
 });
 
+// ── Shift Handover & Continuity (R02-07) ────────────────────────────────────
+const listShiftHandovers = asyncHandler(async (request, response) => {
+  const { organisationId } = request.auth;
+  const cafeId = resolveEffectiveCafeScope(request);
+  const { date, status } = request.query;
+
+  const filter = { organisationId, cafeId };
+  if (date) filter.handoverDate = date;
+  if (status) filter.acknowledgementStatus = status.toUpperCase();
+
+  const handovers = await ShiftHandover.find(filter).sort({ createdAt: -1 }).limit(50).lean();
+
+  return response.status(200).json({
+    success: true,
+    data: { handovers, count: handovers.length },
+  });
+});
+
+const getLatestShiftHandover = asyncHandler(async (request, response) => {
+  const { organisationId } = request.auth;
+  const cafeId = resolveEffectiveCafeScope(request);
+
+  const handover = await ShiftHandover.findOne({ organisationId, cafeId })
+    .sort({ createdAt: -1 })
+    .lean();
+
+  return response.status(200).json({
+    success: true,
+    data: { handover: handover || null },
+  });
+});
+
+const recordShiftHandover = asyncHandler(async (request, response) => {
+  const { organisationId, userId } = request.auth;
+  const cafeId = resolveEffectiveCafeScope(request);
+  const {
+    handoverType = 'HANDOVER',
+    shiftType = 'MORNING',
+    handoverDate,
+    receivingUserId,
+    cashDrawer,
+    operationalChecklist,
+    equipmentStatusNotes,
+    stockIssuesNotes,
+    pendingOrdersCount,
+    managerNotes,
+  } = request.body || {};
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const dateUsed = handoverDate || todayStr;
+
+  const count = await ShiftHandover.countDocuments({ organisationId });
+  const handoverId = `HND-${dateUsed.replace(/-/g, '')}-${String(count + 1).padStart(4, '0')}`;
+
+  const cash = cashDrawer || {};
+  const opening = Number(cash.openingFloatPaisa) || 0;
+  const counted = Number(cash.countedCashPaisa) || 0;
+  const expected = Number(cash.expectedCashPaisa) || 0;
+  const variance = counted - expected;
+
+  const handover = await ShiftHandover.create({
+    handoverId,
+    organisationId,
+    cafeId,
+    handoverType,
+    shiftType,
+    handoverDate: dateUsed,
+    handingOverUserId: userId,
+    receivingUserId: receivingUserId || null,
+    cashDrawer: {
+      openingFloatPaisa: opening,
+      countedCashPaisa: counted,
+      expectedCashPaisa: expected,
+      variancePaisa: variance,
+      varianceReason: cash.varianceReason || '',
+      cashDropPaisa: Number(cash.cashDropPaisa) || 0,
+      pettyCashRemainingPaisa: Number(cash.pettyCashRemainingPaisa) || 0,
+    },
+    operationalChecklist: operationalChecklist || {},
+    equipmentStatusNotes: equipmentStatusNotes || '',
+    stockIssuesNotes: stockIssuesNotes || '',
+    pendingOrdersCount: Number(pendingOrdersCount) || 0,
+    managerNotes: managerNotes || '',
+    acknowledgementStatus: receivingUserId ? 'PENDING' : 'ACCEPTED',
+    acknowledgedAt: receivingUserId ? null : new Date(),
+  });
+
+  await recordRequestAudit({
+    request,
+    module: 'OPERATIONS',
+    action: 'SHIFT_HANDOVER_RECORDED',
+    entityType: 'ShiftHandover',
+    entityId: handoverId,
+    metadata: {
+      cafeId,
+      handoverType,
+      shiftType,
+      variancePaisa: variance,
+    },
+  });
+
+  return response.status(201).json({
+    success: true,
+    message: `Shift handover ${handoverId} recorded successfully.`,
+    data: { handover },
+  });
+});
+
+const acknowledgeShiftHandover = asyncHandler(async (request, response) => {
+  const { organisationId, userId } = request.auth;
+  const cafeId = resolveEffectiveCafeScope(request);
+  const { handoverId } = request.params;
+  const { decision = 'ACCEPTED', disputeReason = '' } = request.body || {};
+
+  const handover = await ShiftHandover.findOne({
+    organisationId,
+    cafeId,
+    handoverId: handoverId.toUpperCase(),
+  });
+
+  if (!handover) {
+    throw new ApiError(404, 'NOT_FOUND', `Shift handover ${handoverId} not found.`);
+  }
+
+  handover.acknowledgementStatus = decision.toUpperCase();
+  handover.receivingUserId = userId;
+  handover.acknowledgedAt = new Date();
+  if (decision.toUpperCase() === 'DISPUTED') {
+    handover.disputeReason = disputeReason;
+  }
+
+  await handover.save();
+
+  await recordRequestAudit({
+    request,
+    module: 'OPERATIONS',
+    action: 'SHIFT_HANDOVER_ACKNOWLEDGED',
+    entityType: 'ShiftHandover',
+    entityId: handoverId,
+    metadata: {
+      cafeId,
+      decision: handover.acknowledgementStatus,
+      disputeReason,
+    },
+  });
+
+  return response.status(200).json({
+    success: true,
+    message: `Shift handover acknowledged with status ${handover.acknowledgementStatus}.`,
+    data: { handover },
+  });
+});
+
 module.exports = {
   listShifts,
   getShift,
@@ -283,4 +484,8 @@ module.exports = {
   updateShift,
   deactivateShift,
   activateShift,
+  listShiftHandovers,
+  getLatestShiftHandover,
+  recordShiftHandover,
+  acknowledgeShiftHandover,
 };

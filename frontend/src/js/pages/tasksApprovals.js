@@ -21,12 +21,14 @@ let blockedOnlyFilter = false;
 let recurringOnlyFilter = false;
 let searchQuery = "";
 let lastRefreshedTime = new Date();
+let currentPage = 1;
+const PAGE_SIZE = 15;
 
 let availableCafes = [];
 
 function getCafeName(cafeId) {
   if (!cafeId) return "General";
-  const found = availableCafes.find((c) => c.code === cafeId || c.id === cafeId || c._id === cafeId);
+  const found = availableCafes.find((c) => c.code === cafeId || c.id === cafeId || c._id === cafeId || c.cafeId === cafeId);
   return found ? found.name : cafeId;
 }
 
@@ -68,38 +70,83 @@ function isTaskOverdue(task) {
   return task.dueDate < today && ["PENDING", "IN_PROGRESS", "AWAITING_VERIFICATION", "RETURNED_FOR_CORRECTION", "BLOCKED"].includes(task.status);
 }
 
-export function renderTasks() {
+function computeCategoryCompliance(tasks) {
+  const categories = [
+    { key: "SAFETY_COMPLIANCE", label: "Safety & Compliance" },
+    { key: "EQUIPMENT_MAINTENANCE", label: "Equipment Care & Calibration" },
+    { key: "CASH_CONTROL_AUDIT", label: "Cash Drawer & Safe Reconciliations" },
+    { key: "HYGIENE_INSPECTION", label: "Hygiene & Sanitization Signoffs" },
+  ];
+
+  return categories.map((cat) => {
+    const catTasks = (tasks || []).filter((t) => t.category === cat.key);
+    const total = catTasks.length;
+    const completed = catTasks.filter((t) => t.status === "COMPLETED");
+    const blocked = catTasks.filter((t) => t.status === "BLOCKED").length;
+
+    let onTime = 0;
+    for (const t of completed) {
+      if (!t.dueDate || (t.completedAt && getIstDateString(new Date(t.completedAt)) <= t.dueDate)) {
+        onTime++;
+      }
+    }
+
+    const pct = completed.length > 0 ? Math.round((onTime / completed.length) * 100) : (total === 0 ? 100 : 0);
+    return { ...cat, total, completed: completed.length, blocked, pct };
+  });
+}
+
+function getUpcomingCriticalObligations(tasks) {
+  const today = getIstDateString();
+  const next7 = getIstDateString(new Date(Date.now() + 7 * 86400000));
+
+  return (tasks || []).filter((t) => {
+    if (t.status === "COMPLETED" || t.status === "CANCELLED") return false;
+    const isCrit = t.isCriticalControl || t.risk === "CRITICAL" || t.priority === "URGENT" || t.priority === "HIGH";
+    return isCrit && t.dueDate && t.dueDate >= today && t.dueDate <= next7;
+  }).slice(0, 5);
+}
+
+export function renderTasks({ title } = {}) {
+  const pageTitle = title || "Operational Task Oversight";
   const isOwner = state.role === ROLES.OWNER;
   const today = getIstDateString();
 
   const allTasks = liveTasks || SAMPLE_TASKS;
 
-  // Compute Summary Metrics
-  let openCount = 0;
-  let overdueCount = 0;
-  let dueTodayCount = 0;
-  let criticalCount = 0;
-  let verificationPendingCount = 0;
-  let completedCount = 0;
-  let onTimeCompletedCount = 0;
+  // Compute Summary Metrics (Authoritative server fallback to in-memory)
+  let rawOpen = 0;
+  let rawOverdue = 0;
+  let rawDueToday = 0;
+  let rawCritical = 0;
+  let rawVerificationPending = 0;
+  let rawCompleted = 0;
+  let rawOnTimeCompleted = 0;
 
   for (const t of allTasks) {
     const isOpen = ["PENDING", "IN_PROGRESS", "AWAITING_VERIFICATION", "RETURNED_FOR_CORRECTION", "BLOCKED"].includes(t.status);
     if (isOpen) {
-      openCount++;
-      if (isTaskOverdue(t)) overdueCount++;
-      if (t.dueDate === today) dueTodayCount++;
-      if (t.risk === "CRITICAL" || t.priority === "URGENT" || t.isCriticalControl) criticalCount++;
-      if (t.status === "AWAITING_VERIFICATION" || t.verificationStatus === "PENDING_VERIFICATION") verificationPendingCount++;
+      rawOpen++;
+      if (isTaskOverdue(t)) rawOverdue++;
+      if (t.dueDate === today) rawDueToday++;
+      if (t.risk === "CRITICAL" || t.priority === "URGENT" || t.isCriticalControl) rawCritical++;
+      if (t.status === "AWAITING_VERIFICATION" || t.verificationStatus === "PENDING_VERIFICATION") rawVerificationPending++;
     } else if (t.status === "COMPLETED") {
-      completedCount++;
+      rawCompleted++;
       if (!t.dueDate || (t.completedAt && getIstDateString(new Date(t.completedAt)) <= t.dueDate)) {
-        onTimeCompletedCount++;
+        rawOnTimeCompleted++;
       }
     }
   }
 
-  const onTimeRate = completedCount > 0 ? Math.round((onTimeCompletedCount / completedCount) * 100) : 100;
+  const rawOnTimeRate = rawCompleted > 0 ? Math.round((rawOnTimeCompleted / rawCompleted) * 100) : 100;
+
+  // Reconcile with authoritative backend summary if available
+  const overdueCount = summaryMetrics?.overdueCount ?? rawOverdue;
+  const criticalCount = summaryMetrics?.criticalCount ?? rawCritical;
+  const dueTodayCount = summaryMetrics?.dueTodayCount ?? rawDueToday;
+  const verificationPendingCount = summaryMetrics?.verificationPendingCount ?? rawVerificationPending;
+  const onTimeRate = summaryMetrics?.onTimeRate ?? rawOnTimeRate;
 
   // Filter tasks based on activeTab, cafe, category, priority, status, and checkboxes
   let filteredTasks = allTasks.filter((t) => {
@@ -110,6 +157,7 @@ export function renderTasks() {
         t.status === "RETURNED_FOR_CORRECTION" ||
         t.status === "BLOCKED" ||
         t.status === "AWAITING_VERIFICATION" ||
+        t.verificationStatus === "PENDING_VERIFICATION" ||
         ((t.risk === "CRITICAL" || t.isCriticalControl) && t.status !== "COMPLETED" && t.status !== "CANCELLED");
       if (!isException) return false;
     } else if (activeTaskTab === "PENDING") {
@@ -148,6 +196,7 @@ export function renderTasks() {
         (t.taskId && t.taskId.toLowerCase().includes(q)) ||
         (t.title && t.title.toLowerCase().includes(q)) ||
         (t.assignedUserId && t.assignedUserId.toLowerCase().includes(q)) ||
+        (t.responsibleUserId && t.responsibleUserId.toLowerCase().includes(q)) ||
         (t.description && t.description.toLowerCase().includes(q));
       if (!match) return false;
     }
@@ -178,13 +227,27 @@ export function renderTasks() {
     return 0;
   });
 
+  // Pagination slicing
+  const totalPages = Math.max(1, Math.ceil(filteredTasks.length / PAGE_SIZE));
+  if (currentPage > totalPages) currentPage = totalPages;
+  if (currentPage < 1) currentPage = 1;
+  const startIndex = (currentPage - 1) * PAGE_SIZE;
+  const endIndex = Math.min(startIndex + PAGE_SIZE, filteredTasks.length);
+  const pagedTasks = filteredTasks.slice(startIndex, endIndex);
+
+  // Dynamic Category Compliance Data
+  const categoryComplianceList = computeCategoryCompliance(allTasks);
+
+  // Dynamic Upcoming Critical Obligations
+  const criticalUpcoming = getUpcomingCriticalObligations(allTasks);
+
   return `
-    <div class="page-enter" style="padding-bottom: 60px;">
+    <div class="page-enter tasks-page" style="padding-bottom: 60px;">
       <!-- Screen Header -->
       <div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px; margin-bottom:24px;">
         <div>
           <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-            <h1 class="page-title" style="font-size:26px; font-weight:700; margin:0; color:var(--ink);">Operational Task Oversight</h1>
+            <h1 class="page-title" style="font-size:26px; font-weight:700; margin:0; color:var(--ink);">${escapeHtml(pageTitle)}</h1>
             <span class="badge" style="background:rgba(180,83,9,0.12); color:#b45309; font-weight:600; font-size:12px; padding:4px 10px; border-radius:12px;">SCR-002 TASKS</span>
           </div>
           <p class="page-subtitle" style="font-size:14px; color:var(--muted); margin:4px 0 0;">
@@ -192,18 +255,18 @@ export function renderTasks() {
           </p>
         </div>
         <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-          <button class="btn btn-primary" id="add-task-btn" type="button" style="font-weight:700;">
+          <button class="btn btn-primary" id="add-task-btn" type="button" style="font-weight:700;" aria-label="Assign New Management Task">
             + Assign Management Task
           </button>
-          <button class="btn btn-secondary" id="refresh-tasks-btn" type="button" title="Refresh task queue" style="font-weight:600; display:flex; align-items:center; gap:6px;">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          <button class="btn btn-secondary" id="refresh-tasks-btn" type="button" title="Refresh task queue" aria-label="Refresh Tasks" style="font-weight:600; display:flex; align-items:center; gap:6px;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
             Refresh Tasks
           </button>
         </div>
       </div>
 
-      <!-- Executive Summary Strip (Section 14) -->
-      <div class="oto-summary-strip">
+      <!-- Executive Summary Strip -->
+      <div class="oto-summary-strip" role="region" aria-label="Executive Task Metrics">
         <div class="oto-metric-card ${overdueCount > 0 ? "overdue" : ""}">
           <span class="oto-metric-val" style="${overdueCount > 0 ? "color:#fbbf24;" : ""}">${overdueCount}</span>
           <span class="oto-metric-label">Overdue Obligations</span>
@@ -226,40 +289,40 @@ export function renderTasks() {
         </div>
       </div>
 
-      <!-- Filter Bar & Tabs (Sections 12, 22, 23) -->
+      <!-- Filter Bar & Tabs -->
       <div class="card" style="padding:14px 18px;margin-bottom:20px;background:var(--surface);border:1px solid var(--line);">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
           <!-- Primary Tabs Strip -->
-          <div class="oto-tabs-strip">
-            <button class="oto-tab-btn ${activeTaskTab === "EXCEPTIONS" ? "active" : ""}" data-task-tab="EXCEPTIONS" type="button">
+          <div class="oto-tabs-strip" role="tablist" aria-label="Task Queues">
+            <button class="oto-tab-btn ${activeTaskTab === "EXCEPTIONS" ? "active" : ""}" data-task-tab="EXCEPTIONS" type="button" role="tab" aria-selected="${activeTaskTab === "EXCEPTIONS"}">
               <span>⚠️</span> Needs Attention (${overdueCount + verificationPendingCount + (allTasks.filter(t => t.status === "RETURNED_FOR_CORRECTION" || t.status === "BLOCKED").length)})
             </button>
-            <button class="oto-tab-btn ${activeTaskTab === "ALL" ? "active" : ""}" data-task-tab="ALL" type="button">
+            <button class="oto-tab-btn ${activeTaskTab === "ALL" ? "active" : ""}" data-task-tab="ALL" type="button" role="tab" aria-selected="${activeTaskTab === "ALL"}">
               All Tasks (${allTasks.length})
             </button>
-            <button class="oto-tab-btn ${activeTaskTab === "PENDING" ? "active" : ""}" data-task-tab="PENDING" type="button">
+            <button class="oto-tab-btn ${activeTaskTab === "PENDING" ? "active" : ""}" data-task-tab="PENDING" type="button" role="tab" aria-selected="${activeTaskTab === "PENDING"}">
               In Progress
             </button>
-            <button class="oto-tab-btn ${activeTaskTab === "VERIFICATION" ? "active" : ""}" data-task-tab="VERIFICATION" type="button">
+            <button class="oto-tab-btn ${activeTaskTab === "VERIFICATION" ? "active" : ""}" data-task-tab="VERIFICATION" type="button" role="tab" aria-selected="${activeTaskTab === "VERIFICATION"}">
               Verification (${verificationPendingCount})
             </button>
-            <button class="oto-tab-btn ${activeTaskTab === "COMPLETED" ? "active" : ""}" data-task-tab="COMPLETED" type="button">
+            <button class="oto-tab-btn ${activeTaskTab === "COMPLETED" ? "active" : ""}" data-task-tab="COMPLETED" type="button" role="tab" aria-selected="${activeTaskTab === "COMPLETED"}">
               Completed
             </button>
           </div>
 
           <!-- Secondary Filters Dropdowns & Search -->
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-            <select id="filter-task-cafe" class="select select-sm" style="background:var(--surface);color:var(--ink);border:1px solid var(--line);font-size:12px;">
+            <select id="filter-task-cafe" class="select select-sm" aria-label="Filter by Café Location" style="background:var(--surface);color:var(--ink);border:1px solid var(--line);font-size:12px;">
               <option value="ALL" ${selectedCafeFilter === "ALL" ? "selected" : ""}>All Authorized Cafés</option>
               ${availableCafes.map(c => `
-                <option value="${c.code || c.id || c._id}" ${selectedCafeFilter === (c.code || c.id || c._id) ? "selected" : ""}>
-                  ${c.code ? c.code + " · " : ""}${c.name}
+                <option value="${c.code || c.id || c._id || c.cafeId}" ${selectedCafeFilter === (c.code || c.id || c._id || c.cafeId) ? "selected" : ""}>
+                  ${c.code || c.cafeId ? (c.code || c.cafeId) + " · " : ""}${c.name}
                 </option>
               `).join('')}
             </select>
 
-            <select id="filter-task-category" class="select select-sm" style="background:var(--surface);color:var(--ink);border:1px solid var(--line);font-size:12px;">
+            <select id="filter-task-category" class="select select-sm" aria-label="Filter by Category" style="background:var(--surface);color:var(--ink);border:1px solid var(--line);font-size:12px;">
               <option value="ALL" ${selectedCategoryFilter === "ALL" ? "selected" : ""}>All Categories</option>
               <option value="EQUIPMENT_MAINTENANCE" ${selectedCategoryFilter === "EQUIPMENT_MAINTENANCE" ? "selected" : ""}>Equipment Care</option>
               <option value="SAFETY_COMPLIANCE" ${selectedCategoryFilter === "SAFETY_COMPLIANCE" ? "selected" : ""}>Safety & Compliance</option>
@@ -267,9 +330,10 @@ export function renderTasks() {
               <option value="CASH_CONTROL_AUDIT" ${selectedCategoryFilter === "CASH_CONTROL_AUDIT" ? "selected" : ""}>Cash Drawer & Float</option>
               <option value="HYGIENE_INSPECTION" ${selectedCategoryFilter === "HYGIENE_INSPECTION" ? "selected" : ""}>Hygiene Inspection</option>
               <option value="MANAGEMENT_DELEGATION" ${selectedCategoryFilter === "MANAGEMENT_DELEGATION" ? "selected" : ""}>Management Delegation</option>
+              <option value="GENERAL_OPERATIONS" ${selectedCategoryFilter === "GENERAL_OPERATIONS" ? "selected" : ""}>General Operations</option>
             </select>
 
-            <select id="filter-task-sort" class="select select-sm" style="background:var(--surface);color:var(--ink);border:1px solid var(--line);font-size:12px;">
+            <select id="filter-task-sort" class="select select-sm" aria-label="Sort Task Queue" style="background:var(--surface);color:var(--ink);border:1px solid var(--line);font-size:12px;">
               <option value="CRITICAL_OVERDUE" ${selectedSortBy === "CRITICAL_OVERDUE" ? "selected" : ""}>Sort: Critical & Overdue First</option>
               <option value="DUE_DATE" ${selectedSortBy === "DUE_DATE" ? "selected" : ""}>Sort: Due Date (Earliest)</option>
               <option value="PRIORITY" ${selectedSortBy === "PRIORITY" ? "selected" : ""}>Sort: Priority (Highest)</option>
@@ -278,14 +342,14 @@ export function renderTasks() {
             </select>
 
             <div style="position:relative;">
-              <input type="text" id="task-search-input" class="input input-sm" placeholder="Search tasks, ID, staff..." value="${searchQuery}" style="background:var(--surface);color:var(--ink);border:1px solid var(--line);font-size:12px;width:170px;padding-left:26px;" />
-              <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--muted);">🔍</span>
+              <input type="text" id="task-search-input" class="input input-sm" placeholder="Search tasks, ID, staff..." value="${escapeHtml(searchQuery)}" aria-label="Search Tasks" style="background:var(--surface);color:var(--ink);border:1px solid var(--line);font-size:12px;width:170px;padding-left:26px;" />
+              <span style="position:absolute;left:8px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--muted);" aria-hidden="true">🔍</span>
             </div>
           </div>
         </div>
 
         <!-- Checkbox Filter Toggles -->
-        <div style="display:flex;gap:18px;align-items:center;margin-top:12px;padding-top:10px;border-top:1px solid var(--line);font-size:12px;">
+        <div style="display:flex;gap:18px;align-items:center;margin-top:12px;padding-top:10px;border-top:1px solid var(--line);font-size:12px;flex-wrap:wrap;">
           <label style="display:flex;align-items:center;gap:6px;color:var(--ink);cursor:pointer;">
             <input type="checkbox" id="chk-filter-critical" ${criticalOnlyFilter ? "checked" : ""} />
             <span>Critical Controls Only</span>
@@ -301,9 +365,9 @@ export function renderTasks() {
         </div>
       </div>
 
-      <!-- Main Governed Task Queue Table (Sections 26, 27, 28) -->
+      <!-- Main Governed Task Queue Table -->
       <div class="card" style="padding:20px;background:var(--surface);border:1px solid var(--line);margin-bottom:20px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
           <div>
             <h2 style="font-size:16px;font-weight:700;margin:0 0 2px;color:var(--ink);">
               ${activeTaskTab === "EXCEPTIONS" ? "Operational Exceptions & Governance Queue" : "Operational Task Queue"} (${filteredTasks.length})
@@ -312,8 +376,8 @@ export function renderTasks() {
               ${activeTaskTab === "EXCEPTIONS" ? "Tasks requiring owner oversight, corrective action, or authorized verification." : "Governed operational tasks across authorized locations."}
             </p>
           </div>
-          ${(filteredTasks.length !== allTasks.length || searchQuery || criticalOnlyFilter || blockedOnlyFilter || recurringOnlyFilter) ? `
-            <button class="btn btn-xs btn-ghost" id="clear-filters-btn" type="button" style="color:var(--bronze-600);">Clear Filters</button>
+          ${(filteredTasks.length !== allTasks.length || searchQuery || criticalOnlyFilter || blockedOnlyFilter || recurringOnlyFilter || selectedCafeFilter !== "ALL" || selectedCategoryFilter !== "ALL") ? `
+            <button class="btn btn-xs btn-ghost" id="clear-filters-btn" type="button" style="color:var(--bronze-600);font-weight:600;">Clear Filters</button>
           ` : ""}
         </div>
 
@@ -332,7 +396,7 @@ export function renderTasks() {
             </thead>
             <tbody>
               ${
-                filteredTasks.length === 0
+                pagedTasks.length === 0
                   ? `
                   <tr>
                     <td colspan="7" style="text-align:center;padding:48px 16px;">
@@ -346,7 +410,7 @@ export function renderTasks() {
                     </td>
                   </tr>
                 `
-                  : filteredTasks
+                  : pagedTasks
                       .map((t) => {
                         const overdue = isTaskOverdue(t);
                         const cafeName = getCafeName(t.cafeId);
@@ -378,7 +442,7 @@ export function renderTasks() {
                             </td>
                             <td style="padding:12px;">
                               <div style="font-weight:600;color:var(--ink);">${cafeName}</div>
-                              <div style="font-size:11px;color:var(--muted);">${t.cafeId || "—"}</div>
+                              <div style="font-size:11px;color:var(--muted);">${t.cafeId || "General"}</div>
                             </td>
                             <td style="padding:12px;">
                               <div style="font-weight:600;color:var(--ink);">${escapeHtml(t.assignedUserId || "Unassigned")}</div>
@@ -398,7 +462,7 @@ export function renderTasks() {
                             <td style="padding:12px;text-align:right;">
                               <div style="display:flex;gap:6px;justify-content:flex-end;">
                                 <button class="btn btn-xs btn-ghost" data-view-task="${t.taskId}" type="button" style="color:var(--info);">
-                                  View
+                                  View Details
                                 </button>
                                 ${
                                   t.status === "AWAITING_VERIFICATION" && (isOwner || state.role === ROLES.MASTER)
@@ -419,80 +483,82 @@ export function renderTasks() {
             </tbody>
           </table>
         </div>
+
+        <!-- Pagination Controls -->
+        ${
+          filteredTasks.length > 0
+            ? `
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding-top:12px;border-top:1px solid var(--line);flex-wrap:wrap;gap:12px;font-size:12.5px;color:var(--muted);">
+            <div>
+              Showing <strong style="color:var(--ink);">${startIndex + 1}</strong>–<strong style="color:var(--ink);">${endIndex}</strong> of <strong style="color:var(--ink);">${filteredTasks.length}</strong> tasks
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <button class="btn btn-xs btn-secondary" id="task-prev-page-btn" type="button" ${currentPage <= 1 ? "disabled" : ""}>
+                ← Previous
+              </button>
+              <span style="font-weight:600;color:var(--ink);padding:0 4px;">Page ${currentPage} of ${totalPages}</span>
+              <button class="btn btn-xs btn-secondary" id="task-next-page-btn" type="button" ${currentPage >= totalPages ? "disabled" : ""}>
+                Next →
+              </button>
+            </div>
+          </div>
+        `
+            : ""
+        }
       </div>
 
-      <!-- Portfolio Category Compliance & Upcoming Critical Obligations (Sections 70, 71, 73) -->
+      <!-- Portfolio Category Compliance & Upcoming Critical Obligations -->
       <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(320px, 1fr));gap:20px;">
-        <!-- Category Compliance Card -->
+        <!-- Category Compliance Card (Authoritative Live Data) -->
         <div class="card" style="padding:18px;background:var(--surface);border:1px solid var(--line);">
           <h3 style="font-size:14px;font-weight:700;margin:0 0 12px;color:var(--ink);display:flex;align-items:center;gap:6px;">
             <span>🛡️</span> Operating Control Category Compliance
           </h3>
           <div style="display:flex;flex-direction:column;gap:10px;font-size:12.5px;">
-            <div>
-              <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
-                <span style="color:var(--muted);">Safety & Statutory Checks</span>
-                <span style="font-weight:700;color:var(--success);">100% On-Time</span>
-              </div>
-              <div style="height:5px;background:var(--surface-sunken);border-radius:3px;overflow:hidden;border:1px solid var(--line);">
-                <div style="width:100%;height:100%;background:var(--success);"></div>
-              </div>
-            </div>
-            <div>
-              <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
-                <span style="color:var(--muted);">Equipment Care & Calibration</span>
-                <span style="font-weight:700;color:var(--warning);">86% (1 Blocked)</span>
-              </div>
-              <div style="height:5px;background:var(--surface-sunken);border-radius:3px;overflow:hidden;border:1px solid var(--line);">
-                <div style="width:86%;height:100%;background:var(--warning);"></div>
-              </div>
-            </div>
-            <div>
-              <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
-                <span style="color:var(--muted);">Cash Drawer & Safe Reconciliations</span>
-                <span style="font-weight:700;color:var(--success);">100% On-Time</span>
-              </div>
-              <div style="height:5px;background:var(--surface-sunken);border-radius:3px;overflow:hidden;border:1px solid var(--line);">
-                <div style="width:100%;height:100%;background:var(--success);"></div>
-              </div>
-            </div>
-            <div>
-              <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
-                <span style="color:var(--muted);">Hygiene & Sanitization Signoffs</span>
-                <span style="font-weight:700;color:var(--success);">94% On-Time</span>
-              </div>
-              <div style="height:5px;background:var(--surface-sunken);border-radius:3px;overflow:hidden;border:1px solid var(--line);">
-                <div style="width:94%;height:100%;background:var(--success);"></div>
-              </div>
-            </div>
+            ${categoryComplianceList.map(cat => {
+              const barColor = cat.pct >= 90 ? "var(--success)" : cat.pct >= 75 ? "var(--warning)" : "var(--danger)";
+              const statusText = cat.total === 0 ? "No active obligations" : `${cat.pct}% On-Time ${cat.blocked > 0 ? `(${cat.blocked} Blocked)` : ""}`;
+              return `
+                <div>
+                  <div style="display:flex;justify-content:space-between;margin-bottom:3px;">
+                    <span style="color:var(--muted);">${cat.label}</span>
+                    <span style="font-weight:700;color:${barColor};">${statusText}</span>
+                  </div>
+                  <div style="height:6px;background:var(--surface-sunken);border-radius:3px;overflow:hidden;border:1px solid var(--line);">
+                    <div style="width:${cat.pct}%;height:100%;background:${barColor};transition:width 0.3s ease;"></div>
+                  </div>
+                </div>
+              `;
+            }).join('')}
           </div>
         </div>
 
-        <!-- Upcoming Critical Obligations Card -->
+        <!-- Upcoming Critical Obligations Card (Authoritative 7-Day Lookout) -->
         <div class="card" style="padding:18px;background:var(--surface);border:1px solid var(--line);">
           <h3 style="font-size:14px;font-weight:700;margin:0 0 12px;color:var(--ink);display:flex;align-items:center;gap:6px;">
             <span>📅</span> Upcoming Critical Obligations (7-Day Lookout)
           </h3>
           <div style="display:flex;flex-direction:column;gap:8px;font-size:12.5px;">
-            ${(() => {
-              const criticalUpcoming = (liveTasks || []).filter((t) => t.priority === "HIGH" || t.priority === "CRITICAL" || t.isCritical);
-              if (criticalUpcoming.length === 0) {
-                return `
-                  <div style="padding:16px;text-align:center;color:var(--muted);font-size:12px;background:var(--surface-sunken);border-radius:6px;">
-                    No upcoming critical obligations in the 7-day window.
-                  </div>
-                `;
-              }
-              return criticalUpcoming.slice(0, 3).map((t) => `
-                <div style="padding:8px 10px;background:var(--surface-sunken);border:1px solid var(--line);border-radius:6px;display:flex;justify-content:space-between;align-items:center;">
-                  <div>
-                    <div style="font-weight:600;color:var(--ink);">${t.title || t.taskName || "Obligation"}</div>
-                    <div style="font-size:11px;color:var(--muted);">${getCafeName(t.cafeId)} · ${t.assignedToRole || t.assigneeRole || "Staff"}</div>
-                  </div>
-                  <span class="badge" style="background:var(--bronze-100);color:var(--bronze-700);font-size:11px;">${t.dueDate || "Upcoming"}</span>
+            ${
+              criticalUpcoming.length === 0
+                ? `
+                <div style="padding:24px 16px;text-align:center;color:var(--muted);font-size:12.5px;background:var(--surface-sunken);border-radius:6px;border:1px dashed var(--line);">
+                  <span style="color:var(--success);font-size:18px;display:block;margin-bottom:4px;">✓</span>
+                  No critical statutory or high-risk obligations due in the next 7 days.
                 </div>
-              `).join("");
-            })()}
+              `
+                : criticalUpcoming.map((t) => `
+                <div style="padding:8px 10px;background:var(--surface-sunken);border:1px solid var(--line);border-radius:6px;display:flex;justify-content:space-between;align-items:center;gap:8px;">
+                  <div style="min-width:0;flex:1;">
+                    <div style="font-weight:600;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(t.title)}</div>
+                    <div style="font-size:11px;color:var(--muted);">${getCafeName(t.cafeId)} · ${escapeHtml(t.assignedUserId || t.assignedRole || "Staff")}</div>
+                  </div>
+                  <span class="badge" style="background:rgba(245,158,11,0.15);color:#d97706;font-size:11px;font-weight:700;flex-shrink:0;">
+                    ${t.dueDate || "Upcoming"}
+                  </span>
+                </div>
+              `).join("")
+            }
           </div>
         </div>
       </div>
@@ -501,7 +567,7 @@ export function renderTasks() {
 }
 
 function formatCategory(cat) {
-  if (!cat) return "General";
+  if (!cat) return "General Operations";
   return cat.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, l => l.toUpperCase());
 }
 
@@ -526,10 +592,20 @@ function wireTaskEventListeners(root) {
     refreshBtn.addEventListener("click", async () => {
       refreshBtn.disabled = true;
       refreshBtn.textContent = "Refreshing...";
-      await fetchTasksFromServer();
-      lastRefreshedTime = new Date();
-      refreshTasksView(root);
-      showToast("Operational tasks refreshed", "mint");
+      try {
+        await fetchTasksFromServer();
+        lastRefreshedTime = new Date();
+        refreshTasksView(root);
+        showToast("Operational tasks refreshed", "mint");
+      } catch (err) {
+        showToast("Failed to refresh tasks", "coral");
+      } finally {
+        refreshBtn.disabled = false;
+        refreshBtn.innerHTML = `
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          Refresh Tasks
+        `;
+      }
     });
   }
 
@@ -537,6 +613,7 @@ function wireTaskEventListeners(root) {
   root.querySelectorAll("[data-task-tab]").forEach((btn) => {
     btn.addEventListener("click", () => {
       activeTaskTab = btn.dataset.taskTab;
+      currentPage = 1;
       refreshTasksView(root);
     });
   });
@@ -546,6 +623,7 @@ function wireTaskEventListeners(root) {
   if (cafeSelect) {
     cafeSelect.addEventListener("change", (e) => {
       selectedCafeFilter = e.target.value;
+      currentPage = 1;
       refreshTasksView(root);
     });
   }
@@ -555,6 +633,7 @@ function wireTaskEventListeners(root) {
   if (catSelect) {
     catSelect.addEventListener("change", (e) => {
       selectedCategoryFilter = e.target.value;
+      currentPage = 1;
       refreshTasksView(root);
     });
   }
@@ -573,6 +652,7 @@ function wireTaskEventListeners(root) {
   if (chkCritical) {
     chkCritical.addEventListener("change", (e) => {
       criticalOnlyFilter = e.target.checked;
+      currentPage = 1;
       refreshTasksView(root);
     });
   }
@@ -581,6 +661,7 @@ function wireTaskEventListeners(root) {
   if (chkBlocked) {
     chkBlocked.addEventListener("change", (e) => {
       blockedOnlyFilter = e.target.checked;
+      currentPage = 1;
       refreshTasksView(root);
     });
   }
@@ -589,6 +670,7 @@ function wireTaskEventListeners(root) {
   if (chkRecurring) {
     chkRecurring.addEventListener("change", (e) => {
       recurringOnlyFilter = e.target.checked;
+      currentPage = 1;
       refreshTasksView(root);
     });
   }
@@ -598,6 +680,7 @@ function wireTaskEventListeners(root) {
   if (searchInput) {
     searchInput.addEventListener("input", (e) => {
       searchQuery = e.target.value.trim();
+      currentPage = 1;
       refreshTasksView(root);
     });
   }
@@ -615,6 +698,26 @@ function wireTaskEventListeners(root) {
       blockedOnlyFilter = false;
       recurringOnlyFilter = false;
       searchQuery = "";
+      currentPage = 1;
+      refreshTasksView(root);
+    });
+  }
+
+  // Pagination Buttons
+  const prevBtn = root.querySelector("#task-prev-page-btn");
+  if (prevBtn) {
+    prevBtn.addEventListener("click", () => {
+      if (currentPage > 1) {
+        currentPage--;
+        refreshTasksView(root);
+      }
+    });
+  }
+
+  const nextBtn = root.querySelector("#task-next-page-btn");
+  if (nextBtn) {
+    nextBtn.addEventListener("click", () => {
+      currentPage++;
       refreshTasksView(root);
     });
   }
@@ -631,6 +734,7 @@ function wireTaskEventListeners(root) {
   root.querySelectorAll("[data-verify-task]").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const taskId = btn.dataset.verifyTask;
+      btn.disabled = true;
       await handleVerifyTask(taskId, root);
     });
   });
@@ -647,9 +751,14 @@ function wireTaskEventListeners(root) {
 export function wireTasks(root) {
   if (!root) return;
 
+  // Check route context (approvals route prioritizes verification tab)
+  if (state.route === "approvals" && activeTaskTab === "ALL") {
+    activeTaskTab = "EXCEPTIONS";
+  }
+
   wireTaskEventListeners(root);
 
-  // Fetch live tasks on initial mount exactly once
+  // Fetch live tasks on mount
   if (!hasInitialFetchedTasks) {
     hasInitialFetchedTasks = true;
     fetchTasksFromServer().then(() => {
@@ -663,10 +772,10 @@ export function wireTasks(root) {
 async function fetchTasksFromServer() {
   try {
     const [res, cafeRes] = await Promise.allSettled([
-      apiGet("/tasks"),
+      apiGet("/tasks?limit=100"),
       apiGet("/cafes"),
     ]);
-    if (res.status === "fulfilled" && res.value?.data?.tasks && Array.isArray(res.value.data.tasks) && res.value.data.tasks.length > 0) {
+    if (res.status === "fulfilled" && res.value?.data?.tasks && Array.isArray(res.value.data.tasks)) {
       liveTasks = res.value.data.tasks;
       if (res.value.data.summary) summaryMetrics = res.value.data.summary;
     } else {
@@ -676,7 +785,7 @@ async function fetchTasksFromServer() {
       availableCafes = cafeRes.value.data.cafes;
     }
   } catch (err) {
-    console.warn("Could not fetch tasks from server, using existing state:", err);
+    console.warn("Could not fetch tasks from server:", err);
     if (!liveTasks) liveTasks = [...SAMPLE_TASKS];
   }
 }
@@ -700,28 +809,56 @@ function refreshTasksView(root) {
   }
 }
 
-function openTaskDetailModal(taskId, root) {
+async function openTaskDetailModal(taskId, root) {
   const allTasks = liveTasks || SAMPLE_TASKS;
-  const task = allTasks.find((t) => t.taskId === taskId);
-  if (!task) return;
+  let task = allTasks.find((t) => t.taskId === taskId);
+  let auditTrail = [];
+
+  // Try to fetch fresh detail and full audit trail from server
+  try {
+    const res = await apiGet(`/tasks/${taskId}`);
+    if (res?.data?.task) {
+      task = res.data.task;
+      if (Array.isArray(res.data.auditTrail)) {
+        auditTrail = res.data.auditTrail;
+      }
+    }
+  } catch (err) {
+    // Use in-memory task
+  }
+
+  if (!task) {
+    showToast(`Task ${taskId} not found.`, "coral");
+    return;
+  }
 
   const isOwner = state.role === ROLES.OWNER || state.role === ROLES.MASTER;
   const cafeName = getCafeName(task.cafeId);
 
+  // Check segregation of duties: can current user verify?
+  const currentUserId = state.userId ? String(state.userId).toUpperCase() : "";
+  const isPerformer =
+    (task.completedByUserId && String(task.completedByUserId).toUpperCase() === currentUserId) ||
+    (task.assignedUserId && String(task.assignedUserId).toUpperCase() === currentUserId);
+  const selfVerificationBlocked = task.verificationRequired && isPerformer;
+
   openModal({
     title: `Task Details · ${task.taskId}`,
-    maxWidth: "680px",
+    maxWidth: "700px",
     body: `
       <div style="color:var(--ink);">
         <!-- Header info -->
         <div class="oto-drawer-section">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:8px;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:8px;flex-wrap:wrap;">
             <div>
               <h3 style="font-size:18px;font-weight:700;margin:0 0 4px;color:var(--ink);">${escapeHtml(task.title)}</h3>
-              <div style="font-size:12px;color:var(--muted);">${task.category ? formatCategory(task.category) : "General Operations"} · Café: <strong style="color:var(--ink);">${cafeName}</strong></div>
+              <div style="font-size:12px;color:var(--muted);">
+                ${formatCategory(task.category)} · Café: <strong style="color:var(--ink);">${escapeHtml(cafeName)}</strong>
+              </div>
             </div>
-            <div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
               ${task.isCriticalControl ? `<span class="oto-badge badge-critical">CRITICAL CONTROL</span>` : ""}
+              <span class="oto-badge" style="background:var(--surface-sunken);border:1px solid var(--line);">${task.status}</span>
             </div>
           </div>
           <p style="font-size:13.5px;color:var(--ink);line-height:1.5;margin:8px 0 0;">
@@ -735,19 +872,19 @@ function openTaskDetailModal(taskId, root) {
           <div class="oto-grid-2col" style="font-size:13px;">
             <div>
               <span style="color:var(--muted);">Assigned To:</span>
-              <strong style="color:var(--ink);display:block;">${escapeHtml(task.assignedUserId || "Unassigned")}</strong>
+              <strong style="color:var(--ink);display:block;">${escapeHtml(task.assignedUserId || "Unassigned")} (${escapeHtml(task.assignedRole || "STAFF")})</strong>
             </div>
             <div>
               <span style="color:var(--muted);">Accountable Manager:</span>
-              <strong style="color:var(--ink);display:block;">${escapeHtml(task.responsibleUserId || task.assignedUserId || "Café Admin")}</strong>
+              <strong style="color:var(--ink);display:block;">${escapeHtml(task.responsibleUserId || "Café Admin")}</strong>
             </div>
             <div>
               <span style="color:var(--muted);">Target Due:</span>
               <strong style="color:var(--ink);display:block;">${formatDueDate(task.dueDate, task.dueTime)}</strong>
             </div>
             <div>
-              <span style="color:var(--muted);">Verification Required:</span>
-              <strong style="color:var(--ink);display:block;">${task.verificationRequired ? "YES (Authorized Verifier)" : "NO"}</strong>
+              <span style="color:var(--muted);">Independent Verification:</span>
+              <strong style="color:var(--ink);display:block;">${task.verificationRequired ? "YES (Authorized Verifier Signoff Required)" : "NO"}</strong>
             </div>
           </div>
         </div>
@@ -794,7 +931,7 @@ function openTaskDetailModal(taskId, root) {
           task.status === "BLOCKED" && task.blockedReason
             ? `
             <div class="oto-drawer-section" style="background:var(--warning-soft);padding:12px;border-radius:6px;border:1px solid var(--warning);">
-              <div class="oto-sec-title" style="color:var(--warning);">⛔ Task Blocked Status</div>
+              <div class="oto-sec-title" style="color:var(--warning);">⛔ Task Blocked Impasse</div>
               <div style="font-size:13px;color:var(--ink);">${escapeHtml(task.blockedReason)}</div>
             </div>
           `
@@ -811,8 +948,9 @@ function openTaskDetailModal(taskId, root) {
                 .map(
                   (r) => `
                 <div style="font-size:12.5px;margin-bottom:6px;">
-                  <span style="color:var(--warning);">↩ ${new Date(r.returnedAt).toLocaleDateString()}</span>:
+                  <span style="color:var(--warning);font-weight:600;">↩ ${new Date(r.returnedAt).toLocaleDateString()} (${escapeHtml(r.returnedByUserId || "Manager")})</span>:
                   <span style="color:var(--ink);">${escapeHtml(r.reason)}</span>
+                  ${r.remarks ? `<div style="font-size:11px;color:var(--muted);margin-left:14px;">Remarks: ${escapeHtml(r.remarks)}</div>` : ""}
                 </div>
               `
                 )
@@ -837,6 +975,42 @@ function openTaskDetailModal(taskId, root) {
             : ""
         }
 
+        <!-- Audit Trail Timeline -->
+        ${
+          Array.isArray(auditTrail) && auditTrail.length > 0
+            ? `
+            <div class="oto-drawer-section">
+              <div class="oto-sec-title">Governance Audit Trail (${auditTrail.length})</div>
+              <div style="display:flex;flex-direction:column;gap:6px;max-height:160px;overflow-y:auto;">
+                ${auditTrail.map(ev => `
+                  <div style="font-size:11.5px;display:flex;justify-content:space-between;padding:4px 8px;background:var(--surface-sunken);border-radius:4px;border:1px solid var(--line);">
+                    <div>
+                      <strong style="color:var(--ink);">${escapeHtml(ev.action)}</strong>
+                      <span style="color:var(--muted);">by ${escapeHtml(ev.actor?.userId || "System")} (${escapeHtml(ev.actor?.role || "")})</span>
+                    </div>
+                    <span style="color:var(--muted);font-family:var(--font-mono);">${new Date(ev.createdAt).toLocaleDateString()}</span>
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+          `
+            : ""
+        }
+
+        <!-- Self-Verification Notice if blocked -->
+        ${
+          selfVerificationBlocked && task.status === "AWAITING_VERIFICATION"
+            ? `
+            <div style="padding:10px 14px;background:rgba(245,158,11,0.12);border:1px solid var(--warning);border-radius:6px;margin-top:14px;font-size:12.5px;color:#d97706;display:flex;align-items:center;gap:8px;">
+              <span>🔒</span>
+              <div>
+                <strong>Independent Verification Enforced</strong>: As the performer who completed this task, you cannot verify your own work. Another authorized manager must sign off.
+              </div>
+            </div>
+          `
+            : ""
+        }
+
         <!-- Verification / Actions Controls -->
         <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--line);display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;">
           ${
@@ -845,9 +1019,15 @@ function openTaskDetailModal(taskId, root) {
               <button class="btn btn-sm btn-ghost" id="modal-return-task-btn" type="button" style="color:var(--danger);border:1px solid var(--danger);">
                 ↩ Return for Correction
               </button>
-              <button class="btn btn-sm btn-primary" id="modal-verify-task-btn" type="button">
-                ✓ Verify &amp; Sign Off
-              </button>
+              ${
+                !selfVerificationBlocked
+                  ? `
+                  <button class="btn btn-sm btn-primary" id="modal-verify-task-btn" type="button">
+                    ✓ Verify &amp; Sign Off
+                  </button>
+                `
+                  : ""
+              }
             `
               : ""
           }
@@ -863,6 +1043,9 @@ function openTaskDetailModal(taskId, root) {
           ${
             task.status !== "COMPLETED" && task.status !== "CANCELLED" && isOwner
               ? `
+              <button class="btn btn-sm btn-secondary" id="modal-reassign-task-btn" type="button">
+                👥 Reassign Task
+              </button>
               <button class="btn btn-sm btn-ghost" id="modal-block-task-btn" type="button" style="color:#fbbf24;border:1px solid rgba(245,158,11,0.3);">
                 ⛔ Block Task
               </button>
@@ -884,6 +1067,7 @@ function openTaskDetailModal(taskId, root) {
     const verifyBtn = document.querySelector("#modal-verify-task-btn");
     if (verifyBtn) {
       verifyBtn.addEventListener("click", async () => {
+        verifyBtn.disabled = true;
         document.querySelector(".modal-backdrop")?.remove();
         await handleVerifyTask(task.taskId, root);
       });
@@ -902,6 +1086,14 @@ function openTaskDetailModal(taskId, root) {
       reopenBtn.addEventListener("click", () => {
         document.querySelector(".modal-backdrop")?.remove();
         openReopenTaskModal(task.taskId, root);
+      });
+    }
+
+    const reassignBtn = document.querySelector("#modal-reassign-task-btn");
+    if (reassignBtn) {
+      reassignBtn.addEventListener("click", () => {
+        document.querySelector(".modal-backdrop")?.remove();
+        openReassignTaskModal(task, root);
       });
     }
 
@@ -925,21 +1117,12 @@ function openTaskDetailModal(taskId, root) {
 
 async function handleVerifyTask(taskId, root) {
   try {
-    await apiPost(`/tasks/${taskId}/verify`, { remarks: "Verified by Owner." });
+    await apiPost(`/tasks/${taskId}/verify`, { remarks: "Verified by Authorized Owner." });
     showToast(`Task ${taskId} verified successfully!`, "mint");
     await fetchTasksFromServer();
     refreshTasksView(root);
   } catch (err) {
-    const allTasks = liveTasks || SAMPLE_TASKS;
-    const task = allTasks.find((t) => t.taskId === taskId);
-    if (task) {
-      task.status = "COMPLETED";
-      task.verificationStatus = "VERIFIED";
-      task.verifiedByUserId = "OWNER";
-      task.verifiedAt = new Date();
-      showToast(`Task ${taskId} verified!`, "mint");
-      refreshTasksView(root);
-    }
+    showToast(err.message || `Failed to verify task ${taskId}`, "coral");
   }
 }
 
@@ -950,7 +1133,7 @@ function openReturnTaskModal(taskId, root) {
     body: `
       <div>
         <label class="label" style="color:var(--ink, #18181b);font-weight:700;font-size:12px;margin-bottom:6px;display:block;">Mandatory Return Reason *</label>
-        <textarea id="return-task-reason" class="input" rows="3" placeholder="Specify why the submission was rejected (e.g. missing pressure tag, incomplete backflush)..." required style="width:100%;box-sizing:border-box;"></textarea>
+        <textarea id="return-task-reason" class="input" rows="3" placeholder="Specify why the submission was rejected (e.g. missing pressure calibration sticker, incomplete backflush)..." required style="width:100%;box-sizing:border-box;"></textarea>
       </div>
     `,
     saveLabel: "Return for Correction",
@@ -965,18 +1148,11 @@ function openReturnTaskModal(taskId, root) {
         showToast(`Task ${taskId} returned for correction.`, "amber");
         await fetchTasksFromServer();
         refreshTasksView(root);
+        return true;
       } catch (err) {
-        const allTasks = liveTasks || SAMPLE_TASKS;
-        const task = allTasks.find((t) => t.taskId === taskId);
-        if (task) {
-          task.status = "RETURNED_FOR_CORRECTION";
-          task.verificationStatus = "RETURNED_FOR_CORRECTION";
-          task.returnReason = reason;
-          showToast(`Task ${taskId} returned for correction.`, "amber");
-          refreshTasksView(root);
-        }
+        showToast(err.message || `Failed to return task ${taskId}`, "coral");
+        return false;
       }
-      return true;
     },
   });
 }
@@ -1000,19 +1176,14 @@ function openReopenTaskModal(taskId, root) {
       }
       try {
         await apiPost(`/tasks/${taskId}/reopen`, { reason });
-        showToast(`Task ${taskId} reopened.`, "mint");
+        showToast(`Task ${taskId} reopened successfully.`, "mint");
         await fetchTasksFromServer();
         refreshTasksView(root);
+        return true;
       } catch (err) {
-        const allTasks = liveTasks || SAMPLE_TASKS;
-        const task = allTasks.find((t) => t.taskId === taskId);
-        if (task) {
-          task.status = "IN_PROGRESS";
-          showToast(`Task ${taskId} reopened.`, "mint");
-          refreshTasksView(root);
-        }
+        showToast(err.message || `Failed to reopen task ${taskId}`, "coral");
+        return false;
       }
-      return true;
     },
   });
 }
@@ -1039,23 +1210,21 @@ function openBlockTaskModal(taskId, root) {
     onSave: async (modalEl) => {
       const cat = modalEl.querySelector("#block-task-category")?.value;
       const text = modalEl.querySelector("#block-task-reason")?.value?.trim();
-      const reason = text ? `[${cat}] ${text}` : `[${cat}]`;
+      if (!text) {
+        showToast("Specific impediment reason is required.", "coral");
+        return false;
+      }
+      const reason = `[${cat}] ${text}`;
       try {
         await apiPost(`/tasks/${taskId}/block`, { reason });
         showToast(`Task ${taskId} marked as blocked.`, "amber");
         await fetchTasksFromServer();
         refreshTasksView(root);
+        return true;
       } catch (err) {
-        const allTasks = liveTasks || SAMPLE_TASKS;
-        const task = allTasks.find((t) => t.taskId === taskId);
-        if (task) {
-          task.status = "BLOCKED";
-          task.blockedReason = reason;
-          showToast(`Task ${taskId} marked as blocked.`, "amber");
-          refreshTasksView(root);
-        }
+        showToast(err.message || `Failed to block task ${taskId}`, "coral");
+        return false;
       }
-      return true;
     },
   });
 }
@@ -1082,16 +1251,65 @@ function openCancelTaskModal(taskId, root) {
         showToast(`Task ${taskId} cancelled.`, "mint");
         await fetchTasksFromServer();
         refreshTasksView(root);
+        return true;
       } catch (err) {
-        const allTasks = liveTasks || SAMPLE_TASKS;
-        const task = allTasks.find((t) => t.taskId === taskId);
-        if (task) {
-          task.status = "CANCELLED";
-          showToast(`Task ${taskId} cancelled.`, "mint");
-          refreshTasksView(root);
-        }
+        showToast(err.message || `Failed to cancel task ${taskId}`, "coral");
+        return false;
       }
-      return true;
+    },
+  });
+}
+
+function openReassignTaskModal(task, root) {
+  openModal({
+    title: `Reassign Task ${task.taskId}`,
+    maxWidth: "500px",
+    body: `
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <div>
+          <label class="label" style="color:var(--ink, #18181b);font-weight:700;font-size:12px;margin-bottom:4px;display:block;">Assignee User ID *</label>
+          <input type="text" id="reassign-user" class="input" value="${escapeHtml(task.assignedUserId || '')}" placeholder="e.g. USR-BARISTA-02" required style="width:100%;box-sizing:border-box;" />
+        </div>
+        <div>
+          <label class="label" style="color:var(--ink, #18181b);font-weight:700;font-size:12px;margin-bottom:4px;display:block;">Accountable Supervisor / Manager</label>
+          <input type="text" id="reassign-responsible" class="input" value="${escapeHtml(task.responsibleUserId || '')}" placeholder="e.g. USR-ADMIN-01" style="width:100%;box-sizing:border-box;" />
+        </div>
+        <div>
+          <label class="label" style="color:var(--ink, #18181b);font-weight:700;font-size:12px;margin-bottom:4px;display:block;">Target Role</label>
+          <select id="reassign-role" class="select" style="width:100%;box-sizing:border-box;">
+            <option value="STAFF" ${task.assignedRole === "STAFF" ? "selected" : ""}>Staff Performer</option>
+            <option value="CAFE_ADMIN" ${task.assignedRole === "CAFE_ADMIN" ? "selected" : ""}>Café Admin / Supervisor</option>
+            <option value="OWNER" ${task.assignedRole === "OWNER" ? "selected" : ""}>Owner</option>
+            <option value="MASTER" ${task.assignedRole === "MASTER" ? "selected" : ""}>Master</option>
+          </select>
+        </div>
+      </div>
+    `,
+    saveLabel: "Reassign Task",
+    onSave: async (modalEl) => {
+      const assignedUserId = modalEl.querySelector("#reassign-user")?.value?.trim();
+      const responsibleUserId = modalEl.querySelector("#reassign-responsible")?.value?.trim();
+      const assignedRole = modalEl.querySelector("#reassign-role")?.value;
+
+      if (!assignedUserId) {
+        showToast("Assignee User ID is required.", "coral");
+        return false;
+      }
+
+      try {
+        await apiPost(`/tasks/${task.taskId}/assign`, {
+          assignedUserId,
+          responsibleUserId: responsibleUserId || assignedUserId,
+          assignedRole,
+        });
+        showToast(`Task ${task.taskId} reassigned to ${assignedUserId}.`, "mint");
+        await fetchTasksFromServer();
+        refreshTasksView(root);
+        return true;
+      } catch (err) {
+        showToast(err.message || `Failed to reassign task ${task.taskId}`, "coral");
+        return false;
+      }
     },
   });
 }
@@ -1099,12 +1317,12 @@ function openCancelTaskModal(taskId, root) {
 function openAssignTaskModal(root) {
   openModal({
     title: "Assign Operational / Compliance Task",
-    maxWidth: "620px",
+    maxWidth: "640px",
     body: `
       <form id="new-task-form" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;width:100%;box-sizing:border-box;">
         <div style="grid-column:1/-1;">
           <label class="label" style="color:var(--ink, #18181b);font-weight:700;font-size:12px;margin-bottom:4px;display:block;">Task Title *</label>
-          <input type="text" id="assign-title" class="input" placeholder="e.g. Deep Descaling & Pressure Calibration" required style="width:100%;box-sizing:border-box;" />
+          <input type="text" id="assign-title" class="input" placeholder="e.g. Espresso Machine Chemical Backflush & Pressure Tag" required style="width:100%;box-sizing:border-box;" />
         </div>
 
         <div style="grid-column:1/-1;">
@@ -1116,8 +1334,8 @@ function openAssignTaskModal(root) {
           <label class="label" style="color:var(--ink, #18181b);font-weight:700;font-size:12px;margin-bottom:4px;display:block;">Authorized Café *</label>
           <select id="assign-cafe" class="select" required style="width:100%;box-sizing:border-box;">
             ${availableCafes.map(c => `
-              <option value="${c.code || c.id || c._id}">
-                ${c.code ? c.code + " · " : ""}${c.name}
+              <option value="${c.code || c.id || c._id || c.cafeId}">
+                ${c.code || c.cafeId ? (c.code || c.cafeId) + " · " : ""}${c.name}
               </option>
             `).join('')}
           </select>
@@ -1138,12 +1356,12 @@ function openAssignTaskModal(root) {
 
         <div>
           <label class="label" style="color:var(--ink, #18181b);font-weight:700;font-size:12px;margin-bottom:4px;display:block;">Assignee (Performer) *</label>
-          <input type="text" id="assign-user" class="input" placeholder="e.g. Assignee Name" required style="width:100%;box-sizing:border-box;" />
+          <input type="text" id="assign-user" class="input" placeholder="e.g. USR-BARISTA-01" required style="width:100%;box-sizing:border-box;" />
         </div>
 
         <div>
           <label class="label" style="color:var(--ink, #18181b);font-weight:700;font-size:12px;margin-bottom:4px;display:block;">Accountable Manager</label>
-          <input type="text" id="assign-responsible" class="input" placeholder="e.g. Supervisor Name" style="width:100%;box-sizing:border-box;" />
+          <input type="text" id="assign-responsible" class="input" placeholder="e.g. USR-ADMIN-01" style="width:100%;box-sizing:border-box;" />
         </div>
 
         <div>
@@ -1247,20 +1465,11 @@ function openAssignTaskModal(root) {
         showToast("Task assigned successfully!", "mint");
         await fetchTasksFromServer();
         refreshTasksView(root);
+        return true;
       } catch (err) {
-        if (!liveTasks) liveTasks = [...SAMPLE_TASKS];
-        const newTaskId = `TSK-000${liveTasks.length + 1}`;
-        liveTasks.unshift({
-          taskId: newTaskId,
-          ...payload,
-          status: "PENDING",
-          verificationStatus: verificationRequired ? "PENDING_VERIFICATION" : "NONE",
-          createdAt: new Date(),
-        });
-        showToast(`Task ${newTaskId} assigned!`, "mint");
-        refreshTasksView(root);
+        showToast(err.message || "Failed to assign task", "coral");
+        return false;
       }
-      return true;
     },
   });
 }

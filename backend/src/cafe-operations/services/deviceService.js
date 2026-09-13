@@ -4,12 +4,21 @@ const { generateDeviceCode, generateOpaqueToken, sha256Hex } = require('../utils
 const { DEVICE_STATUS, SESSION_END_REASON, SECURITY_EVENT_TYPE } = require('../utils/constants');
 const sessionService = require('./cafeOpsSessionService');
 const auditService = require('./auditService');
+const { logSecurityEvent, SECURITY_ACTIONS } = require('../../services/securityLogger');
 
 async function enrollDevice({ enrollmentCodePlain, displayName, platform, appVersion, osVersion }) {
   const repos = getRepositories();
   const tokenHash = sha256Hex(enrollmentCodePlain);
   const enrollment = await repos.enrollmentTokens.findByHash(tokenHash);
   if (!enrollment || enrollment.status !== 'PENDING' || new Date() > new Date(enrollment.expiresAt)) {
+    try {
+      logSecurityEvent({
+        action: SECURITY_ACTIONS.DEVICE_REJECTED,
+        outcome: 'FAILURE',
+        severity: 'WARN',
+        metadata: { reason: !enrollment ? 'NOT_FOUND' : enrollment.status },
+      });
+    } catch (_) {}
     await auditService.record({ eventType: SECURITY_EVENT_TYPE.DEVICE_ENROLLMENT_FAILED, metadata: { reason: !enrollment ? 'NOT_FOUND' : enrollment.status } });
     const err = new Error('ENROLLMENT_UNAVAILABLE'); err.code = 'ENROLLMENT_UNAVAILABLE'; throw err;
   }
@@ -27,6 +36,35 @@ async function enrollDevice({ enrollmentCodePlain, displayName, platform, appVer
     enrolledAt: new Date(),
   });
   await repos.enrollmentTokens.update(enrollment.id, { status: 'USED', usedAt: new Date(), usedByDeviceId: device.id });
+  try {
+    const { DeviceRegistration } = require('../../models/DeviceRegistration');
+    await DeviceRegistration.findOneAndUpdate(
+      { deviceId: String(device.id) },
+      {
+        deviceId: String(device.id),
+        organisationId: device.organisationId,
+        deviceClass: 'CAFE_OWNED',
+        assignedCafeId: device.cafeId,
+        deviceName: device.displayName,
+        platform: 'WEB_POS',
+        status: 'ACTIVE',
+        trustLevel: 'ENROLLED',
+        lastSeenAt: new Date(),
+        metadata: { deviceCode: device.deviceCode },
+      },
+      { upsert: true, new: true }
+    );
+  } catch (_) {}
+  try {
+    logSecurityEvent({
+      action: SECURITY_ACTIONS.DEVICE_ENROLLED,
+      deviceId: String(device.id),
+      cafeId: device.cafeId,
+      organisationId: device.organisationId,
+      outcome: 'SUCCESS',
+      severity: 'INFO',
+    });
+  } catch (_) {}
   await auditService.record({ eventType: SECURITY_EVENT_TYPE.DEVICE_ENROLLED, deviceId: device.id, cafeId: device.cafeId, organisationId: device.organisationId });
   return { device, deviceToken };
 }
@@ -46,13 +84,40 @@ async function transitionLifecycle(deviceId, status, { actorEmployeeId, reason, 
   if (status === 'REPLACED' && replacesDeviceId) patch.replacesDeviceId = replacesDeviceId;
 
   const device = await repos.devices.update(deviceId, patch);
+  if (status === 'REVOKED') {
+    try {
+      logSecurityEvent({
+        action: SECURITY_ACTIONS.DEVICE_REVOKED,
+        deviceId: String(deviceId),
+        cafeId: device?.cafeId || null,
+        organisationId: device?.organisationId || null,
+        actorId: actorEmployeeId || null,
+        outcome: 'SUCCESS',
+        severity: 'WARN',
+        metadata: { reason },
+      });
+    } catch (_) {}
+  }
   if (status !== DEVICE_STATUS.ACTIVE && LIFECYCLE_END_REASON[status]) {
     // No local cached state may override this (login spec Section 63): kill
     // whatever session is live on the device the instant it stops being ACTIVE.
     await sessionService.endAllActiveSessionsForDevice(deviceId, LIFECYCLE_END_REASON[status]);
+
+    try {
+      const { DeviceRegistration } = require('../../models/DeviceRegistration');
+      const { OperatorSession } = require('../../models/OperatorSession');
+      await DeviceRegistration.updateMany(
+        { $or: [{ deviceId: String(deviceId) }, { 'metadata.deviceCode': String(deviceId) }] },
+        { status, [timestampField || 'revokedAt']: new Date(), revocationReason: reason }
+      );
+      await OperatorSession.updateMany(
+        { deviceId: String(deviceId), status: { $in: ['ACTIVE', 'LOCKED'] } },
+        { $set: { status: 'ENDED', endedAt: new Date(), endReason: 'DEVICE_' + status } }
+      );
+    } catch (_) {}
   }
   await auditService.record({
-    eventType: SECURITY_EVENT_TYPE.DEVICE_LIFECYCLE_EVENT, deviceId, cafeId: device.cafeId, organisationId: device.organisationId,
+    eventType: SECURITY_EVENT_TYPE.DEVICE_LIFECYCLE_EVENT, deviceId, cafeId: device?.cafeId || null, organisationId: device?.organisationId || null,
     reasonCode: status, metadata: { reason, actorEmployeeId },
   });
   return device;

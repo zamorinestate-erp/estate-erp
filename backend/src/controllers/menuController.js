@@ -197,6 +197,11 @@ const createMenuItem = asyncHandler(async (request, response) => {
     itemCode,
     plu,
     variants,
+    prepStation,
+    foodSafetyNotes,
+    fssaiCategoryNumber,
+    targetPrepTimeMinutes,
+    nutritionProfile,
   } = request.body;
 
   if (!name || (!currentPricePaisa && price === undefined)) {
@@ -229,6 +234,11 @@ const createMenuItem = asyncHandler(async (request, response) => {
     dietaryTags: Array.isArray(dietaryTags) ? dietaryTags : ['VEG'],
     allergenTags: Array.isArray(allergenTags) ? allergenTags : [],
     variants: Array.isArray(variants) ? variants : [],
+    prepStation: prepStation || 'HOT_KITCHEN',
+    foodSafetyNotes: foodSafetyNotes || '',
+    fssaiCategoryNumber: fssaiCategoryNumber || '',
+    targetPrepTimeMinutes: targetPrepTimeMinutes ? Number(targetPrepTimeMinutes) : 15,
+    nutritionProfile: nutritionProfile || undefined,
     status: 'ACTIVE',
     priceHistory: [
       {
@@ -269,6 +279,11 @@ const updateMenuItem = asyncHandler(async (request, response) => {
     primaryRecipeId,
     status,
     reason,
+    prepStation,
+    foodSafetyNotes,
+    fssaiCategoryNumber,
+    targetPrepTimeMinutes,
+    nutritionProfile,
   } = request.body;
 
   const item = await MenuItem.findOne({ organisationId, menuItemId });
@@ -288,6 +303,11 @@ const updateMenuItem = asyncHandler(async (request, response) => {
   if (allergenTags) item.allergenTags = allergenTags;
   if (primaryRecipeId !== undefined) item.primaryRecipeId = primaryRecipeId;
   if (status) item.status = status;
+  if (prepStation) item.prepStation = prepStation;
+  if (foodSafetyNotes !== undefined) item.foodSafetyNotes = foodSafetyNotes;
+  if (fssaiCategoryNumber !== undefined) item.fssaiCategoryNumber = fssaiCategoryNumber;
+  if (targetPrepTimeMinutes !== undefined) item.targetPrepTimeMinutes = Number(targetPrepTimeMinutes);
+  if (nutritionProfile) item.nutritionProfile = { ...item.nutritionProfile, ...nutritionProfile };
 
   // Price adjustment with audit history
   let newPricePaisa = currentPricePaisa !== undefined ? parseInt(currentPricePaisa, 10) : price !== undefined ? Math.round(Number(price) * 100) : null;

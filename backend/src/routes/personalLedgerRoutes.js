@@ -34,12 +34,23 @@ const {
   settleBalances,
   confirmBalance,
   getReconciliation,
+  exportPersonalLedger,
 } = require('../controllers/personalLedgerController');
 
 const router = express.Router();
 
 // All routes require an authenticated session.
 router.use(authenticate);
+
+// ── GET /personal-ledger/export ──────────────────────────────────────────────
+router.get(
+  '/export',
+  authorize('PERSONAL_LEDGER_READ', {
+    absoluteRestriction: 'PERSONAL_LEDGER',
+    allowedRoles: ['MASTER', 'OWNER'],
+  }),
+  exportPersonalLedger
+);
 
 // ── GET /personal-ledger/overview ────────────────────────────────────────────
 router.get(

@@ -30,6 +30,21 @@ const COMPANY_CONFIG = {
 };
 
 const exportJobs = new Map();
+const exportArtifacts = new Map();
+
+function sanitizeCsvCell(val, isNum = false) {
+  if (val === null || val === undefined) return '""';
+  const str = String(val);
+  // If explicitly numeric or looks strictly like a formatted number/percentage, do not neutralize
+  const isNumericStr = isNum || /^[+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?%?$/.test(str.trim());
+  if (!isNumericStr && str.length > 0) {
+    const firstChar = str.charAt(0);
+    if (['=', '+', '-', '@', '\t', '\r'].includes(firstChar)) {
+      return `"'${str.replace(/"/g, '""')}"`;
+    }
+  }
+  return `"${str.replace(/"/g, '""')}"`;
+}
 
 class ZurfService {
   /**
@@ -307,23 +322,24 @@ class ZurfService {
   }
 
   /**
-   * Generates clean machine-readable CSV with separate metadata manifest.
+   * Generates clean machine-readable CSV with separate metadata manifest
+   * and strict formula injection sanitization.
    */
-  static async renderCsv({ reportTitle, scope, period, columns = [], rows = [], cafeId = null, sensitivityLevel = 'INTERNAL' }) {
+  static async renderCsv({ reportTitle, scope, period, columns = [], rows = [], cafeId = null, sensitivityLevel = 'INTERNAL', runId = null }) {
     const branding = await getCompanyConfig({ cafeId, sensitivityLevel });
     const headerRow = columns.map((c) => `"${c.label.replace(/"/g, '""')}"`).join(',');
     const dataRows = rows.map((r) =>
-      columns.map((c) => `"${String(r[c.key] ?? '').replace(/"/g, '""')}"`).join(',')
+      columns.map((c) => sanitizeCsvCell(r[c.key], c.isNum)).join(',')
     );
 
     const csvContent = [headerRow, ...dataRows].join('\n');
-    const runId = this.generateRunId();
+    const finalRunId = runId || this.generateRunId();
 
     const manifest = {
       reportTitle,
       scope,
       period,
-      runId,
+      runId: finalRunId,
       company: branding.legalName,
       gstin: branding.gstin,
       companyDetailsVersionId: branding.companyDetailsVersionId,
@@ -335,7 +351,7 @@ class ZurfService {
     return {
       csv: csvContent,
       manifest,
-      runId,
+      runId: finalRunId,
     };
   }
 
@@ -362,7 +378,7 @@ class ZurfService {
   /**
    * Generates a standard binary Microsoft Excel OpenXML package (.xlsx)
    */
-  static async renderXlsx({ sheetName = 'Report', reportTitle = 'Export', columns = [], rows = [], cafeId = null, sensitivityLevel = 'INTERNAL', runId = null }) {
+  static async renderXlsx({ sheetName = 'Report', reportTitle = 'Export', columns = [], rows = [], sheets = null, cafeId = null, sensitivityLevel = 'INTERNAL', runId = null }) {
     const branding = await getCompanyConfig({ cafeId, sensitivityLevel });
     const { generateXlsx } = require('../utils/exportGenerators');
     return generateXlsx({
@@ -370,15 +386,16 @@ class ZurfService {
       reportTitle,
       columns,
       rows,
+      sheets,
       branding,
       runId
     });
   }
 
   /**
-   * Asynchronously schedules an export job in the queue.
+   * Asynchronously schedules an export job in the queue and caches artifact data.
    */
-  static enqueueExportJob({ reportId, format = 'PDF', scope, period, userId }) {
+  static enqueueExportJob({ reportId, format = 'PDF', scope, period, userId, organisationId = null, artifact = null }) {
     const jobId = `EXP-${Date.now()}-${Math.floor(100 + Math.random() * 900)}`;
     const job = {
       jobId,
@@ -387,13 +404,97 @@ class ZurfService {
       scope,
       period,
       userId,
+      organisationId,
       status: 'READY',
       progress: 100,
       createdAt: new Date().toISOString(),
       downloadUrl: `/api/v1/reports/export/${jobId}/download`,
     };
     exportJobs.set(jobId, job);
+    if (artifact) {
+      exportArtifacts.set(jobId, {
+        ...artifact,
+        jobId,
+        userId,
+        organisationId,
+      });
+    }
     return job;
+  }
+
+  /**
+   * Stores a generated export artifact by runId or jobId and records in ExportHistory.
+   */
+  static storeExportArtifact(id, artifact) {
+    if (!id || !artifact) return;
+    exportArtifacts.set(id, {
+      ...artifact,
+      id,
+      storedAt: Date.now(),
+    });
+
+    try {
+      const { ExportHistory } = require('../models/ExportHistory');
+      const crypto = require('crypto');
+      const checksum = artifact.buffer ? crypto.createHash('sha256').update(artifact.buffer).digest('hex') : null;
+      ExportHistory.create({
+        exportId: id,
+        documentType: artifact.documentType || 'REPORT',
+        relatedRecordId: artifact.relatedRecordId || null,
+        format: (artifact.format || 'PDF').toUpperCase(),
+        filename: artifact.filename || `${id}.${(artifact.format || 'pdf').toLowerCase()}`,
+        fileSize: artifact.buffer ? artifact.buffer.length : 0,
+        checksum,
+        organisationId: artifact.organisationId || 'ORG-DEFAULT',
+        cafeId: artifact.cafeId || 'ALL',
+        generatedByUserId: artifact.userId || 'SYSTEM',
+        destinationType: artifact.destinationType || 'BROWSER_DOWNLOAD',
+        status: 'COMPLETED',
+        templateVersion: 'Zamorin Universal Corporate Standard v1.0',
+        metadata: {
+          mimeType: artifact.mimeType,
+          runId: id
+        }
+      }).catch(() => {});
+    } catch (_) {}
+  }
+
+  /**
+   * Retrieves a generated export artifact safely by runId or jobId.
+   */
+  static getExportArtifact(id, auth = {}) {
+    if (!id || typeof id !== 'string') {
+      const { ApiError } = require('../utils/ApiError');
+      throw new ApiError(400, 'INVALID_ARTIFACT_ID', 'Invalid artifact identifier.');
+    }
+
+    // Path traversal defense
+    if (id.includes('..') || id.includes('/') || id.includes('\\') || id.includes('\0')) {
+      const { ApiError } = require('../utils/ApiError');
+      throw new ApiError(400, 'INVALID_ARTIFACT_ID', 'Path traversal characters are strictly forbidden in artifact identifier.');
+    }
+
+    const cleanId = id.replace(/\.(?:pdf|csv|xlsx)$/i, '').trim();
+    const artifact = exportArtifacts.get(cleanId) || exportArtifacts.get(id);
+
+    if (!artifact) {
+      const { ApiError } = require('../utils/ApiError');
+      throw new ApiError(404, 'ARTIFACT_NOT_FOUND', 'Export artifact not found or expired.');
+    }
+
+    // Tenant isolation
+    if (artifact.organisationId && auth.organisationId && artifact.organisationId !== auth.organisationId) {
+      const { ApiError } = require('../utils/ApiError');
+      throw new ApiError(403, 'TENANT_MISMATCH', 'Unauthorized access to foreign organisation artifact.');
+    }
+
+    // Role / user scoping: non-master cannot access another user's artifact unless from same authorised scope
+    if (auth.role !== 'MASTER' && artifact.userId && auth.userId && artifact.userId !== auth.userId) {
+      const { ApiError } = require('../utils/ApiError');
+      throw new ApiError(403, 'ACCESS_DENIED', 'You are not authorized to download this artifact.');
+    }
+
+    return artifact;
   }
 
   /**

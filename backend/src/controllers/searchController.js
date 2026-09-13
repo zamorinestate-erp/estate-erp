@@ -41,12 +41,55 @@ const performGlobalSearch = asyncHandler(async (request, response) => {
 
   // 1. Employees (MASTER and OWNER directory search only)
   if (['MASTER', 'OWNER'].includes(role)) {
-    const empFilter = { organisationId: orgId, $or: [{ fullName: regex }, { email: regex }, { permanentEmployeeId: regex }] };
-    
+    const empConditions = [
+      { name: regex },
+      { preferredName: regex },
+      { userId: regex },
+      { email: regex },
+      { phone: regex },
+      { employeeSearchTerms: qText.trim().toLowerCase() },
+    ];
+
+    let empFilter = {
+      organisationId: orgId,
+      $or: empConditions,
+    };
+
+    if (role === 'OWNER') {
+      const authorizedCafes = (request.auth.assignedCafeIds || [])
+        .map((c) => String(c).trim().toUpperCase())
+        .filter(Boolean);
+      empFilter = {
+        $and: [
+          empFilter,
+          {
+            $or: [
+              { primaryCafeId: { $in: authorizedCafes } },
+              { assignedCafeIds: { $in: authorizedCafes } },
+            ],
+          },
+        ],
+      };
+    }
 
     promises.push(
-      User.find(empFilter).select('userId fullName role permanentEmployeeId primaryCafeId').limit(5).lean()
-        .then((res) => ({ type: 'EMPLOYEES', items: res.map((e) => ({ id: e.userId, title: e.fullName, subtitle: `${e.role} (${e.permanentEmployeeId || 'No ID'})`, route: 'employees' })) }))
+      User.find(empFilter)
+        .select('userId name preferredName role primaryCafeId')
+        .limit(5)
+        .lean()
+        .then((res) => ({
+          type: 'EMPLOYEES',
+          items: res.map((e) => {
+            const hasPreferred = e.preferredName && e.preferredName.trim() && e.preferredName.trim() !== e.name;
+            const title = hasPreferred ? `${e.name} (${e.preferredName.trim()})` : (e.name || e.userId || 'Unknown');
+            return {
+              id: e.userId,
+              title,
+              subtitle: `${e.role || 'STAFF'} · ${e.userId}`,
+              route: 'employees',
+            };
+          }),
+        }))
     );
   }
 
@@ -80,7 +123,7 @@ const performGlobalSearch = asyncHandler(async (request, response) => {
     const billFilter = { organisationId: orgId, $or: [{ billId: regex }, { tableNumber: regex }, { customerPhone: regex }] };
     if (role === 'CAFE_ADMIN') {
       billFilter.cafeId = request.auth.primaryCafeId || { $in: request.auth.assignedCafeIds || [] };
-    } else if (role !== 'MASTER' && role !== 'OWNER') {
+    } else if (role === 'OWNER') {
       billFilter.cafeId = { $in: request.auth.assignedCafeIds || [] };
     }
 

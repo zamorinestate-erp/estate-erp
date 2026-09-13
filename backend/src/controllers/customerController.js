@@ -419,19 +419,17 @@ const createCustomer = asyncHandler(async (request, response) => {
   });
 });
 
-/**
- * POST /api/v1/customers/:customerId/loyalty/adjust
- */
 const adjustCustomerPoints = asyncHandler(async (request, response) => {
   const customerId = normalizeId(request.params.customerId);
-  const { action = 'ADD', points, reasonCode, note, referenceBillId } = request.body;
+  const { action = 'ADD', points, pointsDelta: rawPointsDelta, reasonCode, reason, note, referenceBillId } = request.body || {};
 
-  const pointsDelta = Math.round(Number(points));
+  const pointsDelta = Math.round(Number(points !== undefined ? points : rawPointsDelta));
   if (!pointsDelta || pointsDelta <= 0) {
     throw new ApiError(400, 'INVALID_POINTS', 'Points amount must be a positive integer.');
   }
 
-  if (!reasonCode || typeof reasonCode !== 'string' || !reasonCode.trim()) {
+  const effectiveReason = (reasonCode || reason || '').trim();
+  if (!effectiveReason) {
     throw new ApiError(400, 'REASON_REQUIRED', 'A mandatory reason code is required for point adjustments.');
   }
 
@@ -716,6 +714,38 @@ const getIntegrityStatus = asyncHandler(async (request, response) => {
   });
 });
 
+const createReward = asyncHandler(async (request, response) => {
+  const { name, pointsRequired, pointsCost, category = 'BEVERAGE', description, status = 'ACTIVE' } = request.body || {};
+  if (!name || !name.trim()) throw new ApiError(400, 'REWARD_NAME_REQUIRED', 'Reward name is required.');
+
+  const rewardId = await SequenceCounter.generateId({
+    organisationId: request.auth.organisationId,
+    sequenceKey: 'REWARD_DEFINITION',
+    prefix: 'RWD',
+    minimumDigits: 4,
+  });
+
+  const cost = Number(pointsRequired) || Number(pointsCost) || 100;
+
+  const reward = await RewardDefinition.create({
+    rewardId,
+    organisationId: request.auth.organisationId,
+    name: name.trim(),
+    customerFacingName: name.trim(),
+    pointsCost: Math.max(1, cost),
+    rewardType: 'FREE_ITEM',
+    status,
+    description: description || '',
+  });
+
+  return response.status(201).json({
+    success: true,
+    message: 'Reward created successfully.',
+    data: { reward },
+    correlationId: request.correlationId || null,
+  });
+});
+
 module.exports = {
   getCustomersOverview,
   listCustomers,
@@ -724,6 +754,7 @@ module.exports = {
   adjustCustomerPoints,
   mergeCustomers,
   getRewardCatalogue,
+  createReward,
   listCustomerFeedback,
   createFeedback,
   getProgrammeStatus,

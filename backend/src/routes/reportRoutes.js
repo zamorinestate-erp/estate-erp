@@ -24,16 +24,31 @@ const {
   getGoalsAndScorecards,
   getScheduledReportsAndAlerts,
   getCrossModuleReconciliations,
+  getComprehensiveReconciliationAudit,
+  getExplainThisNumber,
+  acknowledgeReconciliationIssue,
   getDataQualityAndLineage,
   getMetricsDictionary,
   generateZurfExport,
   listExportJobs,
+  downloadExportArtifact,
   getAnalyticsIntegrity,
   getDashboardReport,
   getDailySummaryReport,
   getCashFlowReport,
   getExpensesReport,
   getAttendanceReport,
+  getDiagnosticDecomposition,
+  getVarianceWaterfall,
+  getParetoAnalysis,
+  getDistributionAnalysis,
+  getCorrelationAnalysis,
+  getDiagnosticExceptions,
+  getForecastModels,
+  runForecast,
+  runScenarioSimulation,
+  runSensitivityAnalysis,
+  getTrustCentreOverview,
 } = require('../controllers/reportController');
 
 const router = express.Router();
@@ -133,6 +148,24 @@ router.get(
 );
 
 router.get(
+  '/reconciliations/audit',
+  authorize('REPORTS_READ', { allowedRoles: ['MASTER', 'OWNER'] }),
+  getComprehensiveReconciliationAudit
+);
+
+router.get(
+  '/reconciliations/explain',
+  authorize('REPORTS_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  getExplainThisNumber
+);
+
+router.post(
+  '/reconciliations/acknowledge',
+  authorize('REPORTS_READ', { allowedRoles: ['MASTER', 'OWNER'] }),
+  acknowledgeReconciliationIssue
+);
+
+router.get(
   '/data-quality',
   authorize('REPORTS_READ', { allowedRoles: ['MASTER', 'OWNER'] }),
   getDataQualityAndLineage
@@ -142,6 +175,74 @@ router.get(
   '/metrics',
   authorize('REPORTS_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
   getMetricsDictionary
+);
+
+// ── PM-02J Diagnostic & Exploratory Analytics ──────────────────────────────
+router.get(
+  '/diagnostics/decomposition',
+  authorize('REPORTS_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  getDiagnosticDecomposition
+);
+
+router.get(
+  '/diagnostics/waterfall',
+  authorize('REPORTS_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  getVarianceWaterfall
+);
+
+router.get(
+  '/diagnostics/pareto',
+  authorize('REPORTS_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  getParetoAnalysis
+);
+
+router.get(
+  '/diagnostics/distribution',
+  authorize('REPORTS_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  getDistributionAnalysis
+);
+
+router.get(
+  '/diagnostics/correlation',
+  authorize('REPORTS_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  getCorrelationAnalysis
+);
+
+router.get(
+  '/diagnostics/exceptions',
+  authorize('REPORTS_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  getDiagnosticExceptions
+);
+
+// ── PM-02K Forecasting & Scenario Intelligence ─────────────────────────────
+router.get(
+  '/forecast/models',
+  authorize('REPORTS_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  getForecastModels
+);
+
+router.get(
+  '/forecast/run',
+  authorize('REPORTS_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  runForecast
+);
+
+router.post(
+  '/forecast/scenario',
+  authorize('REPORTS_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  runScenarioSimulation
+);
+
+router.get(
+  '/forecast/sensitivity',
+  authorize('REPORTS_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  runSensitivityAnalysis
+);
+
+router.post(
+  '/forecast/sensitivity',
+  authorize('REPORTS_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  runSensitivityAnalysis
 );
 
 // ── ZURF Corporate Exports ────────────────────────────────────────────────────
@@ -155,6 +256,12 @@ router.get(
   '/export/jobs',
   authorize('REPORTS_EXPORT', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
   listExportJobs
+);
+
+router.get(
+  '/export/:runId/download',
+  authorize('REPORTS_EXPORT', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  downloadExportArtifact
 );
 
 router.get(
@@ -192,6 +299,14 @@ router.get(
   '/attendance',
   authorize('REPORTS_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
   getAttendanceReport
+);
+
+// ── PM-02L-R3: Data Trust & Reconciliation Centre ───────────────────────────
+// BACKEND_ONLY: Actor derived from request.auth only. Role-gated to MASTER|OWNER.
+router.get(
+  '/trust-centre/overview',
+  authorize('REPORTS_READ', { allowedRoles: ['MASTER', 'OWNER'] }),
+  getTrustCentreOverview
 );
 
 module.exports = router;

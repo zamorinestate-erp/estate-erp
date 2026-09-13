@@ -149,6 +149,31 @@ const billLineItemSchema = new mongoose.Schema(
       min: 0,
       default: 0,
     },
+
+    consumedLots: [
+      {
+        lotId: {
+          type: String,
+          trim: true,
+          uppercase: true,
+        },
+        quantityConsumed: {
+          type: Number,
+          min: 0,
+          default: 0,
+        },
+        movementId: {
+          type: String,
+          trim: true,
+          default: '',
+        },
+        sourceTransaction: {
+          type: String,
+          trim: true,
+          default: '',
+        },
+      },
+    ],
   },
   { _id: true }
 );
@@ -650,6 +675,24 @@ const billSchema = new mongoose.Schema(
       maxlength: 150,
       default: null,
     },
+
+    isOfflineReplay: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+
+    clientOfflineId: {
+      type: String,
+      trim: true,
+      default: '',
+      index: true,
+    },
+
+    offlineCreatedAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,
@@ -667,6 +710,11 @@ billSchema.index(
 billSchema.index(
   { organisationId: 1, invoiceNumber: 1 },
   { name: 'org_invoice_number' }
+);
+
+billSchema.index(
+  { organisationId: 1, 'lineItems.consumedLots.lotId': 1 },
+  { name: 'org_lineitem_consumed_lot' }
 );
 
 billSchema.pre('validate', function normaliseBillFields() {

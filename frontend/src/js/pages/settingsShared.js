@@ -30,6 +30,7 @@ import { apiGet, apiPatch, apiPost, apiDelete } from "../apiClient.js";
 import { renderStaffPayslips, wireStaffPayslips } from "./staffPayslips.js";
 import { renderStaffLoansAdvances, wireStaffLoansAdvances } from "./staffLoansAdvances.js";
 import { setupModalA11y } from "../utils/modalA11y.js";
+import { openChangePasswordModal } from "../components/changePasswordModal.js";
 
 // ── 23 supported languages (English + 22 Eighth Schedule Indian Languages) ───
 const ALL_LANGUAGES = [
@@ -292,6 +293,22 @@ function escHtml(v) {
 function renderSettingsShell(sectionId, innerContentHtml, options = {}) {
   const role = state.role || ROLES.MASTER;
   const isMaster = role === ROLES.MASTER;
+  const isStaff = role === ROLES.STAFF;
+  const staffAllowedIds = new Set([
+    "profile",
+    "security",
+    "devices",
+    "notifications",
+    "appearance",
+    "accessibility",
+    "language",
+  ]);
+
+  // Reject unauthorized section for STAFF
+  if (isStaff && sectionId !== "overview" && !staffAllowedIds.has(sectionId)) {
+    return renderOverview();
+  }
+
   const dest = SETTINGS_DESTINATIONS[sectionId];
 
   // If overview or unknown, render standard Hub Landing
@@ -300,58 +317,86 @@ function renderSettingsShell(sectionId, innerContentHtml, options = {}) {
   }
 
   // Navigation Groups for Secondary Rail
-  const navGroups = [
-    {
-      title: "ACCOUNT & WORK IDENTITY",
-      items: [
-        SETTINGS_DESTINATIONS.profile,
-        SETTINGS_DESTINATIONS.employment,
-        SETTINGS_DESTINATIONS.access,
-        SETTINGS_DESTINATIONS.delegation,
-      ],
-    },
-    {
-      title: "SECURITY & ACCESS",
-      items: [
-        SETTINGS_DESTINATIONS.security,
-        SETTINGS_DESTINATIONS.devices,
-        SETTINGS_DESTINATIONS.recovery,
-      ],
-    },
-    {
-      title: "PERSONAL PREFERENCES",
-      items: [
-        SETTINGS_DESTINATIONS.notifications,
-        SETTINGS_DESTINATIONS.language,
-        SETTINGS_DESTINATIONS.appearance,
-        SETTINGS_DESTINATIONS.accessibility,
-        SETTINGS_DESTINATIONS.workspace,
-      ],
-    },
-    {
-      title: "PRIVACY & CONNECTIONS",
-      items: [
-        SETTINGS_DESTINATIONS.privacy,
-        SETTINGS_DESTINATIONS.connected,
-      ],
-    },
-    {
-      title: "SYSTEM & RELEASES",
-      items: [
-        SETTINGS_DESTINATIONS.updates,
-        SETTINGS_DESTINATIONS.help,
-      ],
-    },
-  ];
+  let navGroups;
+  if (isStaff) {
+    navGroups = [
+      {
+        title: "ACCOUNT & WORK IDENTITY",
+        items: [
+          SETTINGS_DESTINATIONS.profile,
+        ],
+      },
+      {
+        title: "SECURITY & ACCESS",
+        items: [
+          SETTINGS_DESTINATIONS.security,
+          SETTINGS_DESTINATIONS.devices,
+        ],
+      },
+      {
+        title: "PERSONAL PREFERENCES",
+        items: [
+          SETTINGS_DESTINATIONS.notifications,
+          SETTINGS_DESTINATIONS.appearance,
+          SETTINGS_DESTINATIONS.accessibility,
+          SETTINGS_DESTINATIONS.language,
+        ],
+      },
+    ];
+  } else {
+    navGroups = [
+      {
+        title: "ACCOUNT & WORK IDENTITY",
+        items: [
+          SETTINGS_DESTINATIONS.profile,
+          SETTINGS_DESTINATIONS.employment,
+          SETTINGS_DESTINATIONS.access,
+          SETTINGS_DESTINATIONS.delegation,
+        ],
+      },
+      {
+        title: "SECURITY & ACCESS",
+        items: [
+          SETTINGS_DESTINATIONS.security,
+          SETTINGS_DESTINATIONS.devices,
+          SETTINGS_DESTINATIONS.recovery,
+        ],
+      },
+      {
+        title: "PERSONAL PREFERENCES",
+        items: [
+          SETTINGS_DESTINATIONS.notifications,
+          SETTINGS_DESTINATIONS.language,
+          SETTINGS_DESTINATIONS.appearance,
+          SETTINGS_DESTINATIONS.accessibility,
+          SETTINGS_DESTINATIONS.workspace,
+        ],
+      },
+      {
+        title: "PRIVACY & CONNECTIONS",
+        items: [
+          SETTINGS_DESTINATIONS.privacy,
+          SETTINGS_DESTINATIONS.connected,
+        ],
+      },
+      {
+        title: "SYSTEM & RELEASES",
+        items: [
+          SETTINGS_DESTINATIONS.updates,
+          SETTINGS_DESTINATIONS.help,
+        ],
+      },
+    ];
 
-  if (isMaster) {
-    navGroups.push({
-      title: "GOVERNANCE",
-      items: [
-        SETTINGS_DESTINATIONS.trash,
-        SETTINGS_DESTINATIONS.admin,
-      ],
-    });
+    if (isMaster) {
+      navGroups.push({
+        title: "GOVERNANCE",
+        items: [
+          SETTINGS_DESTINATIONS.trash,
+          SETTINGS_DESTINATIONS.admin,
+        ],
+      });
+    }
   }
 
   const secondaryNavHtml = navGroups.map((grp) => `
@@ -426,54 +471,83 @@ function renderOverview() {
   const role = state.role || ROLES.MASTER;
   const user = state.auth?.user || state.user || {};
   const isMaster = role === ROLES.MASTER;
+  const isStaff = role === ROLES.STAFF;
 
-  const categorizedSections = [
-    {
-      groupTitle: "ACCOUNT & WORK IDENTITY",
-      items: [
-        SETTINGS_DESTINATIONS.profile,
-        SETTINGS_DESTINATIONS.employment,
-        SETTINGS_DESTINATIONS.access,
-        SETTINGS_DESTINATIONS.delegation,
-      ],
-    },
-    {
-      groupTitle: "SECURITY & ACCESS",
-      items: [
-        SETTINGS_DESTINATIONS.security,
-        SETTINGS_DESTINATIONS.devices,
-        SETTINGS_DESTINATIONS.recovery,
-      ],
-    },
-    {
-      groupTitle: "PERSONAL PREFERENCES",
-      items: [
-        SETTINGS_DESTINATIONS.notifications,
-        SETTINGS_DESTINATIONS.language,
-        SETTINGS_DESTINATIONS.appearance,
-        SETTINGS_DESTINATIONS.accessibility,
-        SETTINGS_DESTINATIONS.workspace,
-      ],
-    },
-    {
-      groupTitle: "SYSTEM, RELEASES & SUPPORT",
-      items: [
-        SETTINGS_DESTINATIONS.updates,
-        SETTINGS_DESTINATIONS.privacy,
-        SETTINGS_DESTINATIONS.connected,
-        SETTINGS_DESTINATIONS.help,
-      ],
-    },
-  ];
+  let categorizedSections;
+  if (isStaff) {
+    categorizedSections = [
+      {
+        groupTitle: "ACCOUNT & WORK IDENTITY",
+        items: [
+          SETTINGS_DESTINATIONS.profile,
+        ],
+      },
+      {
+        groupTitle: "SECURITY & ACCESS",
+        items: [
+          SETTINGS_DESTINATIONS.security,
+          SETTINGS_DESTINATIONS.devices,
+        ],
+      },
+      {
+        groupTitle: "PERSONAL PREFERENCES",
+        items: [
+          SETTINGS_DESTINATIONS.notifications,
+          SETTINGS_DESTINATIONS.language,
+          SETTINGS_DESTINATIONS.appearance,
+          SETTINGS_DESTINATIONS.accessibility,
+        ],
+      },
+    ];
+  } else {
+    categorizedSections = [
+      {
+        groupTitle: "ACCOUNT & WORK IDENTITY",
+        items: [
+          SETTINGS_DESTINATIONS.profile,
+          SETTINGS_DESTINATIONS.employment,
+          SETTINGS_DESTINATIONS.access,
+          SETTINGS_DESTINATIONS.delegation,
+        ],
+      },
+      {
+        groupTitle: "SECURITY & ACCESS",
+        items: [
+          SETTINGS_DESTINATIONS.security,
+          SETTINGS_DESTINATIONS.devices,
+          SETTINGS_DESTINATIONS.recovery,
+        ],
+      },
+      {
+        groupTitle: "PERSONAL PREFERENCES",
+        items: [
+          SETTINGS_DESTINATIONS.notifications,
+          SETTINGS_DESTINATIONS.language,
+          SETTINGS_DESTINATIONS.appearance,
+          SETTINGS_DESTINATIONS.accessibility,
+          SETTINGS_DESTINATIONS.workspace,
+        ],
+      },
+      {
+        groupTitle: "SYSTEM, RELEASES & SUPPORT",
+        items: [
+          SETTINGS_DESTINATIONS.updates,
+          SETTINGS_DESTINATIONS.privacy,
+          SETTINGS_DESTINATIONS.connected,
+          SETTINGS_DESTINATIONS.help,
+        ],
+      },
+    ];
 
-  if (isMaster) {
-    categorizedSections.push({
-      groupTitle: "ORGANISATION GOVERNANCE & DATA RECOVERY (MASTER ONLY)",
-      items: [
-        SETTINGS_DESTINATIONS.trash,
-        SETTINGS_DESTINATIONS.admin,
-      ],
-    });
+    if (isMaster) {
+      categorizedSections.push({
+        groupTitle: "ORGANISATION GOVERNANCE & DATA RECOVERY (MASTER ONLY)",
+        items: [
+          SETTINGS_DESTINATIONS.trash,
+          SETTINGS_DESTINATIONS.admin,
+        ],
+      });
+    }
   }
 
   const displayName = user.preferredName || user.name || user.fullName || "Your Account";
@@ -2559,7 +2633,7 @@ function _wireNotifications(root) {
 
 function _wireSecurity(root) {
   root.querySelector("#settings-change-password-btn")?.addEventListener("click", () => {
-    showToast("Password change workflow: Enter current password to proceed.", "amber");
+    openChangePasswordModal();
   });
 
   root.querySelector("#settings-mfa-btn")?.addEventListener("click", () => {

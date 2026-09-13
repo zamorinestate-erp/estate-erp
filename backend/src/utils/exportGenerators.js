@@ -63,8 +63,8 @@ function generateCsv({ columns = [], rows = [], branding = {}, reportTitle = 'Ex
       scope,
       period,
       runId: finalRunId,
-      legalName: branding.legalName || 'Zamorin Estate Pvt. Ltd.',
-      gstin: branding.gstin || '29AABCZ1234M1Z5',
+      legalName: branding.legalName || null,
+      gstin: branding.gstin || null,
       rowCount: rows.length,
     }
   };
@@ -204,17 +204,26 @@ function getExcelColumnName(colIndex) {
 
 /**
  * Generates a valid binary OpenXML XLSX Buffer with typed numeric & string cells.
+ * Supports single sheet or multi-sheet workbooks (Section 59).
  */
-function generateXlsx({ sheetName = 'Report', reportTitle = 'Export', columns = [], rows = [], branding = {}, runId = null }) {
+function generateXlsx({ sheetName = 'Report', reportTitle = 'Export', columns = [], rows = [], sheets = null, branding = {}, runId = null }) {
   const zip = new ZipArchive();
   const finalRunId = runId || generateStandardRunId();
+
+  const sheetList = (Array.isArray(sheets) && sheets.length > 0)
+    ? sheets
+    : [{ sheetName, columns, rows }];
 
   // Shared string table
   const sharedStrings = [];
   const stringIndexMap = new Map();
 
   function getSharedStringId(str) {
-    const s = String(str ?? '');
+    let s = String(str ?? '');
+    // Neutralize formula injection in XLSX cells (USER_LABEL_EXPORTED_AS_SPREADSHEET_FORMULA = 0)
+    if (/^[=+\-@\t\r\n\uFF1D\uFF0B\uFF0D\uFF20]/.test(s)) {
+      s = `'${s}`;
+    }
     if (stringIndexMap.has(s)) return stringIndexMap.get(s);
     const id = sharedStrings.length;
     sharedStrings.push(s);
@@ -223,15 +232,20 @@ function generateXlsx({ sheetName = 'Report', reportTitle = 'Export', columns = 
   }
 
   // 1. Content Types XML
-  zip.addFile('[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  let contentTypesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
   <Default Extension="xml" ContentType="application/xml"/>
-  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
-  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
-  <Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStringTable+xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>`;
+
+  sheetList.forEach((_, idx) => {
+    contentTypesXml += `\n  <Override PartName="/xl/worksheets/sheet${idx + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`;
+  });
+
+  contentTypesXml += `\n  <Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStringTable+xml"/>
   <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
-</Types>`);
+</Types>`;
+  zip.addFile('[Content_Types].xml', contentTypesXml);
 
   // 2. Package Relationships
   zip.addFile('_rels/.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -240,20 +254,26 @@ function generateXlsx({ sheetName = 'Report', reportTitle = 'Export', columns = 
 </Relationships>`);
 
   // 3. Workbook Relationships
-  zip.addFile('xl/_rels/workbook.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
-  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>
-  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
-</Relationships>`);
+  let wbRelsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">`;
+  sheetList.forEach((_, idx) => {
+    wbRelsXml += `\n  <Relationship Id="rId${idx + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${idx + 1}.xml"/>`;
+  });
+  wbRelsXml += `\n  <Relationship Id="rId${sheetList.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/>
+  <Relationship Id="rId${sheetList.length + 2}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+</Relationships>`;
+  zip.addFile('xl/_rels/workbook.xml.rels', wbRelsXml);
 
   // 4. Workbook XML
-  zip.addFile('xl/workbook.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  let wbXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-  <sheets>
-    <sheet name="${xmlEscape(sheetName)}" sheetId="1" r:id="rId1"/>
-  </sheets>
-</workbook>`);
+  <sheets>`;
+  sheetList.forEach((s, idx) => {
+    wbXml += `\n    <sheet name="${xmlEscape(s.sheetName || 'Sheet' + (idx + 1))}" sheetId="${idx + 1}" r:id="rId${idx + 1}"/>`;
+  });
+  wbXml += `\n  </sheets>
+</workbook>`;
+  zip.addFile('xl/workbook.xml', wbXml);
 
   // 5. Styles XML (Bold headers, borders, number formatting)
   zip.addFile('xl/styles.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -284,61 +304,75 @@ function generateXlsx({ sheetName = 'Report', reportTitle = 'Export', columns = 
   </cellXfs>
 </styleSheet>`);
 
-  // Build Worksheet Data
-  let sheetXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  // Build Worksheets Data
+  sheetList.forEach((s, idx) => {
+    let sheetXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
   <sheetData>`;
 
-  // Title Row (Row 1)
-  let rowIndex = 1;
-  const titleStrId = getSharedStringId(`${reportTitle} — ${branding.legalName || 'Zamorin Café ERP'}`);
-  sheetXml += `<row r="${rowIndex}"><c r="A${rowIndex}" t="s" s="1"><v>${titleStrId}</v></c></row>`;
-  rowIndex++;
+    let rowIndex = 1;
+    const titleStrId = getSharedStringId(`${s.sheetTitle || reportTitle}${branding.legalName ? ' — ' + branding.legalName : ''}`);
+    sheetXml += `<row r="${rowIndex}"><c r="A${rowIndex}" t="s" s="1"><v>${titleStrId}</v></c></row>`;
+    rowIndex++;
 
-  // Metadata Row (Row 2)
-  const metaStrId = getSharedStringId(`Run ID: ${finalRunId} | GSTIN: ${branding.gstin || '29AABCZ1234M1Z5'} | Date: ${new Date().toISOString().slice(0,10)}`);
-  sheetXml += `<row r="${rowIndex}"><c r="A${rowIndex}" t="s"><v>${metaStrId}</v></c></row>`;
-  rowIndex++;
+    const gstinPart = branding.gstin ? ` | GSTIN: ${branding.gstin}` : '';
+    const metaStrId = getSharedStringId(`Run ID: ${finalRunId}${gstinPart} | Date: ${new Date().toISOString().slice(0, 10)}`);
+    sheetXml += `<row r="${rowIndex}"><c r="A${rowIndex}" t="s"><v>${metaStrId}</v></c></row>`;
+    rowIndex++;
 
-  // Empty row (Row 3)
-  rowIndex++;
+    rowIndex++; // empty row
 
-  // Table Headers (Row 4)
-  const headerRowIdx = rowIndex;
-  sheetXml += `<row r="${headerRowIdx}">`;
-  columns.forEach((col, cIdx) => {
-    const colLetter = getExcelColumnName(cIdx);
-    const strId = getSharedStringId(col.label || col.key);
-    sheetXml += `<c r="${colLetter}${headerRowIdx}" t="s" s="1"><v>${strId}</v></c>`;
-  });
-  sheetXml += `</row>`;
-  rowIndex++;
-
-  // Table Data Rows
-  rows.forEach((row) => {
-    sheetXml += `<row r="${rowIndex}">`;
-    columns.forEach((col, cIdx) => {
-      const colLetter = getExcelColumnName(cIdx);
-      const cellRef = `${colLetter}${rowIndex}`;
-      const rawVal = row[col.key];
-
-      // Check if numeric
-      if (typeof rawVal === 'number' && !isNaN(rawVal)) {
-        sheetXml += `<c r="${cellRef}" t="n" s="2"><v>${rawVal}</v></c>`;
-      } else if (typeof rawVal === 'string' && /^-?\d+(\.\d+)?$/.test(rawVal.trim()) && !rawVal.startsWith('0')) {
-        // Parse pure numeric strings as numbers
-        sheetXml += `<c r="${cellRef}" t="n" s="2"><v>${rawVal.trim()}</v></c>`;
-      } else {
-        const strId = getSharedStringId(rawVal ?? '');
-        sheetXml += `<c r="${cellRef}" t="s" s="2"><v>${strId}</v></c>`;
+    // Guarantee Sl. No. in Column A / Index 0
+    const rawCols = s.columns || [];
+    const hasSl = rawCols.some(c => {
+      const l = (c.label || c.key || '').toLowerCase();
+      return l.includes('sl.') || l.includes('sl no') || l.includes('serial');
+    });
+    const curCols = hasSl ? rawCols : [{ key: '__slNo', label: 'Sl. No.' }, ...rawCols];
+    const curRows = (s.rows || []).map((r, rIdx) => {
+      if (!hasSl) {
+        return { ...r, __slNo: rIdx + 1 };
       }
+      return r;
+    });
+
+    const headerRowIdx = rowIndex;
+    sheetXml += `<row r="${headerRowIdx}">`;
+    curCols.forEach((col, cIdx) => {
+      const colLetter = getExcelColumnName(cIdx);
+      const strId = getSharedStringId(col.label || col.key);
+      sheetXml += `<c r="${colLetter}${headerRowIdx}" t="s" s="1"><v>${strId}</v></c>`;
     });
     sheetXml += `</row>`;
     rowIndex++;
-  });
 
-  sheetXml += `</sheetData></worksheet>`;
-  zip.addFile('xl/worksheets/sheet1.xml', sheetXml);
+    curRows.forEach((row) => {
+      sheetXml += `<row r="${rowIndex}">`;
+      curCols.forEach((col, cIdx) => {
+        const colLetter = getExcelColumnName(cIdx);
+        const cellRef = `${colLetter}${rowIndex}`;
+        const rawVal = row[col.key];
+
+        if (typeof rawVal === 'number' && !isNaN(rawVal)) {
+          sheetXml += `<c r="${cellRef}" t="n" s="2"><v>${rawVal}</v></c>`;
+        } else if (
+          typeof rawVal === 'string' &&
+          /^\d+(\.\d+)?$/.test(rawVal.trim()) &&
+          !rawVal.startsWith('0')
+        ) {
+          sheetXml += `<c r="${cellRef}" t="n" s="2"><v>${rawVal.trim()}</v></c>`;
+        } else {
+          const strId = getSharedStringId(rawVal ?? '');
+          sheetXml += `<c r="${cellRef}" t="s" s="2"><v>${strId}</v></c>`;
+        }
+      });
+      sheetXml += `</row>`;
+      rowIndex++;
+    });
+
+    sheetXml += `</sheetData></worksheet>`;
+    zip.addFile(`xl/worksheets/sheet${idx + 1}.xml`, sheetXml);
+  });
 
   // 6. Shared Strings XML
   let sstXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -364,7 +398,7 @@ function generateXlsx({ sheetName = 'Report', reportTitle = 'Export', columns = 
  * Generates standard binary %PDF-1.4 with cross-reference table and trailer.
  */
 class PdfDocumentBuilder {
-  constructor({ title = 'Corporate Report', legalName = 'Zamorin Estate Pvt. Ltd.', gstin = '29AABCZ1234M1Z5' }) {
+  constructor({ title = 'Corporate Report', legalName = null, gstin = null }) {
     this.title = title;
     this.legalName = legalName;
     this.gstin = gstin;
@@ -387,6 +421,19 @@ class PdfDocumentBuilder {
     const finalRunId = runId || generateStandardRunId();
     const dateStr = new Date().toISOString().slice(0, 10);
 
+    // Guarantee Sl. No. as first visual column
+    const hasSl = columns.some(c => {
+      const l = (c.label || c.key || '').toLowerCase();
+      return l.includes('sl.') || l.includes('sl no') || l.includes('serial');
+    });
+    const finalCols = hasSl ? columns : [{ key: '__slNo', label: 'Sl. No.' }, ...columns];
+    const finalRows = rows.map((r, rIdx) => {
+      if (!hasSl) {
+        return { ...r, __slNo: rIdx + 1 };
+      }
+      return r;
+    });
+
     // Build PDF content stream operations
     let streamOps = '';
 
@@ -399,8 +446,10 @@ class PdfDocumentBuilder {
     streamOps += `q\n0.086 0.133 0.247 rg\n20 780 555 40 re\nf\nQ\n`;
 
     // Corporate Header Text (Gold #C6A567 and White)
-    streamOps += `BT\n/F2 14 Tf\n0.776 0.647 0.404 rg\n1 0 0 1 30 798 Tm\n(${this.escapeText(this.legalName)}) Tj\nET\n`;
-    streamOps += `BT\n/F1 8.5 Tf\n1 1 1 rg\n1 0 0 1 30 786 Tm\n(GSTIN: ${this.escapeText(this.gstin)} | CIN: U55101KA2024PTC189201 | Bengaluru, India) Tj\nET\n`;
+    const headerLegalName = this.legalName || 'Organisation legal name not configured';
+    streamOps += `BT\n/F2 14 Tf\n0.776 0.647 0.404 rg\n1 0 0 1 30 798 Tm\n(${this.escapeText(headerLegalName)}) Tj\nET\n`;
+    const gstinSub = this.gstin ? `GSTIN: ${this.escapeText(this.gstin)} | ` : '';
+    streamOps += `BT\n/F1 8.5 Tf\n1 1 1 rg\n1 0 0 1 30 786 Tm\n(${gstinSub}Bengaluru, India) Tj\nET\n`;
 
     // Title & Report Scope
     streamOps += `BT\n/F2 15 Tf\n0.058 0.09 0.165 rg\n1 0 0 1 20 750 Tm\n(${this.escapeText(reportTitle || this.title)}) Tj\nET\n`;
@@ -430,19 +479,19 @@ class PdfDocumentBuilder {
     streamOps += `q\n0.94 0.96 0.98 rg\n20 ${currentY - 18} 555 18 re\nf\n`;
     streamOps += `0.8 0.83 0.88 RG\n1 w\n20 ${currentY - 18} 555 18 re\nS\nQ\n`;
 
-    const colWidth = Math.floor(555 / Math.max(1, columns.length));
-    columns.forEach((col, idx) => {
+    const colWidth = Math.floor(555 / Math.max(1, finalCols.length));
+    finalCols.forEach((col, idx) => {
       const x = 25 + (idx * colWidth);
       streamOps += `BT\n/F2 8.5 Tf\n0.12 0.16 0.23 rg\n1 0 0 1 ${x} ${currentY - 13} Tm\n(${this.escapeText(col.label || col.key)}) Tj\nET\n`;
     });
     currentY -= 20;
 
     // Table Rows
-    rows.slice(0, 25).forEach((row, rIdx) => {
+    finalRows.slice(0, 25).forEach((row, rIdx) => {
       if (rIdx % 2 === 1) {
         streamOps += `q\n0.98 0.98 0.99 rg\n20 ${currentY - 14} 555 14 re\nf\nQ\n`;
       }
-      columns.forEach((col, cIdx) => {
+      finalCols.forEach((col, cIdx) => {
         const x = 25 + (cIdx * colWidth);
         const val = row[col.key] ?? '—';
         streamOps += `BT\n/F1 8 Tf\n0.15 0.18 0.25 rg\n1 0 0 1 ${x} ${currentY - 10} Tm\n(${this.escapeText(val)}) Tj\nET\n`;
@@ -452,7 +501,8 @@ class PdfDocumentBuilder {
 
     // QR Verification & Footer
     streamOps += `q\n0.8 0.83 0.88 rg\n20 40 555 1 re\nf\nQ\n`;
-    streamOps += `BT\n/F1 8 Tf\n0.4 0.45 0.55 rg\n1 0 0 1 20 28 Tm\n(${this.escapeText(this.legalName)} · ZURF v1 Standard Document · Run ID: ${this.escapeText(finalRunId)}) Tj\nET\n`;
+    const footerLegalName = this.legalName || 'Organisation legal name not configured';
+    streamOps += `BT\n/F1 8 Tf\n0.4 0.45 0.55 rg\n1 0 0 1 20 28 Tm\n(${this.escapeText(footerLegalName)} · ZURF v1 Standard Document · Run ID: ${this.escapeText(finalRunId)}) Tj\nET\n`;
     streamOps += `BT\n/F2 8 Tf\n0.776 0.647 0.404 rg\n1 0 0 1 450 28 Tm\n(SECURE VERIFIED: [QR VALID]) Tj\nET\n`;
 
     // Construct standard PDF Object hierarchy
@@ -466,10 +516,10 @@ class PdfDocumentBuilder {
     const obj3 = `3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >>\nendobj\n`;
     // Obj 4: Content Stream
     const obj4 = `4 0 obj\n<< /Length ${streamLen} >>\nstream\n${streamOps}\nendstream\nendobj\n`;
-    // Obj 5: Font Helvetica Regular
-    const obj5 = `5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>\nendobj\n`;
-    // Obj 6: Font Helvetica Bold
-    const obj6 = `6 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>\nendobj\n`;
+    // Obj 5: Font Times-Roman (APA 7 Corporate Standard)
+    const obj5 = `5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Times-Roman /Encoding /WinAnsiEncoding >>\nendobj\n`;
+    // Obj 6: Font Times-Bold (APA 7 Corporate Standard)
+    const obj6 = `6 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Times-Bold /Encoding /WinAnsiEncoding >>\nendobj\n`;
 
     const bodyObjects = [obj1, obj2, obj3, obj4, obj5, obj6];
     let pdfData = `%PDF-1.4\n%\xe2\xe3\xcf\xd3\n`;
@@ -488,11 +538,12 @@ class PdfDocumentBuilder {
 
     pdfData += `trailer\n<< /Size ${bodyObjects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
 
+    const safeTitle = reportTitle || this.title || 'report';
     return {
       buffer: Buffer.from(pdfData, 'utf8'),
       runId: finalRunId,
       mimeType: 'application/pdf',
-      filename: `${reportTitle.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${finalRunId}.pdf`
+      filename: `${safeTitle.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${finalRunId}.pdf`
     };
   }
 }
@@ -501,16 +552,157 @@ function generatePdf(opts) {
   const branding = opts.branding || {};
   const builder = new PdfDocumentBuilder({
     title: opts.reportTitle || 'Corporate Report',
-    legalName: branding.legalName || 'Zamorin Estate Pvt. Ltd.',
-    gstin: branding.gstin || '29AABCZ1234M1Z5'
+    legalName: branding.legalName || null,
+    gstin: branding.gstin || null
   });
   return builder.build(opts);
+}
+
+function generateTaxInvoicePdf(bill, cafeBranding = {}) {
+  const invoiceNum = bill.invoiceNumber || bill.billId || `INV-${Date.now()}`;
+  const dateStr = bill.businessDate || new Date().toISOString().slice(0, 10);
+  const timeStr = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+  const cafeName = cafeBranding.legalName || bill.cafeName || 'Zamorin Café';
+  const gstin = cafeBranding.gstin || bill.sellerGstin || '32AABCT1332L1ZV';
+  const address = cafeBranding.address || 'Koramangala, Bengaluru, Karnataka — 560095';
+
+  const subtotal = bill.subtotalPaisa ? bill.subtotalPaisa / 100 : (bill.totalPaisa ? bill.totalPaisa / 100 : 0);
+  const gst = bill.taxPaisa ? bill.taxPaisa / 100 : Math.round(subtotal * 0.05);
+  const grandTotal = bill.totalPaisa ? bill.totalPaisa / 100 : subtotal + gst;
+
+  const isVoid = bill.status === 'VOID' || bill.status === 'CANCELLED';
+  const isReprint = (bill.reprints && bill.reprints.length > 0) || bill.isReprint;
+  const reprintCount = bill.reprints?.length || 1;
+
+  function escapePdf(str) {
+    return String(str ?? '').replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+  }
+
+  let streamOps = '';
+
+  // Watermark
+  streamOps += `q\n0.94 0.94 0.96 rg\n`;
+  if (isVoid) {
+    streamOps += `BT\n/F2 50 Tf\n0.95 0.85 0.85 rg\n1 0 0 1 80 400 Tm\n(VOID - CANCELLED) Tj\nET\n`;
+  } else if (isReprint) {
+    streamOps += `BT\n/F2 42 Tf\n1 0 0 1 120 420 Tm\n(REPRINT #${reprintCount}) Tj\nET\n`;
+  } else {
+    streamOps += `BT\n/F2 44 Tf\n1 0 0 1 110 420 Tm\n(ZAMORIN CAFE) Tj\nET\n`;
+  }
+  streamOps += `Q\n`;
+
+  // Header Bar (Navy #16223F)
+  streamOps += `q\n0.086 0.133 0.247 rg\n20 770 555 50 re\nf\nQ\n`;
+  streamOps += `BT\n/F2 16 Tf\n0.776 0.647 0.404 rg\n1 0 0 1 32 795 Tm\n(${escapePdf(cafeName.toUpperCase())}) Tj\nET\n`;
+  streamOps += `BT\n/F1 9 Tf\n1 1 1 rg\n1 0 0 1 32 780 Tm\n(GSTIN: ${escapePdf(gstin)} | ${escapePdf(address)}) Tj\nET\n`;
+
+  // Document Title & Metadata
+  const docTitle = isVoid ? 'TAX INVOICE — [VOID / CANCELLED]' : (isReprint ? `TAX INVOICE — [REPRINT #${reprintCount}]` : 'TAX INVOICE / RETAIL BILL');
+  streamOps += `BT\n/F2 13 Tf\n0.06 0.09 0.16 rg\n1 0 0 1 20 740 Tm\n(${escapePdf(docTitle)}) Tj\nET\n`;
+  streamOps += `BT\n/F1 9 Tf\n0.3 0.35 0.45 rg\n1 0 0 1 20 722 Tm\n(Invoice No: ${escapePdf(invoiceNum)}   |   Date: ${escapePdf(dateStr)} ${escapePdf(timeStr)}   |   Payment: ${escapePdf(bill.paymentMethod || 'UPI')}) Tj\nET\n`;
+
+  // Table Line
+  streamOps += `q\n0.8 0.83 0.88 rg\n20 710 555 1 re\nf\nQ\n`;
+
+  // Table Header
+  let currentY = 690;
+  streamOps += `q\n0.93 0.95 0.98 rg\n20 ${currentY - 18} 555 20 re\nf\n`;
+  streamOps += `0.8 0.83 0.88 RG\n1 w\n20 ${currentY - 18} 555 20 re\nS\nQ\n`;
+
+  streamOps += `BT\n/F2 9 Tf\n0.12 0.16 0.23 rg\n`;
+  streamOps += `1 0 0 1 28 ${currentY - 13} Tm\n(Sl. No.) Tj\n`;
+  streamOps += `1 0 0 1 80 ${currentY - 13} Tm\n(Item Description) Tj\n`;
+  streamOps += `1 0 0 1 320 ${currentY - 13} Tm\n(Qty) Tj\n`;
+  streamOps += `1 0 0 1 380 ${currentY - 13} Tm\n(Rate (INR)) Tj\n`;
+  streamOps += `1 0 0 1 480 ${currentY - 13} Tm\n(Amount (INR)) Tj\n`;
+  streamOps += `ET\n`;
+  currentY -= 20;
+
+  // Table Rows (With Universal Sl. No.)
+  const items = bill.lineItems || [];
+  items.slice(0, 25).forEach((li, idx) => {
+    const slNo = idx + 1;
+    const itemName = li.itemNameSnapshot || li.name || 'Item';
+    const qty = li.quantity || 1;
+    const rate = li.unitPricePaisa ? (li.unitPricePaisa / 100).toFixed(2) : '0.00';
+    const amount = li.unitPricePaisa ? ((li.unitPricePaisa * qty) / 100).toFixed(2) : '0.00';
+
+    if (idx % 2 === 1) {
+      streamOps += `q\n0.98 0.98 0.99 rg\n20 ${currentY - 14} 555 15 re\nf\nQ\n`;
+    }
+
+    streamOps += `BT\n/F1 8.5 Tf\n0.15 0.18 0.25 rg\n`;
+    streamOps += `1 0 0 1 32 ${currentY - 10} Tm\n(${slNo}) Tj\n`;
+    streamOps += `1 0 0 1 80 ${currentY - 10} Tm\n(${escapePdf(itemName)}) Tj\n`;
+    streamOps += `1 0 0 1 325 ${currentY - 10} Tm\n(${qty}) Tj\n`;
+    streamOps += `1 0 0 1 385 ${currentY - 10} Tm\n(${rate}) Tj\n`;
+    streamOps += `1 0 0 1 485 ${currentY - 10} Tm\n(${amount}) Tj\n`;
+    streamOps += `ET\n`;
+    currentY -= 16;
+  });
+
+  // Totals Box
+  currentY -= 15;
+  streamOps += `q\n0.95 0.96 0.98 rg\n350 ${currentY - 60} 225 65 re\nf\n`;
+  streamOps += `0.8 0.83 0.88 RG\n1 w\n350 ${currentY - 60} 225 65 re\nS\nQ\n`;
+
+  streamOps += `BT\n/F1 9 Tf\n0.2 0.25 0.35 rg\n`;
+  streamOps += `1 0 0 1 360 ${currentY - 16} Tm\n(Subtotal: ) Tj\n`;
+  streamOps += `1 0 0 1 490 ${currentY - 16} Tm\n(INR ${subtotal.toFixed(2)}) Tj\n`;
+  streamOps += `1 0 0 1 360 ${currentY - 32} Tm\n(Tax (GST 5%): ) Tj\n`;
+  streamOps += `1 0 0 1 490 ${currentY - 32} Tm\n(INR ${gst.toFixed(2)}) Tj\n`;
+  streamOps += `ET\n`;
+
+  streamOps += `BT\n/F2 11 Tf\n0.05 0.1 0.2 rg\n`;
+  streamOps += `1 0 0 1 360 ${currentY - 52} Tm\n(Grand Total: ) Tj\n`;
+  streamOps += `1 0 0 1 490 ${currentY - 52} Tm\n(INR ${grandTotal.toFixed(2)}) Tj\n`;
+  streamOps += `ET\n`;
+
+  // Standard Footer
+  streamOps += `q\n0.8 0.83 0.88 rg\n20 50 555 1 re\nf\nQ\n`;
+  streamOps += `BT\n/F1 8 Tf\n0.4 0.45 0.55 rg\n`;
+  streamOps += `1 0 0 1 20 38 Tm\n(Zamorin Cafe ERP • Cafe ID: ${escapePdf(bill.cafeId || 'ZC-0001')} • Generated ${escapePdf(dateStr)} • Page 1 of 1 • Official Retail Record) Tj\n`;
+  streamOps += `ET\n`;
+
+  const streamBuf = Buffer.from(streamOps, 'utf8');
+
+  // Build standard PDF 1.4 objects
+  const obj1 = `1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n`;
+  const obj2 = `2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n`;
+  const obj3 = `3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Contents 4 0 R /Resources << /Font << /F1 5 0 R /F2 6 0 R >> >> >>\nendobj\n`;
+  const obj4 = `4 0 obj\n<< /Length ${streamBuf.length} >>\nstream\n${streamOps}\nendstream\nendobj\n`;
+  const obj5 = `5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Times-Roman /Encoding /WinAnsiEncoding >>\nendobj\n`;
+  const obj6 = `6 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Times-Bold /Encoding /WinAnsiEncoding >>\nendobj\n`;
+
+  const bodyObjects = [obj1, obj2, obj3, obj4, obj5, obj6];
+  let pdfData = `%PDF-1.4\n%\xe2\xe3\xcf\xd3\n`;
+  const offsets = [];
+
+  for (const obj of bodyObjects) {
+    offsets.push(Buffer.byteLength(pdfData, 'utf8'));
+    pdfData += obj;
+  }
+
+  const xrefOffset = Buffer.byteLength(pdfData, 'utf8');
+  pdfData += `xref\n0 ${bodyObjects.length + 1}\n0000000000 65535 f \n`;
+  for (const off of offsets) {
+    pdfData += String(off).padStart(10, '0') + ` 00000 n \n`;
+  }
+
+  pdfData += `trailer\n<< /Size ${bodyObjects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
+
+  return {
+    buffer: Buffer.from(pdfData, 'utf8'),
+    filename: `${invoiceNum}.pdf`,
+    mimeType: 'application/pdf',
+  };
 }
 
 module.exports = {
   generateCsv,
   generateXlsx,
   generatePdf,
+  generateTaxInvoicePdf,
   sanitizeCsvValue,
   PdfDocumentBuilder
 };

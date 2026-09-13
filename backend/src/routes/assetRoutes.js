@@ -7,6 +7,7 @@
 
 const express = require('express');
 const { authenticate } = require('../middleware/authenticate');
+const { attachDeviceContext } = require('../middleware/deviceContext');
 const {
   getAssetOverview,
   listAssets,
@@ -22,11 +23,13 @@ const {
   listMaintenancePlans,
   createMaintenancePlan,
   logMaintenanceJob,
+  recordInspection,
 } = require('../controllers/assetController');
 
 const router = express.Router();
 
 router.use(authenticate);
+router.use(attachDeviceContext);
 
 // Overview
 router.get('/overview', getAssetOverview);
@@ -35,6 +38,10 @@ router.get('/overview', getAssetOverview);
 router.get('/work-orders', listWorkOrders);
 router.post('/work-orders', createWorkOrder);
 router.patch('/work-orders/:workOrderId', updateWorkOrder);
+router.post('/work-orders/:workOrderId/resolve', updateWorkOrder);
+
+// Inspections
+router.post('/inspections', recordInspection);
 
 // Maintenance Plans
 router.get('/plans', listMaintenancePlans);

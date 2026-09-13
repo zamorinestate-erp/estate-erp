@@ -2382,5 +2382,140 @@
   }
 }
 
+/* =============================================================================
+   THERMAL RECEIPT & PRINT STYLES (80mm / 58mm POS & NARROW VIEWPORT)
+   ============================================================================= */
+.pos-thermal-receipt {
+  font-family: var(--font-mono, 'JetBrains Mono', 'Courier New', monospace);
+  background: var(--surface-sunken, #fbfaf8);
+  padding: 18px;
+  border-radius: var(--radius-sm, 6px);
+  font-size: 12px;
+  line-height: 1.5;
+  border: 1px solid var(--line, #e6e1d8);
+  color: var(--ink, #1f1d1a);
+  max-width: 380px;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
 
+.pos-thermal-receipt .receipt-header {
+  text-align: center;
+  margin-bottom: 8px;
+}
 
+.pos-thermal-receipt .receipt-title {
+  font-weight: 800;
+  font-size: 15px;
+  margin-bottom: 2px;
+  color: var(--ink, #1f1d1a);
+}
+
+.pos-thermal-receipt .receipt-subtitle {
+  font-size: 10px;
+  color: var(--muted, #6c665d);
+}
+
+.pos-thermal-receipt .receipt-doc-type {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--bronze-600, #96613d);
+  margin-top: 4px;
+  margin-bottom: 10px;
+}
+
+.pos-thermal-receipt .receipt-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 3px;
+  word-break: break-word;
+}
+
+.pos-thermal-receipt .receipt-divider {
+  border: 0;
+  border-top: 1px dashed var(--line-strong, #8d857a);
+  margin: 8px 0;
+}
+
+.pos-thermal-receipt .receipt-total-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 15px;
+  font-weight: 800;
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--line, #e6e1d8);
+  color: var(--ink, #1f1d1a);
+}
+
+.pos-thermal-receipt .receipt-footer {
+  text-align: center;
+  margin-top: 12px;
+  font-size: 10px;
+  color: var(--muted, #6c665d);
+}
+
+@media print {
+  /* Hide all surrounding interface chrome */
+  body * {
+    visibility: hidden;
+  }
+
+  /* Make thermal receipt container and its children visible */
+  .pos-thermal-receipt,
+  .pos-thermal-receipt * {
+    visibility: visible;
+  }
+
+  /* Position thermal receipt cleanly at top-left of page without browser headers/margins */
+  .pos-thermal-receipt {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100% !important;
+    max-width: 76mm !important; /* 80mm roll standard with 2mm margins */
+    margin: 0 !important;
+    padding: 4mm 2mm !important;
+    border: none !important;
+    background: transparent !important;
+    color: #000 !important;
+    font-size: 11px !important;
+    line-height: 1.3 !important;
+    box-shadow: none !important;
+  }
+
+  .pos-thermal-receipt .receipt-header,
+  .pos-thermal-receipt .receipt-title,
+  .pos-thermal-receipt .receipt-subtitle,
+  .pos-thermal-receipt .receipt-doc-type,
+  .pos-thermal-receipt .receipt-row,
+  .pos-thermal-receipt .receipt-total-row,
+  .pos-thermal-receipt .receipt-footer {
+    color: #000 !important;
+  }
+
+  .pos-thermal-receipt .receipt-divider {
+    border-top: 1px dashed #000 !important;
+  }
+
+  .pos-thermal-receipt .receipt-total-row {
+    border-top: 1px solid #000 !important;
+  }
+
+  /* Suppress modal backdrops and controls during print */
+  #zamorin-global-modal,
+  .modal-backdrop,
+  .modal-footer,
+  .modal-header,
+  .app-sidebar,
+  .app-header,
+  .app-toast-container {
+    display: none !important;
+  }
+
+  @page {
+    margin: 0;
+    size: auto;
+  }
+}

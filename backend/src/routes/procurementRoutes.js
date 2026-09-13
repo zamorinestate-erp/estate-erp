@@ -8,6 +8,7 @@
 const express = require('express');
 const { authenticate } = require('../middleware/authenticate');
 const { authorize } = require('../middleware/authorize');
+const { attachDeviceContext } = require('../middleware/deviceContext');
 const {
   listOrders,
   getOrder,
@@ -18,10 +19,17 @@ const {
   receiveOrder,
   cancelOrder,
   getProcurementOverview,
+  getCatalogue,
   listPurchaseRequisitions,
   createPurchaseRequisition,
+  convertRequisitionToPo,
   listRfqs,
   createRfq,
+  listAsns,
+  getAsn,
+  createAsn,
+  updateAsnStatus,
+  cancelAsn,
   listGoodsReceipts,
   createGoodsReceipt,
   getMatchingSummary,
@@ -31,6 +39,7 @@ const {
 const router = express.Router();
 
 router.use(authenticate);
+router.use(attachDeviceContext);
 
 // Overview & Integrity
 router.get(
@@ -45,6 +54,13 @@ router.get(
   getProcurementIntegrity
 );
 
+// Catalogue / Guided Buying
+router.get(
+  '/catalogue',
+  authorize('PROCUREMENT_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  getCatalogue
+);
+
 // Requisitions / PRQs
 router.get(
   '/requisitions',
@@ -56,6 +72,43 @@ router.post(
   '/requisitions',
   authorize('PROCUREMENT_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
   createPurchaseRequisition
+);
+
+router.post(
+  '/requisitions/:requisitionId/convert-to-po',
+  authorize('PROCUREMENT_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
+  convertRequisitionToPo
+);
+
+// Advance Shipping Notices (ASN)
+router.get(
+  '/asns',
+  authorize('PROCUREMENT_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  listAsns
+);
+
+router.get(
+  '/asns/:asnNumber',
+  authorize('PROCUREMENT_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  getAsn
+);
+
+router.post(
+  '/asns',
+  authorize('PROCUREMENT_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
+  createAsn
+);
+
+router.post(
+  '/asns/:asnNumber/status',
+  authorize('PROCUREMENT_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
+  updateAsnStatus
+);
+
+router.post(
+  '/asns/:asnNumber/cancel',
+  authorize('PROCUREMENT_WRITE', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  cancelAsn
 );
 
 // Sourcing & RFQs

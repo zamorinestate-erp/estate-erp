@@ -29,11 +29,25 @@ const apInvoiceSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    rawSupplierInvoiceNumber: {
+      type: String,
+      trim: false,
+    },
     supplierInvoiceNumber: {
       type: String,
       required: true,
       trim: true,
+      uppercase: true,
       index: true,
+      set: function (val) {
+        if (typeof val === 'string' && this && typeof this === 'object') {
+          if (!this.rawSupplierInvoiceNumber) {
+            this.rawSupplierInvoiceNumber = val;
+          }
+          return val.trim().toUpperCase();
+        }
+        return val;
+      },
     },
     invoiceDate: {
       type: String,
@@ -128,9 +142,24 @@ const apInvoiceSchema = new mongoose.Schema(
   }
 );
 
+apInvoiceSchema.pre('validate', function (next) {
+  if (this.supplierInvoiceNumber) {
+    if (!this.rawSupplierInvoiceNumber) {
+      this.rawSupplierInvoiceNumber = this.supplierInvoiceNumber;
+    }
+    this.supplierInvoiceNumber = this.supplierInvoiceNumber.trim().toUpperCase();
+  }
+  if (typeof next === 'function') next();
+});
+
 apInvoiceSchema.index(
   { organisationId: 1, invoiceId: 1 },
   { unique: true }
+);
+
+apInvoiceSchema.index(
+  { organisationId: 1, vendorId: 1, supplierInvoiceNumber: 1 },
+  { unique: true, name: 'org_vendor_invoice_unique' }
 );
 
 apInvoiceSchema.index(

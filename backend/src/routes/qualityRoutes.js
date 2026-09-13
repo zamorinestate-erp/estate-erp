@@ -15,6 +15,17 @@ const {
   listTemplates,
   listTemperatures,
   recordTemperature,
+  applyCorrectiveAction,
+  listCleaningTasks,
+  createCleaningTask,
+  completeCleaningTask,
+  listPestControl,
+  recordPestControl,
+  listCalibrations,
+  recordCalibration,
+  listFoodSafetyIncidents,
+  recordFoodSafetyIncident,
+  resolveFoodSafetyIncident,
   listQualityHolds,
   createQualityHold,
   releaseQualityHold,
@@ -65,7 +76,7 @@ router.get(
   listTemplates
 );
 
-// ── Temperatures & Excursions ────────────────────────────────────────────────
+// ── Temperatures & Excursions (R02-01) ───────────────────────────────────────
 router.get(
   '/temperatures',
   authorize('QUALITY_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
@@ -76,6 +87,57 @@ router.post(
   '/temperatures',
   authorize('QUALITY_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
   recordTemperature
+);
+
+router.post(
+  '/temperatures/:id/corrective-action',
+  authorize('QUALITY_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
+  applyCorrectiveAction
+);
+
+// ── Cleaning & Sanitation Tasks (R02-01) ────────────────────────────────────
+router.get(
+  '/cleaning-tasks',
+  authorize('QUALITY_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  listCleaningTasks
+);
+
+router.post(
+  '/cleaning-tasks',
+  authorize('QUALITY_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
+  createCleaningTask
+);
+
+router.post(
+  '/cleaning-tasks/:id/complete',
+  authorize('QUALITY_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
+  completeCleaningTask
+);
+
+// ── Pest Control Register (R02-01) ──────────────────────────────────────────
+router.get(
+  '/pest-control',
+  authorize('QUALITY_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  listPestControl
+);
+
+router.post(
+  '/pest-control',
+  authorize('QUALITY_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
+  recordPestControl
+);
+
+// ── Calibration Register (R02-01) ───────────────────────────────────────────
+router.get(
+  '/calibrations',
+  authorize('QUALITY_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  listCalibrations
+);
+
+router.post(
+  '/calibrations',
+  authorize('QUALITY_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
+  recordCalibration
 );
 
 // ── Quality Holds & Quarantines ──────────────────────────────────────────────
@@ -146,6 +208,25 @@ router.get(
   '/traceability',
   authorize('QUALITY_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
   getTraceability
+);
+
+// ── Food Safety Incidents & Complaints (R02-06) ──────────────────────────────
+router.get(
+  '/incidents',
+  authorize('QUALITY_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  listFoodSafetyIncidents
+);
+
+router.post(
+  '/incidents',
+  authorize('QUALITY_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
+  recordFoodSafetyIncident
+);
+
+router.post(
+  '/incidents/:incidentId/resolve',
+  authorize('QUALITY_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
+  resolveFoodSafetyIncident
 );
 
 module.exports = router;

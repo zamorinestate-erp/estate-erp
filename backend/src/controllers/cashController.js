@@ -23,6 +23,7 @@ const {
 } = require('../utils/ApiError');
 
 const { resolveEffectiveCafeScope, assertResourceCafeOwnership } = require('../utils/cafeScope');
+const auditService = require('../services/auditService');
 
 const PAYMENT_METHODS = [
   'CASH',
@@ -93,14 +94,16 @@ function ensureCafeAccess(
   if (!cafeId) return;
   const cleanCafe = cafeId.trim().toUpperCase();
   const role = request?.auth?.role;
-  if (role === 'MASTER') return;
+  const rawWorkspace = request?.headers?.['x-workspace'] || request?.auth?.workspaceMode || '';
+  const workspaceMode = String(rawWorkspace).trim().toUpperCase();
+  if (role === 'MASTER' && workspaceMode !== 'CAFE_OPERATIONS') return;
   if (role === 'OWNER') {
     const assignedCafeIds = (request?.auth?.assignedCafeIds || []).map((c) => String(c).trim().toUpperCase());
-    if (!assignedCafeIds.includes(cleanCafe)) {
+    if (assignedCafeIds.length === 0 || !assignedCafeIds.includes(cleanCafe)) {
       throw new ApiError(
         403,
-        'CAFE_ACCESS_DENIED',
-        'You do not have access to this café.'
+        'CROSS_CAFE_RESOURCE_DENIED',
+        'Cross-café access is denied. You are not authorized for the requested café.'
       );
     }
     return;
@@ -109,8 +112,8 @@ function ensureCafeAccess(
   if (effectiveCafe && effectiveCafe !== cleanCafe) {
     throw new ApiError(
       403,
-      'CAFE_ACCESS_DENIED',
-      'You do not have access to this café.'
+      'CROSS_CAFE_RESOURCE_DENIED',
+      'Cross-café access is denied. You are not authorized for the requested café.'
     );
   }
 }
@@ -229,6 +232,9 @@ function buildCashFilter(request) {
     request.auth.role !==
     'MASTER'
   ) {
+    if (request.auth.role === 'OWNER' && (!request.auth.assignedCafeIds || request.auth.assignedCafeIds.length === 0)) {
+      throw new ApiError(403, 'CROSS_CAFE_RESOURCE_DENIED', 'Owner has no authorized café assignments.');
+    }
     filter.cafeId = {
       $in:
         request.auth.assignedCafeIds ||
@@ -718,6 +724,11 @@ const reverseCashTransaction =
         );
       }
 
+      ensureCafeAccess(
+        request,
+        cashTransaction.cafeId
+      );
+
       if (
         cashTransaction.status ===
         'REVERSED'
@@ -729,10 +740,58 @@ const reverseCashTransaction =
         );
       }
 
+      const now = new Date();
+      const businessDate =
+        getIstBusinessDate(now);
+      const datePart =
+        businessDate.replaceAll(
+          '-',
+          ''
+        );
+
+      const reversalTransactionId =
+        await SequenceCounter.generateId({
+          organisationId:
+            request.auth.organisationId,
+          sequenceKey:
+            `CASH_REVERSAL_${datePart}`,
+          prefix:
+            `CR-${datePart}`,
+          minimumDigits: 4,
+        });
+
       await cashTransaction.reverse({
         userId:
           request.auth.userId,
         reason,
+        reversalTransactionId,
+      });
+
+      await auditService.recordAuditEvent({
+        organisationId:
+          request.auth.organisationId,
+        cafeId:
+          cashTransaction.cafeId,
+        actorId:
+          request.auth.userId,
+        action:
+          'CASH_TRANSACTION_REVERSED',
+        entityType:
+          'CASH_TRANSACTION',
+        entityId:
+          cashTransaction.cashTransactionId,
+        details: {
+          originalTransactionId:
+            cashTransaction.cashTransactionId,
+          reversalTransactionId,
+          amount:
+            cashTransaction.amount,
+          direction:
+            cashTransaction.direction,
+          reason,
+          reversedAt:
+            cashTransaction.reversedAt,
+        },
       });
 
       return response.status(200).json({
@@ -741,6 +800,7 @@ const reverseCashTransaction =
           'Cash transaction reversed successfully.',
         data: {
           cashTransaction,
+          reversalTransactionId,
         },
         correlationId:
           request.correlationId || null,
