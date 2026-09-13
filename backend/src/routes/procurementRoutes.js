@@ -34,6 +34,9 @@ const {
   createGoodsReceipt,
   getMatchingSummary,
   getProcurementIntegrity,
+  getOrderDocuments,
+  attachOrderDocument,
+  downloadOrderDocument,
 } = require('../controllers/procurementController');
 
 const router = express.Router();
@@ -155,6 +158,25 @@ router.get(
   '/orders/:purchaseOrderId',
   authorize('PROCUREMENT_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
   getOrder
+);
+
+// PO Document Attachments Pipeline
+router.get(
+  '/orders/:purchaseOrderId/documents',
+  authorize('PROCUREMENT_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  getOrderDocuments
+);
+
+router.post(
+  '/orders/:purchaseOrderId/documents',
+  authorize('PROCUREMENT_WRITE', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  attachOrderDocument
+);
+
+router.get(
+  '/orders/:purchaseOrderId/documents/:documentId/download',
+  authorize('PROCUREMENT_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  downloadOrderDocument
 );
 
 // Writes: MASTER, CAFE_ADMIN

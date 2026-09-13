@@ -61,6 +61,20 @@ const {
 } = require('../models/InventoryLot');
 
 const {
+  BusinessDocument,
+} = require('../models/BusinessDocument');
+
+const {
+  DocumentAttachmentService,
+} = require('../services/documentAttachmentService');
+
+const {
+  documentStorageAdapter,
+} = require('../services/documentStorageAdapter');
+
+const fs = require('fs');
+
+const {
   asyncHandler,
 } = require('../utils/asyncHandler');
 
@@ -2543,7 +2557,156 @@ const getProcurementIntegrity = asyncHandler(async (request, response) => {
   });
 });
 
+/**
+ * GET /procurement/orders/:purchaseOrderId/documents
+ * List documents attached to a purchase order.
+ */
+const getOrderDocuments = asyncHandler(async (request, response) => {
+  const purchaseOrderId = normalizeId(request.params.purchaseOrderId);
+  const poQuery = PurchaseOrder.findOne({
+    purchaseOrderId,
+    organisationId: request.auth.organisationId,
+  });
+  const po = poQuery && typeof poQuery.lean === 'function' ? await poQuery.lean() : await poQuery;
+
+  if (!po) {
+    throw new ApiError(404, 'NOT_FOUND', 'Purchase order not found.');
+  }
+  assertCafeAccess(request, po.cafeId);
+
+  const documents = await BusinessDocument.find({
+    organisationId: request.auth.organisationId,
+    relatedModule: 'PURCHASE_ORDER',
+    relatedRecordId: purchaseOrderId,
+    isDeleted: false,
+  })
+    .select('-fileData -versions.fileData')
+    .sort({ createdAt: -1 })
+    .lean();
+
+  return response.status(200).json({
+    success: true,
+    data: { documents, count: documents.length },
+    correlationId: request.correlationId || null,
+  });
+});
+
+/**
+ * POST /procurement/orders/:purchaseOrderId/documents
+ * Attach a business document (e.g. signed PO, vendor invoice, delivery challan) to a purchase order.
+ */
+const attachOrderDocument = asyncHandler(async (request, response) => {
+  const purchaseOrderId = normalizeId(request.params.purchaseOrderId);
+  const poQuery = PurchaseOrder.findOne({
+    purchaseOrderId,
+    organisationId: request.auth.organisationId,
+  });
+  const po = poQuery && typeof poQuery.lean === 'function' ? await poQuery.lean() : await poQuery;
+
+  if (!po) {
+    throw new ApiError(404, 'NOT_FOUND', 'Purchase order not found.');
+  }
+  assertCafeAccess(request, po.cafeId);
+
+  const file = request.file;
+  const body = request.body || {};
+
+  const doc = await DocumentAttachmentService.attachDocument({
+    ...body,
+    organisationId: request.auth.organisationId,
+    cafeId: po.cafeId,
+    relatedModule: 'PURCHASE_ORDER',
+    relatedRecordId: purchaseOrderId,
+    documentType: body.documentType || 'PURCHASE_ORDER',
+    originalFilename: file ? file.originalname : (body.originalFilename || `${purchaseOrderId}_attachment.pdf`),
+    mimeType: file ? file.mimetype : (body.mimeType || 'application/pdf'),
+    sizeBytes: file ? file.size : (body.sizeBytes || (body.fileBuffer ? body.fileBuffer.length : (body.fileBase64 ? Buffer.from(body.fileBase64, 'base64').length : 1024))),
+    tempFilePath: file ? file.path : null,
+    fileBuffer: body.fileBuffer || null,
+    fileBase64: body.fileBase64 || null,
+    auth: request.auth,
+  });
+
+  return response.status(201).json({
+    success: true,
+    message: 'Document attached to purchase order successfully.',
+    data: doc,
+    correlationId: request.correlationId || null,
+  });
+});
+
+/**
+ * GET /procurement/orders/:purchaseOrderId/documents/:documentId/download
+ * Binary download with Content-Disposition, X-Export-Id, and SHA-256 verification.
+ */
+const downloadOrderDocument = asyncHandler(async (request, response) => {
+  const purchaseOrderId = normalizeId(request.params.purchaseOrderId);
+  const documentId = normalizeId(request.params.documentId);
+
+  const poQuery = PurchaseOrder.findOne({
+    purchaseOrderId,
+    organisationId: request.auth.organisationId,
+  });
+  const po = poQuery && typeof poQuery.lean === 'function' ? await poQuery.lean() : await poQuery;
+
+  if (!po) {
+    throw new ApiError(404, 'NOT_FOUND', 'Purchase order not found.');
+  }
+  assertCafeAccess(request, po.cafeId);
+
+  const doc = await BusinessDocument.findOne({
+    documentId,
+    relatedModule: 'PURCHASE_ORDER',
+    relatedRecordId: purchaseOrderId,
+    organisationId: request.auth.organisationId,
+    isDeleted: false,
+  }).select('+fileBuffer');
+
+  if (!doc) {
+    throw new ApiError(404, 'DOCUMENT_NOT_FOUND', 'Attachment document not found for this purchase order.');
+  }
+
+  // Security scanning gate
+  if (doc.securityScanStatus === 'REJECTED') {
+    throw new ApiError(403, 'MALWARE_DETECTED', 'Document access blocked: file rejected by security scanner.');
+  }
+
+  const exportId = `EXP-DOC-${Date.now().toString(36).toUpperCase()}`;
+  response.setHeader('Content-Type', doc.mimeType);
+  response.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(doc.originalFilename)}"`);
+  response.setHeader('X-Export-Id', exportId);
+  response.setHeader('X-File-Checksum', doc.checksum || '');
+  response.setHeader('X-Content-Type-Options', 'nosniff');
+
+  // Stream from storage key if available
+  if (doc.storageKey) {
+    try {
+      const stream = await documentStorageAdapter.getStream({ storageKey: doc.storageKey });
+      response.setHeader('Content-Length', doc.sizeBytes);
+      return stream.pipe(response);
+    } catch (err) {
+      if (doc.storagePath && fs.existsSync(doc.storagePath)) {
+        const stat = await fs.promises.stat(doc.storagePath);
+        response.setHeader('Content-Length', stat.size);
+        const stream = fs.createReadStream(doc.storagePath);
+        return stream.pipe(response);
+      }
+    }
+  }
+
+  const payload = doc.fileBuffer || (doc.fileData ? Buffer.from(doc.fileData, 'base64') : null);
+  if (!payload) {
+    throw new ApiError(404, 'FILE_CONTENT_UNAVAILABLE', 'Attachment file binary content is unavailable.');
+  }
+
+  response.setHeader('Content-Length', payload.length);
+  return response.send(payload);
+});
+
 module.exports = {
+  getOrderDocuments,
+  attachOrderDocument,
+  downloadOrderDocument,
   listOrders,
   getOrder,
   createOrder,

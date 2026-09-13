@@ -111,6 +111,67 @@ router.get(
   })
 );
 
+// ── GET /api/v1/documents/:documentId/download (Original Binary Stream) ──────
+router.get(
+  '/:documentId/download',
+  authorize('REPORTS_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  asyncHandler(async (req, res) => {
+    const orgId = req.auth.organisationId;
+    const docId = req.params.documentId.trim().toUpperCase();
+
+    const doc = await BusinessDocument.findOne({
+      documentId: docId,
+      organisationId: orgId,
+      isDeleted: false,
+    }).select('+fileBuffer');
+
+    if (!doc) {
+      throw new ApiError(404, 'DOCUMENT_NOT_FOUND', 'Business document not found.');
+    }
+
+    if (req.auth.role === 'CAFE_ADMIN' && doc.cafeId && doc.cafeId !== req.auth.primaryCafeId) {
+      throw new ApiError(403, 'CROSS_CAFE_DENIED', 'Unauthorized cross-café document access.');
+    }
+
+    if (doc.securityScanStatus === 'REJECTED') {
+      throw new ApiError(403, 'MALWARE_DETECTED', 'Document access blocked: file rejected by security scanner.');
+    }
+
+    const exportId = `EXP-DOC-${Date.now().toString(36).toUpperCase()}`;
+    res.setHeader('Content-Type', doc.mimeType);
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(doc.originalFilename)}"`);
+    res.setHeader('X-Export-Id', exportId);
+    res.setHeader('X-File-Checksum', doc.checksum || '');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+
+    const { documentStorageAdapter } = require('../services/documentStorageAdapter');
+    const fs = require('fs');
+
+    if (doc.storageKey) {
+      try {
+        const stream = await documentStorageAdapter.getStream({ storageKey: doc.storageKey });
+        res.setHeader('Content-Length', doc.sizeBytes);
+        return stream.pipe(res);
+      } catch (err) {
+        if (doc.storagePath && fs.existsSync(doc.storagePath)) {
+          const stat = await fs.promises.stat(doc.storagePath);
+          res.setHeader('Content-Length', stat.size);
+          const stream = fs.createReadStream(doc.storagePath);
+          return stream.pipe(res);
+        }
+      }
+    }
+
+    const payload = doc.fileBuffer || (doc.fileData ? Buffer.from(doc.fileData, 'base64') : null);
+    if (!payload) {
+      throw new ApiError(404, 'FILE_CONTENT_UNAVAILABLE', 'File content is not available.');
+    }
+
+    res.setHeader('Content-Length', payload.length);
+    return res.send(payload);
+  })
+);
+
 // ── POST /api/v1/documents/attach ───────────────────────────────────────────
 router.post(
   '/attach',
