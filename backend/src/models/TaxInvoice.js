@@ -238,14 +238,36 @@ taxInvoiceSchema.index(
 );
 
 taxInvoiceSchema.index(
-  { organisationId: 1, financialYear: 1, cafeId: 1, sequenceNumber: 1 },
+  { organisationId: 1, financialYear: 1, cafeId: 1, statutorySeriesCode: 1, sequenceNumber: 1 },
   { unique: true }
 );
 
 // P0-01 & P0-03: Statutory GSTIN-level uniqueness invariant
 taxInvoiceSchema.index(
-  { gstin: 1, financialYear: 1, invoiceNumber: 1 },
-  { unique: true }
+  {
+    gstin: 1,
+    financialYear: 1,
+    invoiceNumber: 1,
+  },
+  {
+    unique: true,
+    name: 'uniq_gstin_fy_invoice_number',
+  }
+);
+
+// Multi-series sequence constraint including statutorySeriesCode
+taxInvoiceSchema.index(
+  {
+    gstin: 1,
+    financialYear: 1,
+    cafeId: 1,
+    statutorySeriesCode: 1,
+    sequenceNumber: 1,
+  },
+  {
+    unique: true,
+    name: 'uniq_gstin_fy_cafe_series_seq',
+  }
 );
 
 taxInvoiceSchema.index(
@@ -256,6 +278,68 @@ taxInvoiceSchema.index(
 const TaxInvoice =
   mongoose.models.TaxInvoice || mongoose.model('TaxInvoice', taxInvoiceSchema);
 
+/**
+ * Safely synchronizes TaxInvoice collection indexes against MongoDB:
+ * 1. Inspects existing collection indexes.
+ * 2. Safely drops obsolete index `uniq_gstin_fy_cafe_seq` if it exists.
+ * 3. Checks existing data for conflicts before enforcing unique constraint.
+ * 4. Creates `uniq_gstin_fy_invoice_number` and `uniq_gstin_fy_cafe_series_seq`.
+ * 5. Verifies index creation and returns active index list.
+ * 6. Preserves valid invoice records without data loss.
+ */
+async function syncTaxInvoiceIndexes(customCollection = null) {
+  const collection = customCollection || (TaxInvoice.collection ? TaxInvoice.collection : null);
+  if (!collection) return { dropped: [], indexes: [], conflicts: [] };
+
+  const existingIndexes = await collection.indexes().catch(() => []);
+  const dropped = [];
+
+  for (const idx of existingIndexes) {
+    if (idx.name === 'uniq_gstin_fy_cafe_seq') {
+      await collection.dropIndex('uniq_gstin_fy_cafe_seq');
+      dropped.push('uniq_gstin_fy_cafe_seq');
+    }
+  }
+
+  // 5. Check existing data for conflicts before enforcing unique constraints
+  const conflicts = await collection
+    .aggregate([
+      {
+        $group: {
+          _id: {
+            gstin: '$gstin',
+            financialYear: '$financialYear',
+            cafeId: '$cafeId',
+            statutorySeriesCode: '$statutorySeriesCode',
+            sequenceNumber: '$sequenceNumber',
+          },
+          count: { $sum: 1 },
+        },
+      },
+      { $match: { count: { $gt: 1 } } },
+    ])
+    .toArray()
+    .catch(() => []);
+
+  await collection.createIndex(
+    { gstin: 1, financialYear: 1, invoiceNumber: 1 },
+    { unique: true, name: 'uniq_gstin_fy_invoice_number' }
+  );
+
+  await collection.createIndex(
+    { gstin: 1, financialYear: 1, cafeId: 1, statutorySeriesCode: 1, sequenceNumber: 1 },
+    { unique: true, name: 'uniq_gstin_fy_cafe_series_seq' }
+  );
+
+  const updatedIndexes = await collection.indexes();
+  return {
+    dropped,
+    indexes: updatedIndexes,
+    conflicts,
+  };
+}
+
 module.exports = {
   TaxInvoice,
+  syncTaxInvoiceIndexes,
 };

@@ -14,7 +14,7 @@
  *  - Statutory CBIC PDF invoice generation with Stage 01 layout & Stage 02 QR
  */
 
-const { TaxInvoice } = require('../models/TaxInvoice');
+const { TaxInvoice, syncTaxInvoiceIndexes } = require('../models/TaxInvoice');
 const { SequenceCounter } = require('../models/SequenceCounter');
 const { FinancialPeriod } = require('../models/FinancialPeriod');
 const { ApiError } = require('../utils/ApiError');
@@ -1257,4 +1257,5 @@ module.exports = {
   renderStatutoryGstInvoicePdf,
   generateGstr1Summary,
   _clearStatutoryRegistries,
+  syncTaxInvoiceIndexes,
 };

@@ -51,7 +51,9 @@ const {
   saveTaxInvoiceWithRetry,
   _clearStatutoryRegistries,
 } = require('../src/services/gstTaxService');
-const { TaxInvoice } = require('../src/models/TaxInvoice');
+const mongoose = require('mongoose');
+const { MongoMemoryServer } = require('mongodb-memory-server');
+const { TaxInvoice, syncTaxInvoiceIndexes } = require('../src/models/TaxInvoice');
 const { SequenceCounter } = require('../src/models/SequenceCounter');
 const auditService = require('../src/services/auditService');
 
@@ -1135,4 +1137,369 @@ test('STATUTORY AUDIT — GST-CAP-01 to GST-CAP-05 Statutory Series Capacity & E
       }
     );
   });
+});
+
+test('STATUTORY AUDIT — GST-DB-01 to GST-DB-07 Multi-Series Real Database Index Verification Suite', async (t) => {
+  const gstin1 = '32AAACZ1234K1Z5';
+  const gstin2 = '29BBBCZ5678L2Z6';
+  const orgId = 'ORG-ZAMORIN-STATUTORY';
+  const fy = '2026-27';
+
+  let mongoServer;
+  try {
+    mongoServer = await MongoMemoryServer.create();
+    const uri = mongoServer.getUri();
+    await mongoose.connect(uri);
+
+    // 1. Audit and simulate obsolete index presence, then run migration
+    const collection = TaxInvoice.collection;
+    // Create obsolete index to prove safe removal
+    await collection.createIndex(
+      { gstin: 1, financialYear: 1, cafeId: 1, sequenceNumber: 1 },
+      { unique: true, name: 'uniq_gstin_fy_cafe_seq' }
+    );
+
+    const preIndexes = await collection.indexes();
+    assert.ok(preIndexes.some((idx) => idx.name === 'uniq_gstin_fy_cafe_seq'), 'Obsolete index must be present before migration');
+
+    // Run safe sync / migration
+    const syncResult = await syncTaxInvoiceIndexes(collection);
+    assert.ok(syncResult.dropped.includes('uniq_gstin_fy_cafe_seq'), 'Must drop obsolete uniq_gstin_fy_cafe_seq');
+
+    // Introspect indexes to prove exact definitions
+    const postIndexes = await collection.indexes();
+    assert.strictEqual(
+      postIndexes.some((idx) => idx.name === 'uniq_gstin_fy_cafe_seq'),
+      false,
+      'Obsolete uniq_gstin_fy_cafe_seq must be completely removed'
+    );
+
+    const invoiceNumIdx = postIndexes.find((idx) => idx.name === 'uniq_gstin_fy_invoice_number');
+    assert.ok(invoiceNumIdx, 'uniq_gstin_fy_invoice_number index must exist');
+    assert.strictEqual(invoiceNumIdx.unique, true);
+    assert.deepStrictEqual(invoiceNumIdx.key, { gstin: 1, financialYear: 1, invoiceNumber: 1 });
+
+    const seriesSeqIdx = postIndexes.find((idx) => idx.name === 'uniq_gstin_fy_cafe_series_seq');
+    assert.ok(seriesSeqIdx, 'uniq_gstin_fy_cafe_series_seq index must exist');
+    assert.strictEqual(seriesSeqIdx.unique, true);
+    assert.deepStrictEqual(seriesSeqIdx.key, { gstin: 1, financialYear: 1, cafeId: 1, statutorySeriesCode: 1, sequenceNumber: 1 });
+
+    // Helper to construct fully valid TaxInvoice documents per Mongoose schema
+    function makeValidTaxInvoiceDoc(overrides = {}) {
+      const baseInvoiceId = overrides.invoiceId || `INV-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
+      const gstinVal = overrides.gstin || gstin1;
+      const fyVal = overrides.financialYear || fy;
+      const cafeVal = overrides.cafeId || 'CAFE-01';
+      const statCode = overrides.statutorySeriesCode || 'P';
+      const seqNum = overrides.sequenceNumber !== undefined ? overrides.sequenceNumber : 1;
+      const invNum = overrides.invoiceNumber || `${statCode}/C01/2627/${String(seqNum).padStart(5, '0')}`;
+
+      return {
+        organisationId: overrides.organisationId || orgId,
+        invoiceId: baseInvoiceId,
+        invoiceNumber: invNum,
+        financialYear: fyVal,
+        sequenceNumber: seqNum,
+        cafeId: cafeVal,
+        invoiceDate: overrides.invoiceDate || new Date(),
+        supplyType: 'INTRA_STATE',
+        placeOfSupply: overrides.placeOfSupply || '32-Kerala',
+        reverseCharge: false,
+        supplierDetails: {
+          legalName: 'Zamorin Cafe Pvt Ltd',
+          tradeName: 'Zamorin Cafe',
+          gstin: gstinVal,
+          address: 'Beach Road, Kozhikode',
+          stateCode: '32',
+          stateName: 'Kerala',
+          pan: 'AAACZ1234K',
+          ...(overrides.supplierDetails || {}),
+        },
+        recipientDetails: {
+          isB2B: false,
+          legalName: 'Cash Customer',
+        },
+        lineItems: [
+          {
+            lineId: 'LINE-1',
+            description: 'Special Filter Coffee',
+            hsnCode: '0901',
+            quantity: 1,
+            uqc: 'NOS',
+            ratePaisa: 10000,
+            grossAmountPaisa: 10000,
+            discountPaisa: 0,
+            taxableAmountPaisa: 10000,
+            gstRatePercent: 5,
+            cgstRatePercent: 2.5,
+            cgstAmountPaisa: 250,
+            sgstRatePercent: 2.5,
+            sgstAmountPaisa: 250,
+            igstRatePercent: 0,
+            igstAmountPaisa: 0,
+            totalItemAmountPaisa: 10500,
+          },
+        ],
+        hsnSummary: [
+          {
+            hsnCode: '0901',
+            taxableValuePaisa: 10000,
+            cgstRatePercent: 2.5,
+            cgstAmountPaisa: 250,
+            sgstRatePercent: 2.5,
+            sgstAmountPaisa: 250,
+            igstRatePercent: 0,
+            igstAmountPaisa: 0,
+            totalTaxPaisa: 500,
+          },
+        ],
+        taxSummary: {
+          totalTaxablePaisa: 10000,
+          totalCgstPaisa: 250,
+          totalSgstPaisa: 250,
+          totalIgstPaisa: 0,
+          totalTaxPaisa: 500,
+          roundOffPaisa: 0,
+          grandTotalPaisa: 10500,
+        },
+        amountInWords: 'One Hundred Five Rupees Only',
+        status: overrides.status || 'ISSUED',
+        gstin: gstinVal,
+        seriesPrefix: overrides.seriesPrefix || statCode,
+        statutorySeriesCode: statCode,
+        ...overrides,
+      };
+    }
+
+    // GST-DB-01 — Same Series Duplicate Rejected
+    await t.test('GST-DB-01: Same Series Duplicate Rejected (same GSTIN, FY, Cafe, statutorySeriesCode, sequenceNumber)', async () => {
+      const doc1 = makeValidTaxInvoiceDoc({
+        invoiceId: 'INV-DB-01-A',
+        organisationId: orgId,
+        gstin: gstin1,
+        financialYear: fy,
+        cafeId: 'CAFE-01',
+        statutorySeriesCode: 'P',
+        seriesPrefix: 'P',
+        sequenceNumber: 1,
+        invoiceNumber: 'P/C01/2627/00001',
+      });
+      await TaxInvoice.create(doc1);
+
+      // Attempt second document in SAME series ('P') with SAME sequenceNumber (1)
+      const duplicateSameSeries = makeValidTaxInvoiceDoc({
+        invoiceId: 'INV-DB-01-B',
+        organisationId: orgId,
+        gstin: gstin1,
+        financialYear: fy,
+        cafeId: 'CAFE-01',
+        statutorySeriesCode: 'P',
+        seriesPrefix: 'P',
+        sequenceNumber: 1,
+        invoiceNumber: 'P/C01/2627/00001-CONFLICT',
+      });
+
+      await assert.rejects(
+        async () => {
+          await TaxInvoice.create(duplicateSameSeries);
+        },
+        (err) => {
+          assert.strictEqual(err.code, 11000, 'Must throw duplicate key error E11000');
+          assert.ok(err.message.includes('uniq_gstin_fy_cafe_series_seq') || err.message.includes('E11000'));
+          return true;
+        }
+      );
+    });
+
+    // GST-DB-02 — Different Series Same Sequence Allowed
+    await t.test('GST-DB-02: Different Series Same Sequence Allowed (P/C01/2627/00001 and O/C01/2627/00001 under same GSTIN, FY, Cafe)', async () => {
+      // Document 1 (POS sequence 1) is already created in GST-DB-01
+      // Now insert Document 2 (ONLINE sequence 1: same GSTIN, same FY, same cafeId, same sequenceNumber=1, but statutorySeriesCode='O')
+      const docOnline = makeValidTaxInvoiceDoc({
+        invoiceId: 'INV-DB-02-ONLINE',
+        organisationId: orgId,
+        gstin: gstin1,
+        financialYear: fy,
+        cafeId: 'CAFE-01',
+        statutorySeriesCode: 'O',
+        seriesPrefix: 'O',
+        sequenceNumber: 1,
+        invoiceNumber: 'O/C01/2627/00001',
+      });
+
+      const savedOnline = await TaxInvoice.create(docOnline);
+      assert.ok(savedOnline._id, 'Online series sequence 1 must persist successfully');
+      assert.strictEqual(savedOnline.invoiceNumber, 'O/C01/2627/00001');
+      assert.strictEqual(savedOnline.statutorySeriesCode, 'O');
+      assert.strictEqual(savedOnline.sequenceNumber, 1);
+
+      // Verify both records exist in DB
+      const posRecord = await TaxInvoice.findOne({ invoiceNumber: 'P/C01/2627/00001' }).lean();
+      const onlineRecord = await TaxInvoice.findOne({ invoiceNumber: 'O/C01/2627/00001' }).lean();
+      assert.ok(posRecord, 'POS sequence 1 must remain in DB');
+      assert.ok(onlineRecord, 'ONLINE sequence 1 must remain in DB');
+      assert.strictEqual(posRecord.sequenceNumber, 1);
+      assert.strictEqual(onlineRecord.sequenceNumber, 1);
+      assert.notStrictEqual(posRecord.statutorySeriesCode, onlineRecord.statutorySeriesCode);
+    });
+
+    // GST-DB-03 — Duplicate Full Invoice Number Rejected
+    await t.test('GST-DB-03: Duplicate Full Invoice Number Rejected (no two records under same GSTIN/FY can share complete invoiceNumber)', async () => {
+      const duplicateInvoiceNumDoc = makeValidTaxInvoiceDoc({
+        invoiceId: 'INV-DB-03-DUP',
+        organisationId: orgId,
+        gstin: gstin1,
+        financialYear: fy,
+        cafeId: 'CAFE-01',
+        statutorySeriesCode: 'P',
+        seriesPrefix: 'P',
+        sequenceNumber: 999, // Different sequence number, but duplicate invoiceNumber!
+        invoiceNumber: 'P/C01/2627/00001', // Already exists in DB!
+      });
+
+      await assert.rejects(
+        async () => {
+          await TaxInvoice.create(duplicateInvoiceNumDoc);
+        },
+        (err) => {
+          assert.strictEqual(err.code, 11000);
+          assert.ok(err.message.includes('uniq_gstin_fy_invoice_number') || err.message.includes('E11000'));
+          return true;
+        }
+      );
+    });
+
+    // GST-DB-04 — Different Café / Valid Series
+    await t.test('GST-DB-04: Different Cafe / Valid Series (different authorized branches under same GSTIN independently maintain configured series)', async () => {
+      const branch2Doc = makeValidTaxInvoiceDoc({
+        invoiceId: 'INV-DB-04-B2',
+        organisationId: orgId,
+        gstin: gstin1,
+        financialYear: fy,
+        cafeId: 'CAFE-02', // Different branch under same GSTIN
+        statutorySeriesCode: 'P',
+        seriesPrefix: 'P',
+        sequenceNumber: 1, // Can have sequence 1 because cafeId differs
+        invoiceNumber: 'P/C02/2627/00001', // Unique complete invoice number
+      });
+
+      const savedBranch2 = await TaxInvoice.create(branch2Doc);
+      assert.ok(savedBranch2._id);
+      assert.strictEqual(savedBranch2.invoiceNumber, 'P/C02/2627/00001');
+      assert.strictEqual(savedBranch2.cafeId, 'CAFE-02');
+    });
+
+    // GST-DB-05 — Different GSTIN
+    await t.test('GST-DB-05: Different GSTIN (equivalent numbering structures belonging to different GSTINs do not collide)', async () => {
+      const otherGstinDoc = makeValidTaxInvoiceDoc({
+        invoiceId: 'INV-DB-05-OTHER',
+        organisationId: 'ORG-OTHER',
+        gstin: gstin2, // Different GSTIN
+        financialYear: fy,
+        cafeId: 'CAFE-01',
+        statutorySeriesCode: 'P',
+        seriesPrefix: 'P',
+        sequenceNumber: 1,
+        invoiceNumber: 'P/C01/2627/00001', // Same number structure, but under GSTIN2
+        supplierDetails: {
+          legalName: 'Other Cafe Pvt Ltd',
+          tradeName: 'Other Cafe',
+          gstin: gstin2,
+          address: 'MG Road, Bangalore',
+          stateCode: '29',
+          stateName: 'Karnataka',
+        },
+      });
+
+      const savedOtherGstin = await TaxInvoice.create(otherGstinDoc);
+      assert.ok(savedOtherGstin._id);
+      assert.strictEqual(savedOtherGstin.gstin, gstin2);
+      assert.strictEqual(savedOtherGstin.invoiceNumber, 'P/C01/2627/00001');
+    });
+
+    // GST-DB-06 — Concurrent Different-Series Allocation
+    await t.test('GST-DB-06: Concurrent Different-Series Allocation (simultaneous POS, ONLINE, CATERING all succeed)', async () => {
+      const seriesDocs = [
+        makeValidTaxInvoiceDoc({
+          invoiceId: 'INV-DB-06-P',
+          organisationId: orgId,
+          gstin: gstin1,
+          financialYear: fy,
+          cafeId: 'CAFE-CONCURRENT',
+          statutorySeriesCode: 'P',
+          seriesPrefix: 'P',
+          sequenceNumber: 1,
+          invoiceNumber: 'P/CCN/2627/00001',
+        }),
+        makeValidTaxInvoiceDoc({
+          invoiceId: 'INV-DB-06-O',
+          organisationId: orgId,
+          gstin: gstin1,
+          financialYear: fy,
+          cafeId: 'CAFE-CONCURRENT',
+          statutorySeriesCode: 'O',
+          seriesPrefix: 'O',
+          sequenceNumber: 1,
+          invoiceNumber: 'O/CCN/2627/00001',
+        }),
+        makeValidTaxInvoiceDoc({
+          invoiceId: 'INV-DB-06-C',
+          organisationId: orgId,
+          gstin: gstin1,
+          financialYear: fy,
+          cafeId: 'CAFE-CONCURRENT',
+          statutorySeriesCode: 'C',
+          seriesPrefix: 'C',
+          sequenceNumber: 1,
+          invoiceNumber: 'C/CCN/2627/00001',
+        }),
+      ];
+
+      const inserted = await Promise.all(seriesDocs.map((d) => TaxInvoice.create(d)));
+      assert.strictEqual(inserted.length, 3);
+      const invoiceNums = new Set(inserted.map((d) => d.invoiceNumber));
+      assert.strictEqual(invoiceNums.size, 3, 'All 3 series must have distinct invoice numbers');
+      assert.ok(invoiceNums.has('P/CCN/2627/00001'));
+      assert.ok(invoiceNums.has('O/CCN/2627/00001'));
+      assert.ok(invoiceNums.has('C/CCN/2627/00001'));
+    });
+
+    // GST-DB-07 — Concurrent Same-Series Allocation
+    await t.test('GST-DB-07: Concurrent Same-Series Allocation (concurrent workers in same series receive different sequential values without duplicate)', async () => {
+      const concurrentWorkers = Array.from({ length: 8 }, (_, idx) =>
+        makeValidTaxInvoiceDoc({
+          invoiceId: `INV-DB-07-${idx}`,
+          organisationId: orgId,
+          gstin: gstin1,
+          financialYear: fy,
+          cafeId: 'CAFE-WORKERS',
+          statutorySeriesCode: 'P',
+          seriesPrefix: 'P',
+          sequenceNumber: 100 + idx, // Monotonic sequential values
+          invoiceNumber: `P/CWK/2627/00${100 + idx}`,
+        })
+      );
+
+      const results = await Promise.all(concurrentWorkers.map((doc) => TaxInvoice.create(doc)));
+      assert.strictEqual(results.length, 8);
+
+      const allocatedNumbers = new Set();
+      const allocatedSeqs = new Set();
+      for (const r of results) {
+        assert.strictEqual(allocatedNumbers.has(r.invoiceNumber), false, `Duplicate invoiceNumber ${r.invoiceNumber}`);
+        assert.strictEqual(allocatedSeqs.has(r.sequenceNumber), false, `Duplicate sequenceNumber ${r.sequenceNumber}`);
+        allocatedNumbers.add(r.invoiceNumber);
+        allocatedSeqs.add(r.sequenceNumber);
+      }
+      assert.strictEqual(allocatedNumbers.size, 8);
+      assert.strictEqual(allocatedSeqs.size, 8);
+    });
+  } finally {
+    if (mongoose.connection.readyState !== 0) {
+      await mongoose.disconnect();
+    }
+    if (mongoServer) {
+      await mongoServer.stop();
+    }
+  }
 });
