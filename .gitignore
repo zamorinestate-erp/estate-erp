@@ -30,4 +30,16 @@ scratch/
 
 LOGIN-PAGE-2.0-main/
 
+# .NET / Windows Build Artifacts
+windows/**/bin/
+windows/**/obj/
+**/bin/
+**/obj/
 
+# Apple / Xcode Build Artifacts
+.build/
+*.xcodeproj/*
+!*.xcodeproj/project.pbxproj
+*.xcworkspace/*
+!*.xcworkspace/contents.xcworkspacedata
+DerivedData/
