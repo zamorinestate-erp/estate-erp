@@ -221,10 +221,15 @@ function createApp(environment) {
 
   const readinessHandler = async (request, response) => {
     const database = getDatabaseState();
-    const storageState = await documentStorageAdapter.healthCheck().catch(() => ({ status: 'ERROR' }));
-    const dbReady = database.readyState === 1;
-    const storageReady = storageState.status === 'OK';
-    const ready = dbReady && storageReady;
+    let storageStatus = 'OK';
+    try {
+      const storageState = await documentStorageAdapter.healthCheck();
+      storageStatus = storageState.status;
+    } catch {
+      storageStatus = 'UNAVAILABLE';
+    }
+
+    const ready = database.readyState === 1;
 
     return response
       .status(ready ? 200 : 503)
@@ -233,7 +238,7 @@ function createApp(environment) {
         status: ready ? 'ready' : 'not_ready',
         service: SERVICE_NAME,
         database: database.status,
-        storage: storageState.status,
+        storage: storageStatus,
         timestamp: new Date().toISOString(),
         correlationId: request.correlationId || null,
       });
