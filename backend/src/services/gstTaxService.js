@@ -587,10 +587,11 @@ async function allocateInvoiceNumber({
       const generated = await SequenceCounter.generateId({
         organisationId: organisationId || 'ORG-ZAMORIN',
         sequenceKey,
-        prefix: '',
+        prefix: statCode || 'INV',
         minimumDigits: Math.min(maxAllowedDigits, 5),
       });
-      sequenceNumber = parseInt(generated, 10);
+      const match = String(generated).match(/(\d+)$/);
+      sequenceNumber = match ? parseInt(match[1], 10) : parseInt(generated, 10);
     } catch {
       // Fallback: inspect highest existing invoice for this financial year & cafe & GSTIN
       const query = {

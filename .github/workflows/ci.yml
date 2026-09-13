@@ -94,3 +94,66 @@ jobs:
       - name: Publish Windows Native Shell
         run: dotnet publish windows/ZamorinCafeERP -c Release
 
+  apple:
+    name: Apple Native Client CI
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Record Toolchain & SDKs
+        run: |
+          echo "=== Xcode Toolchain ==="
+          xcodebuild -version
+          swift --version
+          echo "=== Available SDKs ==="
+          xcrun --sdk iphonesimulator --show-sdk-version
+          xcrun --sdk macosx --show-sdk-version
+
+      - name: Discover Apple Project Structure
+        run: |
+          echo "=== iOS Directory Discovery ==="
+          ls -la apple/ios/ZamorinCafeERP
+          ls -la apple/ios/Tests
+          echo "=== macOS Directory Discovery ==="
+          ls -la apple/macos/ZamorinCafeERP
+          ls -la apple/macos/Tests
+
+      - name: Compile iOS Target (iPhone Simulator)
+        run: |
+          xcrun -sdk iphonesimulator swiftc \
+            -target arm64-apple-ios17.0-simulator \
+            -parse-as-library \
+            apple/ios/ZamorinCafeERP/ZamorinSecurityConfig.swift \
+            apple/ios/ZamorinCafeERP/ZamorinNativeBridge.swift \
+            apple/ios/ZamorinCafeERP/ZamorinDocumentManager.swift \
+            apple/ios/ZamorinCafeERP/ViewController.swift \
+            -emit-module -module-name ZamorinCafeERP \
+            -emit-library -o /tmp/libZamorinCafeERPIphone.dylib
+
+      - name: Compile iPad Target (iPad Simulator)
+        run: |
+          xcrun -sdk iphonesimulator swiftc \
+            -target arm64-apple-ios17.0-simulator \
+            -parse-as-library \
+            apple/ios/ZamorinCafeERP/ZamorinSecurityConfig.swift \
+            apple/ios/ZamorinCafeERP/ZamorinNativeBridge.swift \
+            apple/ios/ZamorinCafeERP/ZamorinDocumentManager.swift \
+            apple/ios/ZamorinCafeERP/ViewController.swift \
+            -emit-module -module-name ZamorinCafeERPIpad \
+            -emit-library -o /tmp/libZamorinCafeERPIpad.dylib
+
+      - name: Compile macOS Target
+        run: |
+          xcrun -sdk macosx swiftc \
+            -target arm64-apple-macos14.0 \
+            -parse-as-library \
+            apple/macos/ZamorinCafeERP/ZamorinSecurityConfig.swift \
+            apple/macos/ZamorinCafeERP/ZamorinNativeBridge.swift \
+            apple/macos/ZamorinCafeERP/ZamorinMacStorageManager.swift \
+            apple/macos/ZamorinCafeERP/MainWindowController.swift \
+            -emit-module -module-name ZamorinCafeERPMac \
+            -emit-library -o /tmp/libZamorinCafeERPMac.dylib
+
+
