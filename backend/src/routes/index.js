@@ -128,6 +128,12 @@ const shiftRoutes =
 const holidayRoutes =
   require('./holidayRoutes');
 
+const exportRoutes =
+  require('./exportRoutes');
+
+const universalQrRoutes =
+  require('./universalQrRoutes');
+
 const router = express.Router();
 
 router.use(
@@ -382,6 +388,16 @@ router.use(
 router.use(
   '/system',
   systemRoutes
+);
+
+router.use(
+  '/exports',
+  exportRoutes
+);
+
+router.use(
+  '/qr',
+  universalQrRoutes
 );
 
 router.use(
