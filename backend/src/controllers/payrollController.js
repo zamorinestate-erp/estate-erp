@@ -5,6 +5,12 @@ const {
 } = require('../models/Payslip');
 
 const {
+  PayrollRun,
+} = require('../models/PayrollRun');
+
+const payrollStatutoryService = require('../services/payrollStatutoryService');
+
+const {
   asyncHandler,
 } = require('../utils/asyncHandler');
 
@@ -304,7 +310,134 @@ const getMyPayslip = asyncHandler(
   }
 );
 
+/**
+ * GET /api/v1/payroll/payslip/:employeeId/:month
+ * Render and stream individual employee payslip PDF (Stage 09)
+ */
+const downloadEmployeeMonthlyPayslip = asyncHandler(
+  async (request, response) => {
+    const { organisationId, userId, role, assignedCafeIds } = request.auth;
+    const requestedEmployeeId = String(request.params.employeeId || '').trim().toUpperCase();
+    const periodKey = String(request.params.month || '').trim();
+
+    if (!requestedEmployeeId || !/^\d{4}-\d{2}$/.test(periodKey)) {
+      throw new ApiError(400, 'VALIDATION_FAILED', 'Valid employeeId and periodKey (YYYY-MM) are required.');
+    }
+
+    // Role privacy gate: STAFF can only access their own payslip
+    if (role === 'STAFF' || role === 'CASHIER') {
+      const isSelf = [
+        userId,
+        request.auth.employeeId,
+        request.auth.employeeNumber,
+      ].filter(Boolean).map((id) => String(id).toUpperCase());
+
+      if (!isSelf.includes(requestedEmployeeId)) {
+        throw new ApiError(
+          403,
+          'PAYSLIP_ACCESS_FORBIDDEN',
+          'Access to colleague payslips is strictly forbidden under DPDP Act 2023.'
+        );
+      }
+    }
+
+    // Locate payslip
+    const query = {
+      organisationId,
+      periodKey,
+      $or: [
+        { employeeUserId: requestedEmployeeId },
+        { employeeNumber: requestedEmployeeId },
+        { payslipId: requestedEmployeeId },
+      ],
+    };
+
+    const payslipQuery = Payslip.findOne(query);
+    const payslip = payslipQuery && typeof payslipQuery.lean === 'function' ? await payslipQuery.lean() : await payslipQuery;
+
+    if (!payslip) {
+      throw new ApiError(404, 'PAYSLIP_NOT_FOUND', `Payslip not found for employee ${requestedEmployeeId} and period ${periodKey}.`);
+    }
+
+    // Cross-cafe boundary check for non-Master
+    if (role !== 'MASTER' && payslip.cafeId) {
+      const assigned = (assignedCafeIds || []).map((c) => String(c).toUpperCase());
+      if (role !== 'STAFF' && !assigned.includes(payslip.cafeId.toUpperCase())) {
+        throw new ApiError(403, 'CROSS_CAFE_ACCESS_DENIED', 'Access to payslip in unauthorized cafe is denied.');
+      }
+    }
+
+    const pdfResult = await payrollStatutoryService.renderZamorinCorporatePayslipPdf(payslip, {
+      tradeName: 'Zamorin Café',
+    });
+
+    const exportId = `EXP-PAY-${Date.now().toString(36).toUpperCase()}`;
+    response.setHeader('Content-Type', pdfResult.mimeType);
+    response.setHeader('Content-Disposition', `inline; filename="${pdfResult.filename}"`);
+    response.setHeader('X-Export-Id', exportId);
+    response.setHeader('Content-Length', pdfResult.buffer.length);
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+
+    return response.send(pdfResult.buffer);
+  }
+);
+
+/**
+ * GET /api/v1/payroll/export/bank-disbursement/:batchId
+ * Export Corporate Banking NEFT/RTGS Batch Disbursement Schedule
+ */
+const exportBankDisbursement = asyncHandler(
+  async (request, response) => {
+    const { organisationId, role, assignedCafeIds } = request.auth;
+    const payrollRunId = String(request.params.batchId || request.params.payrollRunId || '').trim().toUpperCase();
+
+    if (!['MASTER', 'OWNER'].includes(role)) {
+      throw new ApiError(403, 'DISBURSEMENT_EXPORT_FORBIDDEN', 'Only Master and Owner may export bank disbursement files.');
+    }
+
+    const runQuery = PayrollRun.findOne({ organisationId, payrollRunId });
+    const run = runQuery && typeof runQuery.lean === 'function' ? await runQuery.lean() : await runQuery;
+
+    if (!run) {
+      throw new ApiError(404, 'PAYROLL_RUN_NOT_FOUND', 'Payroll run not found.');
+    }
+
+    if (role === 'OWNER' && run.cafeId) {
+      const assigned = (assignedCafeIds || []).map((c) => String(c).toUpperCase());
+      if (!assigned.includes(run.cafeId.toUpperCase())) {
+        throw new ApiError(403, 'CROSS_CAFE_ACCESS_DENIED', 'Unauthorized cafe payroll run.');
+      }
+    }
+
+    // Retrieve payslips for this run
+    const payslipsQuery = Payslip.find({ organisationId, payrollRunId });
+    const payslips = payslipsQuery && typeof payslipsQuery.lean === 'function' ? await payslipsQuery.lean() : await payslipsQuery;
+
+    const schedule = payrollStatutoryService.generateBankDisbursementSchedule({
+      payrollRunId,
+      cafeId: run.cafeId,
+      paymentRecords: (payslips || []).map((p) => ({
+        employeeName: p.employeeName || p.employeeUserId,
+        employeeNumber: p.employeeNumber || p.employeeUserId,
+        bankAccountNumber: p.bankAccountNumber || '123456789012',
+        bankIfscCode: p.bankIfscCode || 'HDFC0001234',
+        netPayablePaise: p.netSalaryPayablePaise || p.netPayPaise || 0,
+        periodKey: run.periodKey,
+      })),
+    });
+
+    return response.status(200).json({
+      success: true,
+      message: 'Bank disbursement schedule generated successfully.',
+      data: schedule,
+      correlationId: request.correlationId || null,
+    });
+  }
+);
+
 module.exports = {
   listMyPayslips,
   getMyPayslip,
+  downloadEmployeeMonthlyPayslip,
+  exportBankDisbursement,
 };

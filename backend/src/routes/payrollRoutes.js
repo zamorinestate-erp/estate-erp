@@ -9,6 +9,8 @@ const {
 const {
   listMyPayslips,
   getMyPayslip,
+  downloadEmployeeMonthlyPayslip,
+  exportBankDisbursement,
 } = require('../controllers/payrollController');
 
 const {
@@ -74,6 +76,16 @@ router.get(
 router.get(
   '/me/payslips/:payslipId',
   getMyPayslip
+);
+
+router.get(
+  '/payslip/:employeeId/:month',
+  downloadEmployeeMonthlyPayslip
+);
+
+router.get(
+  '/export/bank-disbursement/:payrollRunId',
+  exportBankDisbursement
 );
 
 router.post(
