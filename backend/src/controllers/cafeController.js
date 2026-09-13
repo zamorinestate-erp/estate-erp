@@ -179,10 +179,17 @@ const getCafe = asyncHandler(
       );
     }
 
+    const cafeObj = cafe.toObject ? cafe.toObject() : JSON.parse(JSON.stringify(cafe));
+    const unmaskAllowed = request.auth.role === 'MASTER' && request.query.unmaskSensitive === 'true';
+    if (!unmaskAllowed && cafeObj.finance?.banking?.accountNumber) {
+      const rawAcc = cafeObj.finance.banking.accountNumber;
+      cafeObj.finance.banking.accountNumber = '••••••••' + String(rawAcc).slice(-4);
+    }
+
     return response.status(200).json({
       success: true,
       data: {
-        cafe,
+        cafe: cafeObj,
       },
       correlationId:
         request.correlationId || null,
@@ -455,6 +462,116 @@ const archiveCafe = asyncHandler(
   }
 );
 
+const getCafeReadiness = asyncHandler(
+  async (request, response) => {
+    const cafeId = normalizeIdentifier(request.params.cafeId);
+    assertCafeAccess(request, cafeId);
+    const data = await cafeService.getCafeReadiness({
+      organisationId: request.auth.organisationId,
+      cafeId,
+    });
+    return response.status(200).json({
+      success: true,
+      data,
+      correlationId: request.correlationId || null,
+    });
+  }
+);
+
+const updateReadinessChecklist = asyncHandler(
+  async (request, response) => {
+    requireGovernanceRole(request);
+    const cafeId = normalizeIdentifier(request.params.cafeId);
+    assertCafeAccess(request, cafeId);
+    const data = await cafeService.updateReadinessChecklist({
+      organisationId: request.auth.organisationId,
+      cafeId,
+      checklistUpdates: request.body?.readinessChecklist || request.body || {},
+      auth: request.auth,
+    });
+    return response.status(200).json({
+      success: true,
+      message: 'Readiness checklist updated successfully.',
+      data,
+      correlationId: request.correlationId || null,
+    });
+  }
+);
+
+const transitionLifecycleState = asyncHandler(
+  async (request, response) => {
+    requireGovernanceRole(request);
+    const cafeId = normalizeIdentifier(request.params.cafeId);
+    assertCafeAccess(request, cafeId);
+    const targetStatus = request.body?.targetStatus || request.body?.status;
+    const reason = request.body?.reason || '';
+    const data = await cafeService.transitionLifecycleState({
+      organisationId: request.auth.organisationId,
+      cafeId,
+      targetStatus,
+      reason,
+      auth: request.auth,
+    });
+    return response.status(200).json({
+      success: true,
+      message: `Lifecycle state updated to ${data.status}.`,
+      data,
+      correlationId: request.correlationId || null,
+    });
+  }
+);
+
+const getComplianceAlerts = asyncHandler(
+  async (request, response) => {
+    const cafeId = request.params.cafeId ? normalizeIdentifier(request.params.cafeId) : null;
+    if (cafeId) {
+      assertCafeAccess(request, cafeId);
+    }
+    const data = await cafeService.getComplianceAlerts({
+      organisationId: request.auth.organisationId,
+      cafeId,
+    });
+    return response.status(200).json({
+      success: true,
+      data,
+      correlationId: request.correlationId || null,
+    });
+  }
+);
+
+const regenerateCafeLoginQr = asyncHandler(
+  async (request, response) => {
+    requireGovernanceRole(request);
+    const cafeId = normalizeIdentifier(request.params.cafeId);
+    assertCafeAccess(request, cafeId);
+    const data = await cafeService.regenerateCafeLoginQr({
+      organisationId: request.auth.organisationId,
+      cafeId,
+      auth: request.auth,
+    });
+    return response.status(200).json({
+      success: true,
+      message: 'Café login QR regenerated successfully.',
+      data,
+      correlationId: request.correlationId || null,
+    });
+  }
+);
+
+const downloadPrintableQrCardPdf = asyncHandler(
+  async (request, response) => {
+    const cafeId = normalizeIdentifier(request.params.cafeId);
+    assertCafeAccess(request, cafeId);
+    const { pdfBuffer, filename } = await cafeService.generatePrintableQrCardPdf({
+      organisationId: request.auth.organisationId,
+      cafeId,
+    });
+    response.setHeader('Content-Type', 'application/pdf');
+    response.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    return response.status(200).send(pdfBuffer);
+  }
+);
+
 module.exports = {
   listCafes,
   getCafe,
@@ -462,4 +579,10 @@ module.exports = {
   updateCafe,
   changeCafeStatus,
   archiveCafe,
+  getCafeReadiness,
+  updateReadinessChecklist,
+  transitionLifecycleState,
+  getComplianceAlerts,
+  regenerateCafeLoginQr,
+  downloadPrintableQrCardPdf,
 };

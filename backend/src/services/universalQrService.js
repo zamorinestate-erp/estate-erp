@@ -224,6 +224,13 @@ class UniversalQrService {
   }
 
   /**
+   * Revokes a QR code permanently (convenience alias).
+   */
+  static async revokeQrRecord(qrId, reason = 'Revoked by administrator', actorUserId = 'SYSTEM') {
+    return this.revokeQr(qrId, { reason, actorUserId });
+  }
+
+  /**
    * Generates a printable A4 QR Card PDF using Zamorin Corporate Report Standard.
    */
   static renderPrintableQrCardPdf(qrRecord, branding = {}) {

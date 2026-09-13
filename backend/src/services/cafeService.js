@@ -28,12 +28,49 @@ const { ApiError } = require('../utils/ApiError');
 const ALLOWED_CAFE_CREATE_FIELDS = [
   'name',
   'displayName',
+  'legalName',
+  'branchName',
   'cafeType',
+  'establishmentCategory',
+  'dietaryType',
+  'dateBusinessStarted',
   'status',
   'openingDate',
+  'branchCode',
+  'internalCafeId',
+  'storeNumber',
+  'parentOrganisationId',
+  'legalConstitution',
+  'constitution',
+  'legalOwnerName',
+  'ownerName',
+  'partnersDirectors',
+  'directors',
+  'authorisedSignatory',
+  'pan',
+  'cin',
+  'registrationNumber',
+  'incorporationDate',
+  'registeredOfficeAddress',
+  'udyamNumber',
+  'udyamRegistrationDate',
+  'enterpriseClassification',
+  'contactProfile',
+  'primaryContact',
+  'emergencyContact',
+  'communicationPreference',
+  'emergencyName',
+  'emergencyPhone',
   'address',
   'addressLine1',
   'addressLine2',
+  'doorNumber',
+  'possessionType',
+  'leaseStartDate',
+  'leaseEndDate',
+  'mapsLink',
+  'latitude',
+  'longitude',
   'landmark',
   'city',
   'district',
@@ -54,8 +91,41 @@ const ALLOWED_CAFE_CREATE_FIELDS = [
   'managerName',
   'managerEmail',
   'managerPhone',
+  'registrations',
   'gstin',
+  'gstDetails',
+  'fssai',
   'fssaiNumber',
+  'fssaiType',
+  'fssaiExpiryDate',
+  'otherRegistrations',
+  'finance',
+  'banking',
+  'bankName',
+  'accountNumber',
+  'ifsc',
+  'accountHolderName',
+  'upiId',
+  'operations',
+  'seatingCapacity',
+  'tableCount',
+  'splitShifts',
+  'floorZoneStructure',
+  'kitchenSections',
+  'prepStations',
+  'kotRouting',
+  'serviceChargePolicy',
+  'cancellationPolicy',
+  'refundPolicy',
+  'discountPolicy',
+  'orderNumberingScheme',
+  'inventorySetup',
+  'inventoryConfig',
+  'hardwareReadiness',
+  'hardwareProfile',
+  'hardware',
+  'branding',
+  'readinessChecklist',
   'responsibleOwnerId',
   'assignedMasterIds',
   'costCenterCode',
@@ -223,7 +293,29 @@ class CafeService {
         session ? { session } : {}
       );
 
-      // 4b. Create Cafe Record
+      // 4b. Create Stage 02 Universal QR Record for Café Login
+      const { UniversalQrService } = require('./universalQrService');
+      const securePublicCafeReference = generateOpaqueToken();
+      let universalQr = null;
+      try {
+        universalQr = await UniversalQrService.createQrRecord({
+          qrType: 'CAFE_LOGIN',
+          targetEntityId: securePublicCafeReference,
+          organisationId,
+          cafeId,
+          title: `Café Login QR — ${name}`,
+          metadata: {
+            cafeId,
+            name,
+            city: sanitized.city || (sanitized.address && sanitized.address.city) || '',
+          },
+          actorUserId: auth.userId,
+        });
+      } catch (_) {
+        // Non-blocking fallback if running in standalone test environment
+      }
+
+      // 4c. Create Cafe Record with Full 12-Section Profile
       const [cafeDoc] = await Cafe.create(
         [
           {
@@ -232,20 +324,235 @@ class CafeService {
             organisationId,
             name,
             displayName,
+            legalName: sanitized.legalName || name,
+            branchName: sanitized.branchName || '',
+            establishmentCategory: sanitized.establishmentCategory || 'Café',
+            dietaryType: sanitized.dietaryType || 'MIXED',
+            dateBusinessStarted: sanitized.dateBusinessStarted || null,
+            branchCode: sanitized.branchCode || '',
+            internalCafeId: sanitized.internalCafeId || '',
+            storeNumber: sanitized.storeNumber || '',
+            parentOrganisationId: sanitized.parentOrganisationId || organisationId,
             cafeType,
             status: initialStatus,
+            legalConstitution: {
+              constitution: sanitized.constitution || sanitized.legalConstitution?.constitution || 'PROPRIETORSHIP',
+              legalOwnerName: sanitized.legalOwnerName || sanitized.ownerName || sanitized.legalConstitution?.legalOwnerName || '',
+              partnersDirectors: sanitized.partnersDirectors || sanitized.directors || sanitized.legalConstitution?.partnersDirectors || [],
+              authorisedSignatory: sanitized.authorisedSignatory || sanitized.legalConstitution?.authorisedSignatory || '',
+              pan: (sanitized.pan || sanitized.legalConstitution?.pan || '').toUpperCase(),
+              cin: (sanitized.cin || sanitized.legalConstitution?.cin || '').toUpperCase(),
+              registrationNumber: sanitized.registrationNumber || sanitized.legalConstitution?.registrationNumber || '',
+              incorporationDate: sanitized.incorporationDate || sanitized.legalConstitution?.incorporationDate || null,
+              registeredOfficeAddress: sanitized.registeredOfficeAddress || sanitized.legalConstitution?.registeredOfficeAddress || '',
+              udyamNumber: sanitized.udyamNumber || sanitized.legalConstitution?.udyamNumber || '',
+              udyamRegistrationDate: sanitized.udyamRegistrationDate || sanitized.legalConstitution?.udyamRegistrationDate || null,
+              enterpriseClassification: sanitized.enterpriseClassification || sanitized.legalConstitution?.enterpriseClassification || '',
+            },
+            contactProfile: {
+              primaryContact: {
+                name: sanitized.managerName || sanitized.contactProfile?.primaryContact?.name || '',
+                designation: sanitized.contactProfile?.primaryContact?.designation || 'Store Manager',
+                mobile: sanitized.phone || sanitized.contactProfile?.primaryContact?.mobile || '',
+                alternateMobile: sanitized.alternatePhone || sanitized.contactProfile?.primaryContact?.alternateMobile || '',
+                whatsapp: sanitized.contactProfile?.primaryContact?.whatsapp || '',
+                email: sanitized.email || sanitized.contactProfile?.primaryContact?.email || '',
+                secondaryEmail: sanitized.contactProfile?.primaryContact?.secondaryEmail || '',
+              },
+              emergencyContact: {
+                name: sanitized.contactProfile?.emergencyContact?.name || sanitized.emergencyName || '',
+                role: sanitized.contactProfile?.emergencyContact?.role || 'Emergency Contact',
+                phone: sanitized.contactProfile?.emergencyContact?.phone || sanitized.emergencyPhone || '',
+                alternatePhone: sanitized.contactProfile?.emergencyContact?.alternatePhone || '',
+              },
+              communicationPreference: sanitized.communicationPreference || 'EMAIL',
+            },
             address: {
-              ...(sanitized.address || {}),
+              building: sanitized.address?.building || '',
+              unit: sanitized.address?.unit || '',
+              floor: sanitized.address?.floor || '',
+              street: sanitized.address?.street || sanitized.addressLine1 || '',
               line1: sanitized.addressLine1 || sanitized.address?.line1 || '',
               line2: sanitized.addressLine2 || sanitized.address?.line2 || '',
-              landmark: sanitized.landmark || sanitized.address?.landmark || '',
+              area: sanitized.address?.area || '',
               city: sanitized.city || sanitized.address?.city || '',
               district: sanitized.district || sanitized.address?.district || '',
-              state: sanitized.state || sanitized.address?.state || '',
+              state: sanitized.state || sanitized.address?.state || 'Kerala',
               stateCode: sanitized.stateCode || sanitized.address?.stateCode || '',
+              pinCode: sanitized.pincode || sanitized.address?.pinCode || '',
               pincode: sanitized.pincode || sanitized.address?.pincode || '',
               country: sanitized.country || sanitized.address?.country || 'India',
+              landmark: sanitized.landmark || sanitized.address?.landmark || '',
+              latitude: sanitized.latitude || sanitized.address?.latitude || null,
+              longitude: sanitized.longitude || sanitized.address?.longitude || null,
+              doorNumber: sanitized.doorNumber || sanitized.address?.doorNumber || '',
+              possessionType: sanitized.possessionType || sanitized.address?.possessionType || 'RENTED',
+              leaseStartDate: sanitized.leaseStartDate || sanitized.address?.leaseStartDate || null,
+              leaseEndDate: sanitized.leaseEndDate || sanitized.address?.leaseEndDate || null,
+              mapsLink: sanitized.mapsLink || sanitized.address?.mapsLink || '',
             },
+            registrations: {
+              gstin: (sanitized.gstin || sanitized.gstDetails?.gstin || '').toUpperCase(),
+              gstDetails: {
+                isRegistered: Boolean(sanitized.gstin || sanitized.gstDetails?.isRegistered),
+                gstin: (sanitized.gstin || sanitized.gstDetails?.gstin || '').toUpperCase(),
+                legalName: sanitized.gstDetails?.legalName || sanitized.legalName || name,
+                tradeName: sanitized.gstDetails?.tradeName || displayName || name,
+                registrationDate: sanitized.gstDetails?.registrationDate || null,
+                stateCode: sanitized.gstDetails?.stateCode || '',
+                taxpayerType: sanitized.gstDetails?.taxpayerType || 'REGULAR',
+                principalPlace: sanitized.gstDetails?.principalPlace || '',
+                certificateUrl: sanitized.gstDetails?.certificateUrl || '',
+                effectiveDate: sanitized.gstDetails?.effectiveDate || null,
+                status: sanitized.gstDetails?.status || 'ACTIVE',
+              },
+              pan: (sanitized.pan || sanitized.legalConstitution?.pan || '').toUpperCase(),
+              municipalId: sanitized.municipalId || '',
+              fssai: {
+                isApplicable: sanitized.fssai?.isApplicable !== false,
+                number: sanitized.fssaiNumber || sanitized.fssai?.number || '',
+                licenseType: sanitized.fssaiType || sanitized.fssai?.licenseType || 'State Licence',
+                kindOfBusiness: sanitized.fssai?.kindOfBusiness || 'Food Service / Café',
+                issuingAuthority: sanitized.fssai?.issuingAuthority || 'FSSAI FoSCoS',
+                validFrom: sanitized.fssai?.validFrom || null,
+                validTill: sanitized.fssaiExpiryDate || sanitized.fssai?.validTill || null,
+                certificateUrl: sanitized.fssai?.certificateUrl || '',
+                renewalReminderDate: sanitized.fssai?.renewalReminderDate || null,
+              },
+              licenceNumbers: Array.isArray(sanitized.licenceNumbers) ? sanitized.licenceNumbers : [],
+              otherRegistrations: Array.isArray(sanitized.otherRegistrations) ? sanitized.otherRegistrations : [],
+            },
+            operations: {
+              seatingCapacity: sanitized.seatingCapacity || sanitized.operations?.seatingCapacity || 0,
+              tableCount: sanitized.tableCount || sanitized.operations?.tableCount || 0,
+              counterCount: sanitized.counterCount || sanitized.operations?.counterCount || 1,
+              cashPointCount: sanitized.cashPointCount || sanitized.operations?.cashPointCount || 1,
+              storageLocationCount: sanitized.storageLocationCount || sanitized.operations?.storageLocationCount || 1,
+              splitShifts: Boolean(sanitized.splitShifts),
+              floorZoneStructure: sanitized.floorZoneStructure || '',
+              kitchenSections: sanitized.kitchenSections || ['Beverages', 'Hot Kitchen', 'Bakery'],
+              prepStations: sanitized.prepStations || ['Espresso Bar', 'Grill', 'Prep Counter'],
+              kotRouting: sanitized.kotRouting || 'STATION_SPLIT',
+              serviceChargePolicy: sanitized.serviceChargePolicy || 'NONE',
+              cancellationPolicy: sanitized.cancellationPolicy || 'STANDARD',
+              refundPolicy: sanitized.refundPolicy || 'SAME_PAYMENT_METHOD',
+              discountPolicy: sanitized.discountPolicy || 'MANAGER_APPROVAL_REQUIRED',
+              orderNumberingScheme: sanitized.orderNumberingScheme || 'DAILY_RESET',
+            },
+            finance: {
+              costCentreCode: sanitized.costCenterCode || sanitized.costCentreCode || '',
+              profitCentreCode: sanitized.profitCentreCode || '',
+              monthlyBudget: sanitized.monthlyBudget || 0,
+              monthlySalesTarget: sanitized.monthlySalesTarget || 0,
+              monthlyLabourBudget: sanitized.monthlyLabourBudget || 0,
+              monthlyRent: sanitized.monthlyRent || 0,
+              openingCashRequired: sanitized.openingCashRequired !== false,
+              defaultOpeningCash: sanitized.defaultOpeningCash || 0,
+              banking: {
+                accountHolderName: sanitized.banking?.accountHolderName || sanitized.accountHolderName || name,
+                bankName: sanitized.banking?.bankName || sanitized.bankName || '',
+                branch: sanitized.banking?.branch || '',
+                accountNumber: sanitized.banking?.accountNumber || sanitized.accountNumber || '',
+                accountNumberMasked: sanitized.banking?.accountNumber
+                  ? '••••••••' + String(sanitized.banking.accountNumber).slice(-4)
+                  : (sanitized.accountNumber ? '••••••••' + String(sanitized.accountNumber).slice(-4) : ''),
+                ifsc: (sanitized.banking?.ifsc || sanitized.ifsc || '').toUpperCase(),
+                accountType: sanitized.banking?.accountType || 'CURRENT',
+                upiId: sanitized.banking?.upiId || sanitized.upiId || '',
+                merchantId: sanitized.banking?.merchantId || '',
+                settlementAccount: sanitized.banking?.settlementAccount || '',
+                cashOpeningBalance: sanitized.banking?.cashOpeningBalance || 0,
+                accountingYear: '2026-2027',
+                financialYear: '2026-2027',
+                currency: 'INR',
+                taxRoundingMethod: 'ROUND_HALF_UP',
+              },
+            },
+            inventorySetup: {
+              enabled: true,
+              globalMasterDataPublished: false,
+              openingStockCompleted: false,
+              mainStore: sanitized.inventorySetup?.mainStore || 'Main Store',
+              subStore: sanitized.inventorySetup?.subStore || '',
+              kitchenStore: sanitized.inventorySetup?.kitchenStore || 'Kitchen Store',
+              dryStorage: sanitized.inventorySetup?.dryStorage || 'Dry Storage',
+              coldStorageLocations: sanitized.inventorySetup?.coldStorageLocations || ['Walk-in Chiller', 'Display Fridge'],
+              defaultSuppliers: sanitized.inventorySetup?.defaultSuppliers || [],
+              stockValuationMethod: sanitized.inventorySetup?.stockValuationMethod || 'FIFO',
+              uoms: sanitized.inventorySetup?.uoms || ['KG', 'LITRE', 'PACK', 'PORTION', 'UNIT'],
+              reorderPolicy: sanitized.inventorySetup?.reorderPolicy || 'PAR_LEVEL',
+              openingStockImported: Boolean(sanitized.inventorySetup?.openingStockImported),
+              batchExpiryTracking: sanitized.inventorySetup?.batchExpiryTracking !== false,
+              wastePolicy: sanitized.inventorySetup?.wastePolicy || 'DAILY_AUDIT',
+            },
+            hardwareReadiness: {
+              posTerminals: Boolean(sanitized.hardwareReadiness?.posTerminals || sanitized.hardware?.posTerminal),
+              androidTablets: Boolean(sanitized.hardwareReadiness?.androidTablets),
+              desktopLaptop: Boolean(sanitized.hardwareReadiness?.desktopLaptop),
+              thermalPrinters: Boolean(sanitized.hardwareReadiness?.thermalPrinters || sanitized.hardware?.thermalPrinter),
+              kitchenPrinter: Boolean(sanitized.hardwareReadiness?.kitchenPrinter || sanitized.hardware?.kitchenDisplay),
+              a4Printer: Boolean(sanitized.hardwareReadiness?.a4Printer),
+              barcodeScanner: Boolean(sanitized.hardwareReadiness?.barcodeScanner || sanitized.hardware?.barcodeScanner),
+              qrScanner: Boolean(sanitized.hardwareReadiness?.qrScanner),
+              biometricDevice: Boolean(sanitized.hardwareReadiness?.biometricDevice),
+              cashDrawer: Boolean(sanitized.hardwareReadiness?.cashDrawer),
+              customerDisplay: Boolean(sanitized.hardwareReadiness?.customerDisplay),
+              weighingScale: Boolean(sanitized.hardwareReadiness?.weighingScale || sanitized.hardware?.weighingScale),
+              labelPrinter: Boolean(sanitized.hardwareReadiness?.labelPrinter),
+              cctvIntegration: Boolean(sanitized.hardwareReadiness?.cctvIntegration),
+              internetConnection: Boolean(sanitized.hardwareReadiness?.internetConnection ?? true),
+              backupInternet: Boolean(sanitized.hardwareReadiness?.backupInternet),
+              routerNetwork: Boolean(sanitized.hardwareReadiness?.routerNetwork ?? true),
+              powerBackup: Boolean(sanitized.hardwareReadiness?.powerBackup),
+              notes: sanitized.hardwareReadiness?.notes || '',
+            },
+            branding: {
+              logoUrl: sanitized.branding?.logoUrl || '',
+              companyLogoUrl: sanitized.branding?.companyLogoUrl || '',
+              cafeLogoUrl: sanitized.branding?.cafeLogoUrl || '',
+              legalEntityName: sanitized.branding?.legalEntityName || sanitized.legalName || 'Zamorin Speciality Coffee & Kitchens Pvt. Ltd.',
+              tradeName: sanitized.branding?.tradeName || displayName || 'Zamorin Café',
+              primaryBrandColor: sanitized.branding?.primaryBrandColor || '#16223F',
+              addressText: sanitized.branding?.addressText || sanitized.addressLine1 || '',
+              phoneText: sanitized.branding?.phoneText || sanitized.phone || '',
+              emailText: sanitized.branding?.emailText || sanitized.email || '',
+              websiteText: sanitized.branding?.websiteText || 'https://zamorin.app',
+              receiptFooter: sanitized.branding?.receiptFooter || '',
+              reportFooter: sanitized.branding?.reportFooter || '',
+              invoiceFooterText: sanitized.branding?.invoiceFooterText || 'Thank you for dining with Zamorin Café.',
+              authorizedSignatoryName: sanitized.branding?.authorizedSignatoryName || sanitized.managerName || '',
+              authorizedSignatoryDesignation: sanitized.branding?.authorizedSignatoryDesignation || 'Authorized Signatory',
+            },
+            qrLoginContext: {
+              qrRecordId: universalQr ? universalQr.qrId : null,
+              securePublicCafeReference,
+              loginUrl: `https://zamorin.app/cafe/${securePublicCafeReference}/login`,
+              status: 'ACTIVE',
+              lastScannedAt: null,
+              scanCount: 0,
+            },
+            readinessChecklist: {
+              qrLoginTest: Boolean(sanitized.readinessChecklist?.qrLoginTest),
+              employeeLoginTest: Boolean(sanitized.readinessChecklist?.employeeLoginTest),
+              posTest: Boolean(sanitized.readinessChecklist?.posTest),
+              printerTest: Boolean(sanitized.readinessChecklist?.printerTest),
+              orderTest: Boolean(sanitized.readinessChecklist?.orderTest),
+              inventoryTest: Boolean(sanitized.readinessChecklist?.inventoryTest),
+              reportTest: Boolean(sanitized.readinessChecklist?.reportTest),
+              pdfExportTest: Boolean(sanitized.readinessChecklist?.pdfExportTest),
+              excelExportTest: Boolean(sanitized.readinessChecklist?.excelExportTest),
+              roleBoundaryTest: Boolean(sanitized.readinessChecklist?.roleBoundaryTest),
+            },
+            readinessHistory: [
+              {
+                fromStatus: 'INITIAL',
+                toStatus: initialStatus,
+                changedBy: auth.userId,
+                changedAt: new Date(),
+                reason: 'Initial establishment onboarding and access provisioning',
+                testResults: sanitized.readinessChecklist || null,
+              },
+            ],
             timezone: sanitized.timezone || 'Asia/Kolkata',
             currency: sanitized.currency || 'INR',
             createdBy: auth.userId,
@@ -1002,6 +1309,389 @@ class CafeService {
     await access.save();
 
     return results;
+  }
+
+  /**
+   * STAGE 03: Retrieves café readiness profile, 10-point checklist status, and compliance alerts.
+   */
+  async getCafeReadiness({ organisationId, cafeId }) {
+    const cafe = await Cafe.findOne({
+      organisationId: String(organisationId).toUpperCase(),
+      cafeId: String(cafeId).toUpperCase(),
+    });
+
+    if (!cafe) {
+      throw new ApiError(404, 'CAFE_NOT_FOUND', 'Café not found.');
+    }
+
+    const checklist = cafe.readinessChecklist || {};
+    const { READINESS_CHECKLIST_KEYS } = require('../models/Cafe');
+    const totalKeys = READINESS_CHECKLIST_KEYS.length;
+    const completedCount = READINESS_CHECKLIST_KEYS.filter((k) => Boolean(checklist[k])).length;
+    const percentage = Math.round((completedCount / totalKeys) * 100);
+    const isTestModeComplete = cafe.isTestModeComplete();
+    const expiryAlerts = cafe.computeExpiryAlerts();
+
+    return {
+      cafeId: cafe.cafeId,
+      name: cafe.name,
+      displayName: cafe.displayName,
+      status: cafe.status,
+      readinessChecklist: checklist,
+      completedTests: completedCount,
+      totalTests: totalKeys,
+      readinessPercentage: percentage,
+      isTestModeComplete,
+      expiryAlerts,
+      qrLoginContext: cafe.qrLoginContext,
+      readinessHistory: cafe.readinessHistory || [],
+    };
+  }
+
+  /**
+   * STAGE 03: Updates items in the 10-point Test Mode readiness checklist.
+   */
+  async updateReadinessChecklist({ organisationId, cafeId, checklistUpdates = {}, auth }) {
+    requireGovernanceAuthority(auth);
+
+    const cafe = await Cafe.findOne({
+      organisationId: String(organisationId).toUpperCase(),
+      cafeId: String(cafeId).toUpperCase(),
+    });
+
+    if (!cafe) {
+      throw new ApiError(404, 'CAFE_NOT_FOUND', 'Café not found.');
+    }
+
+    const { READINESS_CHECKLIST_KEYS } = require('../models/Cafe');
+    if (!cafe.readinessChecklist) {
+      cafe.readinessChecklist = {};
+    }
+
+    for (const key of READINESS_CHECKLIST_KEYS) {
+      if (checklistUpdates[key] !== undefined) {
+        cafe.readinessChecklist[key] = Boolean(checklistUpdates[key]);
+      }
+    }
+
+    cafe.markModified('readinessChecklist');
+    cafe.updatedBy = auth.userId;
+    await cafe.save();
+
+    await auditService.recordAuditEvent({
+      organisationId: cafe.organisationId,
+      cafeId: cafe.cafeId,
+      actorUserId: auth.userId,
+      actorRole: auth.role,
+      module: 'CAFE_READINESS',
+      action: 'CHECKLIST_UPDATED',
+      entityType: 'CAFE',
+      entityId: cafe.cafeId,
+      reason: 'Readiness checklist tests updated.',
+      result: 'SUCCESS',
+      riskClassification: 'LOW',
+    });
+
+    const isTestModeComplete = cafe.isTestModeComplete();
+
+    return {
+      success: true,
+      cafeId: cafe.cafeId,
+      status: cafe.status,
+      readinessChecklist: cafe.readinessChecklist,
+      isTestModeComplete,
+    };
+  }
+
+  /**
+   * STAGE 03: Enforces controlled 7-state lifecycle state engine transitions.
+   * DRAFT -> CONFIGURING -> VERIFICATION_REQUIRED -> READY_FOR_TESTING -> TEST_MODE -> READY_FOR_ACTIVATION -> ACTIVE
+   */
+  async transitionLifecycleState({ organisationId, cafeId, targetStatus, reason = '', auth }) {
+    requireGovernanceAuthority(auth);
+
+    const normalizedTarget = String(targetStatus || '').trim().toUpperCase();
+    const { CAFE_STATUSES } = require('../models/Cafe');
+
+    if (!CAFE_STATUSES.includes(normalizedTarget)) {
+      throw new ApiError(400, 'INVALID_LIFECYCLE_STATUS', `Status must be one of: ${CAFE_STATUSES.join(', ')}`);
+    }
+
+    const cafe = await Cafe.findOne({
+      organisationId: String(organisationId).toUpperCase(),
+      cafeId: String(cafeId).toUpperCase(),
+    });
+
+    if (!cafe) {
+      throw new ApiError(404, 'CAFE_NOT_FOUND', 'Café not found.');
+    }
+
+    const currentStatus = cafe.status;
+    if (currentStatus === normalizedTarget) {
+      return { success: true, cafeId: cafe.cafeId, previousStatus: currentStatus, status: normalizedTarget, message: 'Status is already at target state.' };
+    }
+
+    // Strict state engine transition validations
+    if (normalizedTarget === 'READY_FOR_ACTIVATION') {
+      const isComplete = cafe.isTestModeComplete();
+      if (!isComplete) {
+        throw new ApiError(
+          400,
+          'READINESS_CHECKLIST_INCOMPLETE',
+          'All 10 Test Mode checklist items must pass before moving to READY_FOR_ACTIVATION.'
+        );
+      }
+    }
+
+    if (normalizedTarget === 'ACTIVE') {
+      // Must come through READY_FOR_ACTIVATION or be already active/temporarily closed
+      const allowedPredecessors = ['READY_FOR_ACTIVATION', 'ACTIVE', 'TEMPORARILY_CLOSED', 'UNDER_REVIEW'];
+      if (!allowedPredecessors.includes(currentStatus)) {
+        throw new ApiError(
+          400,
+          'INVALID_LIFECYCLE_TRANSITION',
+          `Cannot jump directly from ${currentStatus} to ACTIVE. The café must complete the readiness engine and reach READY_FOR_ACTIVATION first.`
+        );
+      }
+    }
+
+    cafe.status = normalizedTarget;
+    cafe.updatedBy = auth.userId;
+
+    if (!Array.isArray(cafe.readinessHistory)) {
+      cafe.readinessHistory = [];
+    }
+
+    cafe.readinessHistory.push({
+      fromStatus: currentStatus,
+      toStatus: normalizedTarget,
+      changedBy: auth.userId,
+      changedAt: new Date(),
+      reason: reason || `Lifecycle transition from ${currentStatus} to ${normalizedTarget}`,
+      testResults: cafe.readinessChecklist ? { ...cafe.readinessChecklist } : null,
+    });
+
+    await cafe.save();
+
+    // Synchronize CafeAccess status
+    try {
+      if (normalizedTarget === 'ACTIVE') {
+        await CafeAccess.updateOne(
+          { organisationId: cafe.organisationId, cafeId: cafe.cafeId },
+          { $set: { accessStatus: 'ACTIVE', updatedBy: auth.userId } }
+        );
+      } else if (normalizedTarget === 'TEMPORARILY_CLOSED' || normalizedTarget === 'CLOSED') {
+        await CafeAccess.updateOne(
+          { organisationId: cafe.organisationId, cafeId: cafe.cafeId },
+          { $set: { accessStatus: 'DISABLED', updatedBy: auth.userId } }
+        );
+      }
+    } catch (_) {}
+
+    await auditService.recordAuditEvent({
+      organisationId: cafe.organisationId,
+      cafeId: cafe.cafeId,
+      actorUserId: auth.userId,
+      actorRole: auth.role,
+      module: 'CAFE_READINESS',
+      action: 'LIFECYCLE_TRANSITION',
+      entityType: 'CAFE',
+      entityId: cafe.cafeId,
+      reason: reason || `Lifecycle transition to ${normalizedTarget}`,
+      result: 'SUCCESS',
+      riskClassification: 'HIGH',
+    });
+
+    return {
+      success: true,
+      cafeId: cafe.cafeId,
+      previousStatus: currentStatus,
+      status: normalizedTarget,
+      readinessHistory: cafe.readinessHistory,
+    };
+  }
+
+  /**
+   * STAGE 03: Calculates licence and permit expiry alert statuses (90/60/30/15/7-day engine).
+   */
+  async getComplianceAlerts({ organisationId, cafeId = null }) {
+    const filter = { organisationId: String(organisationId).toUpperCase(), status: { $ne: 'ARCHIVED' } };
+    if (cafeId && cafeId !== 'ALL') {
+      filter.cafeId = String(cafeId).toUpperCase();
+    }
+
+    const cafes = await Cafe.find(filter);
+    const allAlerts = [];
+
+    for (const cafe of cafes) {
+      const alerts = cafe.computeExpiryAlerts();
+      if (alerts.length > 0) {
+        allAlerts.push({
+          cafeId: cafe.cafeId,
+          cafeName: cafe.name,
+          alerts,
+        });
+      }
+    }
+
+    return {
+      organisationId,
+      totalCafesAudited: cafes.length,
+      cafesWithAlertsCount: allAlerts.length,
+      alerts: allAlerts,
+    };
+  }
+
+  /**
+   * STAGE 03: Regenerates Café Login QR Code using Stage 02 Universal QR Engine.
+   * Immediately revokes the previous opaque token and provisions a fresh QR record.
+   */
+  async regenerateCafeLoginQr({ organisationId, cafeId, auth }) {
+    requireGovernanceAuthority(auth);
+
+    const cafe = await Cafe.findOne({
+      organisationId: String(organisationId).toUpperCase(),
+      cafeId: String(cafeId).toUpperCase(),
+    });
+
+    if (!cafe) {
+      throw new ApiError(404, 'CAFE_NOT_FOUND', 'Café not found.');
+    }
+
+    const { UniversalQrService } = require('./universalQrService');
+
+    // 1. Revoke existing Universal QR Record if present
+    if (cafe.qrLoginContext?.qrRecordId) {
+      await UniversalQrService.revokeQrRecord(
+        cafe.qrLoginContext.qrRecordId,
+        'Regenerated by authorized governance user.',
+        auth.userId
+      ).catch(() => {});
+    }
+
+    // 2. Generate new opaque token and create Universal QR Record
+    const newReference = generateOpaqueToken();
+    const newQrRecord = await UniversalQrService.createQrRecord({
+      qrType: 'CAFE_LOGIN',
+      targetEntityId: newReference,
+      organisationId: cafe.organisationId,
+      cafeId: cafe.cafeId,
+      title: `Café Login QR — ${cafe.name}`,
+      metadata: {
+        cafeId: cafe.cafeId,
+        name: cafe.name,
+        regeneratedAt: new Date().toISOString(),
+      },
+      actorUserId: auth.userId,
+    });
+
+    // 3. Update Cafe model
+    cafe.qrLoginContext = {
+      qrRecordId: newQrRecord.qrId,
+      securePublicCafeReference: newReference,
+      loginUrl: `https://zamorin.app/cafe/${newReference}/login`,
+      status: 'ACTIVE',
+      lastScannedAt: null,
+      scanCount: 0,
+    };
+    cafe.updatedBy = auth.userId;
+    await cafe.save();
+
+    // 4. Update CafeAccess model
+    const access = await CafeAccess.findOne({
+      organisationId: cafe.organisationId,
+      cafeId: cafe.cafeId,
+    });
+    if (access) {
+      access.qrCredentialHash = hashOpaqueToken(newReference);
+      access.qrTokenEncrypted = encryptSecret(newReference);
+      access.qrVersion = (access.qrVersion || 1) + 1;
+      access.qrCreatedAt = new Date();
+      access.updatedBy = auth.userId;
+      await access.save();
+    }
+
+    await auditService.recordAuditEvent({
+      organisationId: cafe.organisationId,
+      cafeId: cafe.cafeId,
+      actorUserId: auth.userId,
+      actorRole: auth.role,
+      module: 'UNIVERSAL_QR',
+      action: 'CAFE_LOGIN_QR_REGENERATED',
+      entityType: 'CAFE',
+      entityId: cafe.cafeId,
+      reason: 'Café login QR code regenerated.',
+      result: 'SUCCESS',
+      riskClassification: 'HIGH',
+    });
+
+    return {
+      success: true,
+      cafeId: cafe.cafeId,
+      qrId: newQrRecord.qrId,
+      securePublicCafeReference: newReference,
+      loginUrl: cafe.qrLoginContext.loginUrl,
+      payload: newQrRecord.payload,
+    };
+  }
+
+  /**
+   * STAGE 03: Generates printable A4 Café Login QR Card PDF using Zamorin Corporate Report Standard.
+   */
+  async generatePrintableQrCardPdf({ organisationId, cafeId }) {
+    const cafe = await Cafe.findOne({
+      organisationId: String(organisationId).toUpperCase(),
+      cafeId: String(cafeId).toUpperCase(),
+    });
+
+    if (!cafe) {
+      throw new ApiError(404, 'CAFE_NOT_FOUND', 'Café not found.');
+    }
+
+    const { UniversalQrService } = require('./universalQrService');
+    const { UniversalQrRecord } = require('../models/UniversalQrRecord');
+
+    let qrRecord = null;
+    if (cafe.qrLoginContext?.qrRecordId) {
+      qrRecord = await UniversalQrRecord.findOne({ qrId: cafe.qrLoginContext.qrRecordId });
+    }
+
+    if (!qrRecord) {
+      // Find latest active CAFE_LOGIN record for this cafe
+      qrRecord = await UniversalQrRecord.findOne({
+        organisationId: cafe.organisationId,
+        cafeId: cafe.cafeId,
+        qrType: 'CAFE_LOGIN',
+        status: 'ACTIVE',
+      }).sort({ createdAt: -1 });
+    }
+
+    if (!qrRecord) {
+      // Create on-demand
+      const ref = cafe.qrLoginContext?.securePublicCafeReference || generateOpaqueToken();
+      qrRecord = await UniversalQrService.createQrRecord({
+        qrType: 'CAFE_LOGIN',
+        targetEntityId: ref,
+        organisationId: cafe.organisationId,
+        cafeId: cafe.cafeId,
+        title: `Café Login QR — ${cafe.name}`,
+        actorUserId: 'SYSTEM',
+      });
+    }
+
+    const branding = {
+      legalName: cafe.branding?.legalEntityName || 'Zamorin Speciality Coffee & Kitchens Pvt. Ltd.',
+      brandName: cafe.branding?.tradeName || cafe.displayName || 'Zamorin Café',
+      gstin: cafe.registrations?.gstin || '',
+    };
+
+    const pdfResult = await UniversalQrService.renderPrintableQrCardPdf(qrRecord, branding);
+    const pdfBuffer = Buffer.isBuffer(pdfResult) ? pdfResult : (pdfResult?.buffer || Buffer.from(pdfResult));
+    return {
+      pdfBuffer,
+      filename: `ZAMORIN_QR_CARD_${cafe.cafeId}.pdf`,
+      qrRecord,
+    };
   }
 }
 

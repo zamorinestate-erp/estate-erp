@@ -19,17 +19,23 @@ const mongoose = require('mongoose');
 const { UniversalQrService } = require('../src/services/universalQrService');
 const { UniversalQrRecord } = require('../src/models/UniversalQrRecord');
 
+const { MongoMemoryServer } = require('mongodb-memory-server');
+
 describe('Stage 02 — Universal QR Engine Complete Suite', () => {
+  let mongoServer;
 
   before(async () => {
     if (mongoose.connection.readyState === 0) {
-      const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017/zamorin_cafe_erp_test';
-      await mongoose.connect(uri).catch(() => {});
+      mongoServer = await MongoMemoryServer.create();
+      await mongoose.connect(mongoServer.getUri());
     }
   });
 
   after(async () => {
-    if (mongoose.connection.readyState === 1) {
+    if (mongoServer) {
+      await mongoose.disconnect();
+      await mongoServer.stop();
+    } else if (mongoose.connection.readyState === 1) {
       await UniversalQrRecord.deleteMany({ organisationId: 'TEST-ORG-QR-02' }).catch(() => {});
     }
   });

@@ -13,11 +13,19 @@ const {
   updateCafe,
   changeCafeStatus,
   archiveCafe,
+  getCafeReadiness,
+  updateReadinessChecklist,
+  transitionLifecycleState,
+  getComplianceAlerts,
+  regenerateCafeLoginQr,
+  downloadPrintableQrCardPdf,
 } = require('../controllers/cafeController');
 
 const router = express.Router();
 
 router.use(authenticate);
+
+router.get('/compliance/alerts', getComplianceAlerts);
 
 router
   .route('/')
@@ -37,6 +45,38 @@ router.patch(
 router.post(
   '/:cafeId/archive',
   archiveCafe
+);
+
+// Stage 03: Café Readiness Engine & Lifecycle States
+router.get(
+  '/:cafeId/readiness',
+  getCafeReadiness
+);
+
+router.post(
+  '/:cafeId/readiness/checklist',
+  updateReadinessChecklist
+);
+
+router.post(
+  '/:cafeId/readiness/transition',
+  transitionLifecycleState
+);
+
+router.get(
+  '/:cafeId/compliance-alerts',
+  getComplianceAlerts
+);
+
+// Stage 03: Stage 02 Universal QR Integration & A4 Printable Card
+router.post(
+  '/:cafeId/qr/regenerate',
+  regenerateCafeLoginQr
+);
+
+router.get(
+  '/:cafeId/qr/card',
+  downloadPrintableQrCardPdf
 );
 
 module.exports = router;
