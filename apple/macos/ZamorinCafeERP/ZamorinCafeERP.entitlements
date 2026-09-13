@@ -17,5 +17,10 @@
     <!-- Printing capabilities -->
     <key>com.apple.security.print</key>
     <true/>
+    <!-- Associated Domains (Universal Links - domain only, no path) -->
+    <key>com.apple.developer.associated-domains</key>
+    <array>
+        <string>applinks:zamorin-cafe-erp.vercel.app</string>
+    </array>
 </dict>
 </plist>

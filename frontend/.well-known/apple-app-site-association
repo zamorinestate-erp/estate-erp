@@ -3,7 +3,16 @@
     "apps": [],
     "details": [
       {
-        "appID": "TEAMID12345.com.zamorin.cafe.erp",
+        "appIDs": [
+          "TEAMID12345.com.zamorin.cafe.erp",
+          "TEAMID12345.com.zamorin.cafe.erp.macos"
+        ],
+        "components": [
+          {
+            "/": "/cafe/*",
+            "comment": "Matches all Zamorin cafe deep links and QR codes"
+          }
+        ],
         "paths": [
           "/cafe/*"
         ]
@@ -12,7 +21,8 @@
   },
   "webcredentials": {
     "apps": [
-      "TEAMID12345.com.zamorin.cafe.erp"
+      "TEAMID12345.com.zamorin.cafe.erp",
+      "TEAMID12345.com.zamorin.cafe.erp.macos"
     ]
   }
 }
