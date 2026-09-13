@@ -1,11 +1,9 @@
-{
-  "packageDetails": [
-    {
-      "packageFamilyName": "com.zamorin.cafe.erp_5jc8wt6vj1208",
-      "paths": [
-        "/cafe/*",
-        "/login"
-      ]
-    }
-  ]
-}
+[
+  {
+    "packageFamilyName": "com.zamorin.cafe.erp_5jc8wt6vj1208",
+    "paths": [
+      "/cafe/*",
+      "/login"
+    ]
+  }
+]
