@@ -35,6 +35,13 @@ const {
   exportProfileSummary,
   searchEmployees,
   getEmployeeProfile,
+  registerEmployeeExtended,
+  getEmployeeReadiness,
+  updateEmployeeReadiness,
+  transitionEmployeeLifecycleState,
+  generateEmployeeBadgeQrCode,
+  getEmployeeComplianceAlertsController,
+  viewSensitiveFieldUnmasked,
 } = require('../controllers/employeeController');
 
 const router = express.Router();
@@ -97,6 +104,20 @@ router.post(
   '/',
   authorize('EMPLOYEE:WRITE', { allowedRoles: ['MASTER', 'OWNER'] }),
   onboardEmployee
+);
+
+// Stage 04: 9-Section Extended Registration
+router.post(
+  '/register',
+  authorize('EMPLOYEE:WRITE', { allowedRoles: ['MASTER', 'OWNER'] }),
+  registerEmployeeExtended
+);
+
+// Stage 04: Compliance Alerts (Document and Training Expiries)
+router.get(
+  '/alerts/compliance',
+  authorize('EMPLOYEE:READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  getEmployeeComplianceAlertsController
 );
 
 // 7. Self Employee Dashboard & Self Profile (Self-Scoped Endpoints)
@@ -295,6 +316,40 @@ router.post(
   '/:userId/offboard',
   authorize('EMPLOYEE:WRITE', { allowedRoles: ['MASTER', 'OWNER'] }),
   initiateOffboarding
+);
+
+// ── Stage 04: Onboarding Readiness Checklist ─────────────────────────────────
+router.get(
+  '/:userId/readiness',
+  authorize('EMPLOYEE:READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  getEmployeeReadiness
+);
+
+router.patch(
+  '/:userId/readiness',
+  authorize('EMPLOYEE:WRITE', { allowedRoles: ['MASTER', 'OWNER'] }),
+  updateEmployeeReadiness
+);
+
+// ── Stage 04: Employee Lifecycle State Transition ───────────────────────────
+router.post(
+  '/:userId/lifecycle',
+  authorize('EMPLOYEE:WRITE', { allowedRoles: ['MASTER', 'OWNER'] }),
+  transitionEmployeeLifecycleState
+);
+
+// ── Stage 04: Generate / Rotate Universal QR Employee Badge ──────────────────
+router.post(
+  '/:userId/qr/generate',
+  authorize('EMPLOYEE:WRITE', { allowedRoles: ['MASTER', 'OWNER'] }),
+  generateEmployeeBadgeQrCode
+);
+
+// ── Stage 04: DPDP Act 2023 / Rules 2025 Sensitive Field View with Audit ─────
+router.post(
+  '/:userId/sensitive/view',
+  authorize('EMPLOYEE:WRITE', { allowedRoles: ['MASTER', 'OWNER'] }),
+  viewSensitiveFieldUnmasked
 );
 
 module.exports = router;

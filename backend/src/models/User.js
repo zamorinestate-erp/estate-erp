@@ -91,6 +91,13 @@ const emergencyContactSchema =
         maxlength: 20,
         default: '',
       },
+
+      alternatePhone: {
+        type: String,
+        trim: true,
+        maxlength: 20,
+        default: '',
+      },
     },
     {
       _id: false,
@@ -216,6 +223,139 @@ const cafeAssignmentHistoryEntrySchema =
     }
   );
 
+const employeeDocumentEntrySchema = new mongoose.Schema(
+  {
+    documentType: {
+      type: String,
+      trim: true,
+      default: 'OTHER',
+    },
+    documentName: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    fileAttachmentId: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    uploadedAt: {
+      type: Date,
+      default: Date.now,
+    },
+    expiresAt: {
+      type: Date,
+      default: null,
+    },
+    status: {
+      type: String,
+      enum: ['PENDING', 'VERIFIED', 'EXPIRED'],
+      default: 'PENDING',
+    },
+  },
+  { _id: false }
+);
+
+const employeeAssetEntrySchema = new mongoose.Schema(
+  {
+    assetType: {
+      type: String,
+      trim: true,
+      default: 'OTHER',
+    },
+    assetTag: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    details: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    issuedDate: {
+      type: Date,
+      default: Date.now,
+    },
+    returnStatus: {
+      type: String,
+      enum: ['ISSUED', 'RETURNED', 'LOST', 'DAMAGED'],
+      default: 'ISSUED',
+    },
+    returnedDate: {
+      type: Date,
+      default: null,
+    },
+  },
+  { _id: false }
+);
+
+const employeeTrainingEntrySchema = new mongoose.Schema(
+  {
+    trainingType: {
+      type: String,
+      trim: true,
+      default: 'OTHER',
+    },
+    trainingTitle: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    completedDate: {
+      type: Date,
+      default: null,
+    },
+    certificateNumber: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    expiresAt: {
+      type: Date,
+      default: null,
+    },
+    status: {
+      type: String,
+      enum: ['ASSIGNED', 'IN_PROGRESS', 'COMPLETED', 'EXPIRED'],
+      default: 'ASSIGNED',
+    },
+  },
+  { _id: false }
+);
+
+const sensitiveAccessLogSchema = new mongoose.Schema(
+  {
+    viewedBy: {
+      type: String,
+      required: true,
+      trim: true,
+      uppercase: true,
+    },
+    viewedAt: {
+      type: Date,
+      default: Date.now,
+    },
+    field: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    purpose: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    ipAddress: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+  },
+  { _id: false }
+);
+
 const userSchema = new mongoose.Schema(
   {
     userId: {
@@ -225,7 +365,7 @@ const userSchema = new mongoose.Schema(
       immutable: true,
       trim: true,
       uppercase: true,
-      match: /^(MU|OW|AD|ST)-\d{4,}$/,
+      match: /^((MU|OW|AD|ST)-\d{4,}|EMP-ZC-\d{4,})$/,
     },
 
     organisationId: {
@@ -304,6 +444,125 @@ const userSchema = new mongoose.Schema(
     emergencyContact: {
       type: emergencyContactSchema,
       default: null,
+    },
+
+    title: {
+      type: String,
+      trim: true,
+      default: 'Mr',
+    },
+
+    dob: {
+      type: Date,
+      default: null,
+    },
+
+    gender: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+
+    nationality: {
+      type: String,
+      trim: true,
+      default: 'Indian',
+    },
+
+    maritalStatus: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+
+    photoAttachmentId: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+
+    permanentAddress: {
+      type: addressSchema,
+      default: null,
+    },
+
+    currentAddress: {
+      type: addressSchema,
+      default: null,
+    },
+
+    alternatePhone: {
+      type: String,
+      trim: true,
+      maxlength: 20,
+      default: '',
+    },
+
+    personalEmail: {
+      type: String,
+      trim: true,
+      lowercase: true,
+      maxlength: 254,
+      default: '',
+    },
+
+    effectiveDate: {
+      type: Date,
+      default: null,
+    },
+
+    probationPeriodDays: {
+      type: Number,
+      default: 90,
+    },
+
+    confirmationDate: {
+      type: Date,
+      default: null,
+    },
+
+    contractStartDate: {
+      type: Date,
+      default: null,
+    },
+
+    contractEndDate: {
+      type: Date,
+      default: null,
+    },
+
+    workingPattern: {
+      type: String,
+      trim: true,
+      default: 'REGULAR',
+    },
+
+    shift: {
+      type: String,
+      trim: true,
+      default: 'MORNING',
+    },
+
+    weeklyOff: {
+      type: [String],
+      default: ['SUNDAY'],
+    },
+
+    lifecycleStatus: {
+      type: String,
+      enum: [
+        'ACTIVE',
+        'PROBATION',
+        'CONFIRMED',
+        'SUSPENDED',
+        'NOTICE_PERIOD',
+        'SEPARATED',
+        'TERMINATED',
+        'RETIRED',
+        'REHIRE_ELIGIBLE',
+      ],
+      default: 'PROBATION',
+      index: true,
     },
 
     email: {
@@ -414,6 +673,170 @@ const userSchema = new mongoose.Schema(
     statutoryStatus: {
       epfUanStatus: { type: String, default: 'VERIFIED' },
       esiStatus: { type: String, default: 'REGISTERED' },
+    },
+
+    // ── Stage 04: Section 4 — Payroll Configuration ──────────────────────────
+    salaryStructure: {
+      wageType: {
+        type: String,
+        enum: ['MONTHLY_SALARY', 'HOURLY', 'DAILY'],
+        default: 'MONTHLY_SALARY',
+      },
+      baseSalary: { type: Number, default: 0 },
+      hra: { type: Number, default: 0 },
+      specialAllowance: { type: Number, default: 0 },
+      grossSalary: { type: Number, default: 0 },
+    },
+
+    paymentMethod: {
+      type: String,
+      enum: ['BANK', 'CASH', 'CHEQUE'],
+      default: 'BANK',
+    },
+
+    payrollGroup: {
+      type: String,
+      trim: true,
+      default: 'STANDARD',
+    },
+
+    bankDetails: {
+      bankName: { type: String, trim: true, default: '' },
+      accountNumber: { type: String, trim: true, default: '' },
+      accountNumberMasked: { type: String, trim: true, default: '' },
+      ifsc: { type: String, trim: true, default: '' },
+      ifscMasked: { type: String, trim: true, default: '' },
+    },
+
+    statutoryApplicability: {
+      epfApplicable: { type: Boolean, default: false },
+      uan: { type: String, trim: true, default: '' },
+      uanMasked: { type: String, trim: true, default: '' },
+      pfNumber: { type: String, trim: true, default: '' },
+      pfStatus: { type: String, trim: true, default: 'PENDING' },
+      previousUanLinked: { type: Boolean, default: false },
+      esiApplicable: { type: Boolean, default: false },
+      esiNumber: { type: String, trim: true, default: '' },
+      esiNumberMasked: { type: String, trim: true, default: '' },
+      esiStatus: { type: String, trim: true, default: 'PENDING' },
+      pan: { type: String, trim: true, default: '' },
+      panMasked: { type: String, trim: true, default: '' },
+      aadhaarMasked: { type: String, trim: true, default: '' },
+    },
+
+    // ── Stage 04: Section 5 — Documents with Expiry Tracking ─────────────────
+    documents: {
+      type: [employeeDocumentEntrySchema],
+      default: [],
+    },
+
+    // ── Stage 04: Section 6 — Operational Access ─────────────────────────────
+    posRights: {
+      type: String,
+      enum: ['NONE', 'LIMITED', 'FULL'],
+      default: 'LIMITED',
+    },
+
+    cashHandlingRights: {
+      type: Boolean,
+      default: false,
+    },
+
+    approvalAuthority: {
+      type: Boolean,
+      default: false,
+    },
+
+    approvalLimit: {
+      type: Number,
+      default: 0,
+    },
+
+    inventoryPrivileges: {
+      type: Boolean,
+      default: false,
+    },
+
+    attendanceMethod: {
+      type: String,
+      enum: ['BIOMETRIC', 'QR', 'MANUAL', 'APP'],
+      default: 'QR',
+    },
+
+    biometricEnrolmentId: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+
+    employeeBadgeQrId: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+
+    systemAccountCreated: {
+      type: Boolean,
+      default: true,
+    },
+
+    // ── Stage 04: Section 7 — Assets ─────────────────────────────────────────
+    assignedAssets: {
+      type: [employeeAssetEntrySchema],
+      default: [],
+    },
+
+    // ── Stage 04: Section 8 — Training ───────────────────────────────────────
+    trainingRecords: {
+      type: [employeeTrainingEntrySchema],
+      default: [],
+    },
+
+    // ── Stage 04: Section 9 & 04.2 — Onboarding Readiness Checklist ──────────
+    onboardingChecklist: {
+      personalDetails: { type: Boolean, default: false },
+      employmentDetails: { type: Boolean, default: false },
+      bankDetails: { type: Boolean, default: false },
+      requiredDocuments: { type: Boolean, default: false },
+      payrollConfiguration: { type: Boolean, default: false },
+      department: { type: Boolean, default: false },
+      shift: { type: Boolean, default: false },
+      manager: { type: Boolean, default: false },
+      systemAccount: { type: Boolean, default: false },
+      permissions: { type: Boolean, default: false },
+      attendanceEnrolment: { type: Boolean, default: false },
+      trainingInduction: { type: Boolean, default: false },
+    },
+
+    isReadyForActivation: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+
+    // ── Stage 04: 04.3 — DPDP Act 2023 / Rules 2025 Compliance ───────────────
+    dpdpCompliance: {
+      consentObtained: { type: Boolean, default: true },
+      consentDate: { type: Date, default: Date.now },
+      noticeVersion: { type: String, default: 'DPDP-2025-V1' },
+      dataRetentionMonths: { type: Number, default: 84 },
+      purposeMetadata: {
+        type: Map,
+        of: String,
+        default: () => new Map([
+          ['bankDetails', 'Salary disbursement and statutory transfers'],
+          ['pan', 'Statutory TDS and income tax compliance'],
+          ['uan', 'Employees Provident Fund compliance under EPF Act'],
+          ['esiNumber', 'Employees State Insurance benefits under ESI Act'],
+          ['aadhaar', 'Identity verification and statutory enrollment'],
+          ['emergencyContact', 'Workplace health and emergency notification'],
+        ]),
+      },
+    },
+
+    sensitiveAccessLogs: {
+      type: [sensitiveAccessLogSchema],
+      default: [],
     },
 
     recordHold: {
@@ -815,6 +1238,67 @@ userSchema.pre('validate', function normalizeUserFields() {
     }
   }
 
+  if (this.permanentAddress) {
+    for (const field of ['line1', 'line2', 'city', 'state', 'postalCode', 'country']) {
+      this.permanentAddress[field] = normalizeOptionalText(this.permanentAddress[field]);
+    }
+  }
+
+  if (this.currentAddress) {
+    for (const field of ['line1', 'line2', 'city', 'state', 'postalCode', 'country']) {
+      this.currentAddress[field] = normalizeOptionalText(this.currentAddress[field]);
+    }
+  }
+
+  if (this.onboardingChecklist) {
+    const cl = this.onboardingChecklist;
+    this.isReadyForActivation = Boolean(
+      cl.personalDetails &&
+      cl.employmentDetails &&
+      cl.bankDetails &&
+      cl.requiredDocuments &&
+      cl.payrollConfiguration &&
+      cl.department &&
+      cl.shift &&
+      cl.manager &&
+      cl.systemAccount &&
+      cl.permissions &&
+      cl.attendanceEnrolment &&
+      cl.trainingInduction
+    );
+  }
+
+  if (this.bankDetails) {
+    if (this.bankDetails.accountNumber) {
+      const acc = String(this.bankDetails.accountNumber).trim();
+      this.bankDetails.accountNumberMasked =
+        acc.length <= 4 ? '••••' : '•'.repeat(Math.max(0, acc.length - 4)) + acc.slice(-4);
+    }
+    if (this.bankDetails.ifsc) {
+      const ifsc = String(this.bankDetails.ifsc).trim().toUpperCase();
+      this.bankDetails.ifscMasked =
+        ifsc.length >= 8 ? `${ifsc.slice(0, 4)}•••${ifsc.slice(-2)}` : '•••••••••••';
+    }
+  }
+
+  if (this.statutoryApplicability) {
+    if (this.statutoryApplicability.uan) {
+      const uan = String(this.statutoryApplicability.uan).trim();
+      this.statutoryApplicability.uanMasked =
+        uan.length <= 4 ? '••••' : '•'.repeat(Math.max(0, uan.length - 4)) + uan.slice(-4);
+    }
+    if (this.statutoryApplicability.esiNumber) {
+      const esi = String(this.statutoryApplicability.esiNumber).trim();
+      this.statutoryApplicability.esiNumberMasked =
+        esi.length <= 4 ? '••••' : '•'.repeat(Math.max(0, esi.length - 4)) + esi.slice(-4);
+    }
+    if (this.statutoryApplicability.pan) {
+      const pan = String(this.statutoryApplicability.pan).trim().toUpperCase();
+      this.statutoryApplicability.panMasked =
+        pan.length === 10 ? `${pan.slice(0, 2)}•••••${pan.slice(7)}` : '••••••••••';
+    }
+  }
+
   this.employeeSearchTerms =
     buildEmployeeSearchTerms({
       name: this.name,
@@ -972,6 +1456,17 @@ userSchema.methods.toJSON = function safeUserJSON() {
   delete user.pendingMfaSecretEncrypted;
   delete user.recoveryCodeHashes;
   delete user.employeeSearchTerms;
+
+  if (user.bankDetails) {
+    delete user.bankDetails.accountNumber;
+    delete user.bankDetails.ifsc;
+  }
+
+  if (user.statutoryApplicability) {
+    delete user.statutoryApplicability.uan;
+    delete user.statutoryApplicability.esiNumber;
+    delete user.statutoryApplicability.pan;
+  }
 
   return user;
 };

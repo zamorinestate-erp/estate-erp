@@ -216,6 +216,10 @@ class UniversalQrService {
     });
   }
 
+  static async rotateQr(qrId, options = {}) {
+    return await this.regenerateQr(qrId, options);
+  }
+
   /**
    * Generates SVG image markup for a QR record.
    */

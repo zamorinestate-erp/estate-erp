@@ -17,6 +17,7 @@ const { ApiError } = require('../utils/ApiError');
 const auditService = require('../services/auditService');
 const { recordRequestAudit } = auditService;
 const { resolveEmployeeShiftForDate, getWeekStartDate } = require('../services/shiftResolverService');
+const employeeService = require('../services/employeeService');
 
 // ─── 1. OVERVIEW & WORKFORCE KPIS ─────────────────────────────────────────────
 const getWorkforceOverview = asyncHandler(async (req, res) => {
@@ -2122,6 +2123,76 @@ const exportProfileSummary = asyncHandler(async (req, res) => {
   return res.status(200).send(pdfResult.buffer);
 });
 
+// ─── STAGE 04: EMPLOYEE REGISTRATION, ONBOARDING & READINESS ─────────────────
+const registerEmployeeExtended = asyncHandler(async (req, res) => {
+  const employee = await employeeService.registerEmployee(req.body, req.auth);
+  return res.status(201).json({
+    success: true,
+    message: `Employee ${employee.name} (${employee.userId}) registered successfully.`,
+    data: { employee },
+  });
+});
+
+const getEmployeeReadiness = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+  const readiness = await employeeService.getEmployeeReadinessChecklist(userId, req.auth.organisationId);
+  return res.status(200).json({
+    success: true,
+    data: readiness,
+  });
+});
+
+const updateEmployeeReadiness = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+  const result = await employeeService.updateEmployeeReadinessChecklist(userId, req.body, req.auth);
+  return res.status(200).json({
+    success: true,
+    message: 'Employee onboarding readiness checklist updated.',
+    data: result,
+  });
+});
+
+const transitionEmployeeLifecycleState = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+  const { nextState, reason } = req.body;
+  const result = await employeeService.transitionEmployeeLifecycle(userId, nextState, reason, req.auth);
+  return res.status(200).json({
+    success: true,
+    message: `Employee transitioned to ${nextState}.`,
+    data: result,
+  });
+});
+
+const generateEmployeeBadgeQrCode = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+  const qrRecord = await employeeService.generateEmployeeBadgeQr(userId, req.auth);
+  return res.status(200).json({
+    success: true,
+    message: 'Employee Badge QR generated successfully.',
+    data: qrRecord,
+  });
+});
+
+const getEmployeeComplianceAlertsController = asyncHandler(async (req, res) => {
+  const thresholdDays = parseInt(req.query.thresholdDays, 10) || 90;
+  const alerts = await employeeService.getEmployeeComplianceAlerts(req.auth.organisationId, { thresholdDays });
+  return res.status(200).json({
+    success: true,
+    data: alerts,
+  });
+});
+
+const viewSensitiveFieldUnmasked = asyncHandler(async (req, res) => {
+  const { userId } = req.params;
+  const { field, purpose } = req.body;
+  const ipAddress = req.ip || req.connection?.remoteAddress;
+  const result = await employeeService.viewSensitiveFieldWithAudit(userId, field, purpose, req.auth, ipAddress);
+  return res.status(200).json({
+    success: true,
+    data: result,
+  });
+});
+
 module.exports = {
   EMPLOYEE_SEARCH_PROJECTION,
   buildEmployeeSearchRequest,
@@ -2144,6 +2215,13 @@ module.exports = {
   deleteSelfDocument,
   exportProfileSummary,
   onboardEmployee,
+  registerEmployeeExtended,
+  getEmployeeReadiness,
+  updateEmployeeReadiness,
+  transitionEmployeeLifecycleState,
+  generateEmployeeBadgeQrCode,
+  getEmployeeComplianceAlertsController,
+  viewSensitiveFieldUnmasked,
   createEmployeeMovement,
   submitProbationReview,
   addEmployeeSkill,
@@ -2158,3 +2236,4 @@ module.exports = {
   createStaffingRequest,
   searchEmployees,
 };
+
