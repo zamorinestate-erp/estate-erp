@@ -202,6 +202,26 @@ const taxInvoiceSchema = new mongoose.Schema(
       trim: true,
       default: null,
     },
+    gstin: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      index: true,
+    },
+    seriesPrefix: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: null,
+      index: true,
+    },
+    statutorySeriesCode: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: null,
+      index: true,
+    },
     authorizedSignatory: {
       name: { type: String, default: 'Authorized Signatory' },
       designation: { type: String, default: 'Store Manager' },
@@ -219,6 +239,17 @@ taxInvoiceSchema.index(
 
 taxInvoiceSchema.index(
   { organisationId: 1, financialYear: 1, cafeId: 1, sequenceNumber: 1 },
+  { unique: true }
+);
+
+// P0-01 & P0-03: Statutory GSTIN-level uniqueness invariant
+taxInvoiceSchema.index(
+  { gstin: 1, financialYear: 1, invoiceNumber: 1 },
+  { unique: true }
+);
+
+taxInvoiceSchema.index(
+  { 'supplierDetails.gstin': 1, financialYear: 1, invoiceNumber: 1 },
   { unique: true }
 );
 

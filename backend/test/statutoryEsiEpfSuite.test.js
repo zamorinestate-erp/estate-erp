@@ -41,7 +41,16 @@ const {
 
 const zlib = require('node:zlib');
 const { generateXlsx } = require('../src/utils/exportGenerators');
-const { allocateInvoiceNumber, cancelTaxInvoice } = require('../src/services/gstTaxService');
+const {
+  allocateInvoiceNumber,
+  cancelTaxInvoice,
+  registerStatutoryCafeCode,
+  resolveCompactCafeCode,
+  calculateSeriesCapacity,
+  validateStatutorySeriesConfig,
+  saveTaxInvoiceWithRetry,
+  _clearStatutoryRegistries,
+} = require('../src/services/gstTaxService');
 const { TaxInvoice } = require('../src/models/TaxInvoice');
 const { SequenceCounter } = require('../src/models/SequenceCounter');
 const auditService = require('../src/services/auditService');
@@ -549,8 +558,8 @@ test('STATUTORY AUDIT — GST-SERIAL-01 to GST-SERIAL-09 Invoice Number Rule 46(
   // GST-SERIAL-03: Multiple invoice series operate independently and remain unique for financial year
   await t.test('GST-SERIAL-03: Multiple invoice series operate independently and remain unique for financial year', async () => {
     const seriesCounters = {
-      'GST_INV:2026-27:CAFE-01:P': 10,
-      'GST_INV:2026-27:CAFE-01:POS': 5,
+      'GST_INV:32AAACZ1234K1Z5:2627:C01:P': 10,
+      'GST_INV:32AAACZ1234K1Z5:2627:C01:POS': 5,
     };
 
     t.mock.method(SequenceCounter, 'generateId', async (opts) => {
@@ -583,8 +592,8 @@ test('STATUTORY AUDIT — GST-SERIAL-01 to GST-SERIAL-09 Invoice Number Rule 46(
   // GST-SERIAL-04: Financial-year rollover starts configured new sequence safely
   await t.test('GST-SERIAL-04: Financial-year rollover starts new sequence safely and isolates FY counters', async () => {
     const counters = {
-      'GST_INV:2026-27:CAFE-01': 999,
-      'GST_INV:2027-28:CAFE-01': 0,
+      'GST_INV:32AAACZ1234K1Z5:2627:C01:DEFAULT': 999,
+      'GST_INV:32AAACZ1234K1Z5:2728:C01:DEFAULT': 0,
     };
 
     t.mock.method(SequenceCounter, 'generateId', async (opts) => {
@@ -722,6 +731,405 @@ test('STATUTORY AUDIT — GST-SERIAL-01 to GST-SERIAL-09 Invoice Number Rule 46(
       },
       (err) => {
         assert.strictEqual(err.code, 'INVALID_SERIES_PREFIX');
+        assert.strictEqual(err.statusCode, 400);
+        return true;
+      }
+    );
+  });
+});
+
+test('STATUTORY AUDIT — GST-UNIQ-01 to GST-UNIQ-10 GSTIN-Level Invoice Uniqueness & Collision Protection Suite', async (t) => {
+  const gstin1 = '32AAACZ1234K1Z5';
+  const gstin2 = '29BBBCZ5678L2Z6';
+  const orgId = 'ORG-STATUTORY-TEST';
+  const fy = '2026-27';
+
+  // In-memory mock database for TaxInvoice documents
+  const dbInvoices = new Map(); // Key: `${gstin}:${financialYear}:${invoiceNumber}`
+
+  t.mock.method(auditService, 'recordAuditEvent', async () => {});
+
+  t.mock.method(TaxInvoice, 'findOne', (query) => {
+    return {
+      sort: () => ({
+        select: () => ({
+          lean: async () => null,
+        }),
+      }),
+      then: (resolve) => {
+        let found = null;
+        if (query.invoiceNumber && query.gstin) {
+          found = dbInvoices.get(`${query.gstin}:${query.financialYear || fy}:${query.invoiceNumber}`);
+        } else if (query.invoiceNumber) {
+          for (const inv of dbInvoices.values()) {
+            if (inv.invoiceNumber === query.invoiceNumber) {
+              found = inv;
+              break;
+            }
+          }
+        } else if (query.orderId || query.billId) {
+          for (const inv of dbInvoices.values()) {
+            const matchesOrder = query.orderId && inv.orderId === query.orderId;
+            const matchesBill = query.billId && inv.billId === query.billId;
+            if (inv.gstin === query.gstin && (matchesOrder || matchesBill)) {
+              found = inv;
+              break;
+            }
+          }
+        }
+        if (!found) return resolve(null);
+        return resolve({
+          ...found,
+          save: async function () {
+            dbInvoices.set(`${this.gstin}:${this.financialYear}:${this.invoiceNumber}`, this);
+            return this;
+          },
+        });
+      },
+    };
+  });
+
+  t.mock.method(TaxInvoice, 'create', async (doc) => {
+    const key = `${doc.gstin}:${doc.financialYear}:${doc.invoiceNumber}`;
+    if (dbInvoices.has(key)) {
+      const err = new Error(`E11000 duplicate key error collection: TaxInvoice index: gstin_1_financialYear_1_invoiceNumber_1 dup key: { gstin: "${doc.gstin}", financialYear: "${doc.financialYear}", invoiceNumber: "${doc.invoiceNumber}" }`);
+      err.code = 11000;
+      err.name = 'MongoServerError';
+      throw err;
+    }
+    dbInvoices.set(key, { ...doc });
+    return { ...doc };
+  });
+
+  // GST-UNIQ-01: Two cafés under the SAME GSTIN cannot generate the same invoice serial
+  await t.test('GST-UNIQ-01: Two cafés under the SAME GSTIN cannot generate the same invoice serial', async () => {
+    registerStatutoryCafeCode({ organisationId: orgId, gstin: gstin1, cafeId: 'CAFE-01', statutoryCafeCode: 'C01', force: true });
+    registerStatutoryCafeCode({ organisationId: orgId, gstin: gstin1, cafeId: 'CAFE-02', statutoryCafeCode: 'C02', force: true });
+
+    let counter = 0;
+    t.mock.method(SequenceCounter, 'generateId', async () => {
+      counter += 1;
+      return String(counter);
+    });
+
+    const invCafe1 = await allocateInvoiceNumber({ organisationId: orgId, cafeId: 'CAFE-01', gstin: gstin1, financialYear: fy });
+    const invCafe2 = await allocateInvoiceNumber({ organisationId: orgId, cafeId: 'CAFE-02', gstin: gstin1, financialYear: fy });
+
+    assert.strictEqual(invCafe1.invoiceNumber, 'C01/2627/00001');
+    assert.strictEqual(invCafe2.invoiceNumber, 'C02/2627/00002');
+    assert.notStrictEqual(invCafe1.invoiceNumber, invCafe2.invoiceNumber, 'Two cafes under same GSTIN must never share serial');
+  });
+
+  // GST-UNIQ-02: Compact café-code collision is rejected
+  await t.test('GST-UNIQ-02: Compact café-code collision is rejected with GST_INVOICE_SERIES_COLLISION', () => {
+    registerStatutoryCafeCode({ organisationId: orgId, gstin: gstin1, cafeId: 'CAFE-PRIMARY', statutoryCafeCode: 'CP1', force: true });
+
+    assert.throws(
+      () => {
+        registerStatutoryCafeCode({ organisationId: orgId, gstin: gstin1, cafeId: 'CAFE-SECONDARY', statutoryCafeCode: 'CP1' });
+      },
+      (err) => {
+        assert.strictEqual(err.code, 'GST_INVOICE_SERIES_COLLISION');
+        assert.strictEqual(err.statusCode, 400);
+        return true;
+      }
+    );
+  });
+
+  // GST-UNIQ-03: Different GSTINs may use equivalent series structures without cross-tenant collision
+  await t.test('GST-UNIQ-03: Different GSTINs may use equivalent series structures without cross-tenant collision', async () => {
+    registerStatutoryCafeCode({ organisationId: orgId, gstin: gstin1, cafeId: 'CAFE-T1', statutoryCafeCode: 'C01', force: true });
+    registerStatutoryCafeCode({ organisationId: orgId, gstin: gstin2, cafeId: 'CAFE-T2', statutoryCafeCode: 'C01', force: true });
+
+    const gstinCounters = {};
+    t.mock.method(SequenceCounter, 'generateId', async ({ sequenceKey }) => {
+      gstinCounters[sequenceKey] = (gstinCounters[sequenceKey] || 0) + 1;
+      return String(gstinCounters[sequenceKey]);
+    });
+
+    const inv1 = await allocateInvoiceNumber({ organisationId: orgId, cafeId: 'CAFE-T1', gstin: gstin1, financialYear: fy });
+    const inv2 = await allocateInvoiceNumber({ organisationId: orgId, cafeId: 'CAFE-T2', gstin: gstin2, financialYear: fy });
+
+    assert.strictEqual(inv1.invoiceNumber, 'C01/2627/00001');
+    assert.strictEqual(inv2.invoiceNumber, 'C01/2627/00001');
+    assert.strictEqual(inv1.gstin, gstin1);
+    assert.strictEqual(inv2.gstin, gstin2);
+  });
+
+  // GST-UNIQ-04: Database unique constraint prevents duplicate serial allocation
+  await t.test('GST-UNIQ-04: Database unique constraint prevents duplicate serial allocation', async () => {
+    const doc1 = {
+      organisationId: orgId,
+      cafeId: 'CAFE-01',
+      gstin: gstin1,
+      financialYear: fy,
+      sequenceNumber: 1,
+      invoiceNumber: 'C01/2627/00001',
+    };
+
+    await TaxInvoice.create(doc1);
+
+    await assert.rejects(
+      async () => {
+        await TaxInvoice.create({ ...doc1, sequenceNumber: 1 });
+      },
+      (err) => {
+        assert.strictEqual(err.code, 11000);
+        return true;
+      }
+    );
+  });
+
+  // GST-UNIQ-05: Multiple application workers cannot create duplicate invoice numbers
+  await t.test('GST-UNIQ-05: Multiple application workers cannot create duplicate invoice numbers', async () => {
+    let globalCounter = 500;
+    t.mock.method(SequenceCounter, 'generateId', async () => {
+      globalCounter += 1;
+      return String(globalCounter);
+    });
+
+    const allocatedSet = new Set();
+    const workerPromises = Array.from({ length: 10 }, (_, workerIdx) =>
+      allocateInvoiceNumber({
+        organisationId: orgId,
+        cafeId: `WORKER-CAFE-${workerIdx % 3}`,
+        cafeCode: `W0${workerIdx % 3}`,
+        gstin: gstin1,
+        financialYear: fy,
+      })
+    );
+
+    const results = await Promise.all(workerPromises);
+    for (const r of results) {
+      assert.strictEqual(allocatedSet.has(r.invoiceNumber), false, `Collision on ${r.invoiceNumber}`);
+      allocatedSet.add(r.invoiceNumber);
+    }
+    assert.strictEqual(allocatedSet.size, 10);
+  });
+
+  // GST-UNIQ-06: Retry after failed duplicate allocation safely obtains/returns the correct result without duplicate invoice creation
+  await t.test('GST-UNIQ-06: Retry after failed duplicate allocation safely obtains/returns the correct result without duplicate invoice creation', async () => {
+    const existingDoc = {
+      organisationId: orgId,
+      cafeId: 'CAFE-01',
+      gstin: gstin1,
+      financialYear: fy,
+      sequenceNumber: 99,
+      invoiceNumber: 'C01/2627/00099',
+      orderId: 'ORD-RETRY-101',
+    };
+    dbInvoices.set(`${gstin1}:${fy}:C01/2627/00099`, existingDoc);
+
+    // Idempotent retry with same orderId
+    const retryResult = await saveTaxInvoiceWithRetry({
+      invoiceData: {
+        organisationId: orgId,
+        cafeId: 'CAFE-01',
+        gstin: gstin1,
+        financialYear: fy,
+        sequenceNumber: 99,
+        invoiceNumber: 'C01/2627/00099',
+        orderId: 'ORD-RETRY-101',
+      },
+    });
+
+    assert.strictEqual(retryResult.invoiceNumber, 'C01/2627/00099');
+    assert.strictEqual(retryResult.orderId, 'ORD-RETRY-101');
+  });
+
+  // GST-UNIQ-07: Financial-year rollover maintains isolation
+  await t.test('GST-UNIQ-07: Financial-year rollover maintains isolation', async () => {
+    const fyCounters = {};
+    t.mock.method(SequenceCounter, 'generateId', async ({ sequenceKey }) => {
+      fyCounters[sequenceKey] = (fyCounters[sequenceKey] || 0) + 1;
+      return String(fyCounters[sequenceKey]);
+    });
+
+    const invFY26 = await allocateInvoiceNumber({ organisationId: orgId, cafeId: 'CAFE-FY', cafeCode: 'CFY', gstin: gstin1, financialYear: '2026-27' });
+    const invFY27 = await allocateInvoiceNumber({ organisationId: orgId, cafeId: 'CAFE-FY', cafeCode: 'CFY', gstin: gstin1, financialYear: '2027-28' });
+
+    assert.strictEqual(invFY26.invoiceNumber, 'CFY/2627/00001');
+    assert.strictEqual(invFY27.invoiceNumber, 'CFY/2728/00001');
+  });
+
+  // GST-UNIQ-08: Multiple statutory series under one GSTIN remain unique and independently sequential
+  await t.test('GST-UNIQ-08: Multiple statutory series under one GSTIN remain unique and independently sequential', async () => {
+    const seriesSeq = {};
+    t.mock.method(SequenceCounter, 'generateId', async ({ sequenceKey }) => {
+      seriesSeq[sequenceKey] = (seriesSeq[sequenceKey] || 0) + 1;
+      return String(seriesSeq[sequenceKey]);
+    });
+
+    const pos = await allocateInvoiceNumber({ organisationId: orgId, cafeId: 'CAFE-S', cafeCode: 'CS', gstin: gstin1, financialYear: fy, statutorySeriesCode: 'P' });
+    const online = await allocateInvoiceNumber({ organisationId: orgId, cafeId: 'CAFE-S', cafeCode: 'CS', gstin: gstin1, financialYear: fy, statutorySeriesCode: 'O' });
+
+    assert.strictEqual(pos.invoiceNumber, 'P/CS/2627/00001');
+    assert.strictEqual(online.invoiceNumber, 'O/CS/2627/00001');
+    assert.notStrictEqual(pos.invoiceNumber, online.invoiceNumber);
+  });
+
+  // GST-UNIQ-09: Cancelled serial is never reusable
+  await t.test('GST-UNIQ-09: Cancelled serial is never reusable', async () => {
+    let cancelSeq = 70;
+    t.mock.method(SequenceCounter, 'generateId', async () => {
+      cancelSeq += 1;
+      return String(cancelSeq);
+    });
+
+    const initial = await allocateInvoiceNumber({ organisationId: orgId, cafeId: 'CAFE-CAN', cafeCode: 'CCN', gstin: gstin1, financialYear: fy });
+    assert.strictEqual(initial.invoiceNumber, 'CCN/2627/00071');
+
+    dbInvoices.set(`${gstin1}:${fy}:CCN/2627/00071`, {
+      invoiceNumber: 'CCN/2627/00071',
+      sequenceNumber: 71,
+      organisationId: orgId,
+      cafeId: 'CAFE-CAN',
+      gstin: gstin1,
+      financialYear: fy,
+      status: 'ISSUED',
+    });
+
+    const cancelled = await cancelTaxInvoice({ invoiceNumber: 'CCN/2627/00071', organisationId: orgId, cafeId: 'CAFE-CAN' });
+    assert.strictEqual(cancelled.status, 'CANCELLED');
+
+    const next = await allocateInvoiceNumber({ organisationId: orgId, cafeId: 'CAFE-CAN', cafeCode: 'CCN', gstin: gstin1, financialYear: fy });
+    assert.strictEqual(next.invoiceNumber, 'CCN/2627/00072');
+    assert.notStrictEqual(next.invoiceNumber, 'CCN/2627/00071', 'Cancelled serial must never be reused');
+  });
+
+  // GST-UNIQ-10: Compact series code uniqueness is validated before activation
+  await t.test('GST-UNIQ-10: Compact series code uniqueness is validated before activation', () => {
+    const config = validateStatutorySeriesConfig({
+      gstin: gstin1,
+      cafeId: 'CAFE-01',
+      statutoryCafeCode: 'C01',
+      seriesName: 'POS',
+      statutorySeriesCode: 'P',
+      maxExpectedVolume: 50000,
+      financialYear: fy,
+    });
+
+    assert.strictEqual(config.statutorySeriesCode, 'P');
+    assert.strictEqual(config.capacity, 99999);
+    assert.ok(config.capacity >= 50000);
+  });
+});
+
+test('STATUTORY AUDIT — GST-CAP-01 to GST-CAP-05 Statutory Series Capacity & Exhaustion Suite', async (t) => {
+  const gstin = '32AAACZ1234K1Z5';
+  const orgId = 'ORG-CAP-TEST';
+  const fy = '2026-27';
+
+  // Clean in-memory registry before capacity suite
+  _clearStatutoryRegistries();
+  registerStatutoryCafeCode({ organisationId: orgId, gstin, cafeId: 'CAFE-01', statutoryCafeCode: 'C01', force: true });
+
+  // GST-CAP-01: POS compact series supports at least 99,999 invoice numbers where configured as high-volume series
+  await t.test('GST-CAP-01: POS compact series supports at least 99,999 invoice numbers where configured as high-volume series', () => {
+    const cap = calculateSeriesCapacity({ statutorySeriesCode: 'P', statutoryCafeCode: 'C01', financialYear: fy });
+    assert.strictEqual(cap.capacity, 99999, 'Must support exactly 99,999 invoices (5 digits)');
+    assert.ok(cap.capacity >= 99999);
+    assert.strictEqual(cap.fixedLength, 11);
+    assert.strictEqual(cap.maxAllowedDigits, 5);
+  });
+
+  // GST-CAP-02: Sequence 99998 -> 99999 succeeds
+  await t.test('GST-CAP-02: Sequence 99998 -> 99999 succeeds within 16 statutory characters', async () => {
+    let count = 99997;
+    t.mock.method(SequenceCounter, 'generateId', async () => {
+      count += 1;
+      return String(count);
+    });
+
+    const inv99998 = await allocateInvoiceNumber({ organisationId: orgId, cafeId: 'CAFE-01', cafeCode: 'C01', gstin, financialYear: fy, statutorySeriesCode: 'P' });
+    const inv99999 = await allocateInvoiceNumber({ organisationId: orgId, cafeId: 'CAFE-01', cafeCode: 'C01', gstin, financialYear: fy, statutorySeriesCode: 'P' });
+
+    assert.strictEqual(inv99998.invoiceNumber, 'P/C01/2627/99998');
+    assert.strictEqual(inv99999.invoiceNumber, 'P/C01/2627/99999');
+    assert.strictEqual(inv99998.invoiceNumber.length, 16);
+    assert.strictEqual(inv99999.invoiceNumber.length, 16);
+  });
+
+  // GST-CAP-03: Attempt beyond configured capacity returns an explicit statutory-series exhaustion error
+  await t.test('GST-CAP-03: Attempt beyond configured capacity returns an explicit statutory-series exhaustion error', async () => {
+    t.mock.method(SequenceCounter, 'generateId', async () => '100000'); // 100,000 exceeds 99,999
+
+    await assert.rejects(
+      async () => {
+        await allocateInvoiceNumber({
+          organisationId: orgId,
+          cafeId: 'CAFE-01',
+          cafeCode: 'C01',
+          gstin,
+          financialYear: fy,
+          statutorySeriesCode: 'P',
+        });
+      },
+      (err) => {
+        assert.strictEqual(err.code, 'STATUTORY_SERIES_CAPACITY_EXHAUSTED');
+        assert.strictEqual(err.statusCode, 400);
+        return true;
+      }
+    );
+  });
+
+  // GST-CAP-04: No serial ever exceeds 16 characters
+  await t.test('GST-CAP-04: No serial ever exceeds 16 characters across configurations', async () => {
+    let testSeq = 1;
+    t.mock.method(SequenceCounter, 'generateId', async () => String(testSeq++));
+
+    const samples = [
+      await allocateInvoiceNumber({ organisationId: orgId, cafeId: 'CAFE-01', cafeCode: 'C01', gstin, financialYear: fy }),
+      await allocateInvoiceNumber({ organisationId: orgId, cafeId: 'CAFE-01', cafeCode: 'C01', gstin, financialYear: fy, statutorySeriesCode: 'P' }),
+      await allocateInvoiceNumber({ organisationId: orgId, cafeId: 'CAFE-01', cafeCode: 'C01', gstin, financialYear: fy, statutorySeriesCode: 'O' }),
+      await allocateInvoiceNumber({ organisationId: orgId, cafeId: 'CAFE-01', cafeCode: 'C01', gstin, financialYear: '2027-28' }),
+    ];
+
+    for (const s of samples) {
+      assert.ok(s.invoiceNumber.length <= 16, `Serial ${s.invoiceNumber} exceeds 16 chars`);
+      assert.match(s.invoiceNumber, /^[A-Za-z0-9\-\/]{1,16}$/);
+    }
+  });
+
+  // GST-CAP-05: Changing a statutory series configuration after invoices have already been issued cannot silently invalidate historical numbering
+  await t.test('GST-CAP-05: Changing a statutory series configuration after invoices have already been issued cannot silently invalidate historical numbering', async () => {
+    // Validate and register series initial config
+    validateStatutorySeriesConfig({
+      gstin,
+      cafeId: 'CAFE-HIST',
+      statutoryCafeCode: 'CH1',
+      seriesName: 'POS',
+      statutorySeriesCode: 'P',
+      financialYear: fy,
+    });
+
+    t.mock.method(SequenceCounter, 'generateId', async () => '1');
+
+    // Issue at least one invoice
+    await allocateInvoiceNumber({
+      organisationId: orgId,
+      cafeId: 'CAFE-HIST',
+      cafeCode: 'CH1',
+      gstin,
+      financialYear: fy,
+      statutorySeriesCode: 'P',
+      seriesName: 'POS',
+    });
+
+    // Attempting to alter series config after invoices issued throws HISTORICAL_SERIES_IMMUTABLE
+    assert.throws(
+      () => {
+        validateStatutorySeriesConfig({
+          gstin,
+          cafeId: 'CAFE-HIST',
+          statutoryCafeCode: 'CH1',
+          seriesName: 'ALTERED_POS',
+          statutorySeriesCode: 'X', // Altered code
+          financialYear: fy,
+        });
+      },
+      (err) => {
+        assert.strictEqual(err.code, 'HISTORICAL_SERIES_IMMUTABLE');
         assert.strictEqual(err.statusCode, 400);
         return true;
       }

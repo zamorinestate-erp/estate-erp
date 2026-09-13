@@ -242,73 +242,331 @@ function formatShortFinancialYear(fy) {
   return clean.slice(-4) || '2627';
 }
 
+// In-memory and persistent statutory registries scoped by GSTIN
+const statutoryBranchRegistry = new Map(); // Key: `${gstinClean}:${statutoryCafeCode}` -> details
+const cafeToBranchCodeMap = new Map();      // Key: `${gstinClean}:${cafeId}` -> statutoryCafeCode
+const statutorySeriesRegistry = new Map();  // Key: `${gstinClean}:${branchCode}:${statCode}` -> series config
+const issuedSeriesInvoicesCount = new Map();// Key: `${gstinClean}:${fyShort}:${branchCode}:${statCode}` -> count
+const branchIssuedInvoices = new Map();     // Key: `${gstinClean}:${fyShort}:${branchCode}` -> count
+
+function _clearStatutoryRegistries() {
+  statutoryBranchRegistry.clear();
+  cafeToBranchCodeMap.clear();
+  statutorySeriesRegistry.clear();
+  issuedSeriesInvoicesCount.clear();
+  branchIssuedInvoices.clear();
+}
+
 /**
- * Resolves and validates a compact cafe code for statutory GST invoice serial numbering
+ * Registers an immutable statutory compact branch/café code under a specific GSTIN.
+ * Enforces Rule: Two cafés under the SAME GSTIN CANNOT use the same statutory compact code.
+ * Rejects configuration with GST_INVOICE_SERIES_COLLISION if collision detected.
  */
-function resolveCompactCafeCode(cafeId, explicitCafeCode = null) {
+function registerStatutoryCafeCode({ organisationId, gstin, cafeId, statutoryCafeCode, force = false }) {
+  if (!gstin) {
+    throw new ApiError(400, 'GSTIN_REQUIRED', 'GSTIN is required for statutory branch registration.');
+  }
+  if (!cafeId) {
+    throw new ApiError(400, 'CAFE_ID_REQUIRED', 'Café ID is required for statutory branch registration.');
+  }
+  if (!statutoryCafeCode) {
+    throw new ApiError(400, 'STATUTORY_CAFE_CODE_REQUIRED', 'Statutory café code is required.');
+  }
+
+  const gstinClean = String(gstin).trim().toUpperCase();
+  const codeClean = String(statutoryCafeCode).trim().toUpperCase();
+
+  if (!/^[A-Z0-9-]{1,4}$/.test(codeClean)) {
+    throw new ApiError(400, 'INVALID_STATUTORY_CAFE_CODE', `Statutory café code "${codeClean}" must be 1 to 4 alphanumeric/hyphen characters.`);
+  }
+
+  const branchKey = `${gstinClean}:${codeClean}`;
+  const existingAssignment = statutoryBranchRegistry.get(branchKey);
+
+  if (existingAssignment && existingAssignment.cafeId !== cafeId && !force) {
+    throw new ApiError(
+      400,
+      'GST_INVOICE_SERIES_COLLISION',
+      `Statutory compact café code "${codeClean}" is already registered to café "${existingAssignment.cafeId}" under GSTIN "${gstinClean}". Duplicate statutory branch codes under the same GSTIN are strictly prohibited.`
+    );
+  }
+
+  const cafeKey = `${gstinClean}:${cafeId}`;
+  statutoryBranchRegistry.set(branchKey, {
+    organisationId: organisationId || 'ORG-ZAMORIN',
+    gstin: gstinClean,
+    cafeId,
+    statutoryCafeCode: codeClean,
+    registeredAt: existingAssignment?.registeredAt || new Date(),
+  });
+  cafeToBranchCodeMap.set(cafeKey, codeClean);
+
+  return {
+    gstin: gstinClean,
+    cafeId,
+    statutoryCafeCode: codeClean,
+    registered: true,
+  };
+}
+
+/**
+ * Resolves and validates a compact cafe code for statutory GST invoice serial numbering.
+ * If gstin is provided, guarantees collision protection across branches under that GSTIN.
+ */
+function resolveCompactCafeCode(cafeId, explicitCafeCode = null, gstin = '32AAACZ1234K1Z5') {
+  const gstinClean = String(gstin || '32AAACZ1234K1Z5').trim().toUpperCase();
+
   if (explicitCafeCode) {
     const code = String(explicitCafeCode).trim().toUpperCase();
     if (!/^[A-Z0-9-]+$/.test(code)) {
       throw new ApiError(400, 'INVALID_CAFE_CODE', `Configured café code "${code}" contains invalid characters. Only alphanumeric and hyphen are permitted.`);
     }
+    // Register or validate against GSTIN registry
+    registerStatutoryCafeCode({ gstin: gstinClean, cafeId: cafeId || 'DEFAULT_CAFE', statutoryCafeCode: code });
     return code;
   }
+
   if (!cafeId) return 'C01';
+
+  // Check if cafeId is already registered under this GSTIN
+  const cafeKey = `${gstinClean}:${cafeId}`;
+  if (cafeToBranchCodeMap.has(cafeKey)) {
+    return cafeToBranchCodeMap.get(cafeKey);
+  }
+
   const str = String(cafeId).trim().toUpperCase();
   const m = str.match(/^(?:CAFE|ZC)[-_]?0*(\d+)$/);
+  let candidate = null;
   if (m) {
     const num = parseInt(m[1], 10);
-    return `C${String(num).padStart(2, '0')}`;
+    candidate = `C${String(num).padStart(2, '0')}`;
+  } else {
+    candidate = str.replace(/[^A-Z0-9-]/g, '').slice(0, 4) || 'C01';
   }
-  const clean = str.replace(/[^A-Z0-9-]/g, '');
-  return clean;
+
+  // Check if candidate collides with another cafe under same GSTIN
+  const branchKey = `${gstinClean}:${candidate}`;
+  const existing = statutoryBranchRegistry.get(branchKey);
+  if (existing && existing.cafeId !== cafeId) {
+    throw new ApiError(
+      400,
+      'GST_INVOICE_SERIES_COLLISION',
+      `Derived compact café code "${candidate}" for "${cafeId}" collides with already registered café "${existing.cafeId}" under GSTIN "${gstinClean}". Explicit unique statutory cafeCode must be configured.`
+    );
+  }
+
+  // Register candidate
+  registerStatutoryCafeCode({ gstin: gstinClean, cafeId, statutoryCafeCode: candidate });
+  return candidate;
+}
+
+/**
+ * Calculates the exact statutory capacity of an invoice series under Rule 46(b).
+ * Fixed overhead = prefix length.
+ * Available digits = 16 - fixed overhead.
+ * Capacity = 10^available digits - 1.
+ */
+function calculateSeriesCapacity({ statutorySeriesCode = null, statutoryCafeCode = 'C01', financialYear = '2026-27' }) {
+  const fyShort = formatShortFinancialYear(financialYear);
+  const prefix = statutorySeriesCode
+    ? `${statutorySeriesCode}/${statutoryCafeCode}/${fyShort}/`
+    : `${statutoryCafeCode}/${fyShort}/`;
+
+  const fixedLength = prefix.length;
+  if (fixedLength >= 16) {
+    return {
+      prefix,
+      fixedLength,
+      maxAllowedDigits: 0,
+      capacity: 0,
+      isValid: false,
+    };
+  }
+
+  const maxAllowedDigits = 16 - fixedLength;
+  const capacity = Math.pow(10, maxAllowedDigits) - 1;
+  return {
+    prefix,
+    fixedLength,
+    maxAllowedDigits,
+    capacity,
+    isValid: true,
+  };
+}
+
+/**
+ * Validates and registers statutory series configuration.
+ * Enforces:
+ *  - POS series requires at least 99,999 invoice capacity.
+ *  - Configured expected volume must not exceed capacity.
+ *  - Changing active series configuration after invoices have been issued is rejected.
+ */
+function validateStatutorySeriesConfig({
+  gstin = '32AAACZ1234K1Z5',
+  cafeId,
+  statutoryCafeCode,
+  seriesName,
+  statutorySeriesCode,
+  maxExpectedVolume = null,
+  financialYear = '2026-27',
+}) {
+  const gstinClean = String(gstin).trim().toUpperCase();
+  const branchCode = statutoryCafeCode || resolveCompactCafeCode(cafeId, null, gstinClean);
+
+  let statCode = statutorySeriesCode ? String(statutorySeriesCode).trim().toUpperCase() : null;
+  if (!statCode && seriesName) {
+    const sName = String(seriesName).trim().toUpperCase();
+    if (sName === 'POS') statCode = 'P';
+    else if (sName === 'ONLINE') statCode = 'O';
+    else if (sName === 'CATERING') statCode = 'C';
+    else statCode = sName.slice(0, 1);
+  }
+
+  if (statCode && !/^[A-Z0-9-]{1,2}$/.test(statCode)) {
+    throw new ApiError(400, 'INVALID_STATUTORY_SERIES_CODE', `Statutory series code "${statCode}" must be 1 or 2 alphanumeric characters.`);
+  }
+
+  const { prefix, fixedLength, maxAllowedDigits, capacity, isValid } = calculateSeriesCapacity({
+    statutorySeriesCode: statCode,
+    statutoryCafeCode: branchCode,
+    financialYear,
+  });
+
+  if (!isValid || fixedLength >= 16) {
+    throw new ApiError(
+      400,
+      'INVOICE_CONFIG_EXCEEDS_MAX_LENGTH',
+      `Series prefix "${prefix}" requires ${fixedLength} characters, exceeding statutory 16-character limit.`
+    );
+  }
+
+  // P0-04 & P0-05: High-volume POS series requires capacity >= 99,999
+  const isPos = (seriesName && String(seriesName).trim().toUpperCase() === 'POS') || statCode === 'P';
+  if (isPos && capacity < 99999) {
+    throw new ApiError(
+      400,
+      'INSUFFICIENT_POS_SERIES_CAPACITY',
+      `High-volume POS series requires at least 99,999 invoice capacity within Rule 46(b) 16-character limit. Available capacity with code "${statCode}" and branch "${branchCode}" is only ${capacity}.`
+    );
+  }
+
+  if (maxExpectedVolume !== null && maxExpectedVolume !== undefined) {
+    const expected = Number(maxExpectedVolume);
+    if (expected > capacity) {
+      throw new ApiError(
+        400,
+        'SERIES_CAPACITY_EXCEEDED_BY_CONFIG',
+        `Configured expected volume ${expected} exceeds maximum statutory capacity of ${capacity} for series "${statCode || 'DEFAULT'}".`
+      );
+    }
+  }
+
+  const seriesKey = `${gstinClean}:${branchCode}:${statCode || 'DEFAULT'}`;
+  const issuedKey = `${gstinClean}:${formatShortFinancialYear(financialYear)}:${branchCode}:${statCode || 'DEFAULT'}`;
+  const branchIssuedKey = `${gstinClean}:${formatShortFinancialYear(financialYear)}:${branchCode}`;
+  const issuedCount = issuedSeriesInvoicesCount.get(issuedKey) || 0;
+  const branchIssuedCount = branchIssuedInvoices.get(branchIssuedKey) || 0;
+
+  // P0-05 / GST-CAP-05: Changing series config after invoices issued is blocked
+  const existingConfig = statutorySeriesRegistry.get(seriesKey);
+  if (existingConfig && issuedCount > 0) {
+    if (existingConfig.statutorySeriesCode !== statCode || existingConfig.seriesName !== seriesName) {
+      throw new ApiError(
+        400,
+        'HISTORICAL_SERIES_IMMUTABLE',
+        `Cannot alter statutory series configuration for "${seriesKey}" because ${issuedCount} invoices have already been issued in financial year ${financialYear}.`
+      );
+    }
+  }
+
+  // Also check if any existing series for this branch has issued invoices and differs
+  if (branchIssuedCount > 0) {
+    for (const [key, cfg] of statutorySeriesRegistry.entries()) {
+      if (key.startsWith(`${gstinClean}:${branchCode}:`)) {
+        if (cfg.cafeId === cafeId && (cfg.statutorySeriesCode !== statCode || cfg.seriesName !== seriesName)) {
+          throw new ApiError(
+            400,
+            'HISTORICAL_SERIES_IMMUTABLE',
+            `Cannot alter statutory series configuration for branch "${branchCode}" because ${branchIssuedCount} invoices have already been issued in financial year ${financialYear}.`
+          );
+        }
+      }
+    }
+  }
+
+  const configObj = {
+    gstin: gstinClean,
+    cafeId,
+    statutoryCafeCode: branchCode,
+    seriesName: seriesName || (statCode === 'P' ? 'POS' : 'DEFAULT'),
+    statutorySeriesCode: statCode,
+    prefix,
+    capacity,
+    maxAllowedDigits,
+    financialYear,
+    configuredAt: new Date(),
+  };
+
+  statutorySeriesRegistry.set(seriesKey, configObj);
+  statutorySeriesRegistry.set(`${gstinClean}:${branchCode}:${seriesName || 'DEFAULT'}`, configObj);
+  return configObj;
 }
 
 /**
  * Concurrency-safe sequential invoice serial number allocator (Rule 46(b) of CGST Rules, 2017)
  * Strictly guarantees:
+ *  - GSTIN-scoped uniqueness: multiple cafes under same GSTIN never generate colliding numbers
  *  - Serial length <= 16 characters
  *  - Permitted characters: [A-Za-z0-9-/]
- *  - Gapless sequential progression within financial year and configured series
+ *  - Gapless sequential progression within financial year, branch, and configured series
+ *  - Capacity exhaustion protection (throws STATUTORY_SERIES_CAPACITY_EXHAUSTED)
  *  - Once allocated, serial numbers are NEVER reused, recycled, or decremented
  *  - High concurrency safety with zero collisions
  */
-async function allocateInvoiceNumber({ organisationId, cafeId, cafeCode = null, financialYear, seriesPrefix = null }) {
-  let seriesClean = null;
+async function allocateInvoiceNumber({
+  organisationId,
+  cafeId,
+  gstin = '32AAACZ1234K1Z5',
+  cafeCode = null,
+  financialYear,
+  seriesName = null,
+  seriesPrefix = null,
+  statutorySeriesCode = null,
+}) {
+  const gstinClean = String(gstin || '32AAACZ1234K1Z5').trim().toUpperCase();
+  const fyShort = formatShortFinancialYear(financialYear);
+  const resolvedCafeCode = resolveCompactCafeCode(cafeId, cafeCode, gstinClean);
+
+  // Normalize series
+  let statCode = statutorySeriesCode ? String(statutorySeriesCode).trim().toUpperCase() : null;
+  let resolvedSeriesName = seriesName ? String(seriesName).trim().toUpperCase() : null;
+
   if (seriesPrefix) {
     const raw = String(seriesPrefix).trim().toUpperCase();
     if (!/^[A-Z0-9-]+$/.test(raw)) {
       throw new ApiError(400, 'INVALID_SERIES_PREFIX', `Configured series prefix "${raw}" contains invalid characters. Only alphanumeric and hyphen are permitted.`);
     }
-    seriesClean = raw;
+    statCode = statCode || raw;
+    resolvedSeriesName = resolvedSeriesName || (raw === 'P' ? 'POS' : raw);
   }
 
-  const fyShort = formatShortFinancialYear(financialYear);
-  const resolvedCafeCode = resolveCompactCafeCode(cafeId, cafeCode);
+  // Prefix & capacity calculation
+  const { prefix, fixedLength, maxAllowedDigits, capacity, isValid } = calculateSeriesCapacity({
+    statutorySeriesCode: statCode,
+    statutoryCafeCode: resolvedCafeCode,
+    financialYear,
+  });
 
-  // Prefix calculation:
-  // Single-series: "${resolvedCafeCode}/${fyShort}/" (e.g. "C01/2627/" -> 9 chars)
-  // Multi-series:  "${seriesClean}/${resolvedCafeCode}/${fyShort}/" (e.g. "P/C01/2627/" -> 11 chars)
-  const prefixPart = seriesClean
-    ? `${seriesClean}/${resolvedCafeCode}/${fyShort}/`
-    : `${resolvedCafeCode}/${fyShort}/`;
-  const fixedLength = prefixPart.length;
-
-  // Rule 46(b): Must leave at least 1 digit for the sequential counter within 16 chars
-  if (fixedLength >= 16) {
+  if (!isValid || fixedLength >= 16) {
     throw new ApiError(
       400,
       'INVOICE_CONFIG_EXCEEDS_MAX_LENGTH',
-      `Configured café code "${resolvedCafeCode}" and series prefix "${seriesClean || ''}" require ${fixedLength} prefix characters, exceeding the statutory 16-character limit for GST invoice serial numbers.`
+      `Configured café code "${resolvedCafeCode}" and series prefix "${statCode || ''}" require ${fixedLength} prefix characters, exceeding the statutory 16-character limit for GST invoice serial numbers.`
     );
   }
 
-  const maxAllowedDigits = 16 - fixedLength;
-  const targetDigits = Math.min(Math.max(3, maxAllowedDigits), 5);
-
-  const lockKey = seriesClean
-    ? `${organisationId}:${cafeId}:${financialYear}:${seriesClean}`
-    : `${organisationId}:${cafeId}:${financialYear}`;
+  // Lock key scoped to GSTIN + FY + Branch + Series
+  const lockKey = `${gstinClean}:${fyShort}:${resolvedCafeCode}:${statCode || 'DEFAULT'}`;
 
   while (activeSequenceLocks.has(lockKey)) {
     await activeSequenceLocks.get(lockKey);
@@ -321,28 +579,27 @@ async function allocateInvoiceNumber({ organisationId, cafeId, cafeCode = null, 
   activeSequenceLocks.set(lockKey, lockPromise);
 
   try {
-    const sequenceKey = seriesClean
-      ? `GST_INV:${financialYear}:${cafeId}:${seriesClean}`
-      : `GST_INV:${financialYear}:${cafeId}`;
+    // GSTIN-scoped sequence key ensures branches under the same or different GSTINs never cross-collide
+    const sequenceKey = `GST_INV:${gstinClean}:${fyShort}:${resolvedCafeCode}:${statCode || 'DEFAULT'}`;
     let sequenceNumber;
 
     try {
       const generated = await SequenceCounter.generateId({
-        organisationId,
+        organisationId: organisationId || 'ORG-ZAMORIN',
         sequenceKey,
         prefix: '',
-        minimumDigits: targetDigits,
+        minimumDigits: Math.min(maxAllowedDigits, 5),
       });
       sequenceNumber = parseInt(generated, 10);
     } catch {
-      // Fallback: inspect highest existing invoice for this financial year & cafe
+      // Fallback: inspect highest existing invoice for this financial year & cafe & GSTIN
       const query = {
-        organisationId,
+        gstin: gstinClean,
         financialYear,
         cafeId,
       };
-      if (seriesClean) {
-        query.seriesPrefix = seriesClean;
+      if (statCode) {
+        query.statutorySeriesCode = statCode;
       }
       const highest = await TaxInvoice.findOne(query)
         .sort({ sequenceNumber: -1 })
@@ -350,6 +607,15 @@ async function allocateInvoiceNumber({ organisationId, cafeId, cafeCode = null, 
         .lean();
 
       sequenceNumber = (highest?.sequenceNumber || 0) + 1;
+    }
+
+    // P0-05 & GST-CAP-03: Capacity Exhaustion Guard
+    if (sequenceNumber > capacity) {
+      throw new ApiError(
+        400,
+        'STATUTORY_SERIES_CAPACITY_EXHAUSTED',
+        `Statutory invoice series "${statCode || 'DEFAULT'}" for branch "${resolvedCafeCode}" under GSTIN "${gstinClean}" has exhausted its statutory capacity of ${capacity} invoices within Rule 46(b) 16-character limit.`
+      );
     }
 
     if (String(sequenceNumber).length > maxAllowedDigits) {
@@ -360,8 +626,8 @@ async function allocateInvoiceNumber({ organisationId, cafeId, cafeCode = null, 
       );
     }
 
-    const seqStr = String(sequenceNumber).padStart(targetDigits, '0');
-    const invoiceNumber = `${prefixPart}${seqStr}`;
+    const seqStr = String(sequenceNumber).padStart(Math.min(maxAllowedDigits, 5), '0');
+    const invoiceNumber = `${prefix}${seqStr}`;
 
     if (invoiceNumber.length > 16) {
       throw new ApiError(
@@ -379,12 +645,22 @@ async function allocateInvoiceNumber({ organisationId, cafeId, cafeCode = null, 
       );
     }
 
+    // Record issued count for immutability tracking
+    const issuedKey = `${gstinClean}:${fyShort}:${resolvedCafeCode}:${statCode || 'DEFAULT'}`;
+    issuedSeriesInvoicesCount.set(issuedKey, (issuedSeriesInvoicesCount.get(issuedKey) || 0) + 1);
+    const branchIssuedKey = `${gstinClean}:${fyShort}:${resolvedCafeCode}`;
+    branchIssuedInvoices.set(branchIssuedKey, (branchIssuedInvoices.get(branchIssuedKey) || 0) + 1);
+
     return {
       sequenceNumber,
       invoiceNumber,
-      seriesPrefix: seriesClean || null,
+      gstin: gstinClean,
+      seriesName: resolvedSeriesName || (statCode === 'P' ? 'POS' : 'DEFAULT'),
+      statutorySeriesCode: statCode,
+      seriesPrefix: statCode,
       cafeCode: resolvedCafeCode,
       financialYearShort: fyShort,
+      capacity,
     };
   } finally {
     activeSequenceLocks.delete(lockKey);
@@ -457,6 +733,63 @@ async function cancelTaxInvoice({ invoiceNumber, organisationId, cafeId, cancell
 }
 
 /**
+ * Saves a TaxInvoice document with database-level uniqueness enforcement and idempotent retry handling.
+ * Survives horizontal scaling across multiple Node / Render instances.
+ */
+async function saveTaxInvoiceWithRetry({ invoiceData, maxRetries = 3 }) {
+  let attempt = 0;
+  while (attempt < maxRetries) {
+    attempt++;
+    try {
+      const saved = await TaxInvoice.create(invoiceData);
+      return saved;
+    } catch (err) {
+      const isDuplicateKey =
+        err.code === 11000 ||
+        (err.name === 'MongoServerError' && err.message?.includes('E11000')) ||
+        err.message?.includes('duplicate key');
+
+      if (isDuplicateKey) {
+        // Idempotency check: if an invoice for the same orderId or billId already exists under this GSTIN
+        if (invoiceData.orderId || invoiceData.billId) {
+          const existing = await TaxInvoice.findOne({
+            gstin: invoiceData.gstin,
+            financialYear: invoiceData.financialYear,
+            ...(invoiceData.orderId ? { orderId: invoiceData.orderId } : { billId: invoiceData.billId }),
+          });
+          if (existing) {
+            return existing; // Safe idempotent return
+          }
+        }
+
+        if (attempt >= maxRetries) {
+          throw new ApiError(
+            409,
+            'DUPLICATE_STATUTORY_INVOICE_SERIAL',
+            `Database uniqueness constraint violation: Invoice serial "${invoiceData.invoiceNumber}" already exists under GSTIN "${invoiceData.gstin}" for financial year "${invoiceData.financialYear}".`
+          );
+        }
+
+        // Re-allocate next sequence atomically and retry
+        const reallocated = await allocateInvoiceNumber({
+          organisationId: invoiceData.organisationId,
+          cafeId: invoiceData.cafeId,
+          gstin: invoiceData.gstin,
+          financialYear: invoiceData.financialYear,
+          statutorySeriesCode: invoiceData.statutorySeriesCode,
+          seriesName: invoiceData.seriesName,
+        });
+
+        invoiceData.sequenceNumber = reallocated.sequenceNumber;
+        invoiceData.invoiceNumber = reallocated.invoiceNumber;
+      } else {
+        throw err;
+      }
+    }
+  }
+}
+
+/**
  * Generate Authoritative Statutory GST Tax Invoice
  */
 async function generateStatutoryTaxInvoice({
@@ -502,15 +835,6 @@ async function generateStatutoryTaxInvoice({
     supplyType,
   });
 
-  // Allocate sequential number
-  const { sequenceNumber, invoiceNumber } = await allocateInvoiceNumber({
-    organisationId,
-    cafeId,
-    financialYear: fy,
-  });
-
-  const invoiceId = `TXI-${fy.replace('-', '')}-${String(sequenceNumber).padStart(6, '0')}`;
-
   // Default supplier details if not provided
   const fullSupplier = {
     legalName: supplierDetails.legalName || 'Zamorin Hospitality Pvt Ltd',
@@ -521,6 +845,17 @@ async function generateStatutoryTaxInvoice({
     stateName: supplierDetails.stateName || 'Kerala',
     pan: supplierDetails.pan || 'AABCT1332L',
   };
+
+  // Allocate sequential number scoped to GSTIN
+  const allocated = await allocateInvoiceNumber({
+    organisationId,
+    cafeId,
+    gstin: fullSupplier.gstin,
+    financialYear: fy,
+  });
+  const { sequenceNumber, invoiceNumber } = allocated;
+
+  const invoiceId = `TXI-${fy.replace('-', '')}-${String(sequenceNumber).padStart(6, '0')}`;
 
   const fullRecipient = {
     isB2B: !!recipientDetails.isB2B || !!recipientDetails.gstin,
@@ -560,13 +895,16 @@ async function generateStatutoryTaxInvoice({
     irn = `IRN-${Date.now()}`;
   }
 
-  const invoice = await TaxInvoice.create({
+  const invoiceData = {
     organisationId,
     invoiceId,
     invoiceNumber,
     financialYear: fy,
     sequenceNumber,
     cafeId,
+    gstin: fullSupplier.gstin,
+    seriesPrefix: allocated.statutorySeriesCode || allocated.seriesPrefix || null,
+    statutorySeriesCode: allocated.statutorySeriesCode || null,
     orderId,
     billId,
     invoiceDate,
@@ -583,7 +921,9 @@ async function generateStatutoryTaxInvoice({
     signedQrData,
     status: 'ISSUED',
     authorizedSignatory,
-  });
+  };
+
+  const invoice = await saveTaxInvoiceWithRetry({ invoiceData });
 
   // Audit event
   if (auth) {
@@ -905,9 +1245,16 @@ module.exports = {
   getIndianFinancialYear,
   numberToIndianRupeeWords,
   calculateGstTaxes,
+  registerStatutoryCafeCode,
+  resolveCompactCafeCode,
+  formatShortFinancialYear,
+  calculateSeriesCapacity,
+  validateStatutorySeriesConfig,
   allocateInvoiceNumber,
   cancelTaxInvoice,
   generateStatutoryTaxInvoice,
+  saveTaxInvoiceWithRetry,
   renderStatutoryGstInvoicePdf,
   generateGstr1Summary,
+  _clearStatutoryRegistries,
 };
