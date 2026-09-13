@@ -31,6 +31,14 @@
       "dest": "/frontend/manifest.json"
     },
     {
+      "src": "/.well-known/(.*)",
+      "dest": "/frontend/.well-known/$1",
+      "headers": {
+        "Content-Type": "application/json",
+        "Cache-Control": "public, max-age=3600"
+      }
+    },
+    {
       "src": "/robots.txt",
       "dest": "/frontend/robots.txt"
     },

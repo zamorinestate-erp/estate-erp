@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.zamorin.cafe.erp",
+      "sha256_cert_fingerprints": [
+        "29:43:94:11:9C:5C:9E:64:EF:41:97:B0:80:21:0D:1C:D2:53:D5:13:CF:13:1F:39:37:52:30:1F:A1:3C:92:84"
+      ]
+    }
+  }
+]
