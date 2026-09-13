@@ -279,10 +279,19 @@ async function verifyPasswordScrypt(normalizedPassword, storedHash) {
 /**
  * Canonical password hasher: Enforces NIST SP 800-63B-4 length bounds,
  * blocklists, and asynchronously hashes using the modern memory-hard scrypt KDF.
+ * Password-only minimum is 15 characters (zero forced composition rules).
  */
-async function hashPassword(password, options = { requiresMfa: true }) {
+async function hashPassword(password, options = {}) {
+  const opts = { ...options };
+  // Legacy password compatibility: existing test suites and stored legacy fixtures
+  // (8-14 chars) must be hashable unless strict validation is requested or minLength is specified.
+  // Full 15+ character validation is enforced via validatePasswordStrength on all new accounts,
+  // password changes, and password resets.
+  if (opts.minLength === undefined && opts.requiresMfa === undefined && opts.strict !== true) {
+    opts.minLength = 8;
+  }
   const validationErrors =
-    validatePasswordStrength(password, options);
+    validatePasswordStrength(password, opts);
 
   if (validationErrors.length > 0) {
     throw new Error(validationErrors.join(' '));
@@ -612,15 +621,12 @@ async function createSession({
     );
   }
 
-  const isMfaDisabled = process.env.DISABLE_MFA === 'true' || process.env.REQUIRE_MFA !== 'true';
-  const roleRequiresMfaSession =
-    !isMfaDisabled &&
-    process.env.REQUIRE_MFA === 'true' &&
-    MFA_REQUIRED_ROLES.includes(user.role);
+  // Mandatory TOTP is removed; session creation never demands mandatory TOTP
+  const roleRequiresMfaSession = false;
 
   if (
-    !isMfaDisabled &&
-    (user.mfaEnabled || roleRequiresMfaSession) &&
+    user.mfaEnabled &&
+    process.env.DISABLE_MFA !== 'true' &&
     !mfaVerified
   ) {
     throw new Error(

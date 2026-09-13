@@ -625,7 +625,7 @@ const resetPassword = asyncHandler(
     if (!passwordResetService.isResetEligibleUser(user, now)) throw new ApiError(400, 'PASSWORD_RESET_INVALID', 'The password reset request is invalid or expired.');
     if (await verifyPassword(newPassword, user.passwordHash)) throw new ApiError(400, 'PASSWORD_REUSE_NOT_ALLOWED', 'The new password must be different from the current password.');
     let newPasswordHash;
-    try { newPasswordHash = await hashPassword(newPassword); } catch (error) { throw new ApiError(400, 'WEAK_PASSWORD', error.message || 'The new password does not meet security requirements.'); }
+    try { newPasswordHash = await hashPassword(newPassword, { minLength: 15 }); } catch (error) { throw new ApiError(400, 'WEAK_PASSWORD', error.message || 'The new password does not meet security requirements.'); }
     const consumed = await PasswordResetChallenge.findOneAndUpdate({ organisationId, challengeId, status: 'VERIFIED' }, { $set: { status: 'CONSUMED', consumedAt: now } }, { returnDocument: 'after' });
     if (!consumed) throw new ApiError(400, 'PASSWORD_RESET_INVALID', 'The password reset request is invalid or expired.');
     const temporaryLock = user.accountStatus === 'LOCKED' && user.lockedUntil instanceof Date && user.lockedUntil > now;
@@ -1183,7 +1183,7 @@ const changePassword = asyncHandler(
 
     let newPasswordHash;
     try {
-      newPasswordHash = await hashPassword(newPassword);
+      newPasswordHash = await hashPassword(newPassword, { minLength: 15 });
     } catch (error) {
       throw new ApiError(
         400,
@@ -1279,7 +1279,7 @@ const getMfaStatus = asyncHandler(
       );
     }
 
-    const mfaRequired = MFA_REQUIRED_ROLES.includes(user.role);
+    const mfaRequired = process.env.REQUIRE_MFA === 'true' && process.env.DISABLE_MFA !== 'true' && MFA_REQUIRED_ROLES.includes(user.role);
     const mfaEnabled = Boolean(user.mfaEnabled);
     const recoveryCodesRemaining = (user.recoveryCodeHashes || []).length;
     const setupPending = Boolean(user.pendingMfaSecretEncrypted);

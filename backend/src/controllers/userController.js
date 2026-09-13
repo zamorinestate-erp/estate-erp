@@ -25,6 +25,8 @@ const {
   ApiError,
 } = require('../utils/ApiError');
 
+const { executeTransactionWithRetry } = require('../utils/transactionHelper');
+
 const {
   normalizeIdentifier: govNormId,
   normalizeCafeIds: govNormCafes,
@@ -448,7 +450,7 @@ const createUser = asyncHandler(
       });
 
     const passwordHash =
-      await hashPassword(password);
+      await hashPassword(password, { minLength: 15 });
 
     const reason =
       typeof request.body?.reason ===
@@ -855,12 +857,31 @@ const changeUserStatus = asyncHandler(
       user.sessionVersion += 1;
     }
 
-    user.updatedBy =
-      request.auth.userId;
-
-    await user.save();
-
     const afterSnapshot = buildUserSnapshot(user);
+
+    const reason =
+      typeof request.body?.reason === 'string'
+        ? request.body.reason.trim()
+        : `Status changed to ${accountStatus}.`;
+
+    await executeTransactionWithRetry(async (session) => {
+      await user.save(session ? { session } : {});
+
+      await auditGovernanceSuccess({
+        request,
+        action: 'USER_STATUS_CHANGED',
+        target: user,
+        before: beforeSnapshot,
+        after: afterSnapshot,
+        reason,
+        riskClassification: 'HIGH',
+        metadata: {
+          fromStatus: beforeSnapshot.accountStatus,
+          toStatus: accountStatus,
+        },
+        session,
+      });
+    });
 
     let revokedCount = 0;
 
@@ -882,30 +903,6 @@ const changeUserStatus = asyncHandler(
       } catch (_err) {
         // Non-fatal
       }
-    }
-
-    const reason =
-      typeof request.body?.reason === 'string'
-        ? request.body.reason.trim()
-        : `Status changed to ${accountStatus}.`;
-
-    try {
-      await auditGovernanceSuccess({
-        request,
-        action: 'USER_STATUS_CHANGED',
-        target: user,
-        before: beforeSnapshot,
-        after: afterSnapshot,
-        reason,
-        riskClassification: 'HIGH',
-        metadata: {
-          fromStatus: beforeSnapshot.accountStatus,
-          toStatus: accountStatus,
-          revokedSessionCount: revokedCount,
-        },
-      });
-    } catch (_err) {
-      // Non-fatal
     }
 
     return response.status(200).json({
@@ -995,9 +992,22 @@ const archiveUser = asyncHandler(
     user.updatedBy =
       request.auth.userId;
 
-    await user.save();
-
     const afterSnapshot = buildUserSnapshot(user);
+
+    await executeTransactionWithRetry(async (session) => {
+      await user.save(session ? { session } : {});
+
+      await auditGovernanceSuccess({
+        request,
+        action: 'USER_ARCHIVED',
+        target: user,
+        before: beforeSnapshot,
+        after: afterSnapshot,
+        reason,
+        riskClassification: 'HIGH',
+        session,
+      });
+    });
 
     let revokedCount = 0;
 
@@ -1011,21 +1021,6 @@ const archiveUser = asyncHandler(
         reason: 'ADMIN_REVOKED',
         details:
           'The user account was archived.',
-      });
-    } catch (_err) {
-      // Non-fatal
-    }
-
-    try {
-      await auditGovernanceSuccess({
-        request,
-        action: 'USER_ARCHIVED',
-        target: user,
-        before: beforeSnapshot,
-        after: afterSnapshot,
-        reason,
-        riskClassification: 'HIGH',
-        metadata: { revokedSessionCount: revokedCount },
       });
     } catch (_err) {
       // Non-fatal
