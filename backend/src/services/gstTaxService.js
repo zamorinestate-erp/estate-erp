@@ -229,12 +229,83 @@ function calculateGstTaxes({ lines = [], supplyType = 'INTRA_STATE', defaultGstR
 }
 
 /**
- * Concurrency-safe sequential invoice number allocator
- * Strictly guarantees gapless sequential progression, supports configurable multi-series,
- * and ensures once an invoice number is issued, it is NEVER recycled or decremented.
+ * Formats a financial year into compact 4-digit GST notation (e.g. "2026-27" -> "2627")
  */
-async function allocateInvoiceNumber({ organisationId, cafeId, financialYear, seriesPrefix = null }) {
-  const seriesClean = seriesPrefix ? String(seriesPrefix).replace(/[^a-zA-Z0-9]/g, '').toUpperCase() : '';
+function formatShortFinancialYear(fy) {
+  if (!fy) return '2627';
+  const str = String(fy).trim();
+  const m = str.match(/(?:20)?(\d{2})[-/](?:20)?(\d{2})/);
+  if (m) {
+    return `${m[1]}${m[2]}`;
+  }
+  const clean = str.replace(/[^a-zA-Z0-9]/g, '');
+  return clean.slice(-4) || '2627';
+}
+
+/**
+ * Resolves and validates a compact cafe code for statutory GST invoice serial numbering
+ */
+function resolveCompactCafeCode(cafeId, explicitCafeCode = null) {
+  if (explicitCafeCode) {
+    const code = String(explicitCafeCode).trim().toUpperCase();
+    if (!/^[A-Z0-9-]+$/.test(code)) {
+      throw new ApiError(400, 'INVALID_CAFE_CODE', `Configured café code "${code}" contains invalid characters. Only alphanumeric and hyphen are permitted.`);
+    }
+    return code;
+  }
+  if (!cafeId) return 'C01';
+  const str = String(cafeId).trim().toUpperCase();
+  const m = str.match(/^(?:CAFE|ZC)[-_]?0*(\d+)$/);
+  if (m) {
+    const num = parseInt(m[1], 10);
+    return `C${String(num).padStart(2, '0')}`;
+  }
+  const clean = str.replace(/[^A-Z0-9-]/g, '');
+  return clean;
+}
+
+/**
+ * Concurrency-safe sequential invoice serial number allocator (Rule 46(b) of CGST Rules, 2017)
+ * Strictly guarantees:
+ *  - Serial length <= 16 characters
+ *  - Permitted characters: [A-Za-z0-9-/]
+ *  - Gapless sequential progression within financial year and configured series
+ *  - Once allocated, serial numbers are NEVER reused, recycled, or decremented
+ *  - High concurrency safety with zero collisions
+ */
+async function allocateInvoiceNumber({ organisationId, cafeId, cafeCode = null, financialYear, seriesPrefix = null }) {
+  let seriesClean = null;
+  if (seriesPrefix) {
+    const raw = String(seriesPrefix).trim().toUpperCase();
+    if (!/^[A-Z0-9-]+$/.test(raw)) {
+      throw new ApiError(400, 'INVALID_SERIES_PREFIX', `Configured series prefix "${raw}" contains invalid characters. Only alphanumeric and hyphen are permitted.`);
+    }
+    seriesClean = raw;
+  }
+
+  const fyShort = formatShortFinancialYear(financialYear);
+  const resolvedCafeCode = resolveCompactCafeCode(cafeId, cafeCode);
+
+  // Prefix calculation:
+  // Single-series: "${resolvedCafeCode}/${fyShort}/" (e.g. "C01/2627/" -> 9 chars)
+  // Multi-series:  "${seriesClean}/${resolvedCafeCode}/${fyShort}/" (e.g. "P/C01/2627/" -> 11 chars)
+  const prefixPart = seriesClean
+    ? `${seriesClean}/${resolvedCafeCode}/${fyShort}/`
+    : `${resolvedCafeCode}/${fyShort}/`;
+  const fixedLength = prefixPart.length;
+
+  // Rule 46(b): Must leave at least 1 digit for the sequential counter within 16 chars
+  if (fixedLength >= 16) {
+    throw new ApiError(
+      400,
+      'INVOICE_CONFIG_EXCEEDS_MAX_LENGTH',
+      `Configured café code "${resolvedCafeCode}" and series prefix "${seriesClean || ''}" require ${fixedLength} prefix characters, exceeding the statutory 16-character limit for GST invoice serial numbers.`
+    );
+  }
+
+  const maxAllowedDigits = 16 - fixedLength;
+  const targetDigits = Math.min(Math.max(3, maxAllowedDigits), 5);
+
   const lockKey = seriesClean
     ? `${organisationId}:${cafeId}:${financialYear}:${seriesClean}`
     : `${organisationId}:${cafeId}:${financialYear}`;
@@ -260,7 +331,7 @@ async function allocateInvoiceNumber({ organisationId, cafeId, financialYear, se
         organisationId,
         sequenceKey,
         prefix: '',
-        minimumDigits: 5,
+        minimumDigits: targetDigits,
       });
       sequenceNumber = parseInt(generated, 10);
     } catch {
@@ -281,14 +352,39 @@ async function allocateInvoiceNumber({ organisationId, cafeId, financialYear, se
       sequenceNumber = (highest?.sequenceNumber || 0) + 1;
     }
 
-    const cafeClean = String(cafeId).replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-    const seriesPart = seriesClean ? `${seriesClean}/` : '';
-    const invoiceNumber = `INV/${financialYear}/${cafeClean}/${seriesPart}${String(sequenceNumber).padStart(5, '0')}`;
+    if (String(sequenceNumber).length > maxAllowedDigits) {
+      throw new ApiError(
+        400,
+        'INVOICE_SERIAL_LENGTH_EXCEEDED',
+        `Invoice sequence counter ${sequenceNumber} exceeds the maximum available ${maxAllowedDigits} digits within the statutory 16-character limit.`
+      );
+    }
+
+    const seqStr = String(sequenceNumber).padStart(targetDigits, '0');
+    const invoiceNumber = `${prefixPart}${seqStr}`;
+
+    if (invoiceNumber.length > 16) {
+      throw new ApiError(
+        500,
+        'INVOICE_SERIAL_TOO_LONG',
+        `Generated GST invoice serial number "${invoiceNumber}" exceeds the 16-character statutory limit (${invoiceNumber.length} chars).`
+      );
+    }
+
+    if (!/^[A-Za-z0-9\-\/]+$/.test(invoiceNumber)) {
+      throw new ApiError(
+        500,
+        'INVALID_INVOICE_SERIAL_CHARS',
+        `Generated GST invoice serial number "${invoiceNumber}" contains illegal characters under CGST Rule 46(b).`
+      );
+    }
 
     return {
       sequenceNumber,
       invoiceNumber,
       seriesPrefix: seriesClean || null,
+      cafeCode: resolvedCafeCode,
+      financialYearShort: fyShort,
     };
   } finally {
     activeSequenceLocks.delete(lockKey);

@@ -206,9 +206,27 @@ function getExcelColumnName(colIndex) {
  * Generates a valid binary OpenXML XLSX Buffer with typed numeric & string cells.
  * Supports single sheet or multi-sheet workbooks (Section 59).
  */
-function generateXlsx({ sheetName = 'Report', reportTitle = 'Export', columns = [], rows = [], sheets = null, branding = {}, runId = null }) {
+function generateXlsx({ sheetName = 'Report', reportTitle = 'Export', columns = [], rows = [], sheets = null, branding = {}, runId = null, filename = null, officialDocumentId = null }) {
   const zip = new ZipArchive();
   const finalRunId = runId || generateStandardRunId();
+  const resolvedOfficialDocId = officialDocumentId || branding.officialDocumentId || branding.documentId || branding.officialExportId || branding.exportId || null;
+
+  const metadataRows = [
+    { property: 'Document Title', value: reportTitle },
+    { property: 'Official Run ID', value: finalRunId },
+  ];
+  if (resolvedOfficialDocId) {
+    metadataRows.push({ property: 'Official Document ID', value: String(resolvedOfficialDocId) });
+  }
+  metadataRows.push(
+    { property: 'Company Legal Name', value: branding.legalName || 'Zamorin Speciality Coffee & Kitchens Pvt. Ltd.' },
+    { property: 'Company GSTIN', value: branding.gstin || '32AAACZ1234K1Z5' },
+    { property: 'Export Date & Time (UTC)', value: new Date().toISOString() },
+    { property: 'Period Scope', value: branding.period || 'All Active Dates' },
+    { property: 'Data Classification', value: 'CONFIDENTIAL CORPORATE REPORT' },
+    { property: 'Tamper Verification', value: 'Stage 02 Universal QR Verified' },
+    { property: 'Total Records Exported', value: rows.length },
+  );
 
   const sheetList = (Array.isArray(sheets) && sheets.length > 0)
     ? sheets
@@ -217,17 +235,7 @@ function generateXlsx({ sheetName = 'Report', reportTitle = 'Export', columns = 
           sheetName: 'Report Information',
           isMetadataSheet: true,
           columns: [{ key: 'property', label: 'Report Property' }, { key: 'value', label: 'Value / Configuration' }],
-          rows: [
-            { property: 'Document Title', value: reportTitle },
-            { property: 'Official Run ID', value: finalRunId },
-            { property: 'Company Legal Name', value: branding.legalName || 'Zamorin Speciality Coffee & Kitchens Pvt. Ltd.' },
-            { property: 'Company GSTIN', value: branding.gstin || '32AAACZ1234K1Z5' },
-            { property: 'Export Date & Time (UTC)', value: new Date().toISOString() },
-            { property: 'Period Scope', value: branding.period || 'All Active Dates' },
-            { property: 'Data Classification', value: 'CONFIDENTIAL CORPORATE REPORT' },
-            { property: 'Tamper Verification', value: 'Stage 02 Universal QR Verified' },
-            { property: 'Total Records Exported', value: rows.length },
-          ],
+          rows: metadataRows,
         },
         {
           sheetName: sheetName || 'Data',
@@ -306,9 +314,9 @@ function generateXlsx({ sheetName = 'Report', reportTitle = 'Export', columns = 
     <numFmt numFmtId="166" formatCode="yyyy-mm-dd"/>
   </numFmts>
   <fonts count="3">
-    <font><name val="Calibri"/><sz val="11"/></font>
-    <font><b/><name val="Calibri"/><sz val="11"/><color rgb="FF0F172A"/></font>
-    <font><b/><name val="Calibri"/><sz val="13"/><color rgb="FF16223F"/></font>
+    <font><name val="Times New Roman"/><sz val="11"/></font>
+    <font><b/><name val="Times New Roman"/><sz val="11"/><color rgb="FF0F172A"/></font>
+    <font><b/><name val="Times New Roman"/><sz val="13"/><color rgb="FF16223F"/></font>
   </fonts>
   <fills count="3">
     <fill><patternFill patternType="none"/></fill>
@@ -432,8 +440,8 @@ function generateXlsx({ sheetName = 'Report', reportTitle = 'Export', columns = 
     sheetXml += `\n  <autoFilter ref="A${headerRowIdx}:${lastColLetter}${lastRowIdx}"/>`;
     sheetXml += `\n  <pageSetup paperSize="9" orientation="portrait" fitToWidth="1" fitToHeight="0"/>`;
     sheetXml += `\n  <headerFooter>`;
-    sheetXml += `\n    <oddHeader>&amp;C&amp;&quot;-,Bold&quot;ZAMORIN CAFÉ ERP — CONFIDENTIAL CORPORATE EXPORT</oddHeader>`;
-    sheetXml += `\n    <oddFooter>&amp;L&amp;D &amp;T&amp;RPage &amp;P of &amp;N</oddFooter>`;
+    sheetXml += `\n    <oddHeader>&amp;C&amp;&quot;Times New Roman,Bold&quot;ZAMORIN CAFÉ ERP — CONFIDENTIAL CORPORATE EXPORT</oddHeader>`;
+    sheetXml += `\n    <oddFooter>&amp;L&amp;&quot;Times New Roman,Regular&quot;&amp;D &amp;T&amp;R&amp;&quot;Times New Roman,Regular&quot;Page &amp;P of &amp;N</oddFooter>`;
     sheetXml += `\n  </headerFooter>`;
     sheetXml += `\n</worksheet>`;
 
@@ -449,11 +457,16 @@ function generateXlsx({ sheetName = 'Report', reportTitle = 'Export', columns = 
   sstXml += `</sst>`;
   zip.addFile('xl/sharedStrings.xml', sstXml);
 
+  const canonicalFilename = filename || (resolvedOfficialDocId
+    ? `${String(resolvedOfficialDocId).replace(/[^a-zA-Z0-9_-]/g, '_')}.xlsx`
+    : `${reportTitle.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${finalRunId}.xlsx`);
+
   return {
     buffer: zip.toBuffer(),
     runId: finalRunId,
+    officialDocumentId: resolvedOfficialDocId || null,
     mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    filename: `${reportTitle.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${finalRunId}.xlsx`
+    filename: canonicalFilename
   };
 }
 

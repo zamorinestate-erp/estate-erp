@@ -452,13 +452,35 @@ test('STATUTORY AUDIT — Universal XLSX OOXML Package & Canonical MIME Validati
     assert.ok(sheet2.includes('<headerFooter>'), 'Must have headerFooter definition');
     assert.ok(sheet2.includes('&amp;P of &amp;N'), 'Must have page numbering');
 
-    // Verify Styles (currency format ₹#,##0.00)
+    // Verify Styles (currency format ₹#,##0.00 and Times New Roman corporate font)
     const styles = entries.get('xl/styles.xml');
     assert.ok(styles.includes('₹#,##0.00'), 'Must include Indian Rupee currency format ₹#,##0.00');
+    assert.ok(styles.includes('Times New Roman'), 'xl/styles.xml must specify Times New Roman corporate font');
+    assert.ok(sheet2.includes('Times New Roman'), 'Worksheet headerFooter must specify Times New Roman font');
+  });
+
+  // 3. Official Document ID export filename validation
+  await t.test('XLSX-DOCID-03: Export filename adheres strictly to officialDocumentId convention when present', () => {
+    const withDocId = generateXlsx({
+      officialDocumentId: 'DOC-GST-2026-00042',
+      sheetName: 'Tax Invoices',
+      reportTitle: 'Statutory GST Invoices Report',
+      columns: sampleColumns,
+      rows: sampleRows,
+    });
+    assert.strictEqual(withDocId.filename, 'DOC-GST-2026-00042.xlsx', 'Must use exact official document ID with .xlsx extension');
+
+    const withoutDocId = generateXlsx({
+      sheetName: 'Tax Invoices',
+      reportTitle: 'Statutory GST Invoices Report',
+      columns: sampleColumns,
+      rows: sampleRows,
+    });
+    assert.match(withoutDocId.filename, /^statutory_gst_invoices_report_.*\.xlsx$/, 'Fallback format when officialDocumentId is omitted');
   });
 });
 
-test('STATUTORY AUDIT — GST-NUM-01 to GST-NUM-07 Invoice Number Immutability & Multi-Series Suite', async (t) => {
+test('STATUTORY AUDIT — GST-SERIAL-01 to GST-SERIAL-09 Invoice Number Rule 46(b) Immutability & Multi-Series Suite', async (t) => {
   const orgId = 'ORG-STATUTORY-TEST';
   const cafeId = 'CAFE-01';
   const fy = '2026-27';
@@ -489,30 +511,99 @@ test('STATUTORY AUDIT — GST-NUM-01 to GST-NUM-07 Invoice Number Immutability &
 
   t.mock.method(auditService, 'recordAuditEvent', async () => {});
 
-  // GST-NUM-01: Concurrent creation generates unique numbers
-  await t.test('GST-NUM-01: Concurrent creation generates unique numbers', async () => {
+  // GST-SERIAL-01: Every generated serial number length strictly <= 16 characters
+  await t.test('GST-SERIAL-01: Every generated serial number length strictly <= 16 characters', async () => {
     let atomicCounter = 0;
     t.mock.method(SequenceCounter, 'generateId', async () => {
       atomicCounter += 1;
       return String(atomicCounter);
     });
 
-    const promises = Array.from({ length: 8 }, () =>
-      allocateInvoiceNumber({ organisationId: orgId, cafeId, financialYear: fy })
-    );
-    const results = await Promise.all(promises);
-    const numbers = results.map((r) => r.invoiceNumber);
-    const uniqueSet = new Set(numbers);
+    const singleRes = await allocateInvoiceNumber({ organisationId: orgId, cafeId, financialYear: fy });
+    const multiRes1 = await allocateInvoiceNumber({ organisationId: orgId, cafeId, financialYear: fy, seriesPrefix: 'P' });
+    const multiRes2 = await allocateInvoiceNumber({ organisationId: orgId, cafeId, financialYear: fy, seriesPrefix: 'POS' });
 
-    assert.strictEqual(numbers.length, 8);
-    assert.strictEqual(uniqueSet.size, 8, 'All concurrent allocations must generate unique invoice numbers');
-    for (const num of numbers) {
-      assert.match(num, /^INV\/2026-27\/CAFE01\/\d{5}$/);
-    }
+    assert.ok(singleRes.invoiceNumber.length <= 16, `Single series length ${singleRes.invoiceNumber.length} > 16`);
+    assert.ok(multiRes1.invoiceNumber.length <= 16, `Multi series 'P' length ${multiRes1.invoiceNumber.length} > 16`);
+    assert.ok(multiRes2.invoiceNumber.length <= 16, `Multi series 'POS' length ${multiRes2.invoiceNumber.length} > 16`);
   });
 
-  // GST-NUM-02: Cancelled invoice retains its allocated number
-  await t.test('GST-NUM-02: Cancelled invoice retains its allocated number and history', async () => {
+  // GST-SERIAL-02: Single-series unique within FY
+  await t.test('GST-SERIAL-02: Single-series invoice numbers are unique within the financial year', async () => {
+    let currentSeq = 0;
+    t.mock.method(SequenceCounter, 'generateId', async () => {
+      currentSeq += 1;
+      return String(currentSeq);
+    });
+
+    const inv1 = await allocateInvoiceNumber({ organisationId: orgId, cafeId, financialYear: fy });
+    const inv2 = await allocateInvoiceNumber({ organisationId: orgId, cafeId, financialYear: fy });
+
+    assert.strictEqual(inv1.invoiceNumber, 'C01/2627/00001');
+    assert.strictEqual(inv2.invoiceNumber, 'C01/2627/00002');
+    assert.strictEqual(inv1.invoiceNumber.length, 14);
+    assert.strictEqual(inv2.invoiceNumber.length, 14);
+    assert.notStrictEqual(inv1.invoiceNumber, inv2.invoiceNumber);
+  });
+
+  // GST-SERIAL-03: Multiple invoice series operate independently and remain unique for financial year
+  await t.test('GST-SERIAL-03: Multiple invoice series operate independently and remain unique for financial year', async () => {
+    const seriesCounters = {
+      'GST_INV:2026-27:CAFE-01:P': 10,
+      'GST_INV:2026-27:CAFE-01:POS': 5,
+    };
+
+    t.mock.method(SequenceCounter, 'generateId', async (opts) => {
+      const k = opts.sequenceKey;
+      seriesCounters[k] = (seriesCounters[k] || 0) + 1;
+      return String(seriesCounters[k]);
+    });
+
+    const pos1 = await allocateInvoiceNumber({
+      organisationId: orgId,
+      cafeId,
+      financialYear: fy,
+      seriesPrefix: 'P',
+    });
+    const pos2 = await allocateInvoiceNumber({
+      organisationId: orgId,
+      cafeId,
+      financialYear: fy,
+      seriesPrefix: 'POS',
+    });
+
+    assert.strictEqual(pos1.invoiceNumber, 'P/C01/2627/00011');
+    assert.strictEqual(pos2.invoiceNumber, 'POS/C01/2627/006');
+    assert.strictEqual(pos1.invoiceNumber.length, 16);
+    assert.strictEqual(pos2.invoiceNumber.length, 16);
+    assert.strictEqual(pos1.seriesPrefix, 'P');
+    assert.strictEqual(pos2.seriesPrefix, 'POS');
+  });
+
+  // GST-SERIAL-04: Financial-year rollover starts configured new sequence safely
+  await t.test('GST-SERIAL-04: Financial-year rollover starts new sequence safely and isolates FY counters', async () => {
+    const counters = {
+      'GST_INV:2026-27:CAFE-01': 999,
+      'GST_INV:2027-28:CAFE-01': 0,
+    };
+
+    t.mock.method(SequenceCounter, 'generateId', async (opts) => {
+      const k = opts.sequenceKey;
+      counters[k] = (counters[k] || 0) + 1;
+      return String(counters[k]);
+    });
+
+    const invFY1 = await allocateInvoiceNumber({ organisationId: orgId, cafeId, financialYear: '2026-27' });
+    const invFY2 = await allocateInvoiceNumber({ organisationId: orgId, cafeId, financialYear: '2027-28' });
+
+    assert.strictEqual(invFY1.invoiceNumber, 'C01/2627/01000');
+    assert.strictEqual(invFY2.invoiceNumber, 'C01/2728/00001', 'New financial year starts at 00001');
+    assert.strictEqual(invFY1.invoiceNumber.length, 14);
+    assert.strictEqual(invFY2.invoiceNumber.length, 14);
+  });
+
+  // GST-SERIAL-05: Cancelled invoice retains its allocated serial number and history
+  await t.test('GST-SERIAL-05: Cancelled invoice retains its allocated serial number and history', async () => {
     let currentSeq = 50;
     t.mock.method(SequenceCounter, 'generateId', async () => {
       currentSeq += 1;
@@ -520,7 +611,7 @@ test('STATUTORY AUDIT — GST-NUM-01 to GST-NUM-07 Invoice Number Immutability &
     });
 
     const allocated = await allocateInvoiceNumber({ organisationId: orgId, cafeId, financialYear: fy });
-    assert.strictEqual(allocated.invoiceNumber, 'INV/2026-27/CAFE01/00051');
+    assert.strictEqual(allocated.invoiceNumber, 'C01/2627/00051');
 
     // Store in mock DB
     invoicesDb.set(allocated.invoiceNumber, {
@@ -543,16 +634,16 @@ test('STATUTORY AUDIT — GST-NUM-01 to GST-NUM-07 Invoice Number Immutability &
     });
 
     assert.strictEqual(cancelResult.status, 'CANCELLED');
-    assert.strictEqual(cancelResult.invoiceNumber, 'INV/2026-27/CAFE01/00051', 'Must retain original allocated number');
-    const persisted = invoicesDb.get('INV/2026-27/CAFE01/00051');
+    assert.strictEqual(cancelResult.invoiceNumber, 'C01/2627/00051', 'Must retain original allocated number');
+    const persisted = invoicesDb.get('C01/2627/00051');
     assert.strictEqual(persisted.status, 'CANCELLED');
     assert.strictEqual(persisted.cancellationReason, 'Guest walked out before delivery');
     assert.ok(persisted.cancelledAt instanceof Date);
   });
 
-  // GST-NUM-03: Next invoice receives the next valid sequence value
-  await t.test('GST-NUM-03: Next invoice receives next valid sequence value without decrement or reuse', async () => {
-    let currentSeq = 51; // previous was 51, now cancelled
+  // GST-SERIAL-06: Cancelled serial number is never reassigned or recycled
+  await t.test('GST-SERIAL-06: Cancelled serial number is never reassigned or recycled to make sequence appear gapless', async () => {
+    let currentSeq = 51;
     t.mock.method(SequenceCounter, 'generateId', async () => {
       currentSeq += 1;
       return String(currentSeq);
@@ -560,24 +651,12 @@ test('STATUTORY AUDIT — GST-NUM-01 to GST-NUM-07 Invoice Number Immutability &
 
     const nextAllocated = await allocateInvoiceNumber({ organisationId: orgId, cafeId, financialYear: fy });
     assert.strictEqual(nextAllocated.sequenceNumber, 52);
-    assert.strictEqual(nextAllocated.invoiceNumber, 'INV/2026-27/CAFE01/00052');
+    assert.strictEqual(nextAllocated.invoiceNumber, 'C01/2627/00052');
+    assert.notStrictEqual(nextAllocated.invoiceNumber, 'C01/2627/00051', 'Cancelled serial must NEVER be reassigned');
   });
 
-  // GST-NUM-04: Cancelled number is never reassigned
-  await t.test('GST-NUM-04: Cancelled number is never reassigned or recycled to make sequence appear gapless', async () => {
-    let currentSeq = 52;
-    t.mock.method(SequenceCounter, 'generateId', async () => {
-      currentSeq += 1;
-      return String(currentSeq);
-    });
-
-    const thirdAllocated = await allocateInvoiceNumber({ organisationId: orgId, cafeId, financialYear: fy });
-    assert.strictEqual(thirdAllocated.invoiceNumber, 'INV/2026-27/CAFE01/00053');
-    assert.notStrictEqual(thirdAllocated.invoiceNumber, 'INV/2026-27/CAFE01/00051', 'Cancelled number must NEVER be reassigned');
-  });
-
-  // GST-NUM-05: Duplicate allocation under concurrency is impossible
-  await t.test('GST-NUM-05: Duplicate allocation under concurrency is impossible due to strict sequence locking', async () => {
+  // GST-SERIAL-07: Concurrency safety: simultaneous allocation produces zero duplicate serial numbers
+  await t.test('GST-SERIAL-07: Concurrency safety: simultaneous allocation produces zero duplicate serial numbers', async () => {
     const allocatedNumbers = new Set();
     let seq = 200;
     t.mock.method(SequenceCounter, 'generateId', async () => {
@@ -598,64 +677,54 @@ test('STATUTORY AUDIT — GST-NUM-01 to GST-NUM-07 Invoice Number Immutability &
     assert.strictEqual(allocatedNumbers.size, 12);
   });
 
-  // GST-NUM-06: Financial-year rollover starts configured new sequence safely
-  await t.test('GST-NUM-06: Financial-year rollover starts new sequence safely and isolates FY counters', async () => {
-    const counters = {
-      'GST_INV:2026-27:CAFE-01': 999,
-      'GST_INV:2027-28:CAFE-01': 0,
-    };
+  // GST-SERIAL-08: Serial contains only permitted statutory characters [A-Za-z0-9-/]
+  await t.test('GST-SERIAL-08: Serial contains only permitted statutory characters [A-Za-z0-9-/]', async () => {
+    let counter = 800;
+    t.mock.method(SequenceCounter, 'generateId', async () => String(++counter));
 
-    t.mock.method(SequenceCounter, 'generateId', async (opts) => {
-      const k = opts.sequenceKey;
-      counters[k] = (counters[k] || 0) + 1;
-      return String(counters[k]);
-    });
+    const single = await allocateInvoiceNumber({ organisationId: orgId, cafeId, financialYear: fy });
+    const multi = await allocateInvoiceNumber({ organisationId: orgId, cafeId, financialYear: fy, seriesPrefix: 'P' });
 
-    const invFY1 = await allocateInvoiceNumber({ organisationId: orgId, cafeId, financialYear: '2026-27' });
-    const invFY2 = await allocateInvoiceNumber({ organisationId: orgId, cafeId, financialYear: '2027-28' });
-
-    assert.strictEqual(invFY1.invoiceNumber, 'INV/2026-27/CAFE01/01000');
-    assert.strictEqual(invFY2.invoiceNumber, 'INV/2027-28/CAFE01/00001', 'New financial year starts at 00001');
+    assert.match(single.invoiceNumber, /^[A-Za-z0-9\-\/]+$/, 'Must contain only letters, numbers, hyphens, and slashes');
+    assert.match(multi.invoiceNumber, /^[A-Za-z0-9\-\/]+$/, 'Must contain only letters, numbers, hyphens, and slashes');
+    assert.ok(single.invoiceNumber.length <= 16);
+    assert.ok(multi.invoiceNumber.length <= 16);
   });
 
-  // GST-NUM-07: Multiple invoice series can be configured where business/legal configuration requires them
-  await t.test('GST-NUM-07: Multiple invoice series operate independently and remain unique for financial year', async () => {
-    const seriesCounters = {
-      'GST_INV:2026-27:CAFE-01:POS': 10,
-      'GST_INV:2026-27:CAFE-01:ONLINE': 5,
-      'GST_INV:2026-27:CAFE-01:CATERING': 1,
-    };
+  // GST-SERIAL-09: Rejection of configurations exceeding 16 statutory characters (no silent truncation)
+  await t.test('GST-SERIAL-09: Rejection of configurations exceeding 16 statutory characters without silent truncation', async () => {
+    // Attempting a series prefix that exceeds 16 chars with prefix overhead
+    await assert.rejects(
+      async () => {
+        await allocateInvoiceNumber({
+          organisationId: orgId,
+          cafeId,
+          financialYear: fy,
+          seriesPrefix: 'TOOLONGPREFIX', // 13 chars + / + C01(3) + / + 2627(4) + / = 24 chars > 16
+        });
+      },
+      (err) => {
+        assert.strictEqual(err.code, 'INVOICE_CONFIG_EXCEEDS_MAX_LENGTH');
+        assert.strictEqual(err.statusCode, 400);
+        return true;
+      }
+    );
 
-    t.mock.method(SequenceCounter, 'generateId', async (opts) => {
-      const k = opts.sequenceKey;
-      seriesCounters[k] = (seriesCounters[k] || 0) + 1;
-      return String(seriesCounters[k]);
-    });
-
-    const posInv = await allocateInvoiceNumber({
-      organisationId: orgId,
-      cafeId,
-      financialYear: fy,
-      seriesPrefix: 'POS',
-    });
-    const onlineInv = await allocateInvoiceNumber({
-      organisationId: orgId,
-      cafeId,
-      financialYear: fy,
-      seriesPrefix: 'ONLINE',
-    });
-    const cateringInv = await allocateInvoiceNumber({
-      organisationId: orgId,
-      cafeId,
-      financialYear: fy,
-      seriesPrefix: 'CATERING',
-    });
-
-    assert.strictEqual(posInv.invoiceNumber, 'INV/2026-27/CAFE01/POS/00011');
-    assert.strictEqual(onlineInv.invoiceNumber, 'INV/2026-27/CAFE01/ONLINE/00006');
-    assert.strictEqual(cateringInv.invoiceNumber, 'INV/2026-27/CAFE01/CATERING/00002');
-    assert.strictEqual(posInv.seriesPrefix, 'POS');
-    assert.strictEqual(onlineInv.seriesPrefix, 'ONLINE');
-    assert.strictEqual(cateringInv.seriesPrefix, 'CATERING');
+    // Attempting invalid characters in series prefix
+    await assert.rejects(
+      async () => {
+        await allocateInvoiceNumber({
+          organisationId: orgId,
+          cafeId,
+          financialYear: fy,
+          seriesPrefix: 'SERIES@#',
+        });
+      },
+      (err) => {
+        assert.strictEqual(err.code, 'INVALID_SERIES_PREFIX');
+        assert.strictEqual(err.statusCode, 400);
+        return true;
+      }
+    );
   });
 });

@@ -304,9 +304,11 @@ test('STAGE 08 — Finance + GST + Statutory Invoicing Master Test Suite', async
       assert.equal(sequenceNumbers[i + 1], sequenceNumbers[i] + 1);
     }
 
-    // Verify invoice number format INV/YYYY-YY/CAFE/XXXXX
+    // Verify statutory invoice number format (<= 16 chars, permitted chars [A-Za-z0-9-/])
     for (const num of invoiceNumbers) {
-      assert.match(num, /^INV\/2026-27\/ZC0001\/\d{5}$/);
+      assert.ok(num.length <= 16, `Invoice number ${num} exceeds 16 statutory characters`);
+      assert.match(num, /^[A-Za-z0-9\-\/]{1,16}$/);
+      assert.match(num, /^C01\/2627\/\d{5}$/);
     }
   });
 
