@@ -28,6 +28,14 @@ namespace Zamorin.Cafe.ERP
         {
             try
             {
+                // Verify Evergreen Edge WebView2 Runtime availability before initialization
+                string version = CoreWebView2Environment.GetAvailableBrowserVersionString();
+                if (string.IsNullOrWhiteSpace(version))
+                {
+                    PromptWebView2Installation();
+                    return;
+                }
+
                 await WebViewControl.EnsureCoreWebView2Async();
 
                 var settings = WebViewControl.CoreWebView2.Settings;
@@ -40,9 +48,35 @@ namespace Zamorin.Cafe.ERP
 
                 WebViewControl.Source = new Uri(ZamorinSecurityConfig.ProductionBaseUrl);
             }
+            catch (WebView2RuntimeNotFoundException)
+            {
+                PromptWebView2Installation();
+            }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to initialize WebView2: {ex.Message}", "Zamorin ERP Startup Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show(
+                    $"Failed to initialize WebView2: {ex.Message}\n\nPlease ensure the Microsoft Edge WebView2 Evergreen Runtime is installed.",
+                    "Zamorin Café ERP - Startup",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+        }
+
+        private void PromptWebView2Installation()
+        {
+            var result = MessageBox.Show(
+                "Microsoft Edge WebView2 Runtime is required to run Zamorin Café ERP.\n\nWould you like to open the official Microsoft download page now?",
+                "WebView2 Runtime Required",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+
+            if (result == MessageBoxResult.Yes)
+            {
+                try
+                {
+                    Process.Start(new ProcessStartInfo("https://go.microsoft.com/fwlink/p/?LinkId=2124703") { UseShellExecute = true });
+                }
+                catch (Exception) {}
             }
         }
 
