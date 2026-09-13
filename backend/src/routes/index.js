@@ -134,6 +134,9 @@ const exportRoutes =
 const universalQrRoutes =
   require('./universalQrRoutes');
 
+const hardwareRoutes =
+  require('./hardwareRoutes');
+
 const router = express.Router();
 
 router.use(
@@ -398,6 +401,11 @@ router.use(
 router.use(
   '/qr',
   universalQrRoutes
+);
+
+router.use(
+  '/hardware',
+  hardwareRoutes
 );
 
 router.use(
