@@ -114,12 +114,13 @@ jobs:
           swift --version
           xcodebuild -showsdks
 
-      - name: Discover Simulators
+      - name: Discover Simulators & Prepare Environments
         run: |
-          echo "=== Available iOS Simulators ==="
-          xcrun simctl list devices available | head -n 30
+          echo "=== Available Simulators ==="
+          xcrun simctl list devices available
+          mkdir -p build/artifacts
 
-      - name: Build iOS Application (Simulator)
+      - name: Build iOS Application (iPhone Simulator)
         run: |
           xcodebuild build \
             -project apple/ios/ZamorinCafeERP.xcodeproj \
@@ -128,16 +129,19 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             -derivedDataPath build/ios
 
-      - name: Run iOS Unit Tests (XCTest)
+      - name: Run iOS Unit Tests (iPhone Simulator XCTest)
         run: |
+          IPHONE_ID=$(xcrun simctl list devices available -j | jq -r '[.devices[] | .[] | select(.name | contains("iPhone"))][0].udid')
+          echo "Targeting iPhone Simulator UDID: $IPHONE_ID"
           xcodebuild test \
             -project apple/ios/ZamorinCafeERP.xcodeproj \
             -scheme ZamorinCafeERP \
-            -destination "generic/platform=iOS Simulator" \
+            -destination "id=$IPHONE_ID" \
+            -resultBundlePath build/artifacts/iPhoneSimulator.xcresult \
             CODE_SIGNING_ALLOWED=NO \
-            -derivedDataPath build/ios-test || echo "XCTest executed on generic destination"
+            -derivedDataPath build/ios-test
 
-      - name: Build iPadOS Application (Simulator)
+      - name: Build iPadOS Application (iPad Simulator)
         run: |
           xcodebuild build \
             -project apple/ios/ZamorinCafeERP.xcodeproj \
@@ -147,23 +151,36 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             -derivedDataPath build/ipad
 
+      - name: Run iPadOS Unit Tests (iPad Simulator XCTest)
+        run: |
+          IPAD_ID=$(xcrun simctl list devices available -j | jq -r '[.devices[] | .[] | select(.name | contains("iPad"))][0].udid')
+          echo "Targeting iPad Simulator UDID: $IPAD_ID"
+          xcodebuild test \
+            -project apple/ios/ZamorinCafeERP.xcodeproj \
+            -scheme ZamorinCafeERP \
+            -destination "id=$IPAD_ID" \
+            -resultBundlePath build/artifacts/iPadSimulator.xcresult \
+            CODE_SIGNING_ALLOWED=NO \
+            -derivedDataPath build/ipad-test
+
       - name: Build macOS Application
         run: |
           xcodebuild build \
             -project apple/macos/ZamorinCafeERP.xcodeproj \
             -scheme ZamorinCafeERPMac \
-            -destination "generic/platform=macOS" \
+            -destination "platform=macOS" \
             CODE_SIGNING_ALLOWED=NO \
             -derivedDataPath build/macos
 
-      - name: Run macOS Unit Tests (XCTest)
+      - name: Run macOS Unit Tests (macOS XCTest)
         run: |
           xcodebuild test \
             -project apple/macos/ZamorinCafeERP.xcodeproj \
             -scheme ZamorinCafeERPMac \
-            -destination "generic/platform=macOS" \
+            -destination "platform=macOS" \
+            -resultBundlePath build/artifacts/macOS.xcresult \
             CODE_SIGNING_ALLOWED=NO \
-            -derivedDataPath build/macos-test || echo "macOS XCTest executed on generic destination"
+            -derivedDataPath build/macos-test
 
       - name: Verify Bundle Content & Privacy Manifest Packaging
         run: |

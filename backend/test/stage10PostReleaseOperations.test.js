@@ -50,7 +50,7 @@ test('Stage 10 — Explicit Safe Post-Release Systems Test Suite', async (t) => 
         {
           NODE_ENV: 'production',
           PORT: '5000',
-          MONGODB_URI: 'mongodb+srv://admin:SuperSecretPassword123@cluster.mongodb.net/prod',
+          MONGODB_URI: 'mongodb+srv://admin:mock_test_password@cluster.example.mongodb.net/prod',
           JWT_SECRET: 'super-secret-jwt-key-minimum-64-characters-long-for-testing-security-purpose',
           DOCUMENT_STORAGE_ROOT: '/var/data/zamorin_documents',
           DOCUMENT_STORAGE_DRIVER: 'RENDER_PERSISTENT_DISK'

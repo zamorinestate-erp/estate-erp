@@ -191,7 +191,7 @@ test('CAFÉ OPS-R01B Security Hardening Test Suite', async (t) => {
         cvv: '123',
       },
       infra: {
-        mongodbUri: 'mongodb+srv://admin:secretPass@cluster0.zamorin.mongodb.net/prod?retryWrites=true',
+        mongodbUri: 'mongodb+srv://admin:mock_password@cluster0.example.mongodb.net/prod?retryWrites=true',
         apiSecret: 'top-secret-api-key',
       },
       safeField: 'This is public operational info',
