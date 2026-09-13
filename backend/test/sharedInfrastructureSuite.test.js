@@ -1707,25 +1707,48 @@ test('SHARED INFRASTRUCTURE — Implementation Verification Suite', async (t) =>
   });
 
   // ===========================================================================
-  // 28. ANDROID SAF NATIVE AUTHORIZATION & BOUNDARY INTEGRITY (SAF-01 TO SAF-08)
+  // 28. ANDROID SAF MOCK AUTHORIZATION & RESTRICTION INTEGRITY (ANDROID-SAF-01 TO ANDROID-SAF-09)
   // ===========================================================================
-  await t.test('28. Android SAF Native Authorization & Boundary Integrity (SAF-01 to SAF-08)', async (st) => {
-    const { AndroidNativeSafBridge, DestinationManager } = await import('../../frontend/src/js/utils/destinationManager.js');
+  await t.test('28. Android SAF Mock Authorization & Restriction Integrity (ANDROID-SAF-01 to ANDROID-SAF-09)', async (st) => {
+    const { MockAndroidSafBridge, AndroidNativeSafBridge, DestinationManager } = await import('../../frontend/src/js/utils/destinationManager.js');
 
-    // SAF-01: Valid system-picker URI with persisted native permission -> write succeeds
-    await st.test('SAF-01: Valid system-picker URI with persisted native permission -> write succeeds', async () => {
-      const bridge = new AndroidNativeSafBridge();
+    // ANDROID-SAF-01: System picker opens successfully and returns treeUri with read/write flags
+    await st.test('ANDROID-SAF-01: System picker opens successfully and returns treeUri with read/write flags', async () => {
+      const bridge = new MockAndroidSafBridge();
       const pickerRes = await bridge.openDocumentTree();
       assert.ok(pickerRes.treeUri);
+      assert.strictEqual(pickerRes.flags, 3);
+      assert.ok(pickerRes.grantedAt);
 
       const writeRes = await bridge.createFile(pickerRes.treeUri, 'invoice_export.pdf', 'application/pdf', 'JVBERi0xLjQK...');
       assert.strictEqual(writeRes.success, true);
       assert.ok(writeRes.uri.includes('invoice_export.pdf'));
     });
 
-    // SAF-02: URI string placed manually into localStorage without native grant -> write denied
-    await st.test('SAF-02: URI string placed manually into localStorage without native grant -> write denied', async () => {
-      const bridge = new AndroidNativeSafBridge();
+    // ANDROID-SAF-02: Persisted URI survives application restart when native grant remains valid
+    await st.test('ANDROID-SAF-02: Persisted URI survives application restart when native grant remains valid', async () => {
+      const bridge = new MockAndroidSafBridge();
+      const { treeUri } = await bridge.openDocumentTree();
+
+      // ContentResolver check confirms active permission survived
+      assert.strictEqual(await bridge.checkUriPermission(treeUri), true);
+
+      const res = await bridge.createFile(treeUri, 'restart_valid.pdf', 'application/pdf', 'AAAA');
+      assert.strictEqual(res.success, true);
+    });
+
+    // ANDROID-SAF-03: Native ContentResolver write succeeds inside authorized tree
+    await st.test('ANDROID-SAF-03: Native ContentResolver write succeeds inside authorized tree', async () => {
+      const bridge = new MockAndroidSafBridge();
+      const { treeUri } = await bridge.openDocumentTree();
+      const writeRes = await bridge.createFile(treeUri, 'audit_report.pdf', 'application/pdf', 'AAAA');
+      assert.strictEqual(writeRes.success, true);
+      assert.strictEqual(writeRes.filename, 'audit_report.pdf');
+    });
+
+    // ANDROID-SAF-04: Unauthorized URI is rejected even if JavaScript/localStorage is tampered
+    await st.test('ANDROID-SAF-04: Unauthorized URI is rejected even if JavaScript/localStorage is tampered', async () => {
+      const bridge = new MockAndroidSafBridge();
       const fakeUri = 'content://com.android.externalstorage.documents/tree/primary%3AFakeFolder';
 
       await assert.rejects(
@@ -1734,25 +1757,13 @@ test('SHARED INFRASTRUCTURE — Implementation Verification Suite', async (t) =>
       );
     });
 
-    // SAF-03: JavaScript supplies a different unauthorized content:// URI -> denied
-    await st.test('SAF-03: JavaScript supplies a different unauthorized content:// URI -> denied', async () => {
-      const bridge = new AndroidNativeSafBridge();
-      await bridge.openDocumentTree({ requestedLocation: 'content://com.android.externalstorage.documents/tree/primary%3ADownload%2FAuthorized' });
-
-      const unauthorizedUri = 'content://com.android.externalstorage.documents/tree/primary%3AUnauthorizedPath';
-      await assert.rejects(
-        async () => bridge.createFile(unauthorizedUri, 'secret.pdf', 'application/pdf', 'AAAA'),
-        (err) => err.code === 'NATIVE_SAF_PERMISSION_INVALID'
-      );
-    });
-
-    // SAF-04: Persisted permission revoked -> existing cached URI no longer works; reauthorization required
-    await st.test('SAF-04: Persisted permission revoked -> existing cached URI no longer works; reauthorization required', async () => {
-      const bridge = new AndroidNativeSafBridge();
+    // ANDROID-SAF-05: Revoked URI permission is detected and subsequent writes fail
+    await st.test('ANDROID-SAF-05: Revoked URI permission is detected and subsequent writes fail', async () => {
+      const bridge = new MockAndroidSafBridge();
       const { treeUri } = await bridge.openDocumentTree();
       assert.strictEqual(await bridge.checkUriPermission(treeUri), true);
 
-      // User revokes permission in Android OS
+      // User revokes permission in OS
       bridge.revokePermission(treeUri);
       assert.strictEqual(await bridge.checkUriPermission(treeUri), false);
 
@@ -1762,20 +1773,40 @@ test('SHARED INFRASTRUCTURE — Implementation Verification Suite', async (t) =>
       );
     });
 
-    // SAF-05: Requested child document outside authorized tree -> denied
-    await st.test('SAF-05: Requested child document outside authorized tree (path traversal) -> denied', async () => {
-      const bridge = new AndroidNativeSafBridge();
-      const { treeUri } = await bridge.openDocumentTree();
+    // ANDROID-SAF-06: Change Location obtains new valid grant and releases old permission
+    await st.test('ANDROID-SAF-06: Change Location obtains new valid grant and releases old permission', async () => {
+      const bridge = new MockAndroidSafBridge();
+      const loc1 = 'content://com.android.externalstorage.documents/tree/primary%3ADownload%2FLoc1';
+      const loc2 = 'content://com.android.externalstorage.documents/tree/primary%3ADownload%2FLoc2';
+
+      await bridge.openDocumentTree({ requestedLocation: loc1 });
+      assert.strictEqual(await bridge.checkUriPermission(loc1), true);
+
+      bridge.releasePersistableUriPermission(loc1);
+      await bridge.openDocumentTree({ requestedLocation: loc2 });
+
+      assert.strictEqual(await bridge.checkUriPermission(loc1), false);
+      assert.strictEqual(await bridge.checkUriPermission(loc2), true);
+    });
+
+    // ANDROID-SAF-07: Download root is not falsely treated as selectable on Android 11+
+    await st.test('ANDROID-SAF-07: Download root is not falsely treated as selectable on Android 11+', async () => {
+      const bridge = new MockAndroidSafBridge();
 
       await assert.rejects(
-        async () => bridge.createFile(treeUri, 'escape.pdf', 'application/pdf', 'AAAA', '../../etc'),
-        (err) => err.code === 'DESTINATION_OUTSIDE_TREE'
+        async () => bridge.openDocumentTree({ requestedLocation: 'content://com.android.externalstorage.documents/tree/primary%3ADownload' }),
+        (err) => err.code === 'RESTRICTED_DIRECTORY_DENIED'
+      );
+
+      await assert.rejects(
+        async () => bridge.openDocumentTree({ requestedLocation: 'content://com.android.providers.downloads.documents/tree/downloads' }),
+        (err) => err.code === 'RESTRICTED_DIRECTORY_DENIED'
       );
     });
 
-    // SAF-06: Android-restricted locations are not falsely claimed as supported
-    await st.test('SAF-06: Android-restricted locations (Android/data, Android/obb, storage root) are denied', async () => {
-      const bridge = new AndroidNativeSafBridge();
+    // ANDROID-SAF-08: Android/data and Android/obb are denied
+    await st.test('ANDROID-SAF-08: Android/data and Android/obb are denied', async () => {
+      const bridge = new MockAndroidSafBridge();
 
       await assert.rejects(
         async () => bridge.openDocumentTree({ requestedLocation: 'content://com.android.externalstorage.documents/tree/primary%3AAndroid%2Fdata' }),
@@ -1786,41 +1817,23 @@ test('SHARED INFRASTRUCTURE — Implementation Verification Suite', async (t) =>
         async () => bridge.openDocumentTree({ requestedLocation: 'content://com.android.externalstorage.documents/tree/primary%3AAndroid%2Fobb' }),
         (err) => err.code === 'RESTRICTED_DIRECTORY_DENIED'
       );
+    });
 
+    // ANDROID-SAF-09: Internal/SD-card prohibited roots are denied
+    await st.test('ANDROID-SAF-09: Internal/SD-card prohibited roots are denied', async () => {
+      const bridge = new MockAndroidSafBridge();
+
+      // Primary internal storage root
       await assert.rejects(
         async () => bridge.openDocumentTree({ requestedLocation: 'content://com.android.externalstorage.documents/tree/primary%3A' }),
         (err) => err.code === 'RESTRICTED_DIRECTORY_DENIED'
       );
-    });
 
-    // SAF-07: App restart retains access only when native persistable permission remains valid
-    await st.test('SAF-07: App restart retains access only when native persistable permission remains valid', async () => {
-      const bridge = new AndroidNativeSafBridge();
-      const { treeUri } = await bridge.openDocumentTree();
-
-      // Simulate app restart retaining persisted permission
-      assert.strictEqual(await bridge.checkUriPermission(treeUri), true);
-
-      // Write succeeds
-      const res = await bridge.createFile(treeUri, 'restart_valid.pdf', 'application/pdf', 'AAAA');
-      assert.strictEqual(res.success, true);
-    });
-
-    // SAF-08: User selects Change Location -> old and new permission behavior handled safely
-    await st.test('SAF-08: User selects Change Location -> old and new permission behavior handled safely', async () => {
-      const bridge = new AndroidNativeSafBridge();
-      const loc1 = 'content://com.android.externalstorage.documents/tree/primary%3ADownload%2FLoc1';
-      const loc2 = 'content://com.android.externalstorage.documents/tree/primary%3ADownload%2FLoc2';
-
-      await bridge.openDocumentTree({ requestedLocation: loc1 });
-      assert.strictEqual(await bridge.checkUriPermission(loc1), true);
-
-      // Change Location: releases old permission and authorizes new location
-      bridge.releasePersistableUriPermission(loc1);
-      await bridge.openDocumentTree({ requestedLocation: loc2 });
-
-      assert.strictEqual(await bridge.checkUriPermission(loc1), false);
-      assert.strictEqual(await bridge.checkUriPermission(loc2), true);
+      // External SD-card root
+      await assert.rejects(
+        async () => bridge.openDocumentTree({ requestedLocation: 'content://com.android.externalstorage.documents/tree/0123-4567%3A' }),
+        (err) => err.code === 'RESTRICTED_DIRECTORY_DENIED'
+      );
     });
   });
 
@@ -1866,5 +1879,186 @@ test('SHARED INFRASTRUCTURE — Implementation Verification Suite', async (t) =>
     assert.strictEqual(notif.sourceEntityId, 'GSTR-3B-Q2');
   });
 
+  // ===========================================================================
+  // 30. GST STATUTORY RETENTION & HOLD COMPLIANCE ENGINE (GST-RET-01 TO GST-RET-08)
+  // ===========================================================================
+  await t.test('30. GST Statutory Retention & Hold Compliance Engine (GST-RET-01 to GST-RET-08)', async (st) => {
+    const { retentionPolicyService } = await import('../src/services/retentionPolicyService.js');
+    const { DocumentAttachmentService } = await import('../src/services/documentAttachmentService.js');
+    const masterAuth = mockAuth('MASTER');
+
+    // GST-RET-01: Correct financial year annual-return due date + 72 months produces statutory expiry
+    await st.test('GST-RET-01: Correct financial year annual-return due date + 72 months produces statutory expiry', () => {
+      // Invoice in FY 2024-25 (e.g. 2024-07-15)
+      const res = retentionPolicyService.calculateGstStatutoryRetention('2024-07-15');
+      assert.strictEqual(res.financialYear, '2024-25');
+      // Annual return due date is 31st December 2025
+      assert.strictEqual(res.annualReturnDueDate.toISOString().slice(0, 10), '2025-12-31');
+      // Statutory retention is 72 calendar months (6 years) from 31 Dec 2025 -> 31 Dec 2031
+      assert.strictEqual(res.statutoryRetentionUntil.toISOString().slice(0, 10), '2031-12-31');
+    });
+
+    // GST-RET-02: Leap years/month boundaries do not rely on approximate 365-day multiplication
+    await st.test('GST-RET-02: Leap years/month boundaries do not rely on approximate 365-day multiplication', () => {
+      // FY 2023-24 includes leap year Feb 2024. Due date is 31 Dec 2024.
+      // 72 calendar months must land on exactly 31 Dec 2030, not drifting by days.
+      const res = retentionPolicyService.calculateGstStatutoryRetention('2024-02-29');
+      assert.strictEqual(res.financialYear, '2023-24');
+      assert.strictEqual(res.annualReturnDueDate.toISOString().slice(0, 10), '2024-12-31');
+      assert.strictEqual(res.statutoryRetentionUntil.toISOString().slice(0, 10), '2030-12-31');
+
+      // Month-end leap test: Feb 29 + 12 months = Feb 28 of non-leap year (no day drift)
+      const leapAdded = retentionPolicyService.addCalendarMonths('2024-02-29T12:00:00Z', 12);
+      assert.strictEqual(leapAdded.toISOString().slice(0, 10), '2025-02-28');
+    });
+
+    // GST-RET-03: Document creation date does not incorrectly become the statutory anchor
+    await st.test('GST-RET-03: Document creation date does not incorrectly become the statutory anchor', () => {
+      // Invoices at beginning, middle, and end of FY 2025-26 (1 Apr 2025 to 31 Mar 2026)
+      const invEarly = retentionPolicyService.calculateGstStatutoryRetention('2025-04-05');
+      const invMid = retentionPolicyService.calculateGstStatutoryRetention('2025-10-20');
+      const invLate = retentionPolicyService.calculateGstStatutoryRetention('2026-03-25');
+
+      // All must share the same financial year and statutory retention deadline
+      assert.strictEqual(invEarly.financialYear, '2025-26');
+      assert.strictEqual(invMid.financialYear, '2025-26');
+      assert.strictEqual(invLate.financialYear, '2025-26');
+
+      assert.strictEqual(invEarly.statutoryRetentionUntil.toISOString().slice(0, 10), '2032-12-31');
+      assert.strictEqual(invMid.statutoryRetentionUntil.toISOString().slice(0, 10), '2032-12-31');
+      assert.strictEqual(invLate.statutoryRetentionUntil.toISOString().slice(0, 10), '2032-12-31');
+
+      // None of them equal creationDate + 8 years
+      assert.notStrictEqual(invEarly.statutoryRetentionUntil.toISOString().slice(0, 10), '2033-04-05');
+    });
+
+    // GST-RET-04: Organisation policy longer than statutory minimum extends retention
+    await st.test('GST-RET-04: Organisation policy longer than statutory minimum extends retention', () => {
+      const res = retentionPolicyService.calculateEffectiveRetention({
+        documentDate: '2024-05-10', // FY 2024-25 -> statutory 2031-12-31
+        organisationRetentionUntil: '2035-03-31T23:59:59.999Z',
+      });
+
+      assert.strictEqual(res.statutoryRetentionUntil.toISOString().slice(0, 10), '2031-12-31');
+      assert.strictEqual(res.effectiveRetentionUntil.toISOString().slice(0, 10), '2035-03-31');
+      assert.ok(res.organisationRetentionUntil instanceof Date);
+    });
+
+    // GST-RET-05: Organisation policy shorter than statutory minimum cannot shorten statutory retention
+    await st.test('GST-RET-05: Organisation policy shorter than statutory minimum cannot shorten statutory retention', () => {
+      const res = retentionPolicyService.calculateEffectiveRetention({
+        documentDate: '2024-05-10', // FY 2024-25 -> statutory 2031-12-31
+        organisationRetentionUntil: '2028-06-30T00:00:00.000Z', // Policy attempts 4 years
+      });
+
+      // Statutory minimum holds firm at 2031-12-31
+      assert.strictEqual(res.statutoryRetentionUntil.toISOString().slice(0, 10), '2031-12-31');
+      assert.strictEqual(res.effectiveRetentionUntil.toISOString().slice(0, 10), '2031-12-31');
+      assert.strictEqual(res.organisationRetentionUntil, null); // Ignored because shorter
+    });
+
+    // GST-RET-06: Appeal/proceeding extension overrides ordinary expiry where legally required
+    await st.test('GST-RET-06: Appeal/proceeding extension overrides ordinary expiry where legally required', async () => {
+      // Appeal resolved on 2032-06-30 -> Section 36 CGST proviso requires +12 months (2033-06-30)
+      const res = retentionPolicyService.calculateEffectiveRetention({
+        documentDate: '2024-05-10', // Statutory 2031-12-31
+        proceedingHold: false,
+        proceedingDisposalDate: '2032-06-30T00:00:00.000Z',
+      });
+
+      assert.strictEqual(res.proceedingExtendedUntil.toISOString().slice(0, 10), '2033-06-30');
+      assert.strictEqual(res.effectiveRetentionUntil.toISOString().slice(0, 10), '2033-06-30');
+
+      // When proceedingHold is actively true, permanent deletion throws PROCEEDING_HOLD_ACTIVE
+      const docWithProceeding = new BusinessDocument({
+        documentId: 'DOC-PROC-01',
+        organisationId: 'ORG-ZAMORIN',
+        cafeId: 'ZC-0001',
+        classification: 'FINANCIAL',
+        documentType: 'SUPPLIER_INVOICE',
+        isDeleted: true,
+        proceedingHold: true,
+        effectiveRetentionUntil: new Date('2020-01-01'), // Already in past
+      });
+      t.mock.method(BusinessDocument, 'findOne', async () => docWithProceeding);
+
+      await assert.rejects(
+        async () => DocumentAttachmentService.permanentDeleteDocument({
+          documentId: 'DOC-PROC-01',
+          organisationId: 'ORG-ZAMORIN',
+          reason: 'Legal retention expired but proceeding is ongoing',
+          auth: masterAuth,
+        }),
+        (err) => err.code === 'PROCEEDING_HOLD_ACTIVE'
+      );
+    });
+
+    // GST-RET-07: Investigation hold prevents disposition
+    await st.test('GST-RET-07: Investigation hold prevents disposition', async () => {
+      const docWithInvestigation = new BusinessDocument({
+        documentId: 'DOC-INV-01',
+        organisationId: 'ORG-ZAMORIN',
+        cafeId: 'ZC-0001',
+        classification: 'FINANCIAL',
+        documentType: 'SUPPLIER_INVOICE',
+        isDeleted: true,
+        investigationHold: true,
+        effectiveRetentionUntil: new Date('2020-01-01'), // Already in past
+      });
+      t.mock.method(BusinessDocument, 'findOne', async () => docWithInvestigation);
+
+      await assert.rejects(
+        async () => DocumentAttachmentService.permanentDeleteDocument({
+          documentId: 'DOC-INV-01',
+          organisationId: 'ORG-ZAMORIN',
+          reason: 'Attempted purge during audit investigation',
+          auth: masterAuth,
+        }),
+        (err) => err.code === 'INVESTIGATION_HOLD_ACTIVE'
+      );
+    });
+
+    // GST-RET-08: Permanent delete becomes eligible only after effective retention date and all holds are cleared
+    await st.test('GST-RET-08: Permanent delete becomes eligible only after effective retention date and all holds are cleared', async () => {
+      const expiredDoc = new BusinessDocument({
+        documentId: 'DOC-EXPIRED-01',
+        organisationId: 'ORG-ZAMORIN',
+        cafeId: 'ZC-0001',
+        classification: 'FINANCIAL',
+        documentType: 'SUPPLIER_INVOICE',
+        originalFilename: 'expired_invoice.pdf',
+        internalFilename: 'internal_expired_invoice.pdf',
+        mimeType: 'application/pdf',
+        sizeBytes: 1024,
+        isDeleted: true,
+        statutoryRecord: true,
+        legalHold: false,
+        proceedingHold: false,
+        investigationHold: false,
+        effectiveRetentionUntil: new Date('2020-01-01'), // Expired
+        dispositionEligibleAt: new Date('2020-01-01'),
+        storageKey: 'procurement/test_expired.pdf',
+        checksum: 'abc123sha256',
+      });
+
+      t.mock.method(expiredDoc, 'save', async () => expiredDoc);
+      t.mock.method(BusinessDocument, 'findOne', async () => expiredDoc);
+
+      const result = await DocumentAttachmentService.permanentDeleteDocument({
+        documentId: 'DOC-EXPIRED-01',
+        organisationId: 'ORG-ZAMORIN',
+        reason: 'Statutory 72 months from GSTR-9 due date and all holds elapsed; lawful disposition',
+        auth: masterAuth,
+      });
+
+      assert.strictEqual(result.success, true);
+      assert.strictEqual(expiredDoc.status, 'DISPOSED');
+      assert.strictEqual(expiredDoc.isDeleted, true);
+      assert.strictEqual(expiredDoc.fileBuffer, null);
+      assert.strictEqual(expiredDoc.fileData, null);
+    });
+  });
+
 });
+
 

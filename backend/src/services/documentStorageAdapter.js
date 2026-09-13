@@ -295,6 +295,10 @@ class DocumentStorageAdapter {
     return true;
   }
 
+  async deleteFile({ storageKey }) {
+    return this.delete({ storageKey });
+  }
+
   /**
    * Copies an existing object to a new key (for versioning).
    */

@@ -10,6 +10,7 @@ const auditService = require('./auditService');
 const { SecurityScannerService } = require('./securityScannerService');
 const { documentStorageAdapter } = require('./documentStorageAdapter');
 const { ApiError } = require('../utils/ApiError');
+const { retentionPolicyService } = require('./retentionPolicyService');
 
 // Strict extension & MIME validation per OWASP recommendation: PDF, JPG, PNG only
 const ALLOWED_MIME_TYPES = new Map([
@@ -173,16 +174,44 @@ class DocumentAttachmentService {
       if (!isMaster) {
         throw new ApiError(403, 'PERMANENT_DELETE_DENIED', 'Permanent delete is strictly restricted to MASTER.');
       }
+
+      // -- Legal Hold --
       if (doc.legalHold === true) {
-        throw new ApiError(400, 'LEGAL_HOLD_ACTIVE', 'Document is under active legal or statutory hold. Permanent deletion is prohibited.');
+        throw new ApiError(400, 'LEGAL_HOLD_ACTIVE', 'Document is under active legal hold. Permanent deletion is prohibited.');
       }
-      let effectiveRetentionUntil = doc.retentionUntil;
-      if (!effectiveRetentionUntil && (doc.statutoryRecord || doc.financialRecord || (doc.documentType && doc.documentType.includes('INVOICE')))) {
-        effectiveRetentionUntil = new Date((doc.invoiceDate || doc.uploadedAt || new Date()).getTime() + 2920 * 24 * 60 * 60 * 1000);
+
+      // -- Proceeding / Appeal / Revision Hold (Section 36 CGST Proviso) --
+      if (doc.proceedingHold === true) {
+        throw new ApiError(400, 'PROCEEDING_HOLD_ACTIVE', 'Document is subject to an active appeal, revision, or proceeding hold. Permanent deletion is prohibited.');
       }
+
+      // -- Investigation / Audit Hold --
+      if (doc.investigationHold === true) {
+        throw new ApiError(400, 'INVESTIGATION_HOLD_ACTIVE', 'Document is under active investigation or audit hold. Permanent deletion is prohibited.');
+      }
+
+      // -- Retention Period Check --
+      // Use stored effectiveRetentionUntil first, then retentionUntil.
+      // If neither is stored but the document is a statutory/financial record,
+      // derive the correct GST 72-month retention (NEVER use fixed-day arithmetic).
+      let effectiveRetentionUntil = doc.effectiveRetentionUntil || doc.retentionUntil || null;
+
+      if (!effectiveRetentionUntil &&
+          (doc.statutoryRecord || doc.financialRecord ||
+           (doc.documentType && doc.documentType.includes('INVOICE')))) {
+        const documentDate = doc.invoiceDate || doc.uploadedAt || new Date();
+        const gst = retentionPolicyService.calculateGstStatutoryRetention(documentDate);
+        effectiveRetentionUntil = gst.statutoryRetentionUntil;
+      }
+
       if (effectiveRetentionUntil && new Date() < new Date(effectiveRetentionUntil)) {
-        throw new ApiError(400, 'RETENTION_PERIOD_ACTIVE', `Document retention period is active until ${new Date(effectiveRetentionUntil).toISOString().slice(0, 10)}. Permanent deletion prohibited.`);
+        throw new ApiError(
+          400,
+          'RETENTION_PERIOD_ACTIVE',
+          `Document retention period is active until ${new Date(effectiveRetentionUntil).toISOString().slice(0, 10)}. Permanent deletion prohibited.`
+        );
       }
+
       if (doc.dispositionEligibleAt && new Date() < new Date(doc.dispositionEligibleAt)) {
         throw new ApiError(400, 'RETENTION_PERIOD_ACTIVE', 'Document is not yet eligible for disposition.');
       }

@@ -1,6 +1,7 @@
 'use strict';
 
 const mongoose = require('mongoose');
+const { retentionPolicyService } = require('../services/retentionPolicyService');
 
 const documentVersionSchema = new mongoose.Schema(
   {
@@ -352,6 +353,51 @@ const businessDocumentSchema = new mongoose.Schema(
       trim: true,
       default: null,
     },
+    // Section 36 CGST Proviso: holds for appeal, revision, proceeding, investigation
+    proceedingHold: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    proceedingHoldReason: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    investigationHold: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    investigationHoldReason: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    // GST/CGST retention fields — computed on save
+    financialYear: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    annualReturnDueDate: {
+      type: Date,
+      default: null,
+    },
+    statutoryRetentionUntil: {
+      type: Date,
+      default: null,
+      index: true,
+    },
+    organisationRetentionUntil: {
+      type: Date,
+      default: null,
+    },
+    effectiveRetentionUntil: {
+      type: Date,
+      default: null,
+      index: true,
+    },
     dispositionEligibleAt: {
       type: Date,
       default: null,
@@ -386,13 +432,27 @@ businessDocumentSchema.pre('save', function (next) {
     }
   }
 
-  if (this.statutoryRecord && !this.retentionUntil) {
-    const baseDate = this.invoiceDate || this.uploadedAt || new Date();
-    // 8 years (2920 days) statutory retention under GST / Companies Act
-    const retentionDate = new Date(baseDate.getTime() + 2920 * 24 * 60 * 60 * 1000);
-    this.retentionUntil = retentionDate;
+  if (this.statutoryRecord && !this.statutoryRetentionUntil) {
+    // Section 36 CGST Act: 72 calendar months from the due date of furnishing the annual return
+    // (GSTR-9) for the financial year to which the records relate.
+    // MUST NOT be calculated as documentDate + fixed days.
+    const documentDate = this.invoiceDate || this.uploadedAt || new Date();
+    const gst = retentionPolicyService.calculateGstStatutoryRetention(documentDate);
+
+    this.financialYear = this.financialYear || gst.financialYear;
+    this.annualReturnDueDate = this.annualReturnDueDate || gst.annualReturnDueDate;
+    this.statutoryRetentionUntil = gst.statutoryRetentionUntil;
     this.retentionPolicyId = this.retentionPolicyId || 'TAX_RECORDS';
-    this.dispositionEligibleAt = retentionDate;
+
+    // retentionUntil = max(statutory, organisation policy) — defaults to statutory
+    const orgUntil = this.organisationRetentionUntil ? new Date(this.organisationRetentionUntil) : null;
+    const effectiveUntil = (orgUntil && orgUntil > gst.statutoryRetentionUntil)
+      ? orgUntil
+      : gst.statutoryRetentionUntil;
+
+    this.retentionUntil = effectiveUntil;
+    this.effectiveRetentionUntil = effectiveUntil;
+    this.dispositionEligibleAt = effectiveUntil;
   }
   next();
 });

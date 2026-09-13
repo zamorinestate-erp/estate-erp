@@ -336,10 +336,12 @@ export class DestinationManager {
 }
 
 /**
- * Canonical Android Storage Access Framework (SAF) Native Bridge Implementation.
+ * Mock Android Storage Access Framework (SAF) Bridge Implementation.
+ * NOTE: This is an automated browser/test mock for simulated environment testing.
+ * It is NOT an actual Android native Kotlin/Java bridge.
  * Enforces native ContentResolver persistable permissions, restricted path blocks, and directory boundary validation.
  */
-export class AndroidNativeSafBridge {
+export class MockAndroidSafBridge {
   constructor() {
     this.persistedUriPermissions = new Map();
   }
@@ -391,16 +393,49 @@ export class AndroidNativeSafBridge {
   }
 
   assertNotRestricted(uri) {
-    const lower = String(uri).toLowerCase();
+    if (!uri || typeof uri !== 'string') {
+      const err = new Error('INVALID_URI: Tree URI must be a valid non-empty string.');
+      err.code = 'INVALID_URI';
+      throw err;
+    }
+    const lower = uri.toLowerCase();
+
+    // 1. Android/data and Android/obb prohibited directories
     if (
       lower.includes('android%2fdata') ||
       lower.includes('android/data') ||
       lower.includes('android%2fobb') ||
-      lower.includes('android/obb') ||
-      lower === 'content://com.android.externalstorage.documents/tree/primary%3a' ||
-      lower === 'content://com.android.externalstorage.documents/tree/primary:'
+      lower.includes('android/obb')
     ) {
       const err = new Error('RESTRICTED_DIRECTORY_DENIED: Access to Android system/data/obb directories is strictly prohibited under Android Scoped Storage.');
+      err.code = 'RESTRICTED_DIRECTORY_DENIED';
+      throw err;
+    }
+
+    // 2. Download directory root (Android 11+ Scoped Storage prohibits selection of Download root)
+    if (
+      lower === 'content://com.android.externalstorage.documents/tree/primary%3adownload' ||
+      lower === 'content://com.android.externalstorage.documents/tree/primary%3adownload/' ||
+      lower === 'content://com.android.externalstorage.documents/tree/primary:download' ||
+      lower === 'content://com.android.externalstorage.documents/tree/primary:download/' ||
+      lower === 'content://com.android.providers.downloads.documents/tree/downloads' ||
+      lower === 'content://com.android.providers.downloads.documents/tree/downloads/'
+    ) {
+      const err = new Error('RESTRICTED_DIRECTORY_DENIED: Direct selection of Download directory root is prohibited on Android 11+.');
+      err.code = 'RESTRICTED_DIRECTORY_DENIED';
+      throw err;
+    }
+
+    // 3. Internal storage root or eligible SD-card roots
+    const rootRegex = /tree\/(primary|[a-f0-9]{4}-[a-f0-9]{4})%3a?\/?$/i;
+    const colonRootRegex = /tree\/(primary|[a-f0-9]{4}-[a-f0-9]{4}):\/?$/i;
+    if (
+      rootRegex.test(lower) ||
+      colonRootRegex.test(lower) ||
+      lower.endsWith('/tree/primary%3a') ||
+      lower.endsWith('/tree/primary:')
+    ) {
+      const err = new Error('RESTRICTED_DIRECTORY_DENIED: Access to internal storage root or SD card root is strictly prohibited under Android Scoped Storage.');
       err.code = 'RESTRICTED_DIRECTORY_DENIED';
       throw err;
     }
@@ -432,3 +467,6 @@ export class AndroidNativeSafBridge {
     };
   }
 }
+
+// Export alias so existing unit tests and mock harnesses remain functional
+export const AndroidNativeSafBridge = MockAndroidSafBridge;
