@@ -163,11 +163,12 @@ class OwnerBcdrService {
         providerBlockerNotice: 'External Atlas automated snapshot restore drill requires formal staging invocation. Local simulation does NOT constitute provider proof.',
       },
       attachments: {
-        storage: 'S3 Object Storage (Dual-Region Replication)',
-        versioning: 'ENABLED',
+        storage: 'Render Persistent Disk Mount Configuration (/var/data/zamorin-attachments)',
+        driver: 'RENDER_PERSISTENT_DISK',
         lifecyclePurgeProtection: 'ACTIVE_LEGAL_HOLD_COMPLIANT',
         status: 'ENGINEERING_CONFIGURATION_ACTIVE',
         isProviderRestoreVerified: false,
+        providerBlockerNotice: 'Render persistent disk mount configuration active in engineering code. Physical provider disk attachment & cross-region replication verification pending external Render account proof.',
       },
       offlineFinancialSafety: {
         invariant: 'NO SERVER ACKNOWLEDGEMENT = NO COMPLETED ERP FINANCIAL SALE',
@@ -175,6 +176,26 @@ class OwnerBcdrService {
         offlineLedgerPostingBlocked: true,
         auditVerified: true,
       },
+    };
+  }
+
+  /**
+   * Enforce Offline Privileged Server Action Invariant:
+   * NO SERVER AUTHORIZATION = NO NEW PRIVILEGED SERVER ACTION.
+   * Cached device-trust session token preserves local UI state and cached non-authoritative read data only.
+   * Privileged server actions, approvals, financial postings, and role updates are strictly blocked offline.
+   */
+  validatePrivilegedActionState(actionPayload) {
+    if (!actionPayload) throw new Error('ACTION_PAYLOAD_REQUIRED');
+
+    if (!actionPayload.isServerAuthorized && actionPayload.isPrivilegedAction) {
+      throw new Error('NO SERVER AUTHORIZATION = NO NEW PRIVILEGED SERVER ACTION: Privileged role operations, approvals, and financial transactions are strictly blocked offline');
+    }
+
+    return {
+      isValid: true,
+      status: actionPayload.isServerAuthorized ? 'SERVER_AUTHORIZED_ACTION_PERMITTED' : 'CACHED_LOCAL_STATE_PRESERVED_READ_ONLY',
+      serverExecutionAllowed: Boolean(actionPayload.isServerAuthorized),
     };
   }
 

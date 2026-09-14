@@ -27,7 +27,7 @@
     "Digital Personal Data Protection (DPDP) Act 2023 & DPDP Rules 2025 (India)",
     "Central Goods and Services Tax (CGST) Act 2017 (Sec 36 - 72 calendar months from annual return due date + proceedings override)",
     "Income-tax Act, 2025 and Income-tax Rules, 2026 (for TY 2026-27 onward; 1961 Act s.44AA transitional)",
-    "Employees Provident Funds Scheme 1952 (Para 36A/41) & ESI Act 1948 (Sec 44)",
+    "Employees State Insurance Act 1948 (Sec 44 / Reg 32) & Zamorin Internal Policy (EPF Retention - Statutory EPFO verification pending)",
     "Payment of Gratuity Act 1972 & Payment of Gratuity Rules 1972",
     "Payment and Settlement Systems Act 2007 (RBI)",
     "Code on Wages 2019"
@@ -74,9 +74,9 @@
       "duration": "8 years from relevant assessment year",
       "authority": "Income-tax Act, 2025 & Income-tax Rules, 2026 (for TY 2026-27 onward; 1961 Act transitional)"
     },
-    "STATUTORY_PAYROLL_AND_EPF": {
+    "ZAMORIN_INTERNAL_PAYROLL_AND_EPF": {
       "duration": "5 years from end of relevant financial year",
-      "authority": "EPF Scheme 1952 Para 36A & 41 / ESI Act 1948 s.44"
+      "authority": "Zamorin Internal HR/Finance Policy (EPFO statutory employer retention instruction pending) / ESI Reg 32"
     },
     "STATUTORY_AUDIT_TRAIL": {
       "duration": "10 years",

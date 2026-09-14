@@ -216,6 +216,27 @@ describe('STAGE 09 — Business Continuity & Disaster Recovery Centre Suite', ()
     assert.equal(offlineDraft.isValid, true);
     assert.equal(offlineDraft.status, 'OFFLINE_DRAFT_CART_PRESERVED');
     assert.equal(offlineDraft.financialPostingAllowed, false);
+
+    // Invariant: NO SERVER AUTHORIZATION = NO NEW PRIVILEGED SERVER ACTION
+    assert.throws(
+      () => {
+        ownerBcdrService.validatePrivilegedActionState({
+          isServerAuthorized: false,
+          isPrivilegedAction: true,
+          action: 'EXECUTE_PAYROLL_DISBURSEMENT',
+        });
+      },
+      (err) => err.message.includes('NO SERVER AUTHORIZATION = NO NEW PRIVILEGED SERVER ACTION')
+    );
+
+    const safeOfflineRead = ownerBcdrService.validatePrivilegedActionState({
+      isServerAuthorized: false,
+      isPrivilegedAction: false,
+      action: 'PRESERVE_LOCAL_UI_SESSION_STATE',
+    });
+    assert.equal(safeOfflineRead.isValid, true);
+    assert.equal(safeOfflineRead.status, 'CACHED_LOCAL_STATE_PRESERVED_READ_ONLY');
+    assert.equal(safeOfflineRead.serverExecutionAllowed, false);
   });
 
   test('8. Multi-Tenant IDOR: Foreign organisation cannot see test organisation BIA or drills', async () => {
