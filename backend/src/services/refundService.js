@@ -117,10 +117,10 @@ class RefundService {
       throw new ApiError(404, 'NOT_FOUND', 'Bill not found.');
     }
 
-    // Verify café scope match if context specified cafeId
+    // Verify café scope match if context specified cafeId — return 404 NOT_FOUND to avoid cross-cafe resource existence leakage
     const billCafeId = normalizeId(bill.cafeId);
     if (context.cafeId && billCafeId && billCafeId !== normalizeId(context.cafeId)) {
-      throw new ApiError(403, 'CAFE_MISMATCH', 'Target bill does not belong to specified cafe.');
+      throw new ApiError(404, 'NOT_FOUND', 'Bill not found.');
     }
 
     // Perform request-based cafe access assertions if request is present

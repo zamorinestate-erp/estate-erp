@@ -186,7 +186,7 @@ describe('PART A — Canonical Shared Refund Service Suite', () => {
       (err) => err.code === 'NOT_FOUND'
     );
 
-    // Cross-café mismatch returns 403 CAFE_MISMATCH
+    // Cross-café mismatch returns 404 NOT_FOUND (preventing cross-cafe resource existence disclosure)
     await assert.rejects(
       async () => {
         await refundService.processBillRefund(
@@ -194,7 +194,7 @@ describe('PART A — Canonical Shared Refund Service Suite', () => {
           { billId: bill.billId, refundType: 'PARTIAL', amount: 100, reason: 'Cross-cafe attack' }
         );
       },
-      (err) => err.code === 'CAFE_MISMATCH'
+      (err) => err.code === 'NOT_FOUND'
     );
   });
 
