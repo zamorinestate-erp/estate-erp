@@ -23,7 +23,11 @@ jobs:
           cache: 'npm'
           cache-dependency-path: package-lock.json
 
-      - name: Install Dependencies
+      - name: Install Root Dependencies
+        run: npm ci
+
+      - name: Install Backend Dependencies
+        working-directory: ./backend
         run: npm ci
 
       - name: Verify Backend JavaScript Syntax
@@ -125,6 +129,11 @@ jobs:
           EVIDENCE_FILE="build/artifacts/toolchain-raw-evidence.txt"
           echo "=== Apple CI Toolchain Raw Evidence ===" | tee "$EVIDENCE_FILE"
           echo "Checked out SHA: $(git rev-parse HEAD)" | tee -a "$EVIDENCE_FILE"
+          echo "--- Runner Environment Variables ---" | tee -a "$EVIDENCE_FILE"
+          echo "ImageOS: $ImageOS" | tee -a "$EVIDENCE_FILE"
+          echo "ImageVersion: $ImageVersion" | tee -a "$EVIDENCE_FILE"
+          echo "RUNNER_OS: $RUNNER_OS" | tee -a "$EVIDENCE_FILE"
+          echo "RUNNER_ARCH: $RUNNER_ARCH" | tee -a "$EVIDENCE_FILE"
           echo "--- sw_vers ---" | tee -a "$EVIDENCE_FILE"
           sw_vers | tee -a "$EVIDENCE_FILE"
           echo "--- uname -m ---" | tee -a "$EVIDENCE_FILE"
