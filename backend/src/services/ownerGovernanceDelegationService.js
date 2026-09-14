@@ -70,14 +70,49 @@ class OwnerGovernanceDelegationService {
     const hasLLPIN = !!(org?.llpin || org?.statutoryDetails?.llpin);
     const entityType = org?.entityType || 'PRIVATE_LIMITED_COMPANY';
 
+    const secretarialAuditFramework = {
+      governingLaw: 'Companies Act 2013 Section 204 read with Rule 9 Companies (Appointment and Remuneration of Managerial Personnel) Rules, 2014',
+      applicabilityCriteria: [
+        'Listed companies under Section 204(1)',
+        'Every public company with paid-up share capital >= ₹50 crore',
+        'Every public company with turnover >= ₹250 crore',
+        'Every company having outstanding loans or borrowings from banks or public financial institutions >= ₹100 crore (MCA 2020 amendment)'
+      ],
+      legalThresholdCorrection: 'Turnover threshold is strictly ₹250 crore for public companies; ₹100 crore turnover is legally erroneous.',
+      currentEntityEvaluation: 'APPLICABILITY_PENDING_AUDITED_FINANCIALS',
+      regulatoryStatus: 'LEGAL STRUCTURE / APPLICABILITY VERIFICATION PENDING'
+    };
+
+    const auditorRotationFramework = {
+      governingLaw: 'Companies Act 2013 Section 139(2) read with Rule 5 Companies (Audit and Auditors) Rules, 2014',
+      applicabilityClasses: [
+        'Unlisted public company: paid-up share capital >= ₹10 crore',
+        'Private limited company: paid-up share capital >= ₹20 crore',
+        'Companies below capital thresholds with qualifying public borrowings/public deposits >= ₹50 crore'
+      ],
+      statutoryExclusions: [
+        'One Person Companies (OPCs)',
+        'Small companies under Section 2(85)'
+      ],
+      tenureRulesIfApplicable: {
+        individualAuditor: 'Maximum 1 term of 5 consecutive years (cooling period 5 consecutive years)',
+        auditFirm: 'Maximum 2 terms of 5 consecutive years = 10 consecutive years (cooling period 5 consecutive years)'
+      },
+      currentEntityEvaluation: 'APPLICABILITY_PENDING_CLASS_AND_CAPITAL_EVALUATION',
+      regulatoryStatus: 'LEGAL STRUCTURE / APPLICABILITY VERIFICATION PENDING'
+    };
+
     if (!hasCIN && !hasLLPIN && !org?.statutoryDetails?.isStatutoryEvidenced) {
       return {
         organisationId,
         legalEntityName: org?.legalName || org?.name || 'Zamorin Hospitality Ventures',
         entityType,
         status: 'LEGAL_STRUCTURE_VERIFICATION_REQUIRED',
+        regulatoryStatus: 'LEGAL STRUCTURE / APPLICABILITY VERIFICATION PENDING',
         message: 'Statutory incorporation evidence (CIN/LLPIN/Articles) pending authoritative upload.',
-        companiesActApplicable: true
+        companiesActApplicable: true,
+        secretarialAuditFramework,
+        auditorRotationFramework
       };
     }
 
@@ -87,7 +122,10 @@ class OwnerGovernanceDelegationService {
       entityType,
       cin: org.cin || org?.statutoryDetails?.cin,
       status: 'STATUTORY_STRUCTURE_CONFIRMED',
-      companiesActApplicable: true
+      regulatoryStatus: 'LEGAL STRUCTURE / APPLICABILITY VERIFICATION PENDING',
+      companiesActApplicable: true,
+      secretarialAuditFramework,
+      auditorRotationFramework
     };
   }
 

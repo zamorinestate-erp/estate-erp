@@ -131,7 +131,7 @@ function renderOverview(container) {
         ${d.legalStructure?.legalEntityName || 'Zamorin Hospitality'} · ${d.legalStructure?.status}
       </div>
       <div style="font-size:12px;color:var(--text-muted,#94a3b8);margin-top:4px;">
-        ${d.legalStructure?.message || 'Companies Act 2013 secretarial standards ready.'}
+        ${d.legalStructure?.message || 'Companies Act 2013 secretarial standards · Applicability verification pending.'}
       </div>
     </div>
 
