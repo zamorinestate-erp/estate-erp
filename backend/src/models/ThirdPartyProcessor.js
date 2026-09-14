@@ -172,8 +172,8 @@ const thirdPartyProcessorSchema = new mongoose.Schema(
     },
     rule15ReadinessStatus: {
       type: String,
-      enum: ['FUTURE_COMPLIANCE_READINESS', 'NOT_APPLICABLE', 'COMPLIANT'],
-      default: 'FUTURE_COMPLIANCE_READINESS',
+      enum: ['IMPLEMENTED / FUTURE-COMPLIANCE READY', 'FUTURE_COMPLIANCE_READINESS', 'NOT_APPLICABLE', 'COMPLIANT'],
+      default: 'IMPLEMENTED / FUTURE-COMPLIANCE READY',
     },
     subProcessors: [
       {

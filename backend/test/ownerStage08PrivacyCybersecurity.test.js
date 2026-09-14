@@ -77,13 +77,13 @@ describe('STAGE 08 — Data Privacy & Cybersecurity Governance Suite', () => {
       personalDataCategories: ['NAME', 'PAN', 'BANK_ACCOUNT', 'EPFO_UAN', 'SALARY'],
       purpose: 'Disbursement of monthly wages and statutory reporting to ITD/EPFO.',
       processingGround: 'STATUTORY_EMPLOYMENT_OBLIGATION',
-      retentionPeriodYears: 8,
-      retentionBasis: 'Income Tax Act 1961 s. 44AA & Employees Provident Funds Act 1952',
+      retentionPeriodYears: 7,
+      retentionBasis: 'Income-tax Act, 2025 & Income-tax Rules, 2026 Rule 46(9) (7 tax years from end of relevant tax year; reopened-assessment extension) & Zamorin Internal EPF Policy',
       securityClassification: 'RESTRICTED',
     });
 
     assert.ok(payrollRopa.registerId);
-    assert.equal(payrollRopa.retentionPeriodYears, 8);
+    assert.equal(payrollRopa.retentionPeriodYears, 7);
     assert.equal(payrollRopa.currentLegalStatus, 'IN_FORCE');
 
     const customerRopa = await ownerPrivacyCyberService.createDataProcessingRegister(TEST_ORG, {
@@ -154,6 +154,25 @@ describe('STAGE 08 — Data Privacy & Cybersecurity Governance Suite', () => {
     assert.ok(processor.processorId);
     assert.equal(processor.dataStorageGeography, 'India (ap-south-1 Mumbai)');
     assert.ok(processor.exitDeletionObligation.includes('Mandatory certificate of destruction'));
+
+    // ── Rule 46(8) Localisation & Daily India Backup Verification ──
+    // 1. Accounting records (Cash book, ledger, sales invoices): India backup applies
+    const cashBookPolicy = ownerPrivacyCyberService.evaluateRule46LocalisationPolicy('CASH_BOOK');
+    assert.equal(cashBookPolicy.rule46Scope, true);
+    assert.equal(cashBookPolicy.dailyIndiaBackupRequired, true);
+
+    const invoicePolicy = ownerPrivacyCyberService.evaluateRule46LocalisationPolicy('SALES_INVOICES_AND_RECEIPTS');
+    assert.equal(invoicePolicy.rule46Scope, true);
+    assert.equal(invoicePolicy.dailyIndiaBackupRequired, true);
+
+    // 2. Personal profiles (Employee HR, Customer Profile): Rule 46 does NOT apply merely because it is personal data
+    const employeePolicy = ownerPrivacyCyberService.evaluateRule46LocalisationPolicy('EMPLOYEE_HR_PROFILE');
+    assert.equal(employeePolicy.rule46Scope, false);
+    assert.equal(employeePolicy.dailyIndiaBackupRequired, false);
+
+    const customerPolicy = ownerPrivacyCyberService.evaluateRule46LocalisationPolicy('CUSTOMER_PROFILE_AND_LOYALTY');
+    assert.equal(customerPolicy.rule46Scope, false);
+    assert.equal(customerPolicy.dailyIndiaBackupRequired, false);
   });
 
   test('6. Governed Privacy Incident Response: DETECTED -> TRIAGED -> CONTAINED -> ASSESSED -> ACTION -> RECOVERED -> CLOSED', async () => {
@@ -258,6 +277,25 @@ describe('STAGE 08 — Data Privacy & Cybersecurity Governance Suite', () => {
     assert.equal(control.isNistStatutory, false);
     assert.equal(control.isExternalCertified, false);
     assert.ok(control.frameworkNotice.includes('Not a statutory regulation or third-party certification'));
+
+    // ── Authorised Privacy Contact & DPO Governance Model Verification ──
+    // 1. Zamorin is not formally designated a Significant Data Fiduciary (SDF) -> voluntary grievance contact
+    const standardContact = ownerPrivacyCyberService.getPrivacyContactGovernance(TEST_ORG, {
+      isSignificantDataFiduciary: false,
+    });
+    assert.equal(standardContact.isSignificantDataFiduciary, false);
+    assert.equal(standardContact.privacyContactType, 'AUTHORISED_PRIVACY_GRIEVANCE_CONTACT');
+    assert.equal(standardContact.mandateStatus, 'VOLUNTARY_INTERNAL_GOVERNANCE');
+    assert.ok(standardContact.roleLabel.includes('Authorised Privacy / Grievance Contact'));
+
+    // 2. Configurable DPO role where formally designated SDF
+    const sdfContact = ownerPrivacyCyberService.getPrivacyContactGovernance(TEST_ORG, {
+      isSignificantDataFiduciary: true,
+      title: 'Data Protection Officer',
+    });
+    assert.equal(sdfContact.isSignificantDataFiduciary, true);
+    assert.equal(sdfContact.privacyContactType, 'DATA_PROTECTION_OFFICER');
+    assert.equal(sdfContact.mandateStatus, 'STATUTORY_MANDATORY_SDF');
   });
 
   test('9. Multi-Tenant IDOR: Foreign organisation denied access to privacy registers & incidents', async () => {

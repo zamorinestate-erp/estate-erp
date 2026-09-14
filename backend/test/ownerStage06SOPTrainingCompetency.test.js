@@ -340,6 +340,80 @@ test('STAGE 06 — SOP, Training & Competency Academy Suite', async (t) => {
     assert.equal(res.status, 201);
     assert.equal(res.data.data.isFostacLinked, true);
     assert.equal(res.data.data.fostacProcedureDate, '2026-08-05');
+
+    // ── Authoritative FoSTaC FSS Certificate Validity Engine Verification ──
+    const { EmployeeTraining } = require('../src/models/EmployeeTraining');
+
+    // 1. Two-year validity calculation under 5 August 2026 Standardized Procedure & 1 Feb 2024 Notice
+    const issuedDate = new Date('2025-06-01T00:00:00.000Z');
+    const validEval = EmployeeTraining.evaluateFoSTaCCertificateValidity({
+      issuedDate,
+      ruleVersion: 'FOSTAC_PROCEDURE_2026_08_05',
+      kob: 'CATERING',
+      operationalKob: 'CATERING',
+      asOfDate: new Date('2026-06-01T00:00:00.000Z'),
+    });
+    assert.equal(validEval.certificateStatus, 'VALID');
+    assert.equal(validEval.isCurrentlyValid, true);
+    assert.equal(validEval.validityYears, 2);
+    assert.equal(validEval.refresherRequired, true);
+
+    // 2. Expired certificate: After 2 years without refresher
+    const expiredEval = EmployeeTraining.evaluateFoSTaCCertificateValidity({
+      issuedDate,
+      ruleVersion: 'FOSTAC_PROCEDURE_2026_08_05',
+      kob: 'CATERING',
+      operationalKob: 'CATERING',
+      asOfDate: new Date('2027-06-02T00:00:00.000Z'),
+    });
+    assert.equal(expiredEval.certificateStatus, 'EXPIRED');
+    assert.equal(expiredEval.isCurrentlyValid, false);
+    assert.equal(expiredEval.retrainingRequired, true);
+
+    // 3. Refresher completion creates renewed 2-year validity window
+    const renewedEval = EmployeeTraining.evaluateFoSTaCCertificateValidity({
+      issuedDate,
+      ruleVersion: 'FOSTAC_PROCEDURE_2026_08_05',
+      kob: 'CATERING',
+      operationalKob: 'CATERING',
+      refresherCompletedDate: new Date('2027-05-15T00:00:00.000Z'),
+      asOfDate: new Date('2027-06-02T00:00:00.000Z'),
+    });
+    assert.equal(renewedEval.certificateStatus, 'VALID');
+    assert.equal(renewedEval.isCurrentlyValid, true);
+    assert.equal(renewedEval.isRenewed, true);
+
+    // 4. Kind of Business (KoB) mismatch strictly invalidates certificate
+    const kobMismatchEval = EmployeeTraining.evaluateFoSTaCCertificateValidity({
+      issuedDate,
+      ruleVersion: 'FOSTAC_PROCEDURE_2026_08_05',
+      kob: 'CATERING',
+      operationalKob: 'MANUFACTURING',
+      asOfDate: new Date('2026-06-01T00:00:00.000Z'),
+    });
+    assert.equal(kobMismatchEval.certificateStatus, 'INVALID_KOB_MISMATCH');
+    assert.equal(kobMismatchEval.isCurrentlyValid, false);
+    assert.equal(kobMismatchEval.retrainingRequired, true);
+
+    // 5. Historical certificate treatment: Perpetual only if explicitly configured under superseded clarification
+    const histPerpetualEval = EmployeeTraining.evaluateFoSTaCCertificateValidity({
+      issuedDate: new Date('2023-08-01T00:00:00.000Z'),
+      ruleVersion: 'FSSAI_CLARIFICATION_2023_06_16',
+      kob: 'CATERING',
+      operationalKob: 'CATERING',
+      historicalGrandfathered: true,
+      asOfDate: new Date('2026-09-14T00:00:00.000Z'),
+    });
+    assert.equal(histPerpetualEval.certificateStatus, 'PERPETUAL');
+    assert.equal(histPerpetualEval.validityYears, Infinity);
+
+    // Default without explicit grandfathering must NOT be perpetual
+    const defaultEval = EmployeeTraining.evaluateFoSTaCCertificateValidity({
+      issuedDate: new Date('2026-01-01T00:00:00.000Z'),
+      asOfDate: new Date('2026-09-14T00:00:00.000Z'),
+    });
+    assert.notEqual(defaultEval.certificateStatus, 'PERPETUAL');
+    assert.equal(defaultEval.validityYears, 2);
   });
 
   // ── 7. Attendance Alone Recorded as ATTENDED (Competent is Strictly False) ─
