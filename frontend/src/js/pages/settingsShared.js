@@ -1152,6 +1152,7 @@ function renderSecurity() {
       </div>
     </div>
 
+    ${window.__ENABLE_PASSKEY_AUTH__ === true ? `
     <!-- Biometric Passkeys & Security Keys (FIDO2 / WebAuthn) -->
     <div class="settings-section-card">
       <div class="settings-card-header">
@@ -1168,6 +1169,7 @@ function renderSecurity() {
         <div style="color:var(--muted); font-size:13px; padding:12px 0;">Loading registered biometric passkeys...</div>
       </div>
     </div>
+    ` : ""}
 
     <!-- Security Activity -->
     <div class="settings-section-card">
@@ -2687,162 +2689,164 @@ function _wireSecurity(root) {
     return window.btoa(str).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
   };
 
-  // Load and render user passkeys
-  const loadPasskeys = async () => {
-    const container = root.querySelector("#settings-passkeys-container");
-    if (!container) return;
+  // Load and render user passkeys (Dormant when ENABLE_PASSKEY_AUTH is disabled)
+  if (window.__ENABLE_PASSKEY_AUTH__ === true) {
+    const loadPasskeys = async () => {
+      const container = root.querySelector("#settings-passkeys-container");
+      if (!container) return;
 
-    try {
-      const res = await apiGet("/auth/passkeys");
-      const passkeys = res?.data?.passkeys || [];
+      try {
+        const res = await apiGet("/auth/passkeys");
+        const passkeys = res?.data?.passkeys || [];
 
-      if (passkeys.length === 0) {
+        if (passkeys.length === 0) {
+          container.innerHTML = `
+            <div style="padding:14px 16px; background:var(--surface-sunken); border:1px dashed var(--line); border-radius:var(--radius-sm, 8px); color:var(--muted); font-size:13px; text-align:center;">
+              🔒 No biometric passkeys enrolled yet. Click <strong>➕ Register New Passkey</strong> above to enable instant Face ID / Fingerprint sign-in.
+            </div>
+          `;
+          return;
+        }
+
+        container.innerHTML = passkeys.map((p) => {
+          const isMobile = /iphone|ipad|android/i.test(p.deviceName || "");
+          const icon = isMobile ? "📱" : "💻";
+          const createdStr = p.createdAt ? new Date(p.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "Recently";
+          const lastUsedStr = p.lastUsedAt ? new Date(p.lastUsedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "Never";
+
+          return `
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:12px 14px; background:var(--surface-sunken); border:1px solid var(--line); border-radius:var(--radius-sm, 8px);">
+              <div style="display:flex; align-items:center; gap:12px;">
+                <div style="font-size:20px;">${icon}</div>
+                <div>
+                  <div style="font-size:13.5px; font-weight:700; color:var(--ink);">${escHtml(p.deviceName || "Registered Biometric Authenticator")}</div>
+                  <div class="settings-field-helper">Enrolled: ${escHtml(createdStr)} · Last used: ${escHtml(lastUsedStr)}</div>
+                </div>
+              </div>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span class="settings-status-chip success" style="font-size:9.5px;">Active</span>
+                <button class="btn btn-ghost btn-sm" data-revoke-passkey="${escHtml(p.credentialId)}" type="button" style="color:var(--danger, #b23b35);">
+                  🗑️ Revoke
+                </button>
+              </div>
+            </div>
+          `;
+        }).join("");
+
+        // Wire revoke buttons
+        container.querySelectorAll("[data-revoke-passkey]").forEach((btn) => {
+          btn.addEventListener("click", async (e) => {
+            const credId = e.currentTarget.dataset.revokePasskey;
+            confirmAction("Revoke this biometric passkey? You will need to re-enroll this device to use biometric login.", async () => {
+              try {
+                await apiDelete(`/auth/passkeys/${encodeURIComponent(credId)}`);
+                showToast("Biometric passkey revoked successfully.", "mint");
+                loadPasskeys();
+              } catch (err) {
+                showToast(err.message || "Failed to revoke passkey.", "amber");
+              }
+            });
+          });
+        });
+      } catch (err) {
         container.innerHTML = `
-          <div style="padding:14px 16px; background:var(--surface-sunken); border:1px dashed var(--line); border-radius:var(--radius-sm, 8px); color:var(--muted); font-size:13px; text-align:center;">
-            🔒 No biometric passkeys enrolled yet. Click <strong>➕ Register New Passkey</strong> above to enable instant Face ID / Fingerprint sign-in.
+          <div style="padding:12px; color:var(--muted); font-size:12.5px;">
+            Biometric credentials loaded. (Offline mode / server verified)
           </div>
         `;
+      }
+    };
+
+    loadPasskeys();
+
+    // Register Passkey on This Device
+    root.querySelector("#settings-register-passkey-btn")?.addEventListener("click", async () => {
+      if (!window.PublicKeyCredential) {
+        showToast("WebAuthn biometric authentication is not supported by this browser.", "amber");
         return;
       }
 
-      container.innerHTML = passkeys.map((p) => {
-        const isMobile = /iphone|ipad|android/i.test(p.deviceName || "");
-        const icon = isMobile ? "📱" : "💻";
-        const createdStr = p.createdAt ? new Date(p.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "Recently";
-        const lastUsedStr = p.lastUsedAt ? new Date(p.lastUsedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "Never";
-
-        return `
-          <div style="display:flex; justify-content:space-between; align-items:center; padding:12px 14px; background:var(--surface-sunken); border:1px solid var(--line); border-radius:var(--radius-sm, 8px);">
-            <div style="display:flex; align-items:center; gap:12px;">
-              <div style="font-size:20px;">${icon}</div>
-              <div>
-                <div style="font-size:13.5px; font-weight:700; color:var(--ink);">${escHtml(p.deviceName || "Registered Biometric Authenticator")}</div>
-                <div class="settings-field-helper">Enrolled: ${escHtml(createdStr)} · Last used: ${escHtml(lastUsedStr)}</div>
-              </div>
-            </div>
-            <div style="display:flex; align-items:center; gap:8px;">
-              <span class="settings-status-chip success" style="font-size:9.5px;">Active</span>
-              <button class="btn btn-ghost btn-sm" data-revoke-passkey="${escHtml(p.credentialId)}" type="button" style="color:var(--danger, #b23b35);">
-                🗑️ Revoke
-              </button>
-            </div>
-          </div>
-        `;
-      }).join("");
-
-      // Wire revoke buttons
-      container.querySelectorAll("[data-revoke-passkey]").forEach((btn) => {
-        btn.addEventListener("click", async (e) => {
-          const credId = e.currentTarget.dataset.revokePasskey;
-          confirmAction("Revoke this biometric passkey? You will need to re-enroll this device to use biometric login.", async () => {
-            try {
-              await apiDelete(`/auth/passkeys/${encodeURIComponent(credId)}`);
-              showToast("Biometric passkey revoked successfully.", "mint");
-              loadPasskeys();
-            } catch (err) {
-              showToast(err.message || "Failed to revoke passkey.", "amber");
-            }
-          });
-        });
-      });
-    } catch (err) {
-      container.innerHTML = `
-        <div style="padding:12px; color:var(--muted); font-size:12.5px;">
-          Biometric credentials loaded. (Offline mode / server verified)
-        </div>
-      `;
-    }
-  };
-
-  loadPasskeys();
-
-  // Register Passkey on This Device
-  root.querySelector("#settings-register-passkey-btn")?.addEventListener("click", async () => {
-    if (!window.PublicKeyCredential) {
-      showToast("WebAuthn biometric authentication is not supported by this browser.", "amber");
-      return;
-    }
-
-    const registerBtn = root.querySelector("#settings-register-passkey-btn");
-    if (registerBtn) {
-      registerBtn.disabled = true;
-      registerBtn.textContent = "Requesting Handshake...";
-    }
-
-    try {
-      // 1. Get registration options from server
-      const optRes = await apiPost("/auth/passkeys/register/options", {
-        authenticatorType: "PLATFORM",
-      });
-
-      const options = optRes?.data?.options;
-      const challengeId = optRes?.data?.challengeId;
-
-      if (!options || !challengeId) {
-        throw new Error("Failed to receive registration challenge from server.");
-      }
-
-      const publicKeyOptions = {
-        ...options,
-        challenge: base64urlToBuffer(options.challenge),
-        user: {
-          ...options.user,
-          id: base64urlToBuffer(options.user.id),
-        },
-        excludeCredentials: options.excludeCredentials?.map((c) => ({
-          ...c,
-          id: base64urlToBuffer(c.id),
-        })),
-      };
-
-      if (registerBtn) registerBtn.textContent = "Touch Sensor / Scan Face...";
-
-      // 2. Browser platform authenticator ceremony
-      const credential = await navigator.credentials.create({
-        publicKey: publicKeyOptions,
-      });
-
-      if (!credential) {
-        throw new Error("Biometric enrollment cancelled.");
-      }
-
-      if (registerBtn) registerBtn.textContent = "Verifying Signature...";
-
-      const rawAttestation = credential.response?.attestationObject
-        ? bufferToBase64url(credential.response.attestationObject)
-        : "";
-
-      const verifyPayload = {
-        id: credential.id,
-        rawId: bufferToBase64url(credential.rawId),
-        type: credential.type,
-        response: {
-          clientDataJSON: bufferToBase64url(credential.response.clientDataJSON),
-          attestationObject: rawAttestation,
-          transports: credential.response.getTransports ? credential.response.getTransports() : ["internal"],
-        },
-      };
-
-      const deviceName = `${navigator.userAgent.includes("iPhone") ? "iPhone" : navigator.userAgent.includes("Mac") ? "Mac" : navigator.userAgent.includes("Android") ? "Android Phone" : "Workstation"} (${navigator.userAgent.includes("Chrome") ? "Chrome" : navigator.userAgent.includes("Safari") ? "Safari" : "Browser"})`;
-
-      // 3. Verify registration with backend
-      await apiPost("/auth/passkeys/register/verify", {
-        response: verifyPayload,
-        challengeId,
-        deviceName,
-      });
-
-      showToast("🎉 Passkey registered successfully on this device!", "mint");
-      loadPasskeys();
-    } catch (err) {
-      showToast(err.message || "Passkey registration was cancelled or not completed.", "amber");
-    } finally {
+      const registerBtn = root.querySelector("#settings-register-passkey-btn");
       if (registerBtn) {
-        registerBtn.disabled = false;
-        registerBtn.textContent = "➕ Register New Passkey";
+        registerBtn.disabled = true;
+        registerBtn.textContent = "Requesting Handshake...";
       }
-    }
-  });
+
+      try {
+        // 1. Get registration options from server
+        const optRes = await apiPost("/auth/passkeys/register/options", {
+          authenticatorType: "PLATFORM",
+        });
+
+        const options = optRes?.data?.options;
+        const challengeId = optRes?.data?.challengeId;
+
+        if (!options || !challengeId) {
+          throw new Error("Failed to receive registration challenge from server.");
+        }
+
+        const publicKeyOptions = {
+          ...options,
+          challenge: base64urlToBuffer(options.challenge),
+          user: {
+            ...options.user,
+            id: base64urlToBuffer(options.user.id),
+          },
+          excludeCredentials: options.excludeCredentials?.map((c) => ({
+            ...c,
+            id: base64urlToBuffer(c.id),
+          })),
+        };
+
+        if (registerBtn) registerBtn.textContent = "Touch Sensor / Scan Face...";
+
+        // 2. Browser platform authenticator ceremony
+        const credential = await navigator.credentials.create({
+          publicKey: publicKeyOptions,
+        });
+
+        if (!credential) {
+          throw new Error("Biometric enrollment cancelled.");
+        }
+
+        if (registerBtn) registerBtn.textContent = "Verifying Signature...";
+
+        const rawAttestation = credential.response?.attestationObject
+          ? bufferToBase64url(credential.response.attestationObject)
+          : "";
+
+        const verifyPayload = {
+          id: credential.id,
+          rawId: bufferToBase64url(credential.rawId),
+          type: credential.type,
+          response: {
+            clientDataJSON: bufferToBase64url(credential.response.clientDataJSON),
+            attestationObject: rawAttestation,
+            transports: credential.response.getTransports ? credential.response.getTransports() : ["internal"],
+          },
+        };
+
+        const deviceName = `${navigator.userAgent.includes("iPhone") ? "iPhone" : navigator.userAgent.includes("Mac") ? "Mac" : navigator.userAgent.includes("Android") ? "Android Phone" : "Workstation"} (${navigator.userAgent.includes("Chrome") ? "Chrome" : navigator.userAgent.includes("Safari") ? "Safari" : "Browser"})`;
+
+        // 3. Verify registration with backend
+        await apiPost("/auth/passkeys/register/verify", {
+          response: verifyPayload,
+          challengeId,
+          deviceName,
+        });
+
+        showToast("🎉 Passkey registered successfully on this device!", "mint");
+        loadPasskeys();
+      } catch (err) {
+        showToast(err.message || "Passkey registration was cancelled or not completed.", "amber");
+      } finally {
+        if (registerBtn) {
+          registerBtn.disabled = false;
+          registerBtn.textContent = "➕ Register New Passkey";
+        }
+      }
+    });
+  }
 
   root.querySelector("#settings-recovery-codes-btn")?.addEventListener("click", async () => {
     const codes = [

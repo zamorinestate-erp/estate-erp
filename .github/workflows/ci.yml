@@ -2,9 +2,10 @@ name: Zamorin Cafe ERP CI
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, master, 'owner-strategic-*' ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ main, master, 'owner-strategic-*' ]
+  workflow_dispatch:
 
 jobs:
   backend-web:
@@ -86,7 +87,9 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Restore Dependencies
-        run: dotnet restore windows/ZamorinCafeERP.sln
+        run: |
+          dotnet restore windows/ZamorinCafeERP/ZamorinCafeERP.csproj
+          dotnet restore windows/ZamorinCafeERP.Tests/ZamorinCafeERP.Tests.csproj
 
       - name: Run Windows Native Unit Tests
         run: dotnet test windows/ZamorinCafeERP.Tests -c Release
@@ -107,6 +110,8 @@ jobs:
           echo "=== Git Provenance Verification ==="
           CI_HEAD=$(git rev-parse HEAD)
           echo "Checked out HEAD: $CI_HEAD"
+          mkdir -p build/artifacts
+          echo "$CI_HEAD" > build/artifacts/checked-out-sha.txt
 
       - name: Select Xcode 26+ Toolchain & Audit Environment
         run: |
@@ -116,20 +121,28 @@ jobs:
           elif [ -d "/Applications/Xcode_26.app" ]; then
             sudo xcode-select -s /Applications/Xcode_26.app
           fi
-          echo "=== Host Environment ==="
-          sw_vers
-          uname -m
-          echo "=== Developer Directory ==="
-          xcode-select -p
-          echo "=== Toolchain Versions ==="
-          xcodebuild -version
-          swift --version
-          echo "=== Installed SDKs ==="
-          xcodebuild -showsdks
-          echo "=== SDK Exact Versions ==="
-          echo "iphoneos: $(xcrun --sdk iphoneos --show-sdk-version)"
-          echo "iphonesimulator: $(xcrun --sdk iphonesimulator --show-sdk-version)"
-          echo "macosx: $(xcrun --sdk macosx --show-sdk-version)"
+          mkdir -p build/artifacts
+          EVIDENCE_FILE="build/artifacts/toolchain-raw-evidence.txt"
+          echo "=== Apple CI Toolchain Raw Evidence ===" | tee "$EVIDENCE_FILE"
+          echo "Checked out SHA: $(git rev-parse HEAD)" | tee -a "$EVIDENCE_FILE"
+          echo "--- sw_vers ---" | tee -a "$EVIDENCE_FILE"
+          sw_vers | tee -a "$EVIDENCE_FILE"
+          echo "--- uname -m ---" | tee -a "$EVIDENCE_FILE"
+          uname -m | tee -a "$EVIDENCE_FILE"
+          echo "--- xcode-select -p ---" | tee -a "$EVIDENCE_FILE"
+          xcode-select -p | tee -a "$EVIDENCE_FILE"
+          echo "--- xcodebuild -version ---" | tee -a "$EVIDENCE_FILE"
+          xcodebuild -version | tee -a "$EVIDENCE_FILE"
+          echo "--- swift --version ---" | tee -a "$EVIDENCE_FILE"
+          swift --version | tee -a "$EVIDENCE_FILE"
+          echo "--- xcodebuild -showsdks ---" | tee -a "$EVIDENCE_FILE"
+          xcodebuild -showsdks | tee -a "$EVIDENCE_FILE"
+          echo "--- xcrun --sdk iphoneos --show-sdk-version ---" | tee -a "$EVIDENCE_FILE"
+          xcrun --sdk iphoneos --show-sdk-version | tee -a "$EVIDENCE_FILE"
+          echo "--- xcrun --sdk iphonesimulator --show-sdk-version ---" | tee -a "$EVIDENCE_FILE"
+          xcrun --sdk iphonesimulator --show-sdk-version | tee -a "$EVIDENCE_FILE"
+          echo "--- xcrun --sdk macosx --show-sdk-version ---" | tee -a "$EVIDENCE_FILE"
+          xcrun --sdk macosx --show-sdk-version | tee -a "$EVIDENCE_FILE"
 
       - name: Discover Simulators & Prepare Environments
         run: |

@@ -223,13 +223,27 @@ router.post('/password/reset/verify', passwordResetIpRateLimiter, verifyPassword
 router.post('/password/reset', passwordResetIpRateLimiter, resetPassword);
 router.post('/refresh', refreshSession);
 
-// Passkeys / WebAuthn Endpoints
-router.post('/passkeys/register/options', authenticate, passkeyIpRateLimiter, passkeyController.getRegistrationOptions);
-router.post('/passkeys/register/verify', authenticate, passkeyIpRateLimiter, passkeyController.verifyRegistration);
-router.post('/passkeys/authenticate/options', passkeyIpRateLimiter, passkeyAccountRateLimiter, passkeyController.getAuthenticationOptions);
-router.post('/passkeys/authenticate/verify', passkeyIpRateLimiter, passkeyAccountRateLimiter, passkeyController.verifyAuthentication);
-router.get('/passkeys', authenticate, passkeyController.listUserPasskeys);
-router.delete('/passkeys/:credentialId', authenticate, passkeyController.revokeUserPasskey);
+// Feature Gate: Passkeys / WebAuthn are deferred in current release (ENABLE_PASSKEY_AUTH=false by default)
+const isPasskeyEnabled = () => process.env.ENABLE_PASSKEY_AUTH === 'true';
+
+const passkeyFeatureGate = (req, res, next) => {
+  if (!isPasskeyEnabled()) {
+    return res.status(404).json({
+      success: false,
+      code: 'FEATURE_DISABLED',
+      message: 'Passkey authentication is disabled in current release.',
+    });
+  }
+  next();
+};
+
+// Passkeys / WebAuthn Endpoints (Dormant by default: ENABLE_PASSKEY_AUTH=false)
+router.post('/passkeys/register/options', passkeyFeatureGate, authenticate, passkeyIpRateLimiter, passkeyController.getRegistrationOptions);
+router.post('/passkeys/register/verify', passkeyFeatureGate, authenticate, passkeyIpRateLimiter, passkeyController.verifyRegistration);
+router.post('/passkeys/authenticate/options', passkeyFeatureGate, passkeyIpRateLimiter, passkeyAccountRateLimiter, passkeyController.getAuthenticationOptions);
+router.post('/passkeys/authenticate/verify', passkeyFeatureGate, passkeyIpRateLimiter, passkeyAccountRateLimiter, passkeyController.verifyAuthentication);
+router.get('/passkeys', passkeyFeatureGate, authenticate, passkeyController.listUserPasskeys);
+router.delete('/passkeys/:credentialId', passkeyFeatureGate, authenticate, passkeyController.revokeUserPasskey);
 
 // Trusted Device Management Endpoints
 router.get('/trusted-devices', authenticate, listTrustedDevices);
