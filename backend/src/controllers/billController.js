@@ -57,6 +57,7 @@ const {
 
 const auditService = require('../services/auditService');
 const recordRequestAudit = (opts) => auditService.recordRequestAudit(opts);
+const refundService = require('../services/refundService');
 
 function normalizeId(value) {
   return typeof value === 'string'
@@ -894,104 +895,35 @@ const voidBill = asyncHandler(async (request, response) => {
 
 /**
  * POST /api/v1/bills/:billId/refund
- * Controlled refund with refundable-limit checks.
+ * Controlled refund orchestrated via canonical refundService.
  */
 const refundBill = asyncHandler(async (request, response) => {
   const billId = normalizeId(request.params.billId);
-  const { refundType = 'FULL', amountPaisa, amount, reason, tender } = request.body;
+  const { refundType = 'FULL', amountPaisa, amount, reason, tender, idempotencyKey } = request.body;
 
-  const reasonText = typeof reason === 'string' ? reason.trim() : '';
-  if (reasonText.length < 3) {
-    throw new ApiError(400, 'REASON_REQUIRED', 'A valid justification is required to process a refund.');
-  }
-
-  if (request.auth.role === 'OWNER') {
-    throw new ApiError(
-      403,
-      'REFUND_FORBIDDEN',
-      'Owner does not possess POS refund mutation authority.'
-    );
-  }
-
-  const bill = await Bill.findOne({
-    $or: [{ billId }, { invoiceNumber: billId }],
-    organisationId: request.auth.organisationId,
-  });
-
-  if (!bill) {
-    throw new ApiError(404, 'NOT_FOUND', 'Bill not found.');
-  }
-  assertResourceCafeOwnership(bill, request, 'Bill');
-  assertCafeAccess(request, bill.cafeId);
-
-  if (bill.status === 'VOIDED') {
-    throw new ApiError(400, 'CANNOT_REFUND_VOIDED', 'Cannot refund a voided bill.');
-  }
-
-  const remainingRefundablePaisa = Math.max(0, bill.totalPaisa - (bill.refundedTotalPaisa || 0));
-  if (remainingRefundablePaisa <= 0) {
-    throw new ApiError(400, 'NOTHING_TO_REFUND', 'This bill has already been fully refunded.');
-  }
-
-  let requestedPaisa = remainingRefundablePaisa;
-  if (refundType === 'PARTIAL' || refundType === 'AMOUNT_BASED') {
-    requestedPaisa = Math.round(Number(amountPaisa) || (amount ? Number(amount) * 100 : 0));
-    if (requestedPaisa <= 0 || requestedPaisa > remainingRefundablePaisa) {
-      throw new ApiError(
-        400,
-        'INVALID_REFUND_AMOUNT',
-        `Refund amount must be between ₹0.01 and ₹${(remainingRefundablePaisa / 100).toFixed(2)}.`
-      );
+  const result = await refundService.processBillRefund(
+    {
+      organisationId: request.auth.organisationId,
+      user: request.auth,
+      request,
+      channel: 'POS',
+    },
+    {
+      billId,
+      refundType,
+      amountPaisa,
+      amount,
+      reason,
+      tender,
+      idempotencyKey,
     }
-  }
-
-  const refundId = `REF-${Date.now()}`;
-  const refundEntry = {
-    refundId,
-    refundType: refundType.toUpperCase(),
-    amountPaisa: requestedPaisa,
-    reason: reasonText,
-    requestedBy: request.auth.userId,
-    approvedBy: request.auth.userId,
-    tender: tender && PAYMENT_METHODS.includes(tender.toUpperCase()) ? tender.toUpperCase() : bill.paymentMethod,
-    refundReference: `RREF-${Date.now()}`,
-    status: 'COMPLETED',
-    createdAt: new Date(),
-  };
-
-  if (!Array.isArray(bill.refunds)) {
-    bill.refunds = [];
-  }
-  bill.refunds.push(refundEntry);
-  bill.refundedTotalPaisa = (bill.refundedTotalPaisa || 0) + requestedPaisa;
-
-  if (bill.refundedTotalPaisa >= bill.totalPaisa) {
-    bill.status = 'REFUNDED';
-    bill.paymentStatus = 'REFUNDED';
-  } else {
-    bill.status = 'PARTIALLY_REFUNDED';
-    bill.paymentStatus = 'PARTIALLY_REFUNDED';
-  }
-
-  await bill.save();
-
-  await recordRequestAudit({
-    request,
-    module: 'BILLS_RECEIPTS',
-    action: 'REFUND_BILL',
-    entityType: 'BILL',
-    entityId: bill.billId,
-    after: { refundId, amountPaisa: requestedPaisa, status: bill.status, reason: reasonText },
-    reason: reasonText,
-    result: 'SUCCESS',
-    riskClassification: 'HIGH',
-  });
+  );
 
   return response.status(200).json({
     success: true,
     data: {
-      bill: bill.toObject(),
-      refund: refundEntry,
+      bill: result.bill,
+      refund: result.refund,
     },
     correlationId: request.correlationId || null,
   });

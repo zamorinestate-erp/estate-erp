@@ -14,6 +14,7 @@ const FSIModule = require('../models/FoodSafetyIncident');
 const FoodSafetyIncident = FSIModule.FoodSafetyIncident || FSIModule;
 const CapaModule = require('../models/CapaRecord');
 const CapaRecord = CapaModule.CapaRecord || CapaModule;
+const refundService = require('./refundService');
 
 const VALID_TRANSITIONS = {
   RECEIVED: ['TRIAGED', 'CLOSED'],
@@ -191,75 +192,42 @@ class OwnerComplaintsService {
       throw new Error('CANNOT_REFUND_WITHOUT_CANONICAL_BILL_LINKAGE');
     }
 
-    const bill = await Bill.findOne({
-      _id: complaint.billId,
-      $or: [{ organisationId }, { organisationId: organisationId.toString() }]
-    });
-    if (!bill) throw new Error('CANONICAL_BILL_NOT_FOUND');
+    // Single authoritative refund business execution via canonical refundService
+    const refundResult = await refundService.processBillRefund(
+      {
+        organisationId,
+        cafeId: complaint.cafeId,
+        user,
+        channel: 'COMPLAINT_SERVICE_RECOVERY',
+        complaintId: complaint.complaintId
+      },
+      {
+        billId: complaint.billId.toString(),
+        refundType: 'AMOUNT_BASED',
+        amount,
+        reason: reason || 'Service recovery refund authorized'
+      }
+    );
 
-    const billTotal = bill.totalPaisa ? (bill.totalPaisa / 100) : (bill.totalPayablePaisa ? bill.totalPayablePaisa / 100 : (bill.grandTotal || 0));
-    const remainingRefundablePaisa = Math.max(0, (bill.totalPaisa || Math.round(billTotal * 100)) - (bill.refundedTotalPaisa || 0));
-    const requestedPaisa = Math.round(amount * 100);
+    const canonicalRefundId = refundResult.refund.refundId;
 
-    if (bill.status === 'VOIDED' || bill.billStatus === 'VOIDED') {
-      throw new Error('CANNOT_REFUND_VOIDED_BILL');
-    }
-
-    if (remainingRefundablePaisa <= 0) {
-      throw new Error('BILL_ALREADY_FULLY_REFUNDED');
-    }
-
-    if (requestedPaisa > remainingRefundablePaisa) {
-      throw new Error(`REFUND_AMOUNT_EXCEEDS_BILL_TOTAL: Max refundable is ₹${(remainingRefundablePaisa / 100).toFixed(2)}`);
-    }
-
-    // Canonical refund entry matching billController.js
-    const refundId = `REF-${Date.now()}`;
-    const canonicalRefundRef = `RREF-${Date.now()}`;
-    const refundEntry = {
-      refundId,
-      refundType: requestedPaisa >= (bill.totalPaisa || Math.round(billTotal * 100)) ? 'FULL' : 'PARTIAL',
-      amountPaisa: requestedPaisa,
-      reason: reason || 'Service recovery refund authorized',
-      requestedBy: user?.userId || 'SYSTEM',
-      approvedBy: user?.userId || 'SYSTEM',
-      tender: bill.paymentMethod || 'CASH',
-      refundReference: canonicalRefundRef,
-      status: 'COMPLETED',
-      createdAt: new Date()
-    };
-
-    if (!Array.isArray(bill.refunds)) {
-      bill.refunds = [];
-    }
-    bill.refunds.push(refundEntry);
-    bill.refundedTotalPaisa = (bill.refundedTotalPaisa || 0) + requestedPaisa;
-
-    if (bill.refundedTotalPaisa >= (bill.totalPaisa || Math.round(billTotal * 100))) {
-      bill.status = 'REFUNDED';
-      bill.paymentStatus = 'REFUNDED';
-    } else {
-      bill.status = 'PARTIALLY_REFUNDED';
-      bill.paymentStatus = 'PARTIALLY_REFUNDED';
-    }
-    bill.billStatus = bill.status;
-    await bill.save();
-
+    // Complaint Service Recovery stores ONLY canonical refund reference & recovery metadata
     complaint.serviceRecovery = {
       remedyType: 'AUTHORISED_REFUND',
       remedyNotes: reason || 'Service recovery refund authorized',
-      refundReference: refundId,
+      refundReference: canonicalRefundId,
       refundAmount: amount,
       actionDate: new Date(),
       actionByUserId: user?.userId || user?._id || 'SYSTEM'
     };
 
     await complaint.save();
+
     return {
       complaint: this._formatComplaint(complaint.toObject(), user),
-      refundReference: refundId,
-      canonicalRefundId: refundId,
-      billStatus: bill.billStatus
+      refundReference: canonicalRefundId,
+      canonicalRefundId,
+      billStatus: refundResult.bill.billStatus || refundResult.bill.status
     };
   }
 

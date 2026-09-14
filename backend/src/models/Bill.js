@@ -293,6 +293,23 @@ const refundRecordSchema = new mongoose.Schema(
       default: 'COMPLETED',
     },
 
+    channel: {
+      type: String,
+      default: 'POS',
+    },
+
+    complaintId: {
+      type: String,
+      default: null,
+    },
+
+    idempotencyKey: {
+      type: String,
+      trim: true,
+      default: null,
+      index: true,
+    },
+
     createdAt: {
       type: Date,
       default: Date.now,
