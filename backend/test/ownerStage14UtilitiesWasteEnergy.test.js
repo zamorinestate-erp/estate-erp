@@ -153,56 +153,94 @@ describe('STAGE 14 — Utilities, Waste & Energy Management Suite', () => {
     assert.equal(wasteRecord.isDoubleCountingPrevented, true);
   });
 
-  test('5. Used Cooking Oil (RUCO): Enforces 25% TPC limit & permanent food inventory reentry prohibition', async () => {
-    // Safe oil (< 25% TPC)
+  test('5. Used Cooking Oil (RUCO): Enforces 25% TPC limit, authorised pathways & reentry prohibition', async () => {
+    // Safe oil (< 25% TPC) with authorized aggregator
     const safeUco = await ownerUtilitiesWasteService.recordUsedCookingOil(TEST_ORG, {
       cafeId: TEST_CAFE,
       oilType: 'PALMOLEIN_BLENDED',
       totalPolarCompoundsPercent: 18.5,
       quantityLiters: 15,
-      collectorName: 'BioFuel Solutions Ltd',
-      collectorFssaiRegistration: 'FSSAI-RUCO-KL-9988'
+      collectorName: 'Malabar Bio-Aggregators LLP',
+      collectorFssaiRegistration: 'FSSAI-RUCO-KL-9988',
+      collectorAgencyType: 'AGGREGATOR'
     }, USER_OWNER);
 
     assert.equal(safeUco.reentryBlocked, true);
     assert.ok(safeUco.tpcSafetyAlert.includes('within lawful food safety limits'));
+    assert.ok(safeUco.rucoFrameworkNotice.includes('No universal FBO RUCO registration'));
 
-    // Degraded oil (> 25% TPC FSSAI boundary)
-    const degradedUco = await ownerUtilitiesWasteService.recordUsedCookingOil(TEST_ORG, {
+    // Non-food industrial production unit pathway (e.g. soap/oleochemicals)
+    const industrialUco = await ownerUtilitiesWasteService.recordUsedCookingOil(TEST_ORG, {
       cafeId: TEST_CAFE,
-      oilType: 'PALMOLEIN_BLENDED',
-      totalPolarCompoundsPercent: 27.2,
-      quantityLiters: 20,
-      collectorName: 'BioFuel Solutions Ltd',
-      collectorFssaiRegistration: 'FSSAI-RUCO-KL-9988'
+      oilType: 'SUNFLOWER_OIL',
+      totalPolarCompoundsPercent: 26.5,
+      quantityLiters: 25,
+      collectorName: 'Kalyan Industrial Soaps Ltd',
+      collectorFssaiRegistration: 'PCB-IND-DISPOSAL-4411',
+      collectorAgencyType: 'NON_FOOD_PRODUCTION_UNIT'
     }, USER_OWNER);
 
-    assert.equal(degradedUco.reentryBlocked, true);
-    assert.ok(degradedUco.tpcSafetyAlert.includes('CRITICAL_SAFETY_ALERT: TPC exceeds 25.0% FSSAI limit'));
+    assert.equal(industrialUco.reentryBlocked, true);
+    assert.ok(industrialUco.tpcSafetyAlert.includes('CRITICAL_SAFETY_ALERT: TPC exceeds 25.0% FSSAI limit'));
   });
 
-  test('6. SWM 2026 Legal Applicability: Evaluates MoEFCC S.O. 388(E) BWG 100 kg/day threshold', async () => {
-    // Current waste records generate < 100 kg/day -> Standard generator
-    const standardEvaluation = await ownerUtilitiesWasteService.evaluateSWM2026Applicability(TEST_ORG, TEST_CAFE, USER_OWNER);
-    assert.equal(standardEvaluation.isBulkWasteGenerator, false);
-    assert.ok(standardEvaluation.bulkWasteClassificationRationale.includes('NOT classified as Bulk Waste Generator'));
-    assert.equal(standardEvaluation.localBodyRegistrationRequired, false);
+  test('6. SWM 2026 Legal Applicability: Complete CPCB BWG Test Matrix & 4 Statutory Streams', async () => {
+    // 1. None triggered (standard café): 250 m², 1,500 L/d water, 15 kg/d waste
+    const stdEval = await ownerUtilitiesWasteService.evaluateSWM2026Applicability(TEST_ORG, TEST_CAFE, USER_OWNER, {
+      floorAreaSqMetres: 250,
+      dailyWaterConsumptionLitres: 1500,
+      averageDailyWasteGeneratedKg: 15
+    });
+    assert.equal(stdEval.isBulkWasteGenerator, false);
+    assert.equal(stdEval.bwgClassificationCriteria, 'NONE_TRIGGERED_STANDARD_GENERATOR');
+    assert.deepEqual(stdEval.mandatedSegregationStreams, ['WET', 'DRY', 'SANITARY', 'SPECIAL_CARE']);
+    assert.equal(stdEval.localBodyRegistrationRequired, false);
 
-    // Seed large waste records to exceed 100 kg/day
-    for (let i = 0; i < 5; i++) {
-      await ownerUtilitiesWasteService.recordWaste(TEST_ORG, {
-        cafeId: TEST_CAFE,
-        wasteCategory: 'FOOD_WASTE',
-        quantity: 800, // 800 * 5 = 4,000 kg over 30 days = 133 kg/day
-        unitOfMeasure: 'KG',
-        disposalRoute: 'MUNICIPAL_COLLECTION'
-      }, USER_OWNER);
-    }
+    // 2. Floor Area Threshold trigger (>= 20,000 m²) alone
+    const areaEval = await ownerUtilitiesWasteService.evaluateSWM2026Applicability(TEST_ORG, TEST_CAFE, USER_OWNER, {
+      floorAreaSqMetres: 20500,
+      dailyWaterConsumptionLitres: 1500,
+      averageDailyWasteGeneratedKg: 15
+    });
+    assert.equal(areaEval.isBulkWasteGenerator, true);
+    assert.ok(areaEval.bwgCriteriaTriggered.includes('FLOOR_AREA_GE_20000_SQM'));
 
-    const bwgEvaluation = await ownerUtilitiesWasteService.evaluateSWM2026Applicability(TEST_ORG, TEST_CAFE, USER_OWNER);
-    assert.equal(bwgEvaluation.isBulkWasteGenerator, true);
-    assert.ok(bwgEvaluation.bulkWasteClassificationRationale.includes('Generates >= 100 kg/day'));
-    assert.equal(bwgEvaluation.localBodyRegistrationRequired, true);
+    // 3. Water Consumption Threshold trigger (>= 40,000 L/day) alone
+    const waterEval = await ownerUtilitiesWasteService.evaluateSWM2026Applicability(TEST_ORG, TEST_CAFE, USER_OWNER, {
+      floorAreaSqMetres: 250,
+      dailyWaterConsumptionLitres: 42000,
+      averageDailyWasteGeneratedKg: 15
+    });
+    assert.equal(waterEval.isBulkWasteGenerator, true);
+    assert.ok(waterEval.bwgCriteriaTriggered.includes('WATER_CONSUMPTION_GE_40000_L_DAY'));
+
+    // 4. Waste Generation Threshold trigger (>= 100 kg/day) alone
+    const wasteEval = await ownerUtilitiesWasteService.evaluateSWM2026Applicability(TEST_ORG, TEST_CAFE, USER_OWNER, {
+      floorAreaSqMetres: 250,
+      dailyWaterConsumptionLitres: 1500,
+      averageDailyWasteGeneratedKg: 120
+    });
+    assert.equal(wasteEval.isBulkWasteGenerator, true);
+    assert.ok(wasteEval.bwgCriteriaTriggered.includes('SOLID_WASTE_GE_100_KG_DAY'));
+
+    // 5. Each just below threshold: 19,900 m², 39,500 L/d water, 95 kg/d waste -> NOT BWG
+    const belowEval = await ownerUtilitiesWasteService.evaluateSWM2026Applicability(TEST_ORG, TEST_CAFE, USER_OWNER, {
+      floorAreaSqMetres: 19900,
+      dailyWaterConsumptionLitres: 39500,
+      averageDailyWasteGeneratedKg: 95
+    });
+    assert.equal(belowEval.isBulkWasteGenerator, false);
+    assert.equal(belowEval.bwgClassificationCriteria, 'NONE_TRIGGERED_STANDARD_GENERATOR');
+
+    // 6. Multiple thresholds triggered: area 22,000 m² and waste 110 kg/d
+    const multiEval = await ownerUtilitiesWasteService.evaluateSWM2026Applicability(TEST_ORG, TEST_CAFE, USER_OWNER, {
+      floorAreaSqMetres: 22000,
+      dailyWaterConsumptionLitres: 1500,
+      averageDailyWasteGeneratedKg: 110
+    });
+    assert.equal(multiEval.isBulkWasteGenerator, true);
+    assert.ok(multiEval.bwgCriteriaTriggered.includes('FLOOR_AREA_GE_20000_SQM'));
+    assert.ok(multiEval.bwgCriteriaTriggered.includes('SOLID_WASTE_GE_100_KG_DAY'));
   });
 
   test('7. Normalized KPI Aggregations: Zero-division protected intensity metrics', async () => {

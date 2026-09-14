@@ -274,21 +274,22 @@ class OwnerUtilitiesWasteService {
       tpcSafetyAlert: isExceedingTpcLimit
         ? 'CRITICAL_SAFETY_ALERT: TPC exceeds 25.0% FSSAI limit! Oil permanently removed from food preparation.'
         : 'TPC within lawful food safety limits or awaiting test.',
-      reentryBlocked: true
+      reentryBlocked: true,
+      rucoFrameworkNotice: 'FSSAI SOP: FBOs consuming >= 50 L/day edible frying oil must maintain usage/disposal logs and hand over to authorised agencies (State/UT-authorised, collection agencies, aggregators, or non-food industrial units). No universal FBO RUCO registration mandated.'
     };
   }
 
   /**
-   * Evaluate Solid Waste Management Rules, 2026 Applicability (MoEFCC S.O. 388(E))
-   * Criteria: Does NOT blindly classify every café as a Bulk Waste Generator.
-   * BWG criteria: Generation >= 100 kg/day or premises > 5,000 sq meters.
+   * Evaluate Solid Waste Management Rules, 2026 Applicability (CPCB / MoEFCC)
+   * Criteria: Floor area >= 20,000 m² OR Water consumption >= 40,000 L/day OR Solid waste >= 100 kg/day.
+   * Streams: WET, DRY, SANITARY, SPECIAL_CARE.
    */
-  async evaluateSWM2026Applicability(organisationId, cafeId, user) {
+  async evaluateSWM2026Applicability(organisationId, cafeId, user, premisesData = {}) {
     if (!organisationId || !cafeId) throw new Error('ORGANISATION_AND_CAFE_REQUIRED');
 
     const orgFilter = this._getOrgFilter(organisationId);
 
-    // Estimate daily solid waste generation from recent waste records
+    // Estimate daily solid waste generation from recent waste records if not provided
     const recentRecords = await WasteRecord.find({
       ...orgFilter,
       cafeId,
@@ -299,8 +300,38 @@ class OwnerUtilitiesWasteService {
     for (const r of recentRecords) {
       totalKg30Days += (r.quantity || 0);
     }
-    const avgDailyGenerationKg = recentRecords.length > 0 ? (totalKg30Days / 30) : 15;
-    const isBWG = avgDailyGenerationKg >= 100;
+    const avgDailyGenerationKg = premisesData.averageDailyWasteGeneratedKg !== undefined
+      ? premisesData.averageDailyWasteGeneratedKg
+      : (recentRecords.length > 0 ? (totalKg30Days / 30) : 15);
+
+    const floorAreaSqMetres = premisesData.floorAreaSqMetres !== undefined
+      ? premisesData.floorAreaSqMetres
+      : (premisesData.premisesPlinthAreaSqMetres || 250);
+
+    const dailyWaterConsumptionLitres = premisesData.dailyWaterConsumptionLitres !== undefined
+      ? premisesData.dailyWaterConsumptionLitres
+      : 1500;
+
+    // CPCB official current SWM 2026 portal BWG criteria:
+    // 1. FLOOR AREA >= 20,000 m²
+    // 2. WATER CONSUMPTION >= 40,000 L/DAY
+    // 3. SOLID WASTE GENERATION >= 100 KG/DAY
+    const triggeredCriteria = [];
+    if (floorAreaSqMetres >= 20000) {
+      triggeredCriteria.push('FLOOR_AREA_GE_20000_SQM');
+    }
+    if (dailyWaterConsumptionLitres >= 40000) {
+      triggeredCriteria.push('WATER_CONSUMPTION_GE_40000_L_DAY');
+    }
+    if (avgDailyGenerationKg >= 100) {
+      triggeredCriteria.push('SOLID_WASTE_GE_100_KG_DAY');
+    }
+
+    const isBWG = triggeredCriteria.length > 0;
+    const bwgClassificationCriteria = isBWG ? triggeredCriteria.join('_AND_') : 'NONE_TRIGGERED_STANDARD_GENERATOR';
+
+    // Official SWM 2026 Four Statutory Streams: WET, DRY, SANITARY, SPECIAL_CARE
+    const mandatedSegregationStreams = ['WET', 'DRY', 'SANITARY', 'SPECIAL_CARE'];
 
     let record = await SolidWaste2026Applicability.findOne({ ...orgFilter, cafeId });
     if (!record) {
@@ -308,40 +339,45 @@ class OwnerUtilitiesWasteService {
         recordId: `SWM-${Date.now().toString(36).toUpperCase()}`,
         organisationId,
         cafeId,
-        premisesPlinthAreaSqMetres: 250,
+        statutoryRuleVersion: 'SWM_RULES_2026_CPCB_MOEFCC',
+        floorAreaSqMetres,
+        premisesPlinthAreaSqMetres: floorAreaSqMetres,
+        dailyWaterConsumptionLitres,
         averageDailyWasteGeneratedKg: Number(avgDailyGenerationKg.toFixed(1)),
         dailySolidWasteGenerationKg: Number(avgDailyGenerationKg.toFixed(1)),
         isBulkWasteGenerator: isBWG,
-        bwgClassificationCriteria: isBWG
-          ? 'AREA_ABOVE_5000_SQM_OR_WASTE_ABOVE_100KG'
-          : 'AREA_BELOW_5000_SQM_AND_WASTE_BELOW_100KG',
+        bwgClassificationCriteria,
+        bwgCriteriaTriggered: triggeredCriteria,
         bulkWasteClassificationRationale: isBWG
-          ? `Generates >= 100 kg/day (${avgDailyGenerationKg.toFixed(1)} kg/day). Must process wet waste on-site or contract authorized collector under SWM 2026.`
-          : `Generates < 100 kg/day (${avgDailyGenerationKg.toFixed(1)} kg/day). Standard commercial establishment duties apply; NOT classified as Bulk Waste Generator.`,
-        mandatedSegregationStreams: ['WET_BIODEGRADABLE', 'DRY_RECYCLABLE', 'DOMESTIC_HAZARDOUS'],
-        localUrbanBodyName: 'Kozhikode Municipal Corporation',
-        segregationRules: {
-          wetWasteBioDegradable: true,
-          dryWasteRecyclable: true,
-          domesticHazardousWaste: true,
-          sanitaryWaste: true
+          ? `Classified as Bulk Waste Generator under CPCB SWM 2026 criteria: ${triggeredCriteria.join(', ')}. Must process wet waste on-site or engage authorized agency.`
+          : `Standard commercial generator (Floor area: ${floorAreaSqMetres}m², Water: ${dailyWaterConsumptionLitres}L/d, Waste: ${avgDailyGenerationKg.toFixed(1)}kg/d). Below all 3 BWG thresholds.`,
+        mandatedSegregationStreams,
+        operationalStreamMapping: {
+          WET: 'Biodegradable kitchen & food scrap',
+          DRY: 'Recyclable packaging, paper, plastic, glass',
+          SANITARY: 'Restroom & sanitary hygiene waste',
+          SPECIAL_CARE: 'Domestic hazardous, e-waste, cleaning chemicals, lighting'
         },
+        localUrbanBodyName: 'Kozhikode Municipal Corporation',
         localBodyRegistrationRequired: isBWG,
         evaluatedByUserId: user?.userId || user?._id || 'SYSTEM'
       });
       await record.save();
     } else {
+      record.statutoryRuleVersion = 'SWM_RULES_2026_CPCB_MOEFCC';
+      record.floorAreaSqMetres = floorAreaSqMetres;
+      record.premisesPlinthAreaSqMetres = floorAreaSqMetres;
+      record.dailyWaterConsumptionLitres = dailyWaterConsumptionLitres;
       record.averageDailyWasteGeneratedKg = Number(avgDailyGenerationKg.toFixed(1));
       record.dailySolidWasteGenerationKg = Number(avgDailyGenerationKg.toFixed(1));
       record.isBulkWasteGenerator = isBWG;
+      record.bwgClassificationCriteria = bwgClassificationCriteria;
+      record.bwgCriteriaTriggered = triggeredCriteria;
       record.localBodyRegistrationRequired = isBWG;
+      record.mandatedSegregationStreams = mandatedSegregationStreams;
       record.bulkWasteClassificationRationale = isBWG
-        ? `Generates >= 100 kg/day (${avgDailyGenerationKg.toFixed(1)} kg/day). Must process wet waste on-site or contract authorized collector under SWM 2026.`
-        : `Generates < 100 kg/day (${avgDailyGenerationKg.toFixed(1)} kg/day). Standard commercial establishment duties apply; NOT classified as Bulk Waste Generator.`;
-      record.bwgClassificationCriteria = isBWG
-        ? 'AREA_ABOVE_5000_SQM_OR_WASTE_ABOVE_100KG'
-        : 'AREA_BELOW_5000_SQM_AND_WASTE_BELOW_100KG';
-      record.localUrbanBodyName = record.localUrbanBodyName || 'Kozhikode Municipal Corporation';
+        ? `Classified as Bulk Waste Generator under CPCB SWM 2026 criteria: ${triggeredCriteria.join(', ')}. Must process wet waste on-site or engage authorized agency.`
+        : `Standard commercial generator (Floor area: ${floorAreaSqMetres}m², Water: ${dailyWaterConsumptionLitres}L/d, Waste: ${avgDailyGenerationKg.toFixed(1)}kg/d). Below all 3 BWG thresholds.`;
       await record.save();
     }
 

@@ -106,11 +106,26 @@ describe('STAGE 11 — Customer Complaints & Service Recovery Centre Suite', () 
       (err) => err.message.includes('ILLEGAL_LIFECYCLE_TRANSITION')
     );
 
-    // Valid progression: RECEIVED -> TRIAGED -> INVESTIGATING -> ACTIONED -> CUSTOMER_RESPONSE -> RESOLVED -> CLOSED
+    // Valid progression: RECEIVED -> TRIAGED -> ASSIGNED -> INVESTIGATING -> ACTIONED -> CUSTOMER_RESPONSE -> RESOLVED -> CLOSED
     const triaged = await ownerComplaintsService.updateComplaintStatus(TEST_ORG, complaint.complaintId, 'TRIAGED', USER_OWNER);
     assert.equal(triaged.status, 'TRIAGED');
 
-    const closed = await ownerComplaintsService.updateComplaintStatus(TEST_ORG, complaint.complaintId, 'CLOSED', USER_OWNER, 'Guest satisfied with fresh replacement');
+    const assigned = await ownerComplaintsService.updateComplaintStatus(TEST_ORG, complaint.complaintId, 'ASSIGNED', USER_OWNER, 'Allocated to Store Manager');
+    assert.equal(assigned.status, 'ASSIGNED');
+
+    const investigating = await ownerComplaintsService.updateComplaintStatus(TEST_ORG, complaint.complaintId, 'INVESTIGATING', USER_OWNER, 'Reviewing prep timestamp');
+    assert.equal(investigating.status, 'INVESTIGATING');
+
+    const actioned = await ownerComplaintsService.updateComplaintStatus(TEST_ORG, complaint.complaintId, 'ACTIONED', USER_OWNER, 'Fresh croissant prepared and QA approved');
+    assert.equal(actioned.status, 'ACTIONED');
+
+    const customerResponse = await ownerComplaintsService.updateComplaintStatus(TEST_ORG, complaint.complaintId, 'CUSTOMER_RESPONSE', USER_OWNER, 'Customer contacted in dining area');
+    assert.equal(customerResponse.status, 'CUSTOMER_RESPONSE');
+
+    const resolved = await ownerComplaintsService.updateComplaintStatus(TEST_ORG, complaint.complaintId, 'RESOLVED', USER_OWNER, 'Replacement accepted with thanks');
+    assert.equal(resolved.status, 'RESOLVED');
+
+    const closed = await ownerComplaintsService.updateComplaintStatus(TEST_ORG, complaint.complaintId, 'CLOSED', USER_OWNER, 'Guest fully satisfied');
     assert.equal(closed.status, 'CLOSED');
     assert.ok(closed.resolutionDetails.closedAt);
 

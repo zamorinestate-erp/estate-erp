@@ -216,11 +216,11 @@ describe('STAGE 12 — Menu Engineering & Pricing Intelligence Suite', () => {
     assert.equal(eval1.isMandatoryMenuLabellingApplicable, false);
     assert.ok(eval1.applicabilityRationale.includes('< 10'));
 
-    // Seed 10 cafes to qualify under outlet count threshold
+    const baseCafeNum = Math.floor(Math.random() * 800000 + 100000);
     for (let i = 2; i <= 10; i++) {
       await Cafe.create({
         organisationId: TEST_ORG.toString(),
-        cafeId: `ZC-CAF-${Math.floor(Math.random() * 89999 + 10000)}`,
+        cafeId: `ZC-CAF-${baseCafeNum + i}`,
         name: `Zamorin Outlet ${i}`,
         displayName: `Zamorin Outlet ${i}`,
         cafeType: 'STANDARD_CAFE',

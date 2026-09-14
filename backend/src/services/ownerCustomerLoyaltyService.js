@@ -389,6 +389,8 @@ class OwnerCustomerLoyaltyService {
       exportTimestamp: new Date(),
       recordCount: exportedRecords.length,
       purpose,
+      dpdpCommencementStatus: 'TECHNICAL_CONTROL_ACTIVE_FUTURE_COMPLIANCE_READY',
+      statutoryCommencementNotice: 'DPDP Rules 3, 5-16, 22, 23 in 18-month commencement tranche ending May 13, 2027; technical controls active as future-compliance ready. Access governed strictly by minimum necessary purpose.',
       isContactMasked: !canUnmask,
       records: exportedRecords
     };

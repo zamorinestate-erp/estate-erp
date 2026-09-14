@@ -33,11 +33,21 @@ const SolidWaste2026ApplicabilitySchema = new mongoose.Schema(
     },
     statutoryRuleVersion: {
       type: String,
-      default: 'SWM_RULES_2026_SO_388_E',
+      default: 'SWM_RULES_2026_CPCB_MOEFCC',
+    },
+    floorAreaSqMetres: {
+      type: Number,
+      default: 250,
+      min: 0,
+    },
+    dailyWaterConsumptionLitres: {
+      type: Number,
+      default: 1500,
+      min: 0,
     },
     premisesPlinthAreaSqMetres: {
       type: Number,
-      required: true,
+      default: 250,
       min: 0,
     },
     averageDailyWasteGeneratedKg: {
@@ -52,11 +62,16 @@ const SolidWaste2026ApplicabilitySchema = new mongoose.Schema(
     },
     bwgClassificationCriteria: {
       type: String,
-      default: 'AREA_BELOW_5000_SQM_AND_WASTE_BELOW_100KG',
+      default: 'NONE_TRIGGERED_STANDARD_GENERATOR',
     },
+    bwgCriteriaTriggered: [
+      {
+        type: String,
+      },
+    ],
     mandatedSegregationStreams: [
       {
-        type: String, // e.g. WET_BIODEGRADABLE, DRY_RECYCLABLE, DOMESTIC_HAZARDOUS
+        type: String, // 'WET', 'DRY', 'SANITARY', 'SPECIAL_CARE'
       },
     ],
     localUrbanBodyName: {
