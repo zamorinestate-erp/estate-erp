@@ -200,17 +200,145 @@ class OwnerPrivacyCyberService {
     throw new Error(`UNSUPPORTED_PRIVACY_REQUEST_ACTION: ${action}`);
   }
 
+  async submitPrivacyRequest(organisationId, payload, authUser) {
+    if (!organisationId) throw new Error('ORGANISATION_ID_REQUIRED');
+    const { requestType, reason, dataCategory, proposedCorrection } = payload;
+    if (!requestType || !reason) throw new Error('MISSING_PRIVACY_REQUEST_FIELDS');
+
+    const requestId = `PRV-${Date.now().toString().slice(-6)}-${String(Math.floor(10000 + Math.random() * 90000))}`;
+    const subjectUserId = authUser.userId || authUser.id;
+
+    const request = await PrivacyRequest.create({
+      requestId,
+      organisationId,
+      subjectUserId,
+      requestType,
+      reason,
+      dataCategory: dataCategory || 'GENERAL_PERSONAL_DATA',
+      proposedCorrection: proposedCorrection || '',
+      status: 'SUBMITTED',
+      auditHistory: [
+        {
+          action: 'SUBMITTED',
+          performedByUserId: subjectUserId,
+          note: reason,
+          timestamp: new Date(),
+        },
+      ],
+    });
+
+    return request;
+  }
+
+  async getMyPrivacyRequests(organisationId, userId) {
+    if (!organisationId || !userId) throw new Error('ORGANISATION_AND_USER_ID_REQUIRED');
+    return PrivacyRequest.find({ organisationId, subjectUserId: userId }).sort({ createdAt: -1 }).lean();
+  }
+
+  async discoverPersonalDataForRequest(organisationId, requestId) {
+    if (!organisationId || !requestId) throw new Error('ORGANISATION_AND_REQUEST_ID_REQUIRED');
+    const req = await PrivacyRequest.findOne({ organisationId, requestId }).lean();
+    if (!req) throw new Error('PRIVACY_REQUEST_NOT_FOUND');
+
+    const userId = req.subjectUserId;
+    const { User } = require('../models/User');
+    const { EmployeeTraining } = require('../models/EmployeeTraining');
+    const { EmployeeCompetency } = require('../models/EmployeeCompetency');
+    const { SopAcknowledgement } = require('../models/SopAcknowledgement');
+    const { Payslip } = require('../models/Payslip');
+    const { maskEmail, maskPhone, maskAadhaar, maskPan } = require('../utils/dataClassifier');
+
+    const [userDoc, trainings, competencies, sops, payslipCount] = await Promise.all([
+      User.findOne({ organisationId, userId }).lean(),
+      EmployeeTraining.find({ organisationId, userId }).lean(),
+      EmployeeCompetency.find({ organisationId, userId }).lean(),
+      SopAcknowledgement.find({ organisationId, userId }).lean(),
+      Payslip.countDocuments({ organisationId, $or: [{ employeeUserId: userId }, { employeeId: userId }] }),
+    ]);
+
+    return {
+      requestId,
+      organisationId,
+      subjectUserId: userId,
+      requestType: req.requestType,
+      eligiblePersonalData: {
+        profile: userDoc
+          ? {
+              userId: userDoc.userId,
+              name: userDoc.fullName || userDoc.name,
+              emailMasked: userDoc.email ? maskEmail(userDoc.email) : '',
+              phoneMasked: (userDoc.phone || userDoc.phoneNumber) ? maskPhone(userDoc.phone || userDoc.phoneNumber) : '',
+              aadhaarMasked: userDoc.statutoryApplicability?.aadhaarMasked || (userDoc.aadhaarNumber ? maskAadhaar(userDoc.aadhaarNumber) : null),
+              panMasked: userDoc.statutoryApplicability?.pan ? maskPan(userDoc.statutoryApplicability.pan) : (userDoc.panNumber ? maskPan(userDoc.panNumber) : null),
+              role: userDoc.role,
+              primaryCafeId: userDoc.primaryCafeId,
+            }
+          : null,
+        trainingRecordsCount: trainings.length,
+        competencyRecordsCount: competencies.length,
+        sopAcknowledgementsCount: sops.length,
+      },
+      statutoryRetentionBoundaries: [
+        {
+          domain: 'PAYROLL_AND_STATUTORY_BENEFITS',
+          recordsFoundCount: payslipCount,
+          statutoryBasis:
+            'Income Tax Act 1961 Section 44AA & Employees Provident Funds Act 1952',
+          minimumMandatoryRetentionYears: 8,
+          erasurePermitted: false,
+          restrictionReason:
+            'Statutory financial and payroll records cannot be erased before statutory limitation period expiration.',
+        },
+        {
+          domain: 'SECURITY_INCIDENTS_AND_AUDIT_LOGS',
+          statutoryBasis:
+            'Information Technology Act Section 43A / 70B & CERT-In Cyber Security Directions',
+          minimumMandatoryRetentionYears: 5,
+          erasurePermitted: false,
+          restrictionReason:
+            'Security logs and audit events must be retained to demonstrate tamper-evident regulatory compliance.',
+        },
+      ],
+    };
+  }
+
   /**
    * Register Third Party Data Processor
    */
   async registerThirdPartyProcessor(organisationId, payload) {
     if (!organisationId) throw new Error('ORGANISATION_ID_REQUIRED');
-    const { providerName, serviceDescription, dataCategoriesProcessed, purpose, contractReference, dataStorageGeography } = payload;
+    const {
+      providerName,
+      serviceDescription,
+      dataCategoriesProcessed,
+      purpose,
+      contractReference,
+      dataStorageGeography,
+      processingCountry,
+      storageCountry,
+      transferDestination,
+      isCrossBorder,
+      applicableRestriction,
+      sectoralLawRestriction,
+      governmentOrderReference,
+      effectiveDate,
+      transferAssessment,
+      contractGovernance,
+      securityReview,
+      approval,
+      rule15ReadinessStatus,
+      subProcessors,
+      exitDeletionObligation,
+    } = payload;
+
     if (!providerName || !serviceDescription || !purpose) {
       throw new Error('MISSING_PROCESSOR_FIELDS');
     }
 
     const processorId = `PRC-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    const storageGeo = storageCountry || dataStorageGeography || 'India';
+    const isTransfer = isCrossBorder !== undefined ? Boolean(isCrossBorder) : (storageGeo !== 'India' && storageGeo !== 'India (MeitY empaneled cloud)');
 
     const processor = await ThirdPartyProcessor.create({
       processorId,
@@ -220,9 +348,39 @@ class OwnerPrivacyCyberService {
       dataCategoriesProcessed: dataCategoriesProcessed || [],
       purpose,
       contractReference: contractReference || '',
-      dataStorageGeography: dataStorageGeography || 'India (MeitY empaneled cloud)',
+      dataStorageGeography: dataStorageGeography || storageGeo,
+      processingCountry: processingCountry || 'India',
+      storageCountry: storageCountry || storageGeo,
+      transferDestination: transferDestination || (isTransfer ? storageGeo : ''),
+      isCrossBorder: isTransfer,
+      applicableRestriction: applicableRestriction || 'NONE',
+      sectoralLawRestriction: sectoralLawRestriction || '',
+      governmentOrderReference: governmentOrderReference || '',
+      effectiveDate: effectiveDate || null,
+      transferAssessment: transferAssessment || {
+        assessed: isTransfer,
+        assessmentDate: isTransfer ? new Date().toISOString().split('T')[0] : null,
+        safeguards: isTransfer ? 'Standard Contractual Clauses & Encryption in Transit/At Rest' : '',
+        riskLevel: isTransfer ? 'LOW' : 'UNASSESSED',
+      },
+      contractGovernance: contractGovernance || {
+        hasDpa: true,
+        contractRef: contractReference || '',
+        auditRights: true,
+      },
+      securityReview: securityReview || {
+        reviewed: true,
+        reviewDate: new Date().toISOString().split('T')[0],
+        reviewer: 'Enterprise Security Governance',
+      },
+      approval: approval || {
+        status: 'APPROVED',
+        approvedBy: 'Data Protection Officer',
+      },
+      rule15ReadinessStatus: rule15ReadinessStatus || 'FUTURE_COMPLIANCE_READINESS',
+      subProcessors: subProcessors || [],
       securityReviewDate: new Date().toISOString().split('T')[0],
-      exitDeletionObligation: 'Mandatory certificate of destruction within 30 days of termination',
+      exitDeletionObligation: exitDeletionObligation || 'Mandatory certificate of destruction within 30 days of contract termination',
     });
 
     return processor;

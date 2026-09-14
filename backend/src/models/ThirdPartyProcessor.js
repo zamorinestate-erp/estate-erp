@@ -5,7 +5,12 @@
  * ZAMORIN CAFÉ ERP — THIRD-PARTY PROCESSOR REGISTER (STAGE 08)
  * ============================================================================
  * Governance of data processors, service contracts, data storage geographies,
- * sub-processors, and exit/deletion obligations under DPDP Act readiness.
+ * cross-border transfers (DPDP Rule 15 readiness), and exit/deletion obligations.
+ *
+ * IMPORTANT DPDP COMPLIANCE NOTE:
+ * The DPDP Act does NOT impose a blanket localisation rule requiring all
+ * processing in domestic/MeitY data centres. Cross-border transfers are
+ * governed based on Central Government notifications and restrictions.
  */
 
 const mongoose = require('mongoose');
@@ -60,10 +65,84 @@ const thirdPartyProcessorSchema = new mongoose.Schema(
       match: /^\d{4}-\d{2}-\d{2}$/,
       default: null,
     },
+    // Backward-compatible geography field
     dataStorageGeography: {
       type: String,
       trim: true,
-      default: 'India (MeitY empaneled cloud)',
+      default: 'India',
+    },
+    // Cross-border transfer governance fields (Requirements #44-#48)
+    processingCountry: {
+      type: String,
+      trim: true,
+      default: 'India',
+    },
+    storageCountry: {
+      type: String,
+      trim: true,
+      default: 'India',
+    },
+    transferDestination: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    isCrossBorder: {
+      type: Boolean,
+      default: false,
+    },
+    applicableRestriction: {
+      type: String,
+      trim: true,
+      default: 'NONE', // 'NONE', 'SECTORAL_RESTRICTION', 'GOVERNMENT_ORDER', 'SPECIAL_LOCALISATION'
+    },
+    sectoralLawRestriction: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    governmentOrderReference: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+    effectiveDate: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    transferAssessment: {
+      assessed: { type: Boolean, default: false },
+      assessmentDate: { type: String, default: null },
+      safeguards: { type: String, default: '' },
+      riskLevel: {
+        type: String,
+        enum: ['LOW', 'MEDIUM', 'HIGH', 'UNASSESSED'],
+        default: 'UNASSESSED',
+      },
+    },
+    contractGovernance: {
+      hasDpa: { type: Boolean, default: true },
+      contractRef: { type: String, default: '' },
+      auditRights: { type: Boolean, default: true },
+    },
+    securityReview: {
+      reviewed: { type: Boolean, default: true },
+      reviewDate: { type: String, default: null },
+      reviewer: { type: String, default: '' },
+    },
+    approval: {
+      status: {
+        type: String,
+        enum: ['PENDING', 'APPROVED', 'REJECTED', 'CONDITIONAL'],
+        default: 'APPROVED',
+      },
+      approvedBy: { type: String, default: '' },
+    },
+    rule15ReadinessStatus: {
+      type: String,
+      enum: ['FUTURE_COMPLIANCE_READINESS', 'NOT_APPLICABLE', 'COMPLIANT'],
+      default: 'FUTURE_COMPLIANCE_READINESS',
     },
     subProcessors: [
       {

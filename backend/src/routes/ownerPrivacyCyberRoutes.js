@@ -41,6 +41,21 @@ router.get(
 
 // Data Principal Request Evaluation (Statutory Retention vs Erasure)
 router.post(
+  '/requests',
+  authorize('PRIVACY_REQUEST', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN', 'STAFF'] }),
+  controller.submitPrivacyRequest
+);
+router.get(
+  '/requests/my',
+  authorize('PRIVACY_REQUEST', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN', 'STAFF'] }),
+  controller.getMyPrivacyRequests
+);
+router.get(
+  '/requests/:requestId/discover-data',
+  authorize('SECURITY_READ', { allowedRoles: ['MASTER', 'OWNER'] }),
+  controller.discoverPersonalDataForRequest
+);
+router.post(
   '/requests/evaluate-erasure',
   authorize('SECURITY_WRITE', { allowedRoles: ['MASTER', 'OWNER'] }),
   controller.evaluateErasureSafety
@@ -63,10 +78,10 @@ router.get(
   controller.getProcessors
 );
 
-// Privacy Incidents & Governed Response
+// Privacy Incidents & Governed Response (Single canonical incident entry point across all roles)
 router.post(
   '/incidents',
-  authorize('SECURITY_WRITE', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  authorize('SECURITY_WRITE', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN', 'STAFF'] }),
   controller.reportPrivacyIncident
 );
 router.patch(

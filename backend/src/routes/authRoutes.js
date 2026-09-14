@@ -26,6 +26,7 @@ const {
   listTrustedDevices,
   revokeTrustedDevice,
   revokeAllTrustedDevices,
+  getSelfPrivacySecurity,
 } = require('../controllers/authController');
 
 const {
@@ -260,6 +261,7 @@ router.get('/mfa/status', authenticate, getMfaStatus);
 router.post('/mfa/recovery-codes/regenerate', authenticate, mfaIpRateLimiter, regenerateRecoveryCodes);
 
 router.get('/me', authenticate, getCurrentUser);
+router.get('/me/privacy-security', authenticate, getSelfPrivacySecurity);
 
 router.post(
   '/step-up',

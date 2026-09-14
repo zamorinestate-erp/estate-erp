@@ -42,6 +42,9 @@ const {
   generateEmployeeBadgeQrCode,
   getEmployeeComplianceAlertsController,
   viewSensitiveFieldUnmasked,
+  getSelfTrainingAndCompetency,
+  acknowledgeSopSelf,
+  getTeamTrainingGaps,
 } = require('../controllers/employeeController');
 
 const router = express.Router();
@@ -249,6 +252,34 @@ router.get(
     selfOnly: true,
   }),
   exportProfileSummary
+);
+
+// Stage 06 Contextual: Employee Self Training & Competency
+router.get(
+  '/me/training',
+  authorize('EMPLOYEE:READ_SELF', {
+    allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN', 'STAFF'],
+    targetUserIdResolver: (req) => req.auth?.userId,
+    selfOnly: true,
+  }),
+  getSelfTrainingAndCompetency
+);
+
+router.post(
+  '/me/sops/:sopId/acknowledge',
+  authorize('EMPLOYEE:WRITE_SELF', {
+    allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN', 'STAFF'],
+    targetUserIdResolver: (req) => req.auth?.userId,
+    selfOnly: true,
+  }),
+  acknowledgeSopSelf
+);
+
+// Stage 06 Contextual: Manager / Team Training Gaps (Authorized Café Scoped)
+router.get(
+  '/team/training',
+  authorize('EMPLOYEE:READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  getTeamTrainingGaps
 );
 
 // 8. Individual Employee Profile (Administrative Access & Staff Self-Read)

@@ -19,6 +19,7 @@ const {
   getComplianceAlerts,
   regenerateCafeLoginQr,
   downloadPrintableQrCardPdf,
+  getCafeComplianceAndLicences,
 } = require('../controllers/cafeController');
 
 const router = express.Router();
@@ -66,6 +67,11 @@ router.post(
 router.get(
   '/:cafeId/compliance-alerts',
   getComplianceAlerts
+);
+
+router.get(
+  '/:cafeId/compliance-licences',
+  getCafeComplianceAndLicences
 );
 
 // Stage 03: Stage 02 Universal QR Integration & A4 Printable Card

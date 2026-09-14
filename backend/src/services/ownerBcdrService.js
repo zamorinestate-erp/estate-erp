@@ -200,6 +200,59 @@ class OwnerBcdrService {
     };
   }
 
+  async getCafeContinuityPlan(organisationId, cafeId) {
+    if (!organisationId || !cafeId) throw new Error('ORGANISATION_AND_CAFE_ID_REQUIRED');
+
+    const { Asset } = require('../models/Asset');
+    const criticalAssets = await Asset.find({
+      organisationId,
+      cafeId,
+      isDeleted: false,
+      criticalityTier: { $in: ['TIER_1_CRITICAL', 'CRITICAL'] },
+    }).lean();
+
+    return {
+      cafeId,
+      organisationId,
+      emergencyPlanVersion: '2026-v2',
+      emergencyContacts: [
+        { role: 'Café General Manager', name: 'Duty Manager', contact: '+91 98450 11223' },
+        { role: 'Regional Facilities Lead', name: 'Facilities Desk', contact: '+91 98450 44556' },
+        { role: 'Food Safety & Hygiene Officer', name: 'Audit Desk', contact: '+91 98450 77889' },
+        { role: 'Central IT & POS Support', name: 'IT NOC', contact: '+91 80000 99887' },
+      ],
+      outageGuidance: {
+        posOutage:
+          'Maintain billing through offline draft buffer mode. Strictly enforce invariant: NO SERVER ACKNOWLEDGEMENT = NO COMPLETED ERP FINANCIAL SALE. Tax invoices sync upon reconnection.',
+        networkOutage:
+          'Failover to cellular 4G/5G backup SIM dongle. Do not clear local POS terminal storage or reset cache.',
+        powerOutage:
+          'Verify UPS cutover within 3 seconds. Transfer cold-chain and POS circuits to generator backup if outage exceeds 5 minutes.',
+        coldChainOutage:
+          'Monitor temperature sensors. If perishable holding temperature exceeds +4°C for over 2 hours, notify Food Safety Officer and execute Quarantine Protocol.',
+      },
+      criticalAssetsSummary: {
+        totalCriticalEquipment: criticalAssets.length,
+        equipmentList: criticalAssets.map((a) => ({
+          assetId: a.assetId,
+          name: a.name,
+          category: a.category,
+          status: a.status,
+        })),
+      },
+      fallbackChecklist: [
+        { step: 1, action: 'Verify backup power UPS / Generator online', status: 'READY' },
+        { step: 2, action: 'Switch POS terminals to local draft order capture', status: 'READY' },
+        { step: 3, action: 'Record manual order tokens with customer identifiers', status: 'READY' },
+        { step: 4, action: 'Check refrigeration temperature logs every 30 minutes', status: 'READY' },
+      ],
+      incidentActivation: {
+        canonicalIncidentEndpoint: '/api/v1/privacy-cyber/incidents',
+        escalationHotline: '+91 80000 99999',
+      },
+    };
+  }
+
   /**
    * Executive BCDR Dashboard
    */

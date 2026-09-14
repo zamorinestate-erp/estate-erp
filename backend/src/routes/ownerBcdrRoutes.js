@@ -58,4 +58,11 @@ router.post(
   controller.validateSaleSyncState
 );
 
+// Stage 09 Contextual: Café Operations / Manager Local Continuity Plan
+router.get(
+  '/cafes/:cafeId/continuity-plan',
+  authorize('SECURITY_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  controller.getCafeContinuityPlan
+);
+
 module.exports = router;

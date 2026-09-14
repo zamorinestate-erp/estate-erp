@@ -98,6 +98,20 @@ class OwnerBcdrController {
     }
   }
 
+  async getCafeContinuityPlan(req, res) {
+    try {
+      const { organisationId } = this._getAuth(req);
+      if (!organisationId) {
+        return res.status(401).json({ success: false, error: 'ORGANISATION_REQUIRED' });
+      }
+      const cafeId = req.params.cafeId ? String(req.params.cafeId).trim().toUpperCase() : null;
+      const plan = await ownerBcdrService.getCafeContinuityPlan(organisationId, cafeId);
+      return res.status(200).json({ success: true, data: plan });
+    } catch (err) {
+      return res.status(400).json({ success: false, error: err.message });
+    }
+  }
+
   async getExecutiveDashboard(req, res) {
     try {
       const { organisationId } = this._getAuth(req);
@@ -120,5 +134,6 @@ module.exports = {
   updateDrillStatus: controller.updateDrillStatus.bind(controller),
   getBackupStatus: controller.getBackupStatus.bind(controller),
   validateSaleSyncState: controller.validateSaleSyncState.bind(controller),
+  getCafeContinuityPlan: controller.getCafeContinuityPlan.bind(controller),
   getExecutiveDashboard: controller.getExecutiveDashboard.bind(controller),
 };

@@ -37,6 +37,7 @@ const {
   getOrderDocuments,
   attachOrderDocument,
   downloadOrderDocument,
+  getSupplierContextualIntelligence,
 } = require('../controllers/procurementController');
 
 const router = express.Router();
@@ -55,6 +56,13 @@ router.get(
   '/integrity',
   authorize('PROCUREMENT_READ', { allowedRoles: ['MASTER', 'OWNER'] }),
   getProcurementIntegrity
+);
+
+// Stage 05 Contextual: Supplier Intelligence in Procurement Workspace
+router.get(
+  '/suppliers/:vendorId/intelligence',
+  authorize('PROCUREMENT_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  getSupplierContextualIntelligence
 );
 
 // Catalogue / Guided Buying

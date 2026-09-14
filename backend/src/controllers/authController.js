@@ -41,6 +41,8 @@ const {
 const auditService = require('../services/auditService');
 const deviceTrustService = require('../services/deviceTrustService');
 const { TrustedDevice } = require('../models/TrustedDevice');
+const { PrivacyRequest } = require('../models/PrivacyRequest');
+const { maskEmail, maskPhone } = require('../utils/dataClassifier');
 
 const {
   ACCESS_TOKEN_COOKIE,
@@ -1726,6 +1728,77 @@ const revokeAllTrustedDevices = asyncHandler(
   }
 );
 
+const getSelfPrivacySecurity = asyncHandler(
+  async (request, response) => {
+    const { organisationId, userId } = request.auth;
+
+    const [userDoc, sessions, trustedDevices, privacyRequests] = await Promise.all([
+      User.findOne({ organisationId, userId }).lean(),
+      listUserSessions({ organisationId, userId }),
+      deviceTrustService.listUserTrustedDevices
+        ? deviceTrustService.listUserTrustedDevices({ organisationId, userId })
+        : [],
+      PrivacyRequest.find({ organisationId, subjectUserId: userId }).sort({ createdAt: -1 }).lean(),
+    ]);
+
+    const safeSessions = (sessions || []).map((sessionDocument) => {
+      const session =
+        typeof sessionDocument?.toObject === 'function'
+          ? sessionDocument.toObject()
+          : sessionDocument;
+      return {
+        sessionId: session.sessionId,
+        isCurrent: session.sessionId === request.auth.sessionId,
+        status: session.status,
+        device: {
+          deviceName: session.device?.deviceName || 'Standard Terminal',
+          deviceType: session.device?.deviceType || 'DESKTOP',
+          operatingSystem: session.device?.operatingSystem || '',
+          browser: session.device?.browser || '',
+        },
+        issuedAt: session.issuedAt || null,
+        lastActivityAt: session.lastActivityAt || null,
+      };
+    });
+
+    const personalInfo = {
+      userId: userDoc?.userId || userId,
+      fullName: userDoc?.fullName || userDoc?.name || '',
+      emailMasked: userDoc?.email ? maskEmail(userDoc.email) : '',
+      phoneMasked: userDoc?.phoneNumber ? maskPhone(userDoc.phoneNumber) : '',
+      role: userDoc?.role || request.auth.role,
+      primaryCafeId: userDoc?.primaryCafeId || null,
+      employmentStatus: userDoc?.employmentStatus || 'ACTIVE',
+    };
+
+    return response.status(200).json({
+      success: true,
+      data: {
+        privacyNotice: {
+          noticeVersion: '2026.1',
+          governanceStandard: 'Digital Personal Data Protection Act (DPDP) 2023 & ISO/IEC 27001',
+          statement:
+            'Zamorin Café LLP processes your personal information strictly for employment administration, statutory compliance, and operational duties. You have the right to review your data, request correction of inaccurate records, and submit governed privacy requests.',
+          dataProtectionOfficer: 'privacy-officer@zamorin.cafe',
+        },
+        personalInfo,
+        sessions: safeSessions,
+        trustedDevices: trustedDevices || [],
+        privacyRequests: (privacyRequests || []).map((pr) => ({
+          requestId: pr.requestId,
+          requestType: pr.requestType,
+          status: pr.status,
+          createdAt: pr.createdAt,
+          reason: pr.reason,
+          decision: pr.retentionJustification || pr.reviewNote || null,
+        })),
+        incidentReportingEnabled: true,
+      },
+      correlationId: request.correlationId || null,
+    });
+  }
+);
+
 module.exports = {
   login,
   requestPasswordReset,
@@ -1749,5 +1822,6 @@ module.exports = {
   listTrustedDevices,
   revokeTrustedDevice,
   revokeAllTrustedDevices,
+  getSelfPrivacySecurity,
 };
 

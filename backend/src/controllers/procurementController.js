@@ -60,6 +60,9 @@ const {
   InventoryLot,
 } = require('../models/InventoryLot');
 
+const { SupplierActionPlan } = require('../models/SupplierActionPlan');
+const { BusinessContract } = require('../models/BusinessContract');
+
 const {
   BusinessDocument,
 } = require('../models/BusinessDocument');
@@ -2703,6 +2706,97 @@ const downloadOrderDocument = asyncHandler(async (request, response) => {
   return response.send(payload);
 });
 
+const getSupplierContextualIntelligence = asyncHandler(async (request, response) => {
+  const { organisationId } = request.auth;
+  const vendorId = String(request.params.vendorId || '').trim().toUpperCase();
+
+  const vendor = await Vendor.findOne({ organisationId, vendorId }).lean();
+  if (!vendor) {
+    throw new ApiError(404, 'VENDOR_NOT_FOUND', `Vendor ${vendorId} not found.`);
+  }
+
+  const [recentOrders, actionPlans, contracts, recentInspections] = await Promise.all([
+    PurchaseOrder.find({ organisationId, vendorId }).sort({ createdAt: -1 }).limit(10).lean(),
+    SupplierActionPlan.find({ organisationId, vendorId, isDeleted: false }).lean(),
+    BusinessContract.find({ organisationId, vendorId, isDeleted: false }).lean(),
+    IncomingInspection.find({ organisationId, vendorId }).sort({ inspectedAt: -1 }).limit(10).lean(),
+  ]);
+
+  const recentPrices = [];
+  const priceItemMap = new Map();
+  for (const po of recentOrders) {
+    for (const item of po.lineItems || []) {
+      if (item.itemId && !priceItemMap.has(item.itemId)) {
+        priceItemMap.set(item.itemId, true);
+        recentPrices.push({
+          itemId: item.itemId,
+          itemName: item.name || item.itemName,
+          lastUnitCostPaisa: item.unitCostPaisa || 0,
+          purchaseOrderId: po.purchaseOrderId,
+          orderDate: po.createdAt,
+        });
+      }
+    }
+  }
+
+  const failedInspections = recentInspections.filter((i) => i.result === 'FAIL' || i.result === 'REJECTED');
+  const openQualityIssueCount = failedInspections.length;
+
+  const warnings = [];
+  if (openQualityIssueCount > 0) {
+    warnings.push({
+      code: 'OPEN_QUALITY_REJECTION',
+      severity: 'WARN',
+      message: `${openQualityIssueCount} recent incoming inspection(s) rejected or flagged for quality.`,
+    });
+  }
+
+  const now = new Date();
+  const expiringContracts = contracts.filter(
+    (c) => c.status === 'ACTIVE' && c.expiryDate && new Date(c.expiryDate) < new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
+  );
+  if (expiringContracts.length > 0) {
+    warnings.push({
+      code: 'CONTRACT_EXPIRING_SOON',
+      severity: 'WARN',
+      message: `Supplier contract ${expiringContracts[0].contractReference || expiringContracts[0].contractId} is expiring within 30 days.`,
+    });
+  }
+
+  if (actionPlans.some((ap) => ap.status === 'ACTIVE' || ap.status === 'DUE')) {
+    warnings.push({
+      code: 'ACTIVE_ACTION_PLAN',
+      severity: 'INFO',
+      message: 'Supplier is currently operating under an active performance improvement action plan.',
+    });
+  }
+
+  return response.status(200).json({
+    success: true,
+    data: {
+      vendorId,
+      vendorName: vendor.name,
+      rating: vendor.rating || 0,
+      deliveryReliabilityPercentage: vendor.deliveryScore || 95,
+      openQualityIssuesCount: openQualityIssueCount,
+      recentPrices,
+      contractsSummary: {
+        totalContracts: contracts.length,
+        activeContracts: contracts.filter((c) => c.status === 'ACTIVE').length,
+      },
+      actionPlansSummary: {
+        totalPlans: actionPlans.length,
+        activePlans: actionPlans.filter((ap) => ap.status === 'ACTIVE').length,
+      },
+      warnings,
+      isVendorBlocked: false,
+      governanceGuidance:
+        'Contextual warnings provided for buyer informed decision-making; warnings do not trigger automatic vendor rejection.',
+    },
+    correlationId: request.correlationId || null,
+  });
+});
+
 module.exports = {
   getOrderDocuments,
   attachOrderDocument,
@@ -2731,6 +2825,7 @@ module.exports = {
   updateAsnStatus,
   cancelAsn,
   getProcurementIntegrity,
+  getSupplierContextualIntelligence,
   _setPoLocksDisabled,
   commitWithRetry,
   executeTransactionWithRetry,

@@ -85,6 +85,46 @@ class OwnerPrivacyCyberController {
     }
   }
 
+  async submitPrivacyRequest(req, res) {
+    try {
+      const { organisationId, user } = this._getAuth(req);
+      if (!organisationId) {
+        return res.status(401).json({ success: false, error: 'ORGANISATION_REQUIRED' });
+      }
+      const request = await ownerPrivacyCyberService.submitPrivacyRequest(organisationId, req.body, user);
+      return res.status(201).json({ success: true, data: request });
+    } catch (err) {
+      return res.status(400).json({ success: false, error: err.message });
+    }
+  }
+
+  async getMyPrivacyRequests(req, res) {
+    try {
+      const { organisationId, user } = this._getAuth(req);
+      if (!organisationId) {
+        return res.status(401).json({ success: false, error: 'ORGANISATION_REQUIRED' });
+      }
+      const list = await ownerPrivacyCyberService.getMyPrivacyRequests(organisationId, user.userId);
+      return res.status(200).json({ success: true, data: list });
+    } catch (err) {
+      return res.status(400).json({ success: false, error: err.message });
+    }
+  }
+
+  async discoverPersonalDataForRequest(req, res) {
+    try {
+      const { organisationId } = this._getAuth(req);
+      if (!organisationId) {
+        return res.status(401).json({ success: false, error: 'ORGANISATION_REQUIRED' });
+      }
+      const { requestId } = req.params;
+      const discovered = await ownerPrivacyCyberService.discoverPersonalDataForRequest(organisationId, requestId);
+      return res.status(200).json({ success: true, data: discovered });
+    } catch (err) {
+      return res.status(400).json({ success: false, error: err.message });
+    }
+  }
+
   async registerProcessor(req, res) {
     try {
       const { organisationId } = this._getAuth(req);
@@ -189,6 +229,9 @@ module.exports = {
   getProcessingRegisters: controller.getProcessingRegisters.bind(controller),
   evaluateErasureSafety: controller.evaluateErasureSafety.bind(controller),
   handlePrivacyRequestAction: controller.handlePrivacyRequestAction.bind(controller),
+  submitPrivacyRequest: controller.submitPrivacyRequest.bind(controller),
+  getMyPrivacyRequests: controller.getMyPrivacyRequests.bind(controller),
+  discoverPersonalDataForRequest: controller.discoverPersonalDataForRequest.bind(controller),
   registerProcessor: controller.registerProcessor.bind(controller),
   getProcessors: controller.getProcessors.bind(controller),
   reportPrivacyIncident: controller.reportPrivacyIncident.bind(controller),

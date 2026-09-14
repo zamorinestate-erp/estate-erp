@@ -10,6 +10,11 @@ const {
   SequenceCounter,
 } = require('../models/SequenceCounter');
 
+const { BusinessLicence } = require('../models/BusinessLicence');
+const { ComplianceObligation } = require('../models/ComplianceObligation');
+const { MasterDuplicateCandidate } = require('../models/MasterDuplicateCandidate');
+const { MasterChangeRequest } = require('../models/MasterChangeRequest');
+
 const cafeService = require('../services/cafeService');
 
 const {
@@ -572,6 +577,45 @@ const downloadPrintableQrCardPdf = asyncHandler(
   }
 );
 
+const getCafeComplianceAndLicences = asyncHandler(
+  async (request, response) => {
+    const cafeId = normalizeIdentifier(request.params.cafeId);
+    assertCafeAccess(request, cafeId);
+    const organisationId = request.auth.organisationId;
+
+    const [licences, obligations, duplicateCandidates, pendingChangeRequests] = await Promise.all([
+      BusinessLicence.find({ organisationId, cafeId, isDeleted: false }).lean(),
+      ComplianceObligation.find({ organisationId, cafeId, isDeleted: false }).lean(),
+      MasterDuplicateCandidate.find({
+        organisationId,
+        domainCode: 'CAFE',
+        $or: [{ recordAId: cafeId }, { recordBId: cafeId }],
+        status: { $in: ['DETECTED', 'REVIEW', 'SURVIVOR_SELECTION', 'IMPACT_ANALYSIS'] },
+      }).lean(),
+      MasterChangeRequest.find({
+        organisationId,
+        domainCode: 'CAFE',
+        recordId: cafeId,
+        status: 'PENDING',
+      }).lean(),
+    ]);
+
+    return response.status(200).json({
+      success: true,
+      data: {
+        cafeId,
+        licences,
+        obligations,
+        dataGovernance: {
+          duplicateCandidates,
+          pendingChangeRequests,
+        },
+      },
+      correlationId: request.correlationId || null,
+    });
+  }
+);
+
 module.exports = {
   listCafes,
   getCafe,
@@ -585,4 +629,5 @@ module.exports = {
   getComplianceAlerts,
   regenerateCafeLoginQr,
   downloadPrintableQrCardPdf,
+  getCafeComplianceAndLicences,
 };

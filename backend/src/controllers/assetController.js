@@ -32,6 +32,32 @@ const {
 } = require('../models/SequenceCounter');
 
 const {
+  AssetBreakdownLog,
+} = require('../models/AssetBreakdownLog');
+
+const {
+  CalibrationRecord,
+} = require('../models/CalibrationRecord');
+
+const {
+  BusinessContract,
+} = require('../models/BusinessContract');
+
+const {
+  InsurancePolicy,
+} = require('../models/InsurancePolicy');
+
+const {
+  InsuranceClaim,
+} = require('../models/InsuranceClaim');
+
+const {
+  MasterDuplicateCandidate,
+} = require('../models/MasterDuplicateCandidate');
+
+const ownerAssetReliabilityService = require('../services/ownerAssetReliabilityService');
+
+const {
   asyncHandler,
 } = require('../utils/asyncHandler');
 
@@ -369,16 +395,50 @@ const getAssetDetail = asyncHandler(async (request, response) => {
 
   assertCafeAccess(request, asset.cafeId);
 
-  const workOrders = await WorkOrder.find({
-    assetId: normAssetId,
-    organisationId: request.auth.organisationId,
-  }).sort({ createdAt: -1 }).lean();
+  const [workOrders, breakdowns, calibrations, amcContracts, claims, metrics, replacement, dupCandidate] =
+    await Promise.all([
+      WorkOrder.find({
+        assetId: normAssetId,
+        organisationId: request.auth.organisationId,
+      }).sort({ createdAt: -1 }).lean(),
+      AssetBreakdownLog.find({
+        assetId: normAssetId,
+        organisationId: request.auth.organisationId,
+      }).sort({ reportedAt: -1 }).limit(15).lean().catch(() => []),
+      CalibrationRecord.find({
+        assetId: normAssetId,
+        organisationId: request.auth.organisationId,
+      }).sort({ calibrationDate: -1 }).limit(10).lean().catch(() => []),
+      BusinessContract.find({
+        organisationId: request.auth.organisationId,
+        contractType: 'AMC_MAINTENANCE',
+        $or: [{ counterpartyId: asset.serviceProviderId || '' }, { title: new RegExp(normAssetId, 'i') }],
+      }).lean().catch(() => []),
+      InsuranceClaim.find({
+        organisationId: request.auth.organisationId,
+        assetId: normAssetId,
+      }).lean().catch(() => []),
+      ownerAssetReliabilityService.getAssetReliabilityMetrics(request.auth.organisationId, normAssetId).catch(() => null),
+      ownerAssetReliabilityService.getReplacementDecisionIndicators(request.auth.organisationId, normAssetId).catch(() => null),
+      MasterDuplicateCandidate.findOne({
+        organisationId: request.auth.organisationId,
+        domainCode: 'ASSET',
+        $or: [{ masterRecordIdA: normAssetId }, { masterRecordIdB: normAssetId }],
+      }).lean().catch(() => null),
+    ]);
 
   return response.status(200).json({
     success: true,
     data: {
       asset,
       workOrders,
+      breakdowns: breakdowns || [],
+      calibrations: calibrations || [],
+      amcContracts: amcContracts || [],
+      insuranceClaims: claims || [],
+      reliabilityMetrics: metrics || null,
+      replacementIndicators: replacement || null,
+      duplicateCandidate: dupCandidate || null,
     },
     correlationId: request.correlationId || null,
   });

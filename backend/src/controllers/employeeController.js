@@ -4,6 +4,10 @@ const { Position } = require('../models/Position');
 const { StaffingRequest } = require('../models/StaffingRequest');
 const { EmployeeSkill } = require('../models/EmployeeSkill');
 const { EmployeeTraining } = require('../models/EmployeeTraining');
+const { StandardOperatingProcedure } = require('../models/StandardOperatingProcedure');
+const { SopAcknowledgement } = require('../models/SopAcknowledgement');
+const { EmployeeCompetency } = require('../models/EmployeeCompetency');
+const { MasterDuplicateCandidate } = require('../models/MasterDuplicateCandidate');
 const { EmployeeDocument, DOCUMENT_CATEGORIES } = require('../models/EmployeeDocument');
 const { PrivateFile } = require('../models/PrivateFile');
 const { defaultStorageService } = require('../services/storageAdapterService');
@@ -2193,6 +2197,161 @@ const viewSensitiveFieldUnmasked = asyncHandler(async (req, res) => {
   });
 });
 
+const getSelfTrainingAndCompetency = asyncHandler(async (req, res) => {
+  const { organisationId, userId } = req.auth;
+  const user = await User.findOne({ organisationId, userId }).lean();
+  if (!user) throw new ApiError(404, 'USER_NOT_FOUND', 'User record not found.');
+
+  const [trainings, acknowledgements, competencies] = await Promise.all([
+    EmployeeTraining.find({ organisationId, userId }).sort({ dueDate: 1 }).lean(),
+    SopAcknowledgement.find({ organisationId, userId }).lean(),
+    EmployeeCompetency.find({ organisationId, userId }).lean(),
+  ]);
+
+  const sopIds = [...new Set(acknowledgements.map((a) => a.sopId))];
+  const sops = await StandardOperatingProcedure.find({
+    organisationId,
+    sopId: { $in: sopIds },
+    isDeleted: false,
+  }).lean();
+  const sopMap = new Map(sops.map((s) => [s.sopId, s]));
+
+  const enrichedAcknowledgements = acknowledgements.map((ack) => {
+    const sop = sopMap.get(ack.sopId);
+    return {
+      ...ack,
+      sopTitle: sop?.title || ack.sopId,
+      domain: sop?.domain || 'OPERATIONS',
+      isAcknowledgementRequired: sop?.isAcknowledgementRequired ?? true,
+      isTrainingRequired: sop?.isTrainingRequired ?? false,
+      isCompetencyRequired: sop?.isCompetencyRequired ?? false,
+    };
+  });
+
+  const now = new Date();
+  const overdueTrainings = trainings.filter(
+    (t) => t.status !== 'COMPLETED' && t.dueDate && new Date(t.dueDate) < now
+  );
+  const overdueSops = enrichedAcknowledgements.filter(
+    (a) => a.status !== 'ACKNOWLEDGED' && a.dueDate && new Date(a.dueDate) < now
+  );
+
+  return res.status(200).json({
+    success: true,
+    data: {
+      userId,
+      assignedSops: enrichedAcknowledgements,
+      trainings,
+      competencies,
+      refresherRequirements: {
+        overdueTrainingsCount: overdueTrainings.length,
+        overdueSopsCount: overdueSops.length,
+        needsAttention: overdueTrainings.length > 0 || overdueSops.length > 0,
+      },
+    },
+    correlationId: req.correlationId || null,
+  });
+});
+
+const acknowledgeSopSelf = asyncHandler(async (req, res) => {
+  const { organisationId, userId, role, name, fullName } = req.auth;
+  const { sopId } = req.params;
+
+  const sop = await StandardOperatingProcedure.findOne({
+    organisationId,
+    sopId,
+    isDeleted: false,
+  }).lean();
+  if (!sop) throw new ApiError(404, 'SOP_NOT_FOUND', 'Standard Operating Procedure not found.');
+
+  let ack = await SopAcknowledgement.findOne({ organisationId, userId, sopId });
+  if (ack) {
+    ack.status = 'ACKNOWLEDGED';
+    ack.sopVersion = sop.version || 1;
+    ack.acknowledgedAt = new Date();
+    ack.readAt = ack.readAt || new Date();
+    await ack.save();
+  } else {
+    ack = await SopAcknowledgement.create({
+      organisationId,
+      sopId,
+      sopVersion: sop.version || 1,
+      userId,
+      userName: fullName || name || userId,
+      role: role || 'STAFF',
+      cafeId: req.auth.cafeId || req.auth.primaryCafeId || null,
+      assignedAt: new Date(),
+      readAt: new Date(),
+      acknowledgedAt: new Date(),
+      dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      status: 'ACKNOWLEDGED',
+    });
+  }
+
+  return res.status(200).json({
+    success: true,
+    message: `SOP ${sopId} (v${sop.version}) acknowledged successfully.`,
+    data: { acknowledgement: ack },
+    correlationId: req.correlationId || null,
+  });
+});
+
+const getTeamTrainingGaps = asyncHandler(async (req, res) => {
+  const { organisationId, role, cafeId, primaryCafeId, assignedCafeIds } = req.auth;
+
+  let targetCafeId = req.query.cafeId ? String(req.query.cafeId).trim().toUpperCase() : null;
+  if (role === 'CAFE_ADMIN') {
+    const allowedCafes = [
+      ...(Array.isArray(assignedCafeIds) ? assignedCafeIds : (assignedCafeIds ? [assignedCafeIds] : [])),
+      ...(primaryCafeId ? [primaryCafeId] : []),
+      ...(cafeId ? [cafeId] : []),
+    ].map((c) => String(c).trim().toUpperCase()).filter(Boolean);
+
+    if (targetCafeId && !allowedCafes.includes(targetCafeId)) {
+      throw new ApiError(403, 'CAFE_ACCESS_DENIED', 'You do not have access to this café.');
+    }
+    if (!targetCafeId) {
+      targetCafeId = allowedCafes[0] || null;
+    }
+  }
+
+  const teamFilter = { organisationId };
+  if (targetCafeId) {
+    teamFilter.$or = [{ primaryCafeId: targetCafeId }, { assignedCafeIds: targetCafeId }];
+  }
+
+  const teamUsers = await User.find(teamFilter, { userId: 1, name: 1, fullName: 1, role: 1, primaryCafeId: 1 }).lean();
+  const teamUserIds = teamUsers.map((u) => u.userId);
+
+  const [teamTrainings, teamAcks, teamCompetencies] = await Promise.all([
+    EmployeeTraining.find({ organisationId, userId: { $in: teamUserIds } }).lean(),
+    SopAcknowledgement.find({ organisationId, userId: { $in: teamUserIds } }).lean(),
+    EmployeeCompetency.find({ organisationId, userId: { $in: teamUserIds } }).lean(),
+  ]);
+
+  const now = new Date();
+  const overdueTrainings = teamTrainings.filter((t) => t.status !== 'COMPLETED' && t.dueDate && new Date(t.dueDate) < now);
+  const overdueAcks = teamAcks.filter((a) => a.status !== 'ACKNOWLEDGED' && a.dueDate && new Date(a.dueDate) < now);
+  const competencyGaps = teamCompetencies.filter((c) => !c.isCompetent || c.status === 'NEEDS_RETRAINING');
+
+  return res.status(200).json({
+    success: true,
+    data: {
+      cafeId: targetCafeId,
+      teamSize: teamUsers.length,
+      overdueTrainings,
+      overdueAcknowledgements: overdueAcks,
+      competencyGaps,
+      summary: {
+        totalOverdueTrainings: overdueTrainings.length,
+        totalOverdueAcks: overdueAcks.length,
+        totalCompetencyGaps: competencyGaps.length,
+      },
+    },
+    correlationId: req.correlationId || null,
+  });
+});
+
 module.exports = {
   EMPLOYEE_SEARCH_PROJECTION,
   buildEmployeeSearchRequest,
@@ -2235,5 +2394,9 @@ module.exports = {
   listStaffingRequests,
   createStaffingRequest,
   searchEmployees,
+  getSelfTrainingAndCompetency,
+  acknowledgeSopSelf,
+  getTeamTrainingGaps,
 };
+
 
