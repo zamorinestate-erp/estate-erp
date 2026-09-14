@@ -146,13 +146,14 @@ async function updateContractObligationStatus(req, res) {
     const auth = getAuth(req);
     const organisationId = auth.organisationId;
     const { contractId, obligationId } = req.params;
-    const { status, observation } = req.body;
+    const { status, observation, breachDetails } = req.body;
     const obligation = await ownerComplianceService.updateContractObligationStatus(
       organisationId,
       contractId,
       obligationId,
       status,
-      observation
+      observation,
+      breachDetails
     );
     return res.status(200).json({ success: true, data: obligation });
   } catch (err) {

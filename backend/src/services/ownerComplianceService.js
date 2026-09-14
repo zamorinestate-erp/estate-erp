@@ -252,9 +252,22 @@ class OwnerComplianceService {
     return obligation;
   }
 
-  async updateContractObligationStatus(organisationId, contractId, obligationId, status, observation) {
+  async updateContractObligationStatus(organisationId, contractId, obligationId, status, observation, breachDetails = null) {
     const obligation = await ContractObligation.findOne({ organisationId, contractId, obligationId });
     if (!obligation) throw new Error('Contract obligation not found');
+
+    if (status === 'BREACHED') {
+      if (!breachDetails || !breachDetails.reviewer || !breachDetails.evidence || !breachDetails.reason) {
+        throw new Error('LEGAL_BREACH_DECISION_REQUIRES_AUTHORISATION_EVIDENCE_AND_REVIEWER');
+      }
+      obligation.breachDecision = {
+        reviewer: breachDetails.reviewer,
+        evidence: breachDetails.evidence,
+        reason: breachDetails.reason,
+        authority: breachDetails.authority || 'LEGAL_COUNSEL',
+        date: new Date(),
+      };
+    }
 
     obligation.status = status;
     if (observation) obligation.exceptionObservation = observation;
@@ -331,8 +344,15 @@ class OwnerComplianceService {
       throw new Error(`Illegal insurance claim transition from ${claim.status} to ${newStatus}`);
     }
 
+    if (newStatus === 'REJECTED') {
+      if (!metadata.rejectionReason && !metadata.insurerReference && !metadata.evidenceDocumentId) {
+        throw new Error('INSURER_REPUDIATION_REQUIRES_COMMUNICATION_OR_EVIDENCE');
+      }
+    }
+
     claim.status = newStatus;
     if (metadata.rejectionReason) claim.rejectionReason = metadata.rejectionReason;
+    if (metadata.insurerReference) claim.insurerReference = metadata.insurerReference;
     if (metadata.settlementAmount !== undefined) claim.settlementAmount = metadata.settlementAmount;
     if (metadata.surveyorDetails) claim.surveyorDetails = metadata.surveyorDetails;
 

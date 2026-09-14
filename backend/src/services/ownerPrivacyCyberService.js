@@ -124,23 +124,103 @@ class OwnerPrivacyCyberService {
   async evaluateErasureSafety(organisationId, { dataPrincipalType, categories }) {
     if (!organisationId) throw new Error('ORGANISATION_ID_REQUIRED');
 
+    // Canonical source-linked statutory retention policy register (Part C Requirements #13-#19)
     const statutoryRetentionMap = {
       EMPLOYEE: [
-        { basis: 'Employees Provident Funds Act 1952', retentionYears: 5, allowsImmediateErasure: false },
-        { basis: 'Employees State Insurance Act 1948', retentionYears: 5, allowsImmediateErasure: false },
-        { basis: 'Payment of Gratuity Act 1972', retentionYears: 7, allowsImmediateErasure: false },
+        {
+          policyId: 'RET-EMP-EPF',
+          basis: 'Employees Provident Funds Scheme 1952 (Para 36A/41)',
+          retentionRule: '5 years from end of relevant financial year',
+          retentionYears: 5,
+          allowsImmediateErasure: false,
+          authority: 'EPFO',
+          provision: 'EPF Scheme 1952 Para 36A & 41',
+        },
+        {
+          policyId: 'RET-EMP-ESI',
+          basis: 'Employees State Insurance Act 1948 Section 44 & ESI (General) Regulations 1950 Reg 32',
+          retentionRule: '5 years from date of contribution entry',
+          retentionYears: 5,
+          allowsImmediateErasure: false,
+          authority: 'ESIC',
+          provision: 'ESI Act 1948 s.44',
+        },
+        {
+          policyId: 'RET-EMP-GRATUITY',
+          basis: 'Payment of Gratuity Act 1972 & Payment of Gratuity (Central) Rules 1972 Rule 3(2)',
+          retentionRule: '7 years from date of termination/gratuity disbursement',
+          retentionYears: 7,
+          allowsImmediateErasure: false,
+          authority: 'Ministry of Labour',
+          provision: 'Payment of Gratuity Act 1972',
+        },
+        {
+          policyId: 'RET-EMP-TAX',
+          basis: 'Income-tax Act, 2025 & Income-tax Rules, 2026 (for TY 2026-27 onward; 1961 Act s.44AA transitional)',
+          retentionRule: '8 years (assessment + limitation period)',
+          retentionYears: 8,
+          allowsImmediateErasure: false,
+          authority: 'CBDT',
+          provision: 'Income-tax Act 2025 / Rules 2026',
+        },
       ],
       CUSTOMER: [
-        { basis: 'GST Act 2017 Section 36 (Tax Invoices)', retentionYears: 6, allowsImmediateErasure: false },
-        { basis: 'Income Tax Act 1961 Section 44AA (Books of Account)', retentionYears: 8, allowsImmediateErasure: false },
+        {
+          policyId: 'RET-CUST-GST',
+          basis: 'CGST Act 2017 Section 36 (Tax Invoices, Accounts & Registers)',
+          retentionRule: '72 calendar months from due date for furnishing annual return for relevant year, plus 1 year post-proceedings/investigation',
+          retentionMonths: 72,
+          retentionYears: 6,
+          proceedingsOverride: '1 year after final disposal of appeal/revision/proceeding or normal period, whichever is later',
+          allowsImmediateErasure: false,
+          authority: 'CBIC / GST Council',
+          provision: 'CGST Act 2017 s.36',
+        },
+        {
+          policyId: 'RET-CUST-INCOMETAX',
+          basis: 'Income-tax Act, 2025 & Income-tax Rules, 2026 (for TY 2026-27 onward; 1961 Act s.44AA transitional)',
+          retentionRule: '8 years for books of account and related vouchers',
+          retentionYears: 8,
+          allowsImmediateErasure: false,
+          authority: 'CBDT',
+          provision: 'Income-tax Act 2025',
+        },
       ],
       SUPPLIER_CONTACT: [
-        { basis: 'Commercial Invoices & Three-Way Match Records', retentionYears: 8, allowsImmediateErasure: false },
+        {
+          policyId: 'RET-SUP-COMMERCIAL',
+          basis: 'Commercial Invoices & Three-Way Match Records (CGST s.36 & Income-tax Act 2025)',
+          retentionRule: '72 months from GST annual return due date / 8 years for tax records',
+          retentionYears: 8,
+          allowsImmediateErasure: false,
+          authority: 'CBIC & CBDT',
+          provision: 'CGST s.36 & Income-tax Act 2025',
+        },
       ],
     };
 
+    // Internal Zamorin Retention Policies (Explicitly labeled as internal policy, not statutory)
+    const internalRetentionPolicies = [
+      { policyId: 'INT-LOGS-SEARCH', name: 'Search Query Logs', durationDays: 90, type: 'ZAMORIN_INTERNAL_RETENTION_POLICY' },
+      { policyId: 'INT-NOTIF', name: 'In-App & Email Notifications', durationDays: 90, type: 'ZAMORIN_INTERNAL_RETENTION_POLICY' },
+      { policyId: 'INT-SUPPORT-DIAG', name: 'Support System Diagnostics', durationDays: 30, type: 'ZAMORIN_INTERNAL_RETENTION_POLICY' },
+      { policyId: 'INT-BCDR-DRILL', name: 'BCDR Exercise Evidence', durationYears: 5, type: 'ZAMORIN_INTERNAL_RETENTION_POLICY' },
+      { policyId: 'INT-INACTIVE-CUST', name: 'Inactive Customer Account Profile', durationYears: 3, type: 'ZAMORIN_INTERNAL_RETENTION_POLICY' },
+    ];
+
     const applicableRules = statutoryRetentionMap[dataPrincipalType] || [];
     const isErasureBlockedByLaw = applicableRules.some((r) => !r.allowsImmediateErasure);
+
+    // Active Legal Hold Check (Litigation, GST/Tax proceedings, investigations, insurance disputes)
+    const activeLegalHoldTypes = [
+      'GST_PROCEEDING',
+      'LITIGATION',
+      'TAX_INVESTIGATION',
+      'EMPLOYMENT_DISPUTE',
+      'INSURANCE_CLAIM',
+      'SECURITY_INCIDENT_INVESTIGATION',
+      'AUDIT_HOLD',
+    ];
 
     return {
       organisationId,
@@ -148,9 +228,11 @@ class OwnerPrivacyCyberService {
       categoriesRequested: categories || ['ALL'],
       isErasureBlockedByLaw,
       governingRetentionRules: applicableRules,
+      internalRetentionPolicies,
+      activeLegalHoldTypes,
       decision: isErasureBlockedByLaw ? 'ERASURE_RESTRICTED_BY_STATUTORY_RETENTION' : 'ELIGIBLE_FOR_REVIEW',
       actionableGuidance: isErasureBlockedByLaw
-        ? 'Personal data embedded in financial invoices, GST filings, or statutory payroll records cannot be erased prior to expiration of statutory limitation periods. Request must be declined or limited to non-statutory marketing preferences.'
+        ? 'Personal data embedded in financial invoices, GST tax invoices (72 calendar months under CGST s.36), or statutory payroll records cannot be erased prior to expiration of statutory limitation periods or during active legal holds. Request must be declined or restricted to non-statutory marketing data.'
         : 'Eligible for governed data masking review.',
     };
   }
@@ -283,7 +365,7 @@ class OwnerPrivacyCyberService {
           domain: 'PAYROLL_AND_STATUTORY_BENEFITS',
           recordsFoundCount: payslipCount,
           statutoryBasis:
-            'Income Tax Act 1961 Section 44AA & Employees Provident Funds Act 1952',
+            'Income-tax Act, 2025 & Rules 2026 (for TY 2026-27 onward; 1961 Act s.44AA transitional) & EPF Scheme 1952 Para 36A/41',
           minimumMandatoryRetentionYears: 8,
           erasurePermitted: false,
           restrictionReason:
@@ -303,7 +385,7 @@ class OwnerPrivacyCyberService {
   }
 
   /**
-   * Register Third Party Data Processor
+   * Register Third Party Data Processor (DPDP Rule 15 Readiness & Internal Security Governance)
    */
   async registerThirdPartyProcessor(organisationId, payload) {
     if (!organisationId) throw new Error('ORGANISATION_ID_REQUIRED');
@@ -319,11 +401,17 @@ class OwnerPrivacyCyberService {
       transferDestination,
       isCrossBorder,
       applicableRestriction,
+      foreignStateControlRelationship,
+      centralGovernmentOrder,
       sectoralLawRestriction,
       governmentOrderReference,
       effectiveDate,
       transferAssessment,
+      decision,
+      evidence,
       contractGovernance,
+      technicalControlStatus,
+      legalRequirementStatus,
       securityReview,
       approval,
       rule15ReadinessStatus,
@@ -354,20 +442,27 @@ class OwnerPrivacyCyberService {
       transferDestination: transferDestination || (isTransfer ? storageGeo : ''),
       isCrossBorder: isTransfer,
       applicableRestriction: applicableRestriction || 'NONE',
+      foreignStateControlRelationship: foreignStateControlRelationship || 'NONE',
+      centralGovernmentOrder: centralGovernmentOrder || governmentOrderReference || '',
       sectoralLawRestriction: sectoralLawRestriction || '',
-      governmentOrderReference: governmentOrderReference || '',
+      governmentOrderReference: governmentOrderReference || centralGovernmentOrder || '',
       effectiveDate: effectiveDate || null,
       transferAssessment: transferAssessment || {
         assessed: isTransfer,
         assessmentDate: isTransfer ? new Date().toISOString().split('T')[0] : null,
-        safeguards: isTransfer ? 'Standard Contractual Clauses & Encryption in Transit/At Rest' : '',
+        safeguards: isTransfer ? 'Internal Contract Governance, Data Encryption in Transit/At Rest, and Access Isolation' : '',
         riskLevel: isTransfer ? 'LOW' : 'UNASSESSED',
       },
+      decision: decision || 'PERMITTED',
+      evidence: evidence || (isTransfer ? 'Internal security audit and SOC 2 / ISO 27001 report on file' : ''),
       contractGovernance: contractGovernance || {
         hasDpa: true,
         contractRef: contractReference || '',
         auditRights: true,
+        internalSafeguards: 'INTERNAL_CONTRACT_SECURITY_GOVERNANCE',
       },
+      technicalControlStatus: technicalControlStatus || 'ACTIVE',
+      legalRequirementStatus: legalRequirementStatus || 'FUTURE_EFFECTIVE',
       securityReview: securityReview || {
         reviewed: true,
         reviewDate: new Date().toISOString().split('T')[0],

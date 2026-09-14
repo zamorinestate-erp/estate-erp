@@ -94,7 +94,17 @@ const thirdPartyProcessorSchema = new mongoose.Schema(
     applicableRestriction: {
       type: String,
       trim: true,
-      default: 'NONE', // 'NONE', 'SECTORAL_RESTRICTION', 'GOVERNMENT_ORDER', 'SPECIAL_LOCALISATION'
+      default: 'NONE', // 'NONE', 'SECTORAL_RESTRICTION', 'CENTRAL_GOVERNMENT_ORDER', 'SPECIAL_LOCALISATION'
+    },
+    foreignStateControlRelationship: {
+      type: String,
+      trim: true,
+      default: 'NONE',
+    },
+    centralGovernmentOrder: {
+      type: String,
+      trim: true,
+      default: '',
     },
     sectoralLawRestriction: {
       type: String,
@@ -121,10 +131,31 @@ const thirdPartyProcessorSchema = new mongoose.Schema(
         default: 'UNASSESSED',
       },
     },
+    decision: {
+      type: String,
+      enum: ['PERMITTED', 'RESTRICTED', 'PROHIBITED', 'PENDING_EVALUATION'],
+      default: 'PERMITTED',
+    },
+    evidence: {
+      type: String,
+      trim: true,
+      default: '',
+    },
     contractGovernance: {
       hasDpa: { type: Boolean, default: true },
       contractRef: { type: String, default: '' },
       auditRights: { type: Boolean, default: true },
+      internalSafeguards: { type: String, default: 'INTERNAL_CONTRACT_SECURITY_GOVERNANCE' },
+    },
+    technicalControlStatus: {
+      type: String,
+      enum: ['ACTIVE', 'INACTIVE', 'PLANNED'],
+      default: 'ACTIVE',
+    },
+    legalRequirementStatus: {
+      type: String,
+      enum: ['FUTURE_EFFECTIVE', 'IN_FORCE', 'NOT_APPLICABLE'],
+      default: 'FUTURE_EFFECTIVE',
     },
     securityReview: {
       reviewed: { type: Boolean, default: true },

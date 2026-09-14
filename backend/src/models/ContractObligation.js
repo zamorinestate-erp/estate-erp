@@ -39,7 +39,7 @@ const contractObligationSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['PENDING', 'MET', 'POTENTIAL_EXCEPTION', 'WAIVED'],
+      enum: ['PENDING', 'MET', 'POTENTIAL_EXCEPTION', 'BREACHED', 'WAIVED'],
       default: 'PENDING',
     },
     exceptionObservation: {
@@ -49,6 +49,13 @@ const contractObligationSchema = new mongoose.Schema(
     evidenceDocumentId: {
       type: String,
       default: null,
+    },
+    breachDecision: {
+      reviewer: { type: String, default: null },
+      evidence: { type: String, default: null },
+      reason: { type: String, default: null },
+      date: { type: Date, default: null },
+      authority: { type: String, default: null },
     },
     ownerId: {
       type: String,

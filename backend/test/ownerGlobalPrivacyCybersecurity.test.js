@@ -217,7 +217,7 @@ describe('STAGE 08 — Global Privacy & Cybersecurity Cross-App Suite', () => {
     assert.equal(found.title, 'Suspected Device Physical Theft at Beachside Café');
   });
 
-  test('5. DPDP Cross-Border Transfer Governance: Foreign processors accepted with transfer assessments (no blanket India-only block)', async () => {
+  test('5. DPDP Cross-Border Transfer Governance: Foreign processors accepted with Central Government Rule 15 readiness (no blanket India-only block)', async () => {
     const foreignProcessor = await ownerPrivacyCyberService.registerThirdPartyProcessor(TEST_ORG, {
       providerName: 'Stripe International Financial Infrastructure',
       serviceDescription: 'International Payment Gateway & Settlement Gateway',
@@ -228,9 +228,26 @@ describe('STAGE 08 — Global Privacy & Cybersecurity Cross-App Suite', () => {
       processingCountry: 'United States',
       transferDestination: 'EU/US Secure Cloud Infrastructure',
       isCrossBorder: true,
-      transferAssessment: 'Adequacy and Standard Contractual Clauses (SCC) verified in compliance with DPDP Rule 15 readiness.',
-      contractGovernance: 'Standard Contractual Data Protection Clauses executed; exit data deletion certified.',
-      securityReview: 'SOC 2 Type II and PCI DSS Level 1 certified.',
+      foreignStateControlRelationship: 'NONE',
+      centralGovernmentOrder: 'No restrictive order notified by Central Government for financial gateway processors',
+      applicableRestriction: 'NONE',
+      transferAssessment: {
+        assessed: true,
+        assessmentDate: '2026-09-14',
+        safeguards: 'Internal Contract Governance, Data Encryption in Transit/At Rest, and Access Isolation',
+        riskLevel: 'LOW',
+      },
+      decision: 'PERMITTED',
+      evidence: 'SOC 2 Type II and PCI DSS Level 1 certifications on file',
+      contractGovernance: {
+        hasDpa: true,
+        contractRef: 'MSA-STRIPE-GLOBAL-2026',
+        auditRights: true,
+        internalSafeguards: 'INTERNAL_CONTRACT_SECURITY_GOVERNANCE',
+      },
+      technicalControlStatus: 'ACTIVE',
+      legalRequirementStatus: 'FUTURE_EFFECTIVE',
+      securityReview: { reviewed: true, reviewDate: '2026-09-14', reviewer: 'Enterprise Security Lead' },
       approval: { status: 'APPROVED', approvedBy: 'Legal Director' },
       rule15ReadinessStatus: 'FUTURE_COMPLIANCE_READINESS',
     });
@@ -238,6 +255,10 @@ describe('STAGE 08 — Global Privacy & Cybersecurity Cross-App Suite', () => {
     assert.ok(foreignProcessor.processorId);
     assert.equal(foreignProcessor.isCrossBorder, true);
     assert.equal(foreignProcessor.storageCountry, 'Ireland');
+    assert.equal(foreignProcessor.foreignStateControlRelationship, 'NONE');
+    assert.equal(foreignProcessor.decision, 'PERMITTED');
+    assert.equal(foreignProcessor.technicalControlStatus, 'ACTIVE');
+    assert.equal(foreignProcessor.legalRequirementStatus, 'FUTURE_EFFECTIVE');
     assert.equal(foreignProcessor.rule15ReadinessStatus, 'FUTURE_COMPLIANCE_READINESS');
     assert.equal(foreignProcessor.isActive, true);
     assert.equal(foreignProcessor.approval.status, 'APPROVED');
