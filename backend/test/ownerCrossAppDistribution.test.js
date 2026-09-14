@@ -55,10 +55,10 @@ describe('OWNER BATCH 02 — Cross-App Contextual Distribution Suite', () => {
 
     // Clean test records
     await Promise.all([
-      Cafe.deleteMany({ organisationId: TEST_ORG }),
-      Vendor.deleteMany({ organisationId: TEST_ORG }),
-      Asset.deleteMany({ organisationId: TEST_ORG }),
-      User.deleteMany({ organisationId: TEST_ORG }),
+      Cafe.deleteMany({ $or: [{ organisationId: TEST_ORG }, { cafeId: CAFE_1 }] }),
+      Vendor.deleteMany({ $or: [{ organisationId: TEST_ORG }, { vendorId: VENDOR_ID }] }),
+      Asset.deleteMany({ $or: [{ organisationId: TEST_ORG }, { assetId: ASSET_ID }] }),
+      User.deleteMany({ $or: [{ organisationId: TEST_ORG }, { userId: { $in: [USER_STAFF, USER_MGR] } }] }),
       BusinessLicence.deleteMany({ organisationId: TEST_ORG }),
       ComplianceObligation.deleteMany({ organisationId: TEST_ORG }),
       BusinessContract.deleteMany({ organisationId: TEST_ORG }),
