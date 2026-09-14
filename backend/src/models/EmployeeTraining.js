@@ -63,6 +63,17 @@ const employeeTrainingSchema = new mongoose.Schema(
       trim: true,
       default: '',
     },
+    certificateValidityStatus: {
+      type: String,
+      enum: ['PERPETUAL', 'TIME_BOUND', 'CONDITIONALLY_VALID', 'REVOKED', 'EXPIRED'],
+      default: 'PERPETUAL', // FSSAI clarification: FoSTaC FSS certificate is perpetual unless KoB changes or revoked
+    },
+    refresherRequirement: {
+      required: { type: Boolean, default: true },
+      frequency: { type: String, default: 'BIENNIAL' }, // Refresher recommended every 2 years
+      lastCompletedDate: { type: Date, default: null },
+      nextDueDate: { type: Date, default: null },
+    },
     fostacVerificationStatus: {
       type: String,
       enum: FOSTAC_VERIFICATION_STATUSES,

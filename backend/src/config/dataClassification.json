@@ -71,12 +71,12 @@
       "proceedingsOverride": "1 year post final disposal of appeal/revision/proceeding or normal period, whichever later"
     },
     "STATUTORY_INCOME_TAX_BOOKS": {
-      "duration": "8 years from relevant assessment year",
-      "authority": "Income-tax Act, 2025 & Income-tax Rules, 2026 (for TY 2026-27 onward; 1961 Act transitional)"
+      "duration": "7 tax years from end of relevant tax year (subject to reopened assessment extension)",
+      "authority": "Income-tax Act, 2025 & Income-tax Rules, 2026 Rule 46(9) (1961 Act transitional)"
     },
     "ZAMORIN_INTERNAL_PAYROLL_AND_EPF": {
       "duration": "5 years from end of relevant financial year",
-      "authority": "Zamorin Internal HR/Finance Policy (EPFO statutory employer retention instruction pending) / ESI Reg 32"
+      "authority": "Zamorin Internal HR/Finance Policy (INTERNAL POLICY — Statutory EPFO employer retention instruction pending) / ESI Reg 32"
     },
     "STATUTORY_AUDIT_TRAIL": {
       "duration": "10 years",

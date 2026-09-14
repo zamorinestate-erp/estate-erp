@@ -156,12 +156,12 @@ class OwnerPrivacyCyberService {
         },
         {
           policyId: 'RET-EMP-TAX',
-          basis: 'Income-tax Act, 2025 & Income-tax Rules, 2026 (for TY 2026-27 onward; 1961 Act s.44AA transitional)',
-          retentionRule: '8 years (assessment + limitation period)',
-          retentionYears: 8,
+          basis: 'Income-tax Act, 2025 & Income-tax Rules, 2026 Rule 46(9) (for TY 2026-27 onward; 1961 Act s.44AA transitional)',
+          retentionRule: '7 tax years from end of relevant tax year (subject to reopened assessment extension under Rule 46(9))',
+          retentionYears: 7,
           allowsImmediateErasure: false,
           authority: 'CBDT',
-          provision: 'Income-tax Act 2025 / Rules 2026',
+          provision: 'Income-tax Rules, 2026 Rule 46(9)',
         },
       ],
       CUSTOMER: [
@@ -365,8 +365,8 @@ class OwnerPrivacyCyberService {
           domain: 'PAYROLL_AND_STATUTORY_BENEFITS',
           recordsFoundCount: payslipCount,
           statutoryBasis:
-            'Income-tax Act, 2025 & Rules 2026 (for TY 2026-27 onward; 1961 Act s.44AA transitional) & Zamorin Internal EPF Retention Policy (Statutory EPFO source pending)',
-          minimumMandatoryRetentionYears: 8,
+            'Income-tax Act, 2025 & Rules 2026 Rule 46(9) (7 tax years from end of relevant tax year; reopened assessment extension) & Zamorin Internal EPF Retention Policy (Statutory EPFO source pending)',
+          minimumMandatoryRetentionYears: 7,
           erasurePermitted: false,
           restrictionReason:
             'Statutory financial and payroll records cannot be erased before statutory limitation period expiration.',
