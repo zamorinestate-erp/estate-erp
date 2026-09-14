@@ -68,6 +68,13 @@ import { renderSystemHealthPage, initSystemHealthPage } from "./pages/systemHeal
 import { renderOwnerFoodSafety, wireOwnerFoodSafety, setOwnerFoodSafetySection } from "./pages/ownerFoodSafety.js";
 import { renderOwnerRiskAudit, wireOwnerRiskAudit, setOwnerRiskAuditSection } from "./pages/ownerRiskAudit.js";
 import { renderOwnerPlanning, wireOwnerPlanning, setOwnerPlanningSection } from "./pages/ownerPlanning.js";
+import { renderOwnerCompliance, wireOwnerCompliance, setOwnerComplianceSection } from "./pages/ownerCompliance.js";
+import { renderOwnerSupplierIntelligence, initOwnerSupplierIntelligenceEvents, setOwnerSupplierSection } from "./pages/ownerSupplierIntelligence.js";
+import { renderOwnerAcademy, initOwnerAcademyEvents, setOwnerAcademySection } from "./pages/ownerAcademy.js";
+import { renderOwnerAssetReliability, initOwnerAssetReliabilityEvents, setOwnerAssetReliabilitySection } from "./pages/ownerAssetReliability.js";
+import { renderOwnerPrivacyCyber, initOwnerPrivacyCyberEvents, setOwnerPrivacyCyberSection } from "./pages/ownerPrivacyCyber.js";
+import { renderOwnerBcdr, initOwnerBcdrEvents, setOwnerBcdrSection } from "./pages/ownerBcdr.js";
+import { renderOwnerMasterData, initOwnerMasterDataEvents, setOwnerMasterDataSection } from "./pages/ownerMasterData.js";
 
 // ROLE_LABELS: display-safe generic labels used only for topbar scope chip
 // until /auth/me bootstrap provides the real user's display name.
@@ -523,6 +530,55 @@ async function renderPage() {
       setOwnerPlanningSection(subroute || "overview");
       content.innerHTML = renderOwnerPlanning();
       wireOwnerPlanning();
+      break;
+
+    case "owner-compliance":
+    case "compliance":
+      setOwnerComplianceSection(subroute || "overview");
+      content.innerHTML = renderOwnerCompliance();
+      wireOwnerCompliance();
+      break;
+
+    case "owner-supplier-intelligence":
+    case "supplier-intelligence":
+      setOwnerSupplierSection(subroute || "overview");
+      content.innerHTML = renderOwnerSupplierIntelligence();
+      initOwnerSupplierIntelligenceEvents();
+      break;
+
+    case "owner-academy":
+    case "academy":
+      setOwnerAcademySection(subroute || "overview");
+      content.innerHTML = renderOwnerAcademy();
+      initOwnerAcademyEvents();
+      break;
+
+    case "owner-asset-reliability":
+    case "asset-reliability":
+      setOwnerAssetReliabilitySection(subroute || "overview");
+      content.innerHTML = renderOwnerAssetReliability();
+      initOwnerAssetReliabilityEvents();
+      break;
+
+    case "owner-privacy-cyber":
+    case "privacy-cyber":
+      setOwnerPrivacyCyberSection(subroute || "overview");
+      content.innerHTML = renderOwnerPrivacyCyber();
+      initOwnerPrivacyCyberEvents();
+      break;
+
+    case "owner-bcdr":
+    case "bcdr":
+      setOwnerBcdrSection(subroute || "overview");
+      content.innerHTML = renderOwnerBcdr();
+      initOwnerBcdrEvents();
+      break;
+
+    case "owner-master-data":
+    case "master-data":
+      setOwnerMasterDataSection(subroute || "overview");
+      content.innerHTML = renderOwnerMasterData();
+      initOwnerMasterDataEvents();
       break;
 
     case "approvals":

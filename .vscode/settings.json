@@ -13,5 +13,23 @@
   "vscode-edge-devtools.webhint": false,
   "vscode-edge-devtools.webhintInstallNotification": false,
   "markdownlint.appliesTo": "noFiles",
-  "markdownlint.lintWorkspaceGlobs": []
+  "markdownlint.lintWorkspaceGlobs": [],
+  "java.jdt.ls.java.home": "C:\\Users\\chris\\.gradle\\jdks\\eclipse_adoptium-17-amd64-windows.2",
+  "gradle.java.home": "C:\\Users\\chris\\.gradle\\jdks\\eclipse_adoptium-17-amd64-windows.2",
+  "jdk.javahome": "C:\\Users\\chris\\.gradle\\jdks\\eclipse_adoptium-17-amd64-windows.2",
+  "java.import.gradle.enabled": false,
+  "java.import.exclusions": [
+    "**/node_modules/**",
+    "**/.metadata/**",
+    "**/archetype-resources/**",
+    "**/META-INF/maven/**",
+    "**/android/**"
+  ],
+  "java.configuration.runtimes": [
+    {
+      "name": "JavaSE-17",
+      "path": "C:\\Users\\chris\\.gradle\\jdks\\eclipse_adoptium-17-amd64-windows.2",
+      "default": true
+    }
+  ]
 }

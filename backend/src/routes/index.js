@@ -92,6 +92,27 @@ const ownerRiskAuditRoutes =
 const ownerPlanningRoutes =
   require('./ownerPlanningRoutes');
 
+const ownerComplianceRoutes =
+  require('./ownerComplianceRoutes');
+
+const ownerSupplierIntelligenceRoutes =
+  require('./ownerSupplierIntelligenceRoutes');
+
+const ownerAcademyRoutes =
+  require('./ownerAcademyRoutes');
+
+const ownerAssetReliabilityRoutes =
+  require('./ownerAssetReliabilityRoutes');
+
+const ownerPrivacyCyberRoutes =
+  require('./ownerPrivacyCyberRoutes');
+
+const ownerBcdrRoutes =
+  require('./ownerBcdrRoutes');
+
+const ownerMasterDataRoutes =
+  require('./ownerMasterDataRoutes');
+
 const assetRoutes =
   require('./assetRoutes');
 
@@ -322,6 +343,41 @@ router.use(
 router.use(
   '/planning',
   ownerPlanningRoutes
+);
+
+router.use(
+  '/compliance',
+  ownerComplianceRoutes
+);
+
+router.use(
+  '/supplier-intelligence',
+  ownerSupplierIntelligenceRoutes
+);
+
+router.use(
+  '/academy',
+  ownerAcademyRoutes
+);
+
+router.use(
+  '/asset-reliability',
+  ownerAssetReliabilityRoutes
+);
+
+router.use(
+  '/privacy-cyber',
+  ownerPrivacyCyberRoutes
+);
+
+router.use(
+  '/bcdr',
+  ownerBcdrRoutes
+);
+
+router.use(
+  '/master-data',
+  ownerMasterDataRoutes
 );
 
 router.use(
