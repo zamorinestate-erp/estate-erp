@@ -75,6 +75,11 @@ import { renderOwnerAssetReliability, initOwnerAssetReliabilityEvents, setOwnerA
 import { renderOwnerPrivacyCyber, initOwnerPrivacyCyberEvents, setOwnerPrivacyCyberSection } from "./pages/ownerPrivacyCyber.js";
 import { renderOwnerBcdr, initOwnerBcdrEvents, setOwnerBcdrSection } from "./pages/ownerBcdr.js";
 import { renderOwnerMasterData, initOwnerMasterDataEvents, setOwnerMasterDataSection } from "./pages/ownerMasterData.js";
+import { renderOwnerComplaints, initOwnerComplaintsEvents, setOwnerComplaintsSection } from "./pages/ownerComplaints.js";
+import { renderOwnerMenuPricing, initOwnerMenuPricingEvents, setOwnerMenuPricingSection } from "./pages/ownerMenuPricing.js";
+import { renderOwnerCustomerLoyalty, initOwnerCustomerLoyaltyEvents, setOwnerCustomerLoyaltySection } from "./pages/ownerCustomerLoyalty.js";
+import { renderOwnerUtilitiesWaste, initOwnerUtilitiesWasteEvents, setOwnerUtilitiesWasteSection } from "./pages/ownerUtilitiesWaste.js";
+import { renderOwnerGovernanceDelegation, initOwnerGovernanceDelegationEvents, setOwnerGovernanceDelegationSection } from "./pages/ownerGovernanceDelegation.js";
 
 // ROLE_LABELS: display-safe generic labels used only for topbar scope chip
 // until /auth/me bootstrap provides the real user's display name.
@@ -579,6 +584,41 @@ async function renderPage() {
       setOwnerMasterDataSection(subroute || "overview");
       content.innerHTML = renderOwnerMasterData();
       initOwnerMasterDataEvents();
+      break;
+
+    case "owner-complaints":
+    case "complaints":
+      setOwnerComplaintsSection(subroute || "overview");
+      content.innerHTML = renderOwnerComplaints();
+      initOwnerComplaintsEvents();
+      break;
+
+    case "owner-menu-pricing":
+    case "menu-pricing":
+      setOwnerMenuPricingSection(subroute || "matrix");
+      content.innerHTML = renderOwnerMenuPricing();
+      initOwnerMenuPricingEvents();
+      break;
+
+    case "owner-customer-loyalty":
+    case "customer-loyalty":
+      setOwnerCustomerLoyaltySection(subroute || "analytics");
+      content.innerHTML = renderOwnerCustomerLoyalty();
+      initOwnerCustomerLoyaltyEvents();
+      break;
+
+    case "owner-utilities-waste":
+    case "utilities-waste":
+      setOwnerUtilitiesWasteSection(subroute || "overview");
+      content.innerHTML = renderOwnerUtilitiesWaste();
+      initOwnerUtilitiesWasteEvents();
+      break;
+
+    case "owner-governance-delegation":
+    case "governance-delegation":
+      setOwnerGovernanceDelegationSection(subroute || "overview");
+      content.innerHTML = renderOwnerGovernanceDelegation();
+      initOwnerGovernanceDelegationEvents();
       break;
 
     case "approvals":

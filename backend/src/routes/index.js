@@ -113,6 +113,21 @@ const ownerBcdrRoutes =
 const ownerMasterDataRoutes =
   require('./ownerMasterDataRoutes');
 
+const ownerComplaintsRoutes =
+  require('./ownerComplaintsRoutes');
+
+const ownerMenuPricingRoutes =
+  require('./ownerMenuPricingRoutes');
+
+const ownerCustomerLoyaltyRoutes =
+  require('./ownerCustomerLoyaltyRoutes');
+
+const ownerUtilitiesWasteRoutes =
+  require('./ownerUtilitiesWasteRoutes');
+
+const ownerGovernanceDelegationRoutes =
+  require('./ownerGovernanceDelegationRoutes');
+
 const assetRoutes =
   require('./assetRoutes');
 
@@ -379,6 +394,38 @@ router.use(
   '/master-data',
   ownerMasterDataRoutes
 );
+
+router.use(
+  '/complaints',
+  ownerComplaintsRoutes
+);
+
+router.use(
+  '/menu-pricing',
+  ownerMenuPricingRoutes
+);
+
+router.use(
+  '/customer-loyalty',
+  ownerCustomerLoyaltyRoutes
+);
+
+router.use(
+  '/utilities-waste',
+  ownerUtilitiesWasteRoutes
+);
+
+router.use(
+  '/governance-delegation',
+  ownerGovernanceDelegationRoutes
+);
+
+// Strategic Portfolio /owner/* mounts
+router.use('/owner/complaints', ownerComplaintsRoutes);
+router.use('/owner/menu-pricing', ownerMenuPricingRoutes);
+router.use('/owner/customer-loyalty', ownerCustomerLoyaltyRoutes);
+router.use('/owner/utilities-waste', ownerUtilitiesWasteRoutes);
+router.use('/owner/governance-delegation', ownerGovernanceDelegationRoutes);
 
 router.use(
   '/assets',
