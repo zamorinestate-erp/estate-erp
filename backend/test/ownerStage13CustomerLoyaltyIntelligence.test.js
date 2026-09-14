@@ -259,13 +259,13 @@ describe('STAGE 13 — Customer & Loyalty Intelligence Suite', () => {
     );
   });
 
-  test('5. Loyalty Accounting Liability Computation: Computes exact liability at ₹0.25/point', async () => {
-    const liability = await ownerCustomerLoyaltyService.calculateLoyaltyLiability(TEST_ORG);
-    assert.equal(liability.pointConversionRateRupees, 0.25);
+  test('5. Loyalty Programme Exposure Simulation: Computes estimated programme exposure at configured ₹0.25/point', async () => {
+    const exposure = await ownerCustomerLoyaltyService.calculateLoyaltyExposure(TEST_ORG);
+    assert.equal(exposure.pointConversionRateRupees, 0.25);
     // Customers: Aditi (100), Rahul (250), Sneha (40) -> Total 390
-    assert.equal(liability.totalOutstandingPoints, 390);
-    assert.equal(liability.totalEstimatedLiabilityRupees, 97.5); // 390 * 0.25
-    assert.ok(liability.accountingNotice.includes('LIABILITY ESTIMATE'));
+    assert.equal(exposure.totalOutstandingPoints, 390);
+    assert.equal(exposure.estimatedExposureRupees, 97.5); // 390 * 0.25
+    assert.ok(exposure.exposureNotice.includes('PROGRAMME EXPOSURE ESTIMATE'));
   });
 
   test('6. Purpose Limitation: Enforces separation between complaints and marketing consent', async () => {

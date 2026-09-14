@@ -74,11 +74,15 @@ class OwnerCustomerLoyaltyController {
       const { organisationId } = this._getAuth(req);
       if (!organisationId) return res.status(401).json({ success: false, error: 'ORGANISATION_REQUIRED' });
 
-      const liability = await ownerCustomerLoyaltyService.calculateLoyaltyLiability(organisationId);
+      const liability = await ownerCustomerLoyaltyService.calculateLoyaltyExposure(organisationId);
       return res.status(200).json({ success: true, data: liability });
     } catch (err) {
       return res.status(400).json({ success: false, error: err.message });
     }
+  }
+
+  async calculateLoyaltyExposure(req, res) {
+    return this.calculateLoyaltyLiability(req, res);
   }
 
   async verifyComplaintMarketingSeparation(req, res) {
