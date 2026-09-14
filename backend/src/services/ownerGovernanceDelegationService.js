@@ -118,6 +118,49 @@ class OwnerGovernanceDelegationService {
 
     const meetingId = `MTG-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
 
+    // Section 173 Compliance Evaluation
+    const isBoardMeeting = (meetingType === 'BOARD');
+    const isManagementMeeting = (meetingType === 'MANAGEMENT' || meetingType === 'INTERNAL_GOVERNANCE' || meetingType === 'MANAGEMENT_MEETING' || meetingType === 'COMMITTEE');
+    
+    let section173Compliance = {
+      statutoryApplies: isBoardMeeting,
+      noticePeriodDays,
+      isNormalNoticeCompliant: noticePeriodDays >= 7,
+      isUrgentShortNotice: noticePeriodDays < 7,
+      shortNoticeValid: false,
+      reason: isManagementMeeting ? 'EXEMPT_OPERATIONAL_MANAGEMENT_MEETING' : 'NORMAL_7_DAY_STATUTORY_NOTICE'
+    };
+
+    if (isBoardMeeting) {
+      if (noticePeriodDays >= 7) {
+        section173Compliance.shortNoticeValid = true;
+        section173Compliance.reason = 'COMPLIANT_7_DAY_STATUTORY_NOTICE';
+      } else {
+        // Section 173(3): Urgent business on shorter notice
+        const hasIndependentDirectors = payload.hasIndependentDirectors ?? false;
+        const independentDirectorPresent = attendees.some(a => 
+          (a.roleOrDesignation?.toUpperCase().includes('INDEPENDENT') || a.isIndependent) && 
+          ['PRESENT', 'VIDEO_CONFERENCE'].includes(a.attendanceStatus)
+        );
+        const ratifiedByIndependentDirector = !!payload.ratifiedByIndependentDirector;
+        
+        if (!hasIndependentDirectors) {
+          // Companies not requiring independent directors (Pvt Ltd / small / OPC)
+          section173Compliance.shortNoticeValid = true;
+          section173Compliance.reason = 'SHORT_NOTICE_VALID_NO_INDEPENDENT_DIRECTOR_REQUIRED';
+        } else if (independentDirectorPresent) {
+          section173Compliance.shortNoticeValid = true;
+          section173Compliance.reason = 'SHORT_NOTICE_VALID_INDEPENDENT_DIRECTOR_PRESENT';
+        } else if (ratifiedByIndependentDirector) {
+          section173Compliance.shortNoticeValid = true;
+          section173Compliance.reason = 'SHORT_NOTICE_VALID_RATIFIED_BY_INDEPENDENT_DIRECTOR';
+        } else {
+          section173Compliance.shortNoticeValid = false;
+          section173Compliance.reason = 'SHORT_NOTICE_CONDITIONAL_PENDING_INDEPENDENT_DIRECTOR_CIRCULATION_OR_RATIFICATION';
+        }
+      }
+    }
+
     const meeting = new GovernanceMeeting({
       meetingId,
       organisationId,
@@ -128,7 +171,8 @@ class OwnerGovernanceDelegationService {
       scheduledDate: finalDate,
       noticeDate: noticeDate ? new Date(noticeDate) : new Date(finalDate.getTime() - noticePeriodDays * 86400000),
       noticePeriodDays,
-      isNoticeServedCompliantly: noticePeriodDays >= 7,
+      isNoticeServedCompliantly: isManagementMeeting ? true : (noticePeriodDays >= 7 || section173Compliance.shortNoticeValid),
+      section173Compliance,
       agendaItems: agendaItems.map((item, idx) => ({
         itemNumber: idx + 1,
         topic: item.topic || item.title || (typeof item === 'string' ? item : 'Agenda Item'),

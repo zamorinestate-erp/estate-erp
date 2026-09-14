@@ -166,7 +166,7 @@ describe('STAGE 11 — Customer Complaints & Service Recovery Centre Suite', () 
       reason: 'Partial refund for salted dish'
     }, USER_OWNER);
 
-    assert.ok(refundRes.refundReference.startsWith('REF-CMP-'));
+    assert.ok(refundRes.refundReference.startsWith('REF-'));
     assert.equal(refundRes.billStatus, 'PARTIALLY_REFUNDED');
     assert.equal(refundRes.complaint.serviceRecovery.refundAmount, 200);
   });

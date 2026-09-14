@@ -198,18 +198,57 @@ class OwnerComplaintsService {
     if (!bill) throw new Error('CANONICAL_BILL_NOT_FOUND');
 
     const billTotal = bill.totalPaisa ? (bill.totalPaisa / 100) : (bill.totalPayablePaisa ? bill.totalPayablePaisa / 100 : (bill.grandTotal || 0));
-    if (amount > billTotal) {
-      throw new Error(`REFUND_AMOUNT_EXCEEDS_BILL_TOTAL: Max refundable is ₹${billTotal}`);
+    const remainingRefundablePaisa = Math.max(0, (bill.totalPaisa || Math.round(billTotal * 100)) - (bill.refundedTotalPaisa || 0));
+    const requestedPaisa = Math.round(amount * 100);
+
+    if (bill.status === 'VOIDED' || bill.billStatus === 'VOIDED') {
+      throw new Error('CANNOT_REFUND_VOIDED_BILL');
     }
 
-    const canonicalRefundRef = `REF-CMP-${Date.now().toString(36).toUpperCase()}-${Math.floor(amount)}`;
-    bill.billStatus = (amount >= billTotal) ? 'REFUNDED' : 'PARTIALLY_REFUNDED';
+    if (remainingRefundablePaisa <= 0) {
+      throw new Error('BILL_ALREADY_FULLY_REFUNDED');
+    }
+
+    if (requestedPaisa > remainingRefundablePaisa) {
+      throw new Error(`REFUND_AMOUNT_EXCEEDS_BILL_TOTAL: Max refundable is ₹${(remainingRefundablePaisa / 100).toFixed(2)}`);
+    }
+
+    // Canonical refund entry matching billController.js
+    const refundId = `REF-${Date.now()}`;
+    const canonicalRefundRef = `RREF-${Date.now()}`;
+    const refundEntry = {
+      refundId,
+      refundType: requestedPaisa >= (bill.totalPaisa || Math.round(billTotal * 100)) ? 'FULL' : 'PARTIAL',
+      amountPaisa: requestedPaisa,
+      reason: reason || 'Service recovery refund authorized',
+      requestedBy: user?.userId || 'SYSTEM',
+      approvedBy: user?.userId || 'SYSTEM',
+      tender: bill.paymentMethod || 'CASH',
+      refundReference: canonicalRefundRef,
+      status: 'COMPLETED',
+      createdAt: new Date()
+    };
+
+    if (!Array.isArray(bill.refunds)) {
+      bill.refunds = [];
+    }
+    bill.refunds.push(refundEntry);
+    bill.refundedTotalPaisa = (bill.refundedTotalPaisa || 0) + requestedPaisa;
+
+    if (bill.refundedTotalPaisa >= (bill.totalPaisa || Math.round(billTotal * 100))) {
+      bill.status = 'REFUNDED';
+      bill.paymentStatus = 'REFUNDED';
+    } else {
+      bill.status = 'PARTIALLY_REFUNDED';
+      bill.paymentStatus = 'PARTIALLY_REFUNDED';
+    }
+    bill.billStatus = bill.status;
     await bill.save();
 
     complaint.serviceRecovery = {
       remedyType: 'AUTHORISED_REFUND',
       remedyNotes: reason || 'Service recovery refund authorized',
-      refundReference: canonicalRefundRef,
+      refundReference: refundId,
       refundAmount: amount,
       actionDate: new Date(),
       actionByUserId: user?.userId || user?._id || 'SYSTEM'
@@ -218,7 +257,8 @@ class OwnerComplaintsService {
     await complaint.save();
     return {
       complaint: this._formatComplaint(complaint.toObject(), user),
-      refundReference: canonicalRefundRef,
+      refundReference: refundId,
+      canonicalRefundId: refundId,
       billStatus: bill.billStatus
     };
   }

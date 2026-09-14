@@ -105,6 +105,49 @@ describe('STAGE 15 — Corporate Governance, Delegation & Decision Authority Sui
     assert.equal(meeting.quorumRequired, 2);
     assert.equal(meeting.agendaItems.length, 2);
     testMeetingId = meeting.meetingId;
+
+    // Section 173(3) Short Notice: Urgent Board meeting with Independent Director present -> valid
+    const urgentMeetingValid = await ownerGovernanceDelegationService.createMeeting(TEST_ORG, {
+      title: 'Urgent Board Meeting - Acquisition',
+      meetingType: 'BOARD',
+      meetingDate: new Date(Date.now() + 2 * 86400000),
+      noticePeriodDays: 2,
+      hasIndependentDirectors: true,
+      attendees: [
+        { userId: USER_OWNER.userId, personName: 'Director 1', roleOrDesignation: 'Executive Director', attendanceStatus: 'PRESENT' },
+        { userId: 'USR-IND-1', personName: 'Independent Director', roleOrDesignation: 'Independent Director', isIndependent: true, attendanceStatus: 'PRESENT' }
+      ],
+      quorumRequired: 2
+    }, USER_OWNER);
+    assert.equal(urgentMeetingValid.section173Compliance.shortNoticeValid, true);
+    assert.equal(urgentMeetingValid.section173Compliance.reason, 'SHORT_NOTICE_VALID_INDEPENDENT_DIRECTOR_PRESENT');
+
+    // Section 173(3) Short Notice: Urgent Board meeting without Independent Director present -> conditional / pending
+    const urgentMeetingPending = await ownerGovernanceDelegationService.createMeeting(TEST_ORG, {
+      title: 'Urgent Board Meeting - Emergency',
+      meetingType: 'BOARD',
+      meetingDate: new Date(Date.now() + 1 * 86400000),
+      noticePeriodDays: 1,
+      hasIndependentDirectors: true,
+      attendees: [
+        { userId: USER_OWNER.userId, personName: 'Director 1', roleOrDesignation: 'Executive Director', attendanceStatus: 'PRESENT' }
+      ],
+      quorumRequired: 1
+    }, USER_OWNER);
+    assert.equal(urgentMeetingPending.section173Compliance.shortNoticeValid, false);
+    assert.equal(urgentMeetingPending.section173Compliance.reason, 'SHORT_NOTICE_CONDITIONAL_PENDING_INDEPENDENT_DIRECTOR_CIRCULATION_OR_RATIFICATION');
+
+    // Management Meeting: Exempt from Section 173 statutory 7-day notice
+    const mgmtMeeting = await ownerGovernanceDelegationService.createMeeting(TEST_ORG, {
+      title: 'Weekly Store Ops Sync',
+      meetingType: 'MANAGEMENT',
+      meetingDate: new Date(Date.now() + 1 * 86400000),
+      noticePeriodDays: 1,
+      attendees: [{ personName: 'Store Manager', roleOrDesignation: 'Manager', attendanceStatus: 'PRESENT' }],
+      quorumRequired: 1
+    }, USER_OWNER);
+    assert.equal(mgmtMeeting.isNoticeServedCompliantly, true);
+    assert.equal(mgmtMeeting.section173Compliance.reason, 'EXEMPT_OPERATIONAL_MANAGEMENT_MEETING');
   });
 
   test('3. SHA-256 Immutable Minutes Sealing: Seals minutes with hash and rejects post-seal tampering', async () => {
@@ -301,6 +344,99 @@ describe('STAGE 15 — Corporate Governance, Delegation & Decision Authority Sui
       monetaryAmount: 5000
     });
     assert.equal(authAfterRevocation.isAuthorized, false);
+
+    // 7. Supplier Module Delegation
+    const supplierDel = await ownerGovernanceDelegationService.grantDelegation(TEST_ORG, {
+      delegateUserId: USER_STORE_MANAGER.userId,
+      cafeScope: [TEST_CAFE],
+      actionPermissions: ['APPROVE_SUPPLIER_ACTION_PLAN'],
+      module: 'SUPPLIER',
+      startAt: new Date(Date.now() - 3600000),
+      expiresAt: new Date(Date.now() + 86400000),
+      reason: 'Delegate supplier action plan approval'
+    }, USER_OWNER);
+    assert.ok(supplierDel.delegationId);
+    const authSupplier = await ownerGovernanceDelegationService.checkDelegatedAuthority(TEST_ORG, {
+      userId: USER_STORE_MANAGER.userId,
+      cafeId: TEST_CAFE,
+      actionPermission: 'APPROVE_SUPPLIER_ACTION_PLAN',
+      module: 'SUPPLIER'
+    });
+    assert.equal(authSupplier.isAuthorized, true);
+
+    // 8. Master Data Module Delegation
+    const masterDataDel = await ownerGovernanceDelegationService.grantDelegation(TEST_ORG, {
+      delegateUserId: USER_STORE_MANAGER.userId,
+      cafeScope: [TEST_CAFE],
+      actionPermissions: ['APPROVE_MASTER_DATA_CHANGE'],
+      module: 'MASTER_DATA',
+      startAt: new Date(Date.now() - 3600000),
+      expiresAt: new Date(Date.now() + 86400000),
+      reason: 'Delegate master data change approval'
+    }, USER_OWNER);
+    assert.ok(masterDataDel.delegationId);
+    const authMasterData = await ownerGovernanceDelegationService.checkDelegatedAuthority(TEST_ORG, {
+      userId: USER_STORE_MANAGER.userId,
+      cafeId: TEST_CAFE,
+      actionPermission: 'APPROVE_MASTER_DATA_CHANGE',
+      module: 'MASTER_DATA'
+    });
+    assert.equal(authMasterData.isAuthorized, true);
+
+    // 9. Compliance Module Delegation
+    const complianceDel = await ownerGovernanceDelegationService.grantDelegation(TEST_ORG, {
+      delegateUserId: USER_STORE_MANAGER.userId,
+      cafeScope: [TEST_CAFE],
+      actionPermissions: ['APPROVE_COMPLIANCE_FILING'],
+      module: 'COMPLIANCE',
+      startAt: new Date(Date.now() - 3600000),
+      expiresAt: new Date(Date.now() + 86400000),
+      reason: 'Delegate operational compliance review'
+    }, USER_OWNER);
+    assert.ok(complianceDel.delegationId);
+    const authCompliance = await ownerGovernanceDelegationService.checkDelegatedAuthority(TEST_ORG, {
+      userId: USER_STORE_MANAGER.userId,
+      cafeId: TEST_CAFE,
+      actionPermission: 'APPROVE_COMPLIANCE_FILING',
+      module: 'COMPLIANCE'
+    });
+    assert.equal(authCompliance.isAuthorized, true);
+
+    // 10. Negative Test: Expired Delegation
+    await ownerGovernanceDelegationService.grantDelegation(TEST_ORG, {
+      delegateUserId: 'USR-EXPIRED',
+      cafeScope: [TEST_CAFE],
+      actionPermissions: ['VIEW_EXPENSES'],
+      module: 'FINANCE_EXPENSE',
+      startAt: new Date(Date.now() - 172800000),
+      expiresAt: new Date(Date.now() - 86400000), // Already expired
+      reason: 'Expired test delegation'
+    }, USER_OWNER);
+    const authExpired = await ownerGovernanceDelegationService.checkDelegatedAuthority(TEST_ORG, {
+      userId: 'USR-EXPIRED',
+      cafeId: TEST_CAFE,
+      actionPermission: 'VIEW_EXPENSES',
+      module: 'FINANCE_EXPENSE'
+    });
+    assert.equal(authExpired.isAuthorized, false);
+
+    // 11. Negative Test: Future-Start Delegation
+    await ownerGovernanceDelegationService.grantDelegation(TEST_ORG, {
+      delegateUserId: 'USR-FUTURE',
+      cafeScope: [TEST_CAFE],
+      actionPermissions: ['VIEW_EXPENSES'],
+      module: 'FINANCE_EXPENSE',
+      startAt: new Date(Date.now() + 86400000), // Future start
+      expiresAt: new Date(Date.now() + 172800000),
+      reason: 'Future test delegation'
+    }, USER_OWNER);
+    const authFuture = await ownerGovernanceDelegationService.checkDelegatedAuthority(TEST_ORG, {
+      userId: 'USR-FUTURE',
+      cafeId: TEST_CAFE,
+      actionPermission: 'VIEW_EXPENSES',
+      module: 'FINANCE_EXPENSE'
+    });
+    assert.equal(authFuture.isAuthorized, false);
   });
 
   test('7. Authorised Signatories Register: Registers signatory with zero credentials stored', async () => {
