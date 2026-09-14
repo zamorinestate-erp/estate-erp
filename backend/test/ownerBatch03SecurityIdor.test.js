@@ -80,7 +80,7 @@ describe('BATCH 03 — Multi-Tenant Security & IDOR Isolation Suite (Stages 11-1
     testComplaintId = c.complaintId;
 
     // 2. Seed Stage 12 Menu Item & Recipe in TEST_ORG
-    const rand = Math.floor(Math.random() * 8999 + 1000);
+    const rand = Math.floor(Math.random() * 8999999 + 1000000);
     const item = await MenuItem.create({
       organisationId: TEST_ORG,
       menuItemId: `MENU-${rand}`,

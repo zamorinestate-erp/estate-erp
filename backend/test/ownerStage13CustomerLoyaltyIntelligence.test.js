@@ -44,7 +44,7 @@ describe('STAGE 13 — Customer & Loyalty Intelligence Suite', () => {
       await LoyaltyLedger.deleteMany({ organisationId: { $in: [TEST_ORG, FOREIGN_ORG] } });
     }
 
-    const rand = Math.floor(Math.random() * 8999 + 1000);
+    const rand = Math.floor(Math.random() * 8999999 + 1000000);
     testBillId = `BILL-20260914-${rand}`;
 
     // 1. Seed customer

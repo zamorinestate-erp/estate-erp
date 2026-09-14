@@ -27,6 +27,7 @@ const BillModule = require('../models/Bill');
 const Bill = BillModule.Bill || BillModule;
 const CafeModule = require('../models/Cafe');
 const Cafe = CafeModule.Cafe || CafeModule;
+const { calculateGstTaxes } = require('./gstTaxService');
 
 const PROPOSAL_TRANSITIONS = {
   DRAFT: ['REVIEW'],
@@ -111,8 +112,18 @@ class OwnerMenuPricingService {
     const gstRatePercent = (menuItem.taxRatePercent !== undefined && menuItem.taxRatePercent !== null)
       ? menuItem.taxRatePercent
       : (menuItem.taxClassification === 'GST_5' ? 5 : (menuItem.taxPercent || 5));
-    const taxablePrice = Number((sellingPrice / (1 + gstRatePercent / 100)).toFixed(2));
-    const taxAmount = Number((sellingPrice - taxablePrice).toFixed(2));
+    
+    // Canonical delegation to certified Stage 08 GST tax service
+    const taxablePaisa = Math.round((sellingPrice * 100) / (1 + gstRatePercent / 100));
+    const gstCalc = calculateGstTaxes({
+      lines: [{
+        ratePaisa: taxablePaisa,
+        quantity: 1,
+        gstRatePercent
+      }]
+    });
+    const taxablePrice = Number(((gstCalc.taxSummary?.totalTaxablePaisa || taxablePaisa) / 100).toFixed(2));
+    const taxAmount = Number(((gstCalc.taxSummary?.totalTaxPaisa || 0) / 100).toFixed(2));
 
     // Calculate contribution & food cost % only if cost is available
     let contributionAmount = null;
@@ -241,9 +252,18 @@ class OwnerMenuPricingService {
     }
 
     const gstPercent = 5; // Standard F&B GST rate
-    const currentTaxable = Number((currentPrice / (1 + gstPercent / 100)).toFixed(2));
-    const proposedTaxable = Number((proposedPrice / (1 + gstPercent / 100)).toFixed(2));
-    const projectedGstAmount = Number((proposedPrice - proposedTaxable).toFixed(2));
+    const currentTaxablePaisa = Math.round((currentPrice * 100) / (1 + gstPercent / 100));
+    const currentTaxCalc = calculateGstTaxes({
+      lines: [{ ratePaisa: currentTaxablePaisa, quantity: 1, gstRatePercent: gstPercent }]
+    });
+    const currentTaxable = Number(((currentTaxCalc.taxSummary?.totalTaxablePaisa || currentTaxablePaisa) / 100).toFixed(2));
+
+    const proposedTaxablePaisa = Math.round((proposedPrice * 100) / (1 + gstPercent / 100));
+    const proposedTaxCalc = calculateGstTaxes({
+      lines: [{ ratePaisa: proposedTaxablePaisa, quantity: 1, gstRatePercent: gstPercent }]
+    });
+    const proposedTaxable = Number(((proposedTaxCalc.taxSummary?.totalTaxablePaisa || proposedTaxablePaisa) / 100).toFixed(2));
+    const projectedGstAmount = Number(((proposedTaxCalc.taxSummary?.totalTaxPaisa || 0) / 100).toFixed(2));
 
     const projectedUnits = Math.max(0, Math.round(currentUnitsSold * (1 + expectedVolumeChangePercent / 100)));
     const projectedRecipeCost = currentRecipeCost !== null
@@ -354,10 +374,29 @@ class OwnerMenuPricingService {
         if (menuItem.pricing) {
           menuItem.pricing.basePricePaisa = Math.round(proposal.proposedPrice * 100);
         }
-        menuItem.currentPricePaisa = Math.round(proposal.proposedPrice * 100);
         menuItem.sellingPrice = proposal.proposedPrice;
         await menuItem.save();
       }
+      // Transition previous active effective proposals for this item to SUPERSEDED
+      await MenuPriceProposal.updateMany(
+        {
+          ...orgFilter,
+          menuItemId: proposal.menuItemId,
+          proposalId: { $ne: proposal.proposalId },
+          status: 'EFFECTIVE'
+        },
+        {
+          $set: { status: 'SUPERSEDED' },
+          $push: {
+            auditHistory: {
+              status: 'SUPERSEDED',
+              changedBy: user?.userId || user?._id || 'SYSTEM',
+              changedAt: new Date(),
+              notes: `Superseded by newly effective proposal ${proposal.proposalId}`
+            }
+          }
+        }
+      );
     }
 
     proposal.auditHistory.push({
@@ -369,6 +408,33 @@ class OwnerMenuPricingService {
 
     await proposal.save();
     return proposal;
+  }
+
+  /**
+   * Validate Menu Price Tax Structure via Certified Stage 08 Canonical GST Engine
+   */
+  validateTaxStructure(sellingPrice, gstRatePercent = 5, supplyType = 'INTRA_STATE') {
+    const taxablePaisa = Math.round((Number(sellingPrice || 0) * 100) / (1 + Number(gstRatePercent || 5) / 100));
+    const calc = calculateGstTaxes({
+      lines: [{
+        ratePaisa: taxablePaisa,
+        quantity: 1,
+        gstRatePercent: Number(gstRatePercent || 5)
+      }],
+      supplyType
+    });
+    const summary = calc.taxSummary || {};
+    return {
+      authoritativeSource: 'STAGE_08_CANONICAL_GST_TAX_SERVICE',
+      supplyType,
+      grossAmountRupees: Number(((summary.grandTotalPaisa || Math.round(Number(sellingPrice || 0) * 100)) / 100).toFixed(2)),
+      taxableAmountRupees: Number(((summary.totalTaxablePaisa || taxablePaisa) / 100).toFixed(2)),
+      totalGstRupees: Number(((summary.totalTaxPaisa || 0) / 100).toFixed(2)),
+      cgstRupees: Number(((summary.totalCgstPaisa || 0) / 100).toFixed(2)),
+      sgstRupees: Number(((summary.totalSgstPaisa || 0) / 100).toFixed(2)),
+      igstRupees: Number(((summary.totalIgstPaisa || 0) / 100).toFixed(2)),
+      gstRatePercent: Number(gstRatePercent || 5)
+    };
   }
 
   /**

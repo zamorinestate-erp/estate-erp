@@ -667,13 +667,21 @@ class OwnerGovernanceDelegationService {
     }).lean();
 
     if (matchingDeclaration) {
+      const legalStatus = await this.getLegalStructureStatus(organisationId);
+      const isPrivateCo = legalStatus?.entityType === 'PRIVATE_LIMITED_COMPANY';
+
+      const statutoryWarning = isPrivateCo
+        ? 'STATUTORY_CONFLICT_WARNING: Counterparty disclosed under Section 184. Under MCA Exemption Notification G.S.R. 464(E), interested director of an eligible private company may participate in meetings after disclosure, provided no statutory filing defaults exist under Section 92 or 137.'
+        : 'STATUTORY_CONFLICT_WARNING: Counterparty disclosed under Section 184(2). Interested director/officer must disclose nature of concern and shall not participate in that meeting.';
+
       return {
         hasConflict: true,
         declarationId: matchingDeclaration.declarationId,
         declarantName: matchingDeclaration.declarantName,
         relatedParty: matchingDeclaration.relatedPartyOrEntity,
         natureOfInterest: matchingDeclaration.natureOfInterest,
-        statutoryWarning: 'STATUTORY_CONFLICT_WARNING: Transaction involves counterparty disclosed under Section 184. Interested directors/officers must abstain from deliberation and voting.'
+        isPrivateCompanyExemptionApplicable: isPrivateCo,
+        statutoryWarning
       };
     }
 
