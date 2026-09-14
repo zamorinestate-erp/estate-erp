@@ -6,7 +6,7 @@
  * ============================================================================
  */
 
-const { test, describe, before } = require('node:test');
+const { test, describe, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const mongoose = require('mongoose');
 
@@ -254,5 +254,9 @@ describe('STAGE 12 — Menu Engineering & Pricing Intelligence Suite', () => {
       },
       (err) => err.message.includes('MENU_ITEM_NOT_FOUND')
     );
+  });
+
+  after(async () => {
+    await mongoose.disconnect();
   });
 });

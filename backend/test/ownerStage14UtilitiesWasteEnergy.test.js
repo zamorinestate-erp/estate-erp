@@ -15,7 +15,7 @@
  * 8. Multi-Tenant IDOR Isolation: Strictly restricts meter queries to owning organisation.
  */
 
-const { test, describe, before } = require('node:test');
+const { test, describe, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const mongoose = require('mongoose');
 
@@ -261,5 +261,9 @@ describe('STAGE 14 — Utilities, Waste & Energy Management Suite', () => {
       },
       (err) => err.message.includes('METER_NOT_FOUND')
     );
+  });
+
+  after(async () => {
+    await mongoose.disconnect();
   });
 });

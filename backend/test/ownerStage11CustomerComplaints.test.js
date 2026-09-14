@@ -6,7 +6,7 @@
  * ============================================================================
  */
 
-const { test, describe, before } = require('node:test');
+const { test, describe, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const mongoose = require('mongoose');
 
@@ -241,5 +241,9 @@ describe('STAGE 11 — Customer Complaints & Service Recovery Centre Suite', () 
     assert.equal(foreignMetrics.totalComplaints, 0);
     assert.equal(foreignMetrics.authoritativeBillDenominator, 0);
     assert.equal(foreignMetrics.complaintRatePerThousandBills, null); // Strictly null when zero bills
+  });
+
+  after(async () => {
+    await mongoose.disconnect();
   });
 });
