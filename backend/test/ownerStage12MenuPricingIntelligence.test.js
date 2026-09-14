@@ -233,6 +233,21 @@ describe('STAGE 12 — Menu Engineering & Pricing Intelligence Suite', () => {
     const eval2 = await ownerMenuPricingService.evaluateMenuLabellingApplicability(TEST_ORG, TEST_CAFE);
     assert.equal(eval2.isMandatoryMenuLabellingApplicable, true);
     assert.equal(eval2.displayRequirements.calorificValuePerServing, true);
+
+    // Independent branch: Single outlet with CENTRAL FSSAI licence -> Mandatory regardless of outlet count
+    const centralCafe = await Cafe.create({
+      organisationId: TEST_ORG.toString(),
+      cafeId: `ZC-CAF-${baseCafeNum + 99}`,
+      name: 'Zamorin Flagship Hub',
+      displayName: 'Zamorin Flagship Hub',
+      cafeType: 'STANDARD_CAFE',
+      fssaiLicenceType: 'CENTRAL_LICENCE',
+      status: 'ACTIVE',
+      createdBy: 'SYSTEM'
+    });
+    const evalCentral = await ownerMenuPricingService.evaluateMenuLabellingApplicability(TEST_ORG, centralCafe._id, { fssaiLicenceType: 'CENTRAL_LICENCE' });
+    assert.equal(evalCentral.isMandatoryMenuLabellingApplicable, true);
+    assert.ok(evalCentral.applicabilityRationale.includes('Central FSSAI Licence'));
   });
 
   test('7. Nutritional & Allergen Display: Zero fabricated calories/allergens', async () => {

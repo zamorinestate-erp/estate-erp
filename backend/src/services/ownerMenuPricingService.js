@@ -15,6 +15,7 @@
  *   Zero fabricated calories/allergens: displays 'UNAVAILABLE / REQUIRES VERIFIED NUTRITION DATA' if missing.
  */
 
+const mongoose = require('mongoose');
 const MenuItemModule = require('../models/MenuItem');
 const MenuItem = MenuItemModule.MenuItem || MenuItemModule;
 const RecipeModule = require('../models/Recipe');
@@ -441,24 +442,48 @@ class OwnerMenuPricingService {
    * Evaluate Food-Service Menu Labelling Applicability (FSSAI 2020)
    * Applicability criteria: Central FSSAI Licence OR >= 10 Outlets/Locations.
    */
-  async evaluateMenuLabellingApplicability(organisationId, cafeId = null) {
+  async evaluateMenuLabellingApplicability(organisationId, cafeId = null, options = {}) {
     if (!organisationId) throw new Error('ORGANISATION_ID_REQUIRED');
 
     const totalCafes = await Cafe.countDocuments({
       $or: [{ organisationId }, { organisationId: organisationId.toString() }],
       isDeleted: { $ne: true }
     });
+
+    let hasCentralLicence = Boolean(options && (options.fssaiLicenceType === 'CENTRAL_LICENCE' || options.isCentralLicence));
+    if (!hasCentralLicence) {
+      try {
+        const BusinessLicenceModule = require('../models/BusinessLicence');
+        const BusinessLicence = BusinessLicenceModule.BusinessLicence || BusinessLicenceModule;
+        if (BusinessLicence) {
+          const lic = await BusinessLicence.findOne({
+            organisationId: organisationId.toString().toUpperCase(),
+            licenceType: 'FSSAI_CENTRAL_LICENCE',
+            status: { $ne: 'REVOKED' }
+          }).lean();
+          if (lic) hasCentralLicence = true;
+        }
+      } catch {}
+    }
+
     // Look up specific cafe licence if cafeId provided
     let cafeRecord = null;
     if (cafeId) {
-      cafeRecord = await Cafe.findOne({
-        _id: cafeId,
-        $or: [{ organisationId }, { organisationId: organisationId.toString() }]
-      }).lean();
+      if (mongoose.Types.ObjectId.isValid(cafeId)) {
+        cafeRecord = await Cafe.findById(cafeId).lean();
+      }
+      if (!cafeRecord) {
+        cafeRecord = await Cafe.findOne({ cafeId: String(cafeId) }).lean();
+      }
+      if (cafeRecord && String(cafeRecord.organisationId).toUpperCase() !== String(organisationId).toUpperCase()) {
+        cafeRecord = null;
+      }
     }
 
-    const fssaiLicenceType = cafeRecord?.fssaiLicenceType || 'STATE_LICENCE';
-    const isCentralLicence = fssaiLicenceType === 'CENTRAL_LICENCE';
+    const fssaiLicenceType = hasCentralLicence
+      ? 'CENTRAL_LICENCE'
+      : (cafeRecord?.fssaiLicenceType || options.fssaiLicenceType || 'STATE_LICENCE');
+    const isCentralLicence = fssaiLicenceType === 'CENTRAL_LICENCE' || hasCentralLicence;
     const hasTenOrMoreOutlets = totalCafes >= 10;
 
     const isMandatory = isCentralLicence || hasTenOrMoreOutlets;

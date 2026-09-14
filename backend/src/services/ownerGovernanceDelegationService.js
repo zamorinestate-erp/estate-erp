@@ -92,8 +92,13 @@ class OwnerGovernanceDelegationService {
       ],
       statutoryExclusions: [
         'One Person Companies (OPCs)',
-        'Small companies under Section 2(85)'
+        'Small companies under Section 2(85) as amended by Companies (Specification of Definition Details) Amendment Rules, 2025 (paid-up capital <= ₹10 crore and turnover <= ₹100 crore)'
       ],
+      smallCompanyDefinition2025: {
+        paidUpCapitalLimitCrore: 10,
+        turnoverLimitCrore: 100,
+        citation: 'Companies (Specification of Definition Details) Amendment Rules, 2025'
+      },
       tenureRulesIfApplicable: {
         individualAuditor: 'Maximum 1 term of 5 consecutive years (cooling period 5 consecutive years)',
         auditFirm: 'Maximum 2 terms of 5 consecutive years = 10 consecutive years (cooling period 5 consecutive years)'
