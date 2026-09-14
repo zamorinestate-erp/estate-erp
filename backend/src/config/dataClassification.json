@@ -78,9 +78,16 @@
       "duration": "5 years from end of relevant financial year",
       "authority": "Zamorin Internal HR/Finance Policy (INTERNAL POLICY — Statutory EPFO employer retention instruction pending) / ESI Reg 32"
     },
-    "STATUTORY_AUDIT_TRAIL": {
-      "duration": "10 years",
-      "authority": "Companies Act 2013 & CERT-In Cyber Directions"
+    "CERT_IN_ICT_SECURITY_LOGS": {
+      "duration": "180 rolling days",
+      "jurisdiction": "India",
+      "authority": "CERT-In Directions dated 28 April 2022 (Section 70B(6) Information Technology Act, 2000)",
+      "scope": "ICT system and network logs maintained securely within Indian jurisdiction"
+    },
+    "COMPANIES_ACT_ACCOUNTING_AUDIT_TRAIL": {
+      "duration": "8 financial years",
+      "authority": "Companies Act 2013 Section 128(5) & Companies (Accounts) Rules 2014 Rule 3(1)",
+      "scope": "Accounting software audit trail (edit log) for books of account, where corporate entity form applies"
     },
     "ZAMORIN_INTERNAL_POLICY_SEARCH_LOGS": {
       "durationDays": 90,

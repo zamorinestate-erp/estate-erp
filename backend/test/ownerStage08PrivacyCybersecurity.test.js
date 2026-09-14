@@ -169,10 +169,18 @@ describe('STAGE 08 — Data Privacy & Cybersecurity Governance Suite', () => {
     const employeePolicy = ownerPrivacyCyberService.evaluateRule46LocalisationPolicy('EMPLOYEE_HR_PROFILE');
     assert.equal(employeePolicy.rule46Scope, false);
     assert.equal(employeePolicy.dailyIndiaBackupRequired, false);
+    assert.equal(employeePolicy.status, 'OUTSIDE_RULE46_SCOPE — GOVERNED SEPARATELY');
 
     const customerPolicy = ownerPrivacyCyberService.evaluateRule46LocalisationPolicy('CUSTOMER_PROFILE_AND_LOYALTY');
     assert.equal(customerPolicy.rule46Scope, false);
     assert.equal(customerPolicy.dailyIndiaBackupRequired, false);
+    assert.equal(customerPolicy.status, 'OUTSIDE_RULE46_SCOPE — GOVERNED SEPARATELY');
+
+    // 3. Application Telemetry / ICT Logs: Outside Rule 46, but inside CERT-In 180-day retention within India
+    const telemetryPolicy = ownerPrivacyCyberService.evaluateRule46LocalisationPolicy('APPLICATION_TELEMETRY_LOGS');
+    assert.equal(telemetryPolicy.rule46Scope, false);
+    assert.equal(telemetryPolicy.status, 'OUTSIDE_RULE46_SCOPE — GOVERNED SEPARATELY');
+    assert.ok(telemetryPolicy.legalReference.includes('CERT-In'));
   });
 
   test('6. Governed Privacy Incident Response: DETECTED -> TRIAGED -> CONTAINED -> ASSESSED -> ACTION -> RECOVERED -> CLOSED', async () => {
@@ -285,7 +293,7 @@ describe('STAGE 08 — Data Privacy & Cybersecurity Governance Suite', () => {
     });
     assert.equal(standardContact.isSignificantDataFiduciary, false);
     assert.equal(standardContact.privacyContactType, 'AUTHORISED_PRIVACY_GRIEVANCE_CONTACT');
-    assert.equal(standardContact.mandateStatus, 'VOLUNTARY_INTERNAL_GOVERNANCE');
+    assert.equal(standardContact.sdfDesignationStatus, 'NOT_EVIDENCED');
     assert.ok(standardContact.roleLabel.includes('Authorised Privacy / Grievance Contact'));
 
     // 2. Configurable DPO role where formally designated SDF
@@ -294,6 +302,7 @@ describe('STAGE 08 — Data Privacy & Cybersecurity Governance Suite', () => {
       title: 'Data Protection Officer',
     });
     assert.equal(sdfContact.isSignificantDataFiduciary, true);
+    assert.equal(sdfContact.sdfDesignationStatus, 'DESIGNATED_SDF');
     assert.equal(sdfContact.privacyContactType, 'DATA_PROTECTION_OFFICER');
     assert.equal(sdfContact.mandateStatus, 'STATUTORY_MANDATORY_SDF');
   });

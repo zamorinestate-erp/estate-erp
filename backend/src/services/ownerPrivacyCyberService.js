@@ -142,7 +142,7 @@ class OwnerPrivacyCyberService {
         indiaAccessibility: 'ACCESSIBLE_IN_INDIA',
         dailyIndiaBackup: 'NOT_MANDATORY_UNDER_RULE_46',
         evidence: 'Personal data governed by DPDP safeguards; Rule 46(8) does not apply',
-        status: 'COMPLIANT_OUTSIDE_RULE46_SCOPE',
+        status: 'OUTSIDE_RULE46_SCOPE — GOVERNED SEPARATELY',
       },
       {
         category: 'CUSTOMER_PROFILE_AND_LOYALTY',
@@ -153,18 +153,18 @@ class OwnerPrivacyCyberService {
         indiaAccessibility: 'ACCESSIBLE_IN_INDIA',
         dailyIndiaBackup: 'NOT_MANDATORY_UNDER_RULE_46',
         evidence: 'Personal data governed by DPDP safeguards; Rule 46(8) does not apply',
-        status: 'COMPLIANT_OUTSIDE_RULE46_SCOPE',
+        status: 'OUTSIDE_RULE46_SCOPE — GOVERNED SEPARATELY',
       },
       {
         category: 'APPLICATION_TELEMETRY_LOGS',
         displayName: 'System Diagnostics & Telemetry Logs',
         rule46Scope: false,
-        legalReference: 'CERT-In Cyber Security Directions (Not Rule 46 Books of Account)',
+        legalReference: 'CERT-In Directions 28 April 2022 (180 rolling days ICT security logs within Indian jurisdiction)',
         primaryStorage: 'Encrypted Application Storage',
         indiaAccessibility: 'ACCESSIBLE_IN_INDIA',
         dailyIndiaBackup: 'NOT_MANDATORY_UNDER_RULE_46',
-        evidence: 'Governed by CERT-In 5-year log retention, not Rule 46 books of account',
-        status: 'COMPLIANT_OUTSIDE_RULE46_SCOPE',
+        evidence: 'Governed by CERT-In 180-day ICT security log retention within India, not Rule 46 books of account',
+        status: 'OUTSIDE_RULE46_SCOPE — GOVERNED SEPARATELY',
       },
     ];
   }
@@ -195,7 +195,7 @@ class OwnerPrivacyCyberService {
   /**
    * Configurable Privacy Contact & DPO Governance Model
    * Invariant: Universal SDF DPO obligation is NOT mandatory because Zamorin is not formally
-   * designated a Significant Data Fiduciary.
+   * designated a Significant Data Fiduciary (SDF_DESIGNATION_STATUS = 'NOT_EVIDENCED').
    * Model supports: Data Protection Officer — where applicable / Authorised Privacy / Grievance Contact.
    */
   getPrivacyContactGovernance(organisationId, config = {}) {
@@ -209,7 +209,8 @@ class OwnerPrivacyCyberService {
         ? 'Data Protection Officer (Mandatory — Significant Data Fiduciary)'
         : 'Authorised Privacy / Grievance Contact — DPO where applicable (DPDP s. 8(9))',
       isSignificantDataFiduciary: isSDF,
-      mandateStatus: isSDF ? 'STATUTORY_MANDATORY_SDF' : 'VOLUNTARY_INTERNAL_GOVERNANCE',
+      sdfDesignationStatus: config.sdfDesignationStatus || (isSDF ? 'DESIGNATED_SDF' : 'NOT_EVIDENCED'),
+      mandateStatus: isSDF ? 'STATUTORY_MANDATORY_SDF' : 'PHASED_COMMENCEMENT_PENDING_SDF_EVIDENCE',
       legalBasis: isSDF
         ? 'DPDP Act 2023 Section 10 (Significant Data Fiduciary Mandate)'
         : 'DPDP Act 2023 Section 8(9) (Grievance Redressal Mechanism)',
@@ -535,13 +536,14 @@ class OwnerPrivacyCyberService {
             'Statutory financial and payroll records cannot be erased before statutory limitation period expiration.',
         },
         {
-          domain: 'SECURITY_INCIDENTS_AND_AUDIT_LOGS',
+          domain: 'SECURITY_ICT_LOGS_AND_AUDIT_TRAIL',
           statutoryBasis:
-            'Information Technology Act Section 43A / 70B & CERT-In Cyber Security Directions',
-          minimumMandatoryRetentionYears: 5,
+            'CERT-In Cyber Security Directions (180 rolling days for ICT system logs securely within Indian jurisdiction) / Companies Act 2013 s. 128(5) (8 financial years for corporate accounting audit trail where applicable)',
+          retentionPeriod: '180 rolling days for ICT logs; 8 financial years for corporate accounting audit trail',
+          jurisdiction: 'INDIA',
           erasurePermitted: false,
           restrictionReason:
-            'Security logs and audit events must be retained to demonstrate tamper-evident regulatory compliance.',
+            'Security logs must be preserved for CERT-In incident investigation within Indian jurisdiction, and accounting audit trails cannot be altered or destroyed.',
         },
       ],
     };

@@ -227,42 +227,50 @@ const employeeTrainingSchema = new mongoose.Schema(
 employeeTrainingSchema.index({ organisationId: 1, userId: 1, status: 1 });
 
 /**
- * Authoritative FoSTaC Food Safety Supervisor Certificate Validity Engine
- * Resolves FSSAI 1 Feb 2024 Notice & 5 August 2026 Standardized Procedure:
- * - 2-year validity period (perpetual default revoked)
- * - Refresher training mandatory for renewal
- * - Kind of Business (KoB) mismatch invalidation
- * - Historical grandfathered rule support only if explicitly configured
+ * Calendar-year date arithmetic for FoSTaC 2-year validity.
+ * Strictly adheres to regulatory calendar year semantics (not a fixed 730-day constant).
+ * Accurately handles leap years (e.g. Feb 29 -> Feb 28 in non-leap target year) and date-only semantics.
  */
+function addTwoYearsCalendar(dateInput) {
+  const d = new Date(dateInput);
+  const year = d.getUTCFullYear();
+  const month = d.getUTCMonth();
+  const day = d.getUTCDate();
+
+  const targetYear = year + 2;
+  const isLeapTarget = (targetYear % 4 === 0 && targetYear % 100 !== 0) || (targetYear % 400 === 0);
+  let targetDay = day;
+  if (month === 1 && day === 29 && !isLeapTarget) {
+    targetDay = 28;
+  }
+
+  return new Date(Date.UTC(targetYear, month, targetDay, d.getUTCHours(), d.getUTCMinutes(), d.getUTCSeconds(), d.getUTCMilliseconds()));
+}
+
+/**
+ * Authoritative FoSTaC Food Safety Supervisor Certificate Validity Engine
+ * Governed by FSSAI Official Notice dated 1 February 2024 (discontinuing perpetual validity)
+ * and FoSTaC Standardized Procedure dated 5 August 2026 (training delivery/assessment):
+ * - Strict 2 calendar-year validity period (calendar year arithmetic, zero 730-day fixed constant)
+ * - Refresher training mandatory for renewal
+ * - Kind of Business (KoB) stream mismatch invalidation
+ * - Zero perpetual grandfathering (1 Feb 2024 notice revoked lifetime validity across all FSS certificates)
+ */
+employeeTrainingSchema.statics.addTwoYearsCalendar = addTwoYearsCalendar;
+
 employeeTrainingSchema.statics.evaluateFoSTaCCertificateValidity = function ({
   issuedDate,
-  ruleVersion = 'FOSTAC_PROCEDURE_2026_08_05',
+  ruleVersion = 'FSSAI_NOTICE_2024_02_01',
   kob = 'CATERING',
   operationalKob = 'CATERING',
   refresherCompletedDate = null,
   asOfDate = new Date(),
-  historicalGrandfathered = false,
 }) {
   const issue = new Date(issuedDate);
   const now = new Date(asOfDate);
 
-  // Check if historical grandfathered under superseded 16 June 2023 clarification
-  if (historicalGrandfathered && ruleVersion === 'FSSAI_CLARIFICATION_2023_06_16') {
-    const isKobMatch = String(kob).toUpperCase() === String(operationalKob).toUpperCase();
-    return {
-      certificateStatus: isKobMatch ? 'PERPETUAL' : 'INVALID_KOB_MISMATCH',
-      isCurrentlyValid: isKobMatch,
-      certificateExpiryDate: null,
-      refresherRequired: true,
-      refresherDueDate: new Date(issue.getTime() + 2 * 365 * 86400000),
-      applicableRule: 'FSSAI Clarification dated 16 June 2023 (Historical Perpetual — Superseded)',
-      validityYears: Infinity,
-      retrainingRequired: !isKobMatch,
-    };
-  }
-
-  // FSSAI Notice 1 Feb 2024 & 5 August 2026 Standardized Procedure: Strict 2-Year Validity
-  const expiry = new Date(issue.getTime() + 2 * 365 * 86400000);
+  // Calendar year addition (handles leap years, e.g. Feb 29 -> Feb 28)
+  const expiry = addTwoYearsCalendar(issue);
   const isKobMatch = String(kob).toUpperCase() === String(operationalKob).toUpperCase();
 
   if (!isKobMatch) {
@@ -275,13 +283,14 @@ employeeTrainingSchema.statics.evaluateFoSTaCCertificateValidity = function ({
       applicableRule: 'FoSTaC Standardized Procedure 5 August 2026 (KoB stream mismatch invalidates certificate)',
       validityYears: 2,
       retrainingRequired: true,
+      isPerpetual: false,
     };
   }
 
   if (now > expiry) {
     if (refresherCompletedDate) {
       const refreshedDate = new Date(refresherCompletedDate);
-      const newExpiry = new Date(refreshedDate.getTime() + 2 * 365 * 86400000);
+      const newExpiry = addTwoYearsCalendar(refreshedDate);
       const isStillValid = now <= newExpiry;
       return {
         certificateStatus: isStillValid ? 'VALID' : 'EXPIRED',
@@ -289,10 +298,11 @@ employeeTrainingSchema.statics.evaluateFoSTaCCertificateValidity = function ({
         certificateExpiryDate: newExpiry,
         refresherRequired: true,
         refresherDueDate: newExpiry,
-        applicableRule: 'FoSTaC Standardized Procedure 5 August 2026 (Refresher Completed - Renewed 2-Year Validity)',
+        applicableRule: 'FSSAI Notice 1 Feb 2024 & FoSTaC Procedure (Refresher Completed - Renewed 2 Calendar Years)',
         validityYears: 2,
         retrainingRequired: !isStillValid,
         isRenewed: true,
+        isPerpetual: false,
       };
     }
 
@@ -302,9 +312,10 @@ employeeTrainingSchema.statics.evaluateFoSTaCCertificateValidity = function ({
       certificateExpiryDate: expiry,
       refresherRequired: true,
       refresherDueDate: expiry,
-      applicableRule: 'FSSAI Notice 1 Feb 2024 / FoSTaC Procedure 5 Aug 2026 (2-Year Expiry Reached)',
+      applicableRule: 'FSSAI Official Notice dated 1 Feb 2024 (2 Calendar Years Expiry Reached — Perpetual Grandfathering Prohibited)',
       validityYears: 2,
       retrainingRequired: true,
+      isPerpetual: false,
     };
   }
 
@@ -314,9 +325,10 @@ employeeTrainingSchema.statics.evaluateFoSTaCCertificateValidity = function ({
     certificateExpiryDate: expiry,
     refresherRequired: true,
     refresherDueDate: expiry,
-    applicableRule: 'FoSTaC Standardized Procedure 5 August 2026 & FSSAI Notice 1 Feb 2024 (2-Year Validity)',
+    applicableRule: 'FSSAI Official Notice dated 1 Feb 2024 (2 Calendar Years Validity Period)',
     validityYears: 2,
     retrainingRequired: false,
+    isPerpetual: false,
   };
 };
 

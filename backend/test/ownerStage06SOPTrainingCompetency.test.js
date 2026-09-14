@@ -344,11 +344,20 @@ test('STAGE 06 — SOP, Training & Competency Academy Suite', async (t) => {
     // ── Authoritative FoSTaC FSS Certificate Validity Engine Verification ──
     const { EmployeeTraining } = require('../src/models/EmployeeTraining');
 
-    // 1. Two-year validity calculation under 5 August 2026 Standardized Procedure & 1 Feb 2024 Notice
-    const issuedDate = new Date('2025-06-01T00:00:00.000Z');
+    // 1. Calendar-Year Addition (Strict 2-year calendar arithmetic, not 730 days)
+    // Leap-year test: 29 February 2024 -> 28 February 2026 (non-leap year)
+    const leapIssue = new Date('2024-02-29T00:00:00.000Z');
+    const leapExpiry = EmployeeTraining.addTwoYearsCalendar(leapIssue);
+    assert.equal(leapExpiry.toISOString().split('T')[0], '2026-02-28');
+
+    // Standard year test: 15 July 2024 -> 15 July 2026
+    const stdIssue = new Date('2024-07-15T00:00:00.000Z');
+    const stdExpiry = EmployeeTraining.addTwoYearsCalendar(stdIssue);
+    assert.equal(stdExpiry.toISOString().split('T')[0], '2026-07-15');
+
+    // 2. Active 2 Calendar-Year Validity under FSSAI Notice 1 Feb 2024
     const validEval = EmployeeTraining.evaluateFoSTaCCertificateValidity({
-      issuedDate,
-      ruleVersion: 'FOSTAC_PROCEDURE_2026_08_05',
+      issuedDate: new Date('2025-06-01T00:00:00.000Z'),
       kob: 'CATERING',
       operationalKob: 'CATERING',
       asOfDate: new Date('2026-06-01T00:00:00.000Z'),
@@ -357,36 +366,36 @@ test('STAGE 06 — SOP, Training & Competency Academy Suite', async (t) => {
     assert.equal(validEval.isCurrentlyValid, true);
     assert.equal(validEval.validityYears, 2);
     assert.equal(validEval.refresherRequired, true);
+    assert.equal(validEval.isPerpetual, false);
 
-    // 2. Expired certificate: After 2 years without refresher
+    // 3. Expired Certificate after 2 Calendar Years without Refresher
     const expiredEval = EmployeeTraining.evaluateFoSTaCCertificateValidity({
-      issuedDate,
-      ruleVersion: 'FOSTAC_PROCEDURE_2026_08_05',
+      issuedDate: new Date('2024-06-01T00:00:00.000Z'),
       kob: 'CATERING',
       operationalKob: 'CATERING',
-      asOfDate: new Date('2027-06-02T00:00:00.000Z'),
+      asOfDate: new Date('2026-06-02T00:00:00.000Z'),
     });
     assert.equal(expiredEval.certificateStatus, 'EXPIRED');
     assert.equal(expiredEval.isCurrentlyValid, false);
     assert.equal(expiredEval.retrainingRequired, true);
+    assert.equal(expiredEval.isPerpetual, false);
 
-    // 3. Refresher completion creates renewed 2-year validity window
+    // 4. Refresher Completion Renews Certificate for 2 Calendar Years
     const renewedEval = EmployeeTraining.evaluateFoSTaCCertificateValidity({
-      issuedDate,
-      ruleVersion: 'FOSTAC_PROCEDURE_2026_08_05',
+      issuedDate: new Date('2024-06-01T00:00:00.000Z'),
       kob: 'CATERING',
       operationalKob: 'CATERING',
-      refresherCompletedDate: new Date('2027-05-15T00:00:00.000Z'),
-      asOfDate: new Date('2027-06-02T00:00:00.000Z'),
+      refresherCompletedDate: new Date('2026-05-20T00:00:00.000Z'),
+      asOfDate: new Date('2026-06-02T00:00:00.000Z'),
     });
     assert.equal(renewedEval.certificateStatus, 'VALID');
     assert.equal(renewedEval.isCurrentlyValid, true);
     assert.equal(renewedEval.isRenewed, true);
+    assert.equal(renewedEval.certificateExpiryDate.toISOString().split('T')[0], '2028-05-20');
 
-    // 4. Kind of Business (KoB) mismatch strictly invalidates certificate
+    // 5. Kind of Business (KoB) Mismatch Strictly Invalidates Certificate
     const kobMismatchEval = EmployeeTraining.evaluateFoSTaCCertificateValidity({
-      issuedDate,
-      ruleVersion: 'FOSTAC_PROCEDURE_2026_08_05',
+      issuedDate: new Date('2025-06-01T00:00:00.000Z'),
       kob: 'CATERING',
       operationalKob: 'MANUFACTURING',
       asOfDate: new Date('2026-06-01T00:00:00.000Z'),
@@ -395,25 +404,16 @@ test('STAGE 06 — SOP, Training & Competency Academy Suite', async (t) => {
     assert.equal(kobMismatchEval.isCurrentlyValid, false);
     assert.equal(kobMismatchEval.retrainingRequired, true);
 
-    // 5. Historical certificate treatment: Perpetual only if explicitly configured under superseded clarification
-    const histPerpetualEval = EmployeeTraining.evaluateFoSTaCCertificateValidity({
+    // 6. Zero Historical Perpetual Grandfathering (Pre-Feb 2024 Certificates Must Comply with 2-Year Rule)
+    const pre2024Eval = EmployeeTraining.evaluateFoSTaCCertificateValidity({
       issuedDate: new Date('2023-08-01T00:00:00.000Z'),
-      ruleVersion: 'FSSAI_CLARIFICATION_2023_06_16',
       kob: 'CATERING',
       operationalKob: 'CATERING',
-      historicalGrandfathered: true,
-      asOfDate: new Date('2026-09-14T00:00:00.000Z'),
+      asOfDate: new Date('2026-09-14T00:00:00.000Z'), // More than 2 years passed
     });
-    assert.equal(histPerpetualEval.certificateStatus, 'PERPETUAL');
-    assert.equal(histPerpetualEval.validityYears, Infinity);
-
-    // Default without explicit grandfathering must NOT be perpetual
-    const defaultEval = EmployeeTraining.evaluateFoSTaCCertificateValidity({
-      issuedDate: new Date('2026-01-01T00:00:00.000Z'),
-      asOfDate: new Date('2026-09-14T00:00:00.000Z'),
-    });
-    assert.notEqual(defaultEval.certificateStatus, 'PERPETUAL');
-    assert.equal(defaultEval.validityYears, 2);
+    assert.equal(pre2024Eval.certificateStatus, 'EXPIRED');
+    assert.equal(pre2024Eval.isCurrentlyValid, false);
+    assert.equal(pre2024Eval.isPerpetual, false);
   });
 
   // ── 7. Attendance Alone Recorded as ATTENDED (Competent is Strictly False) ─
