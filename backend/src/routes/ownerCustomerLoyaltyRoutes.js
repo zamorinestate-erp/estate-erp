@@ -41,9 +41,15 @@ router.post(
 );
 
 router.get(
+  '/loyalty/exposure',
+  authorize('ADMIN_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  (req, res) => controller.calculateLoyaltyExposure(req, res)
+);
+
+router.get(
   '/loyalty/liability',
   authorize('ADMIN_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
-  (req, res) => controller.calculateLoyaltyLiability(req, res)
+  (req, res) => controller.calculateLoyaltyExposure(req, res)
 );
 
 // Purpose limitation check (Stage 11 complaints vs Stage 13 marketing)

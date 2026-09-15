@@ -317,12 +317,16 @@ describe('STAGE 13 — Customer & Loyalty Intelligence Suite', () => {
     process.env.ENABLE_LOYALTY = 'false';
   });
 
-  test('5. Loyalty Programme Exposure Simulation: Computes estimated outstanding loyalty value at configured ₹0.25/point', async () => {
-    const exposure = await ownerCustomerLoyaltyService.calculateLoyaltyExposure(TEST_ORG);
+  test('5. Estimated Programme Exposure: computes authorised scenario exposure without GL posting or liability recognition', async () => {
+    // Computes mathematical simulation exposure from configured assumption (default 0.25 simulation rate)
+    const exposure = await ownerCustomerLoyaltyService.calculateLoyaltyExposure(TEST_ORG, 0.25);
     assert.equal(exposure.pointConversionRateRupees, 0.25);
     // Customers: Aditi (100), Rahul (250), Sneha (40) -> Total 390
     assert.equal(exposure.totalOutstandingPoints, 390);
     assert.equal(exposure.estimatedExposureRupees, 97.5); // 390 * 0.25
+    assert.equal(exposure.isSimulationOnly, true);
+    assert.equal(exposure.glPostingRecognised, false);
+    assert.equal(exposure.balanceSheetLiabilityRecognised, false);
     assert.ok(exposure.exposureNotice.includes('ESTIMATED OUTSTANDING LOYALTY VALUE'));
     assert.ok(exposure.exposureNotice.includes('NO AUTOMATIC GL POSTING'));
   });

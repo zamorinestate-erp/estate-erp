@@ -329,11 +329,11 @@ class OwnerCustomerLoyaltyService {
   /**
    * Calculate Loyalty Programme Outstanding Exposure / Estimated Value
    * IMPORTANT GOVERNANCE INVARIANT:
-   * - No active Zamorin loyalty programme or ₹0.25 monetary conversion policy is approved by Finance.
-   * - Zero automated journal entries; zero balance sheet recognition.
-   * - Calculates mathematical programme exposure only from configured assumption.
+   * - No active Zamorin loyalty programme or official monetary conversion policy is approved by Finance.
+   * - Zero automated journal entries; zero balance sheet recognition; zero accounts payable.
+   * - Calculates mathematical programme exposure only from configured simulation assumption.
    */
-  async calculateLoyaltyExposure(organisationId) {
+  async calculateLoyaltyExposure(organisationId, simulationRateRupees = null) {
     if (!organisationId) throw new Error('ORGANISATION_ID_REQUIRED');
 
     const orgUpper = organisationId.toString().toUpperCase();
@@ -345,22 +345,22 @@ class OwnerCustomerLoyaltyService {
       totalOutstandingPoints += (c.pointsBalance || c.loyaltyPoints || 0);
     }
 
-    // Configured unapproved simulation parameter: 1 point = ₹0.25 hypothetical value
-    const pointValueRupees = 0.25;
+    // Configured simulation rate (defaults to server config or 0.25 simulation scenario)
+    const pointValueRupees = typeof simulationRateRupees === 'number' && simulationRateRupees >= 0
+      ? simulationRateRupees
+      : (parseFloat(process.env.LOYALTY_SIMULATION_RATE_RUPEES) || 0.25);
     const estimatedExposureRupees = Number((totalOutstandingPoints * pointValueRupees).toFixed(2));
 
     return {
       totalOutstandingPoints,
       pointConversionRateRupees: pointValueRupees,
       estimatedExposureRupees,
+      isSimulationOnly: true,
+      glPostingRecognised: false,
+      balanceSheetLiabilityRecognised: false,
       exposureNotice: 'ESTIMATED OUTSTANDING LOYALTY VALUE / PROGRAMME EXPOSURE ONLY — NO AUTOMATIC GL POSTING OR BALANCE SHEET RECOGNITION WITHOUT FINANCE APPROVAL',
       governanceNotice: 'ESTIMATED OUTSTANDING LOYALTY VALUE / PROGRAMME EXPOSURE ONLY — NO AUTOMATIC GL POSTING OR BALANCE SHEET RECOGNITION WITHOUT FINANCE APPROVAL'
     };
-  }
-
-  // Backwards-compatible alias for existing callers
-  async calculateLoyaltyLiability(organisationId) {
-    return this.calculateLoyaltyExposure(organisationId);
   }
 
   /**

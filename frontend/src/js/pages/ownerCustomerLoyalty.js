@@ -50,7 +50,7 @@ export function renderOwnerCustomerLoyalty() {
           Cohort Distributions
         </button>
         <button class="tab-btn ${activeSection === 'loyalty' ? 'active' : ''}" data-section="loyalty" style="padding:8px 16px;border-radius:6px;border:none;background:${activeSection === 'loyalty' ? 'var(--gold-500,#96733a)' : 'transparent'};color:${activeSection === 'loyalty' ? '#fff' : 'var(--text-muted,#94a3b8)'};font-weight:700;font-size:13px;cursor:pointer;">
-          Loyalty Liability & Ledger
+          Loyalty Programme Exposure & Ledger
         </button>
       </div>
 
@@ -92,14 +92,14 @@ export async function initOwnerCustomerLoyalty() {
 
 async function loadData() {
   try {
-    const [analyticsRes, cohortsRes, liabilityRes] = await Promise.all([
+    const [analyticsRes, cohortsRes, exposureRes] = await Promise.all([
       apiGet('/customer-loyalty/analytics'),
       apiGet('/customer-loyalty/cohorts'),
-      apiGet('/customer-loyalty/loyalty/liability')
+      apiGet('/customer-loyalty/loyalty/exposure')
     ]);
     if (analyticsRes && analyticsRes.success) cachedAnalytics = analyticsRes.data;
     if (cohortsRes && cohortsRes.success) cachedCohorts = cohortsRes.data;
-    if (liabilityRes && liabilityRes.success) cachedLiability = liabilityRes.data;
+    if (exposureRes && exposureRes.success) cachedLiability = exposureRes.data;
   } catch (err) {
     console.warn('Customer loyalty load notice:', err.message);
   }
