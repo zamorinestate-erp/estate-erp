@@ -200,11 +200,11 @@ function renderLoyalty(container) {
         </div>
         <div style="padding:16px;background:rgba(0,0,0,0.2);border-radius:8px;border:1px solid var(--border-color,#334155);">
           <div style="font-size:12px;color:var(--text-muted,#94a3b8);font-weight:700;">ESTIMATED OUTSTANDING LOYALTY VALUE</div>
-          <div style="font-size:24px;font-weight:800;color:#38bdf8;margin-top:4px;">₹${l.estimatedExposureRupees ?? l.totalEstimatedLiabilityRupees ?? 0}</div>
+          <div style="font-size:24px;font-weight:800;color:#38bdf8;margin-top:4px;">₹${l.estimatedExposureRupees ?? 0}</div>
         </div>
       </div>
       <div style="font-size:12px;color:var(--text-muted,#94a3b8);margin-top:14px;">
-        Programme exposure simulation only. Zero active balance sheet liability or GL journal posting recognised.
+        Programme exposure simulation only. Zero balance sheet recognition or GL journal posting.
       </div>
     </div>
   `;
