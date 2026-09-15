@@ -61,7 +61,12 @@ describe('BATCH 03 — Multi-Tenant Security & IDOR Isolation Suite (Stages 11-1
   let testMeterId;
   let testMeetingId;
 
+  let origEnableLoyalty;
+
   before(async () => {
+    origEnableLoyalty = process.env.ENABLE_LOYALTY;
+    process.env.ENABLE_LOYALTY = 'true';
+
     if (mongoose.connection.readyState === 0) {
       const uri = process.env.MONGO_URI || 'mongodb://localhost:27017/zamorin_erp_test';
       await mongoose.connect(uri);
@@ -155,6 +160,7 @@ describe('BATCH 03 — Multi-Tenant Security & IDOR Isolation Suite (Stages 11-1
     await GovernanceMeeting.deleteMany({ organisationId: { $in: [TEST_ORG, FOREIGN_ORG] } });
     await DelegationOfAuthority.deleteMany({ organisationId: { $in: [TEST_ORG, FOREIGN_ORG] } });
 
+    process.env.ENABLE_LOYALTY = origEnableLoyalty;
     await mongoose.disconnect();
   });
 
@@ -190,8 +196,7 @@ describe('BATCH 03 — Multi-Tenant Security & IDOR Isolation Suite (Stages 11-1
           billId: 'BILL-20260914-9999',
           billAmount: 500,
           pointsToAccrue: 25,
-          idempotencyKey: `LOY-IDOR-${Date.now()}`,
-          enableLoyaltyOverride: true
+          idempotencyKey: `LOY-IDOR-${Date.now()}`
         }, USER_FOREIGN);
       },
       /CUSTOMER_NOT_FOUND/

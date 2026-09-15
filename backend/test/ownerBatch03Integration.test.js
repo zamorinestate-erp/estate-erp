@@ -66,7 +66,12 @@ describe('BATCH 03 — Cross-Stage (11-15) Strategic Integration Suite', () => {
   let testCustomerId;
   let testBillId;
 
+  let origEnableLoyalty;
+
   before(async () => {
+    origEnableLoyalty = process.env.ENABLE_LOYALTY;
+    process.env.ENABLE_LOYALTY = 'true';
+
     if (mongoose.connection.readyState === 0) {
       const uri = process.env.MONGO_URI || 'mongodb://localhost:27017/zamorin_erp_test';
       await mongoose.connect(uri);
@@ -89,6 +94,7 @@ describe('BATCH 03 — Cross-Stage (11-15) Strategic Integration Suite', () => {
   });
 
   after(async () => {
+    process.env.ENABLE_LOYALTY = origEnableLoyalty;
     await mongoose.disconnect();
   });
 
@@ -211,8 +217,7 @@ describe('BATCH 03 — Cross-Stage (11-15) Strategic Integration Suite', () => {
       billId: testBillId,
       billAmount: 800,
       pointsToAccrue: 40,
-      idempotencyKey,
-      enableLoyaltyOverride: true
+      idempotencyKey
     }, USER_OWNER);
 
     assert.equal(accrual.success, true);

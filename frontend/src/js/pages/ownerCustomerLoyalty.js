@@ -189,22 +189,22 @@ function renderCohorts(container) {
 }
 
 function renderLoyalty(container) {
-  const l = cachedLiability || { totalOutstandingPoints: 0, totalEstimatedLiabilityRupees: 0 };
+  const l = cachedLiability || { totalOutstandingPoints: 0, estimatedExposureRupees: 0 };
   container.innerHTML = `
     <div style="background:var(--surface-color,#1e293b);padding:20px;border-radius:8px;border:1px solid var(--border-color,#334155);">
-      <h3 style="font-size:16px;font-weight:700;color:#fff;margin:0 0 16px 0;">Loyalty Liability & Accounting Note</h3>
+      <h3 style="font-size:16px;font-weight:700;color:#fff;margin:0 0 16px 0;">Loyalty Programme Exposure & Outstanding Value</h3>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
         <div style="padding:16px;background:rgba(0,0,0,0.2);border-radius:8px;border:1px solid var(--border-color,#334155);">
           <div style="font-size:12px;color:var(--text-muted,#94a3b8);font-weight:700;">OUTSTANDING POINTS</div>
           <div style="font-size:24px;font-weight:800;color:#c084fc;margin-top:4px;">${l.totalOutstandingPoints} pts</div>
         </div>
         <div style="padding:16px;background:rgba(0,0,0,0.2);border-radius:8px;border:1px solid var(--border-color,#334155);">
-          <div style="font-size:12px;color:var(--text-muted,#94a3b8);font-weight:700;">ESTIMATED BALANCE SHEET LIABILITY</div>
-          <div style="font-size:24px;font-weight:800;color:#38bdf8;margin-top:4px;">₹${l.totalEstimatedLiabilityRupees}</div>
+          <div style="font-size:12px;color:var(--text-muted,#94a3b8);font-weight:700;">ESTIMATED OUTSTANDING LOYALTY VALUE</div>
+          <div style="font-size:24px;font-weight:800;color:#38bdf8;margin-top:4px;">₹${l.estimatedExposureRupees ?? l.totalEstimatedLiabilityRupees ?? 0}</div>
         </div>
       </div>
       <div style="font-size:12px;color:var(--text-muted,#94a3b8);margin-top:14px;">
-        Idempotent points ledger prevents duplicate accruals on bills or double redemptions.
+        Programme exposure simulation only. Zero active balance sheet liability or GL journal posting recognised.
       </div>
     </div>
   `;

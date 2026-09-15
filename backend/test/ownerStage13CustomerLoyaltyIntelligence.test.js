@@ -191,8 +191,9 @@ describe('STAGE 13 — Customer & Loyalty Intelligence Suite', () => {
     assert.equal(cohorts.sensitiveTraitInferenceStatus, 'STRICTLY_PROHIBITED');
   });
 
-  test('3. Idempotent Loyalty Points Accrual: Default-off invariant & exactly-once accrual per bill', async () => {
+  test('3. Idempotent Loyalty Points Accrual: Enforces default-off, rejects client overrides, requires server config', async () => {
     // 1. Default-off invariant: Calling accrueLoyaltyPoints without ENABLE_LOYALTY=true is rejected
+    process.env.ENABLE_LOYALTY = 'false';
     await assert.rejects(
       async () => {
         await ownerCustomerLoyaltyService.accrueLoyaltyPoints(TEST_ORG, {
@@ -205,7 +206,22 @@ describe('STAGE 13 — Customer & Loyalty Intelligence Suite', () => {
       (err) => err.message.includes('LOYALTY_PROGRAMME_DISABLED')
     );
 
-    // 2. Governed Execution with explicit override
+    // 2. Client-controlled payload bypass attempt is strictly rejected
+    await assert.rejects(
+      async () => {
+        await ownerCustomerLoyaltyService.accrueLoyaltyPoints(TEST_ORG, {
+          customerId: testCustomerId,
+          billId: testBillId,
+          billAmount: 750,
+          pointsToAccrue: 25,
+          enableLoyaltyOverride: true // Untrusted client payload attempt
+        }, USER_OWNER);
+      },
+      (err) => err.message.includes('CLIENT_LOYALTY_OVERRIDE_PROHIBITED')
+    );
+
+    // 3. Approved server-side environment / configuration decision enables loyalty
+    process.env.ENABLE_LOYALTY = 'true';
     const rKey = Math.floor(Math.random() * 89999 + 10000);
     const idempotencyKey = `LOY-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${rKey}`;
     const accrual1 = await ownerCustomerLoyaltyService.accrueLoyaltyPoints(TEST_ORG, {
@@ -213,8 +229,7 @@ describe('STAGE 13 — Customer & Loyalty Intelligence Suite', () => {
       billId: testBillId,
       billAmount: 750,
       pointsToAccrue: 25,
-      idempotencyKey,
-      enableLoyaltyOverride: true
+      idempotencyKey
     }, USER_OWNER);
 
     assert.equal(accrual1.success, true);
@@ -229,16 +244,17 @@ describe('STAGE 13 — Customer & Loyalty Intelligence Suite', () => {
           billId: testBillId,
           billAmount: 750,
           pointsToAccrue: 25,
-          idempotencyKey: `LOY-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${rKey + 1}`,
-          enableLoyaltyOverride: true
+          idempotencyKey: `LOY-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${rKey + 1}`
         }, USER_OWNER);
       },
       (err) => err.message.includes('Duplicate loyalty accrual rejected')
     );
+    process.env.ENABLE_LOYALTY = 'false';
   });
 
-  test('4. Loyalty Points Redemption: Default-off invariant, balance validation & idempotency', async () => {
+  test('4. Loyalty Points Redemption: Enforces default-off, rejects client overrides, checks balance & idempotency', async () => {
     // 1. Default-off invariant: Calling redeemLoyaltyPoints without ENABLE_LOYALTY=true is rejected
+    process.env.ENABLE_LOYALTY = 'false';
     await assert.rejects(
       async () => {
         await ownerCustomerLoyaltyService.redeemLoyaltyPoints(TEST_ORG, {
@@ -249,14 +265,26 @@ describe('STAGE 13 — Customer & Loyalty Intelligence Suite', () => {
       (err) => err.message.includes('LOYALTY_PROGRAMME_DISABLED')
     );
 
-    // 2. Governed Redemption with explicit override
+    // 2. Client-controlled payload bypass attempt is strictly rejected
+    await assert.rejects(
+      async () => {
+        await ownerCustomerLoyaltyService.redeemLoyaltyPoints(TEST_ORG, {
+          customerId: testCustomerId,
+          pointsToRedeem: 45,
+          enableLoyaltyOverride: true // Untrusted client payload attempt
+        }, USER_OWNER);
+      },
+      (err) => err.message.includes('CLIENT_LOYALTY_OVERRIDE_PROHIBITED')
+    );
+
+    // 3. Approved server-side configuration enables redemption
+    process.env.ENABLE_LOYALTY = 'true';
     const rRedKey = Math.floor(Math.random() * 89999 + 10000);
     const redemptionKey = `LOY-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${rRedKey}`;
     const redemption = await ownerCustomerLoyaltyService.redeemLoyaltyPoints(TEST_ORG, {
       customerId: testCustomerId,
       pointsToRedeem: 45,
-      idempotencyKey: redemptionKey,
-      enableLoyaltyOverride: true
+      idempotencyKey: redemptionKey
     }, USER_OWNER);
 
     assert.equal(redemption.success, true);
@@ -269,8 +297,7 @@ describe('STAGE 13 — Customer & Loyalty Intelligence Suite', () => {
         await ownerCustomerLoyaltyService.redeemLoyaltyPoints(TEST_ORG, {
           customerId: testCustomerId,
           pointsToRedeem: 45,
-          idempotencyKey: redemptionKey,
-          enableLoyaltyOverride: true
+          idempotencyKey: redemptionKey
         }, USER_OWNER);
       },
       (err) => err.message.includes('Duplicate redemption rejected')
@@ -282,21 +309,22 @@ describe('STAGE 13 — Customer & Loyalty Intelligence Suite', () => {
         await ownerCustomerLoyaltyService.redeemLoyaltyPoints(TEST_ORG, {
           customerId: testCustomerId,
           pointsToRedeem: 500,
-          idempotencyKey: `LOY-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${rRedKey + 1}`,
-          enableLoyaltyOverride: true
+          idempotencyKey: `LOY-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${rRedKey + 1}`
         }, USER_OWNER);
       },
       (err) => err.message.includes('INSUFFICIENT_LOYALTY_POINTS')
     );
+    process.env.ENABLE_LOYALTY = 'false';
   });
 
-  test('5. Loyalty Programme Exposure Simulation: Computes estimated programme exposure at configured ₹0.25/point', async () => {
+  test('5. Loyalty Programme Exposure Simulation: Computes estimated outstanding loyalty value at configured ₹0.25/point', async () => {
     const exposure = await ownerCustomerLoyaltyService.calculateLoyaltyExposure(TEST_ORG);
     assert.equal(exposure.pointConversionRateRupees, 0.25);
     // Customers: Aditi (100), Rahul (250), Sneha (40) -> Total 390
     assert.equal(exposure.totalOutstandingPoints, 390);
     assert.equal(exposure.estimatedExposureRupees, 97.5); // 390 * 0.25
-    assert.ok(exposure.exposureNotice.includes('PROGRAMME EXPOSURE ESTIMATE'));
+    assert.ok(exposure.exposureNotice.includes('ESTIMATED OUTSTANDING LOYALTY VALUE'));
+    assert.ok(exposure.exposureNotice.includes('NO AUTOMATIC GL POSTING'));
   });
 
   test('6. Purpose Limitation: Enforces separation between complaints and marketing consent', async () => {
@@ -336,17 +364,18 @@ describe('STAGE 13 — Customer & Loyalty Intelligence Suite', () => {
   });
 
   test('8. Multi-Tenant IDOR: Foreign organization denied access to loyalty data', async () => {
+    process.env.ENABLE_LOYALTY = 'true';
     await assert.rejects(
       async () => {
         await ownerCustomerLoyaltyService.accrueLoyaltyPoints(FOREIGN_ORG, {
           customerId: testCustomerId,
           billId: 'BILL-FOREIGN-99',
-          pointsToAccrue: 10,
-          enableLoyaltyOverride: true
+          pointsToAccrue: 10
         }, USER_OWNER);
       },
       (err) => err.message.includes('CUSTOMER_NOT_FOUND')
     );
+    process.env.ENABLE_LOYALTY = 'false';
   });
 
   after(async () => {

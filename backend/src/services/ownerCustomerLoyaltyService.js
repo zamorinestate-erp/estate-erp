@@ -11,7 +11,7 @@
  *   health, political affiliation, or income class.
  * - Transparent & versioned cohorts (First Visit, Repeat, Regular, Lapsed, Reactivated).
  * - Strict loyalty idempotency (same bill cannot earn points twice; redemptions cannot double-post).
- * - Loyalty accounting liability computation.
+ * - Estimated outstanding loyalty value & programme exposure simulation (zero balance-sheet liability; zero GL posting).
  * - Purpose limitation: customer data collected for complaints is strictly separated from marketing.
  * - Role-based masking on all customer contact exports.
  */
@@ -149,8 +149,16 @@ class OwnerCustomerLoyaltyService {
     const orgUpper = organisationId.toString().toUpperCase();
     const orgFilter = { $or: [{ organisationId }, { organisationId: organisationId.toString() }, { organisationId: orgUpper }] };
 
-    // Canonical runtime invariant: Loyalty earn/redeem is disabled by default (ENABLE_LOYALTY=false)
-    const isLoyaltyEnabled = process.env.ENABLE_LOYALTY === 'true' || payload.enableLoyaltyOverride === true;
+    // Strict runtime governance invariant: Loyalty programme is disabled by default (ENABLE_LOYALTY=false).
+    // Client-supplied payload fields (such as enableLoyaltyOverride) are strictly rejected.
+    // Programme activation requires trusted server-side environment / governance configuration only.
+    if (payload && (payload.enableLoyaltyOverride !== undefined || payload.enableLoyalty !== undefined)) {
+      if (payload.enableLoyaltyOverride === true || payload.enableLoyalty === true) {
+        throw new Error('CLIENT_LOYALTY_OVERRIDE_PROHIBITED: Request payload cannot self-enable or bypass the loyalty programme gate. Server-side governance required.');
+      }
+    }
+
+    const isLoyaltyEnabled = process.env.ENABLE_LOYALTY === 'true';
     if (!isLoyaltyEnabled) {
       throw new Error('LOYALTY_PROGRAMME_DISABLED: Runtime loyalty is disabled by default (ENABLE_LOYALTY=false). No approved Zamorin loyalty programme active.');
     }
@@ -237,8 +245,16 @@ class OwnerCustomerLoyaltyService {
     const orgUpper = organisationId.toString().toUpperCase();
     const orgFilter = { $or: [{ organisationId }, { organisationId: organisationId.toString() }, { organisationId: orgUpper }] };
 
-    // Canonical runtime invariant: Loyalty earn/redeem is disabled by default (ENABLE_LOYALTY=false)
-    const isLoyaltyEnabled = process.env.ENABLE_LOYALTY === 'true' || payload.enableLoyaltyOverride === true;
+    // Strict runtime governance invariant: Loyalty programme is disabled by default (ENABLE_LOYALTY=false).
+    // Client-supplied payload fields (such as enableLoyaltyOverride) are strictly rejected.
+    // Programme activation requires trusted server-side environment / governance configuration only.
+    if (payload && (payload.enableLoyaltyOverride !== undefined || payload.enableLoyalty !== undefined)) {
+      if (payload.enableLoyaltyOverride === true || payload.enableLoyalty === true) {
+        throw new Error('CLIENT_LOYALTY_OVERRIDE_PROHIBITED: Request payload cannot self-enable or bypass the loyalty programme gate. Server-side governance required.');
+      }
+    }
+
+    const isLoyaltyEnabled = process.env.ENABLE_LOYALTY === 'true';
     if (!isLoyaltyEnabled) {
       throw new Error('LOYALTY_PROGRAMME_DISABLED: Runtime loyalty is disabled by default (ENABLE_LOYALTY=false). No approved Zamorin loyalty programme active.');
     }
@@ -261,12 +277,13 @@ class OwnerCustomerLoyaltyService {
       }
     }
 
+    // Balance check
     const customer = await Customer.findOne({ _id: customerId, ...orgFilter });
     if (!customer) throw new Error('CUSTOMER_NOT_FOUND');
 
     const currentBalance = customer.pointsBalance || customer.loyaltyPoints || 0;
     if (currentBalance < pointsToRedeem) {
-      throw new Error(`INSUFFICIENT_LOYALTY_POINTS: Balance is ${currentBalance}, cannot redeem ${pointsToRedeem}`);
+      throw new Error(`INSUFFICIENT_LOYALTY_POINTS: Requested ${pointsToRedeem}, available ${currentBalance}`);
     }
 
     const balanceAfter = currentBalance - pointsToRedeem;
@@ -289,16 +306,14 @@ class OwnerCustomerLoyaltyService {
           pointsDelta: -pointsToRedeem,
           balanceBefore: currentBalance,
           balanceAfter,
-          referenceBillId: billId || null,
-          reference: {
-            billId: billId || null
-          },
-          externalReference: idempotencyKey || null,
+          referenceBillId: billId,
+          reference: { billId },
+          externalReference: idempotencyKey || billId,
           performedByUserId: (user?.userId || user?._id || 'SYSTEM').toString().toUpperCase(),
           createdBy: user?.userId || user?._id || 'SYSTEM'
         });
       } catch (err) {
-        console.warn('Loyalty ledger write note:', err.message);
+        console.warn('Loyalty redemption ledger write note:', err.message);
       }
     }
 
@@ -338,9 +353,8 @@ class OwnerCustomerLoyaltyService {
       totalOutstandingPoints,
       pointConversionRateRupees: pointValueRupees,
       estimatedExposureRupees,
-      totalEstimatedLiabilityRupees: estimatedExposureRupees, // Backwards-compatible alias
-      exposureNotice: 'PROGRAMME EXPOSURE ESTIMATE ONLY — NO AUTOMATIC GL POSTING OR BALANCE SHEET RECOGNITION WITHOUT FINANCE APPROVAL',
-      accountingNotice: 'PROGRAMME EXPOSURE ESTIMATE ONLY — NO AUTOMATIC GL POSTING OR BALANCE SHEET RECOGNITION WITHOUT FINANCE APPROVAL'
+      exposureNotice: 'ESTIMATED OUTSTANDING LOYALTY VALUE / PROGRAMME EXPOSURE ONLY — NO AUTOMATIC GL POSTING OR BALANCE SHEET RECOGNITION WITHOUT FINANCE APPROVAL',
+      governanceNotice: 'ESTIMATED OUTSTANDING LOYALTY VALUE / PROGRAMME EXPOSURE ONLY — NO AUTOMATIC GL POSTING OR BALANCE SHEET RECOGNITION WITHOUT FINANCE APPROVAL'
     };
   }
 
