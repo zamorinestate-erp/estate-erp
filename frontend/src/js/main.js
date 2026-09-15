@@ -428,10 +428,11 @@ export function mountAuthScreen(screen = "login", params = {}) {
         }
       });
     } else {
-      appEl.innerHTML = renderLoginPage2(params);
+      const activeCafe = params.cafeContext || (typeof window !== "undefined" ? null : null);
+      appEl.innerHTML = renderLoginPage2({ ...params, cafeContext: activeCafe || params.cafeContext });
       wireLoginPage2(appEl, {
-        onSubmit: async ({ organisationId, email, password, rememberDevice }) => {
-          await handleCompleteLoginFlow({ organisationId, email, password, rememberDevice });
+        onSubmit: async ({ organisationId, email, password, rememberDevice, targetCafeId }) => {
+          await handleCompleteLoginFlow({ organisationId, email, password, rememberDevice, targetCafeId });
         },
         onForgotPassword: ({ organisationId, email }) => {
           mountAuthScreen("forgot", { organisationId, email });
@@ -577,22 +578,27 @@ export function mountAuthScreen(screen = "login", params = {}) {
   }
 }
 
-async function handleCompleteLoginFlow({ organisationId, email, password, rememberDevice = false }) {
+async function handleCompleteLoginFlow({ organisationId, email, password, rememberDevice = false, targetCafeId = null }) {
   try {
+    const loginPayload = {
+      organisationId,
+      email,
+      password,
+      rememberDevice: Boolean(rememberDevice),
+      identifier: email,
+      device: {
+        deviceId: getOrCreateDeviceId(),
+        deviceName: "Browser Client",
+        deviceType: "DESKTOP",
+      },
+    };
+    if (targetCafeId) {
+      loginPayload.targetCafeId = String(targetCafeId).trim().toUpperCase();
+    }
+
     const res = await apiPost(
       "/auth/login",
-      {
-        organisationId,
-        email,
-        password,
-        rememberDevice: Boolean(rememberDevice),
-        identifier: email,
-        device: {
-          deviceId: getOrCreateDeviceId(),
-          deviceName: "Browser Client",
-          deviceType: "DESKTOP",
-        },
-      },
+      loginPayload,
       { timeoutMs: 60000 }
     );
 
@@ -847,18 +853,22 @@ async function boot() {
       ? new URLSearchParams(window.location.search)
       : null;
 
-  // Direct Café Access QR / Link / PIN Gateway Routing (P0-02, P0-02B)
+  // Direct Café Access QR / Link / PIN Gateway Routing (P0-02, P0-02B, REC-03)
   const pathname = typeof window !== "undefined" ? window.location.pathname : "";
-  const isQrPath = pathname.startsWith("/cafe-access/qr/") || urlHash.startsWith("cafe-access/qr/");
+  const isCShortPath = pathname.startsWith("/c/") || urlHash.startsWith("c/");
+  const isQrPath = isCShortPath || pathname.startsWith("/cafe-access/qr/") || urlHash.startsWith("cafe-access/qr/");
   const isLinkPath = pathname.startsWith("/cafe-access/link/") || urlHash.startsWith("cafe-access/link/");
   const isGatewayPath = pathname === "/cafe-gateway" || urlHash === "cafe-gateway";
 
   if (isQrPath || isLinkPath || isGatewayPath) {
-    const token = isQrPath
-      ? (pathname.startsWith("/cafe-access/qr/") ? pathname.slice("/cafe-access/qr/".length) : urlHash.slice("cafe-access/qr/".length))
-      : isLinkPath
-      ? (pathname.startsWith("/cafe-access/link/") ? pathname.slice("/cafe-access/link/".length) : urlHash.slice("cafe-access/link/".length))
-      : null;
+    let token = null;
+    if (pathname.startsWith("/c/")) token = pathname.slice("/c/".length);
+    else if (urlHash.startsWith("c/")) token = urlHash.slice("c/".length);
+    else if (pathname.startsWith("/cafe-access/qr/")) token = pathname.slice("/cafe-access/qr/".length);
+    else if (urlHash.startsWith("cafe-access/qr/")) token = urlHash.slice("cafe-access/qr/".length);
+    else if (pathname.startsWith("/cafe-access/link/")) token = pathname.slice("/cafe-access/link/".length);
+    else if (urlHash.startsWith("cafe-access/link/")) token = urlHash.slice("cafe-access/link/".length);
+
     const method = isQrPath ? "QR" : isLinkPath ? "LINK" : null;
 
     mountPublicCafeGateway(document.getElementById("app"), { method, token });
@@ -952,10 +962,11 @@ if (typeof window !== "undefined") {
       mountAuthScreen("forgot");
     } else if (rawHash === "mfa") {
       mountAuthScreen("mfa");
-    } else if (rawHash === "cafe-gateway" || rawHash.startsWith("cafe-access/")) {
-      const isQr = rawHash.startsWith("cafe-access/qr/");
+    } else if (rawHash === "cafe-gateway" || rawHash.startsWith("cafe-access/") || rawHash.startsWith("c/")) {
+      const isCShort = rawHash.startsWith("c/");
+      const isQr = isCShort || rawHash.startsWith("cafe-access/qr/");
       const isLink = rawHash.startsWith("cafe-access/link/");
-      const token = isQr ? rawHash.slice("cafe-access/qr/".length) : isLink ? rawHash.slice("cafe-access/link/".length) : null;
+      const token = isCShort ? rawHash.slice("c/".length) : isQr ? rawHash.slice("cafe-access/qr/".length) : isLink ? rawHash.slice("cafe-access/link/".length) : null;
       const method = isQr ? "QR" : isLink ? "LINK" : null;
       mountPublicCafeGateway(document.getElementById("app"), { method, token });
     } else if (rawHash && state.route !== rawHash) {

@@ -179,7 +179,11 @@ function createApp(environment) {
 
   app.use(requestContext);
   app.use(cookieParser());
-  app.use(helmet());
+  app.use(
+    helmet({
+      referrerPolicy: { policy: 'same-origin' },
+    })
+  );
   app.use(
     express.json({
       limit: '1mb',
@@ -274,6 +278,12 @@ function createApp(environment) {
 
   app.use('/api/', apiLimiter);
   app.use('/api/v1', apiRouter);
+
+  // REC-03: Top-level canonical QR route & safe short alias
+  const { getPublicQrContext } = require('./controllers/cafeAccessController');
+  app.get('/cafe-access/qr/:token', getPublicQrContext);
+  app.get('/c/:token', getPublicQrContext);
+
   app.use(notFound);
   app.use(errorHandler);
 

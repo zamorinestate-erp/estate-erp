@@ -98,6 +98,42 @@ const cafeAccessSchema = new mongoose.Schema(
       default: Date.now,
     },
 
+    qrRevokedAt: {
+      type: Date,
+      default: null,
+    },
+
+    qrRevokedBy: {
+      type: String,
+      trim: true,
+      maxlength: 100,
+      default: null,
+    },
+
+    qrRevokeReason: {
+      type: String,
+      trim: true,
+      maxlength: 500,
+      default: null,
+    },
+
+    qrHistory: [
+      {
+        version: Number,
+        action: {
+          type: String,
+          enum: ['CREATED', 'ROTATED', 'REVOKED', 'REACTIVATED'],
+        },
+        actionAt: {
+          type: Date,
+          default: Date.now,
+        },
+        actorUserId: String,
+        actorRole: String,
+        reason: String,
+      },
+    ],
+
     qrLastUsedAt: {
       type: Date,
       default: null,

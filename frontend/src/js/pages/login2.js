@@ -165,27 +165,29 @@ export function showGlassAlert(message, callback) {
 // -----------------------------------------------------------------------------
 // 1. MAIN LOGIN SCREEN (LOGIN-PAGE-2.0)
 // -----------------------------------------------------------------------------
-export function renderLoginPage2({ organisationId = "ZAMORIN", email = "", notice = "", error = "" } = {}) {
+export function renderLoginPage2({ organisationId = "ZAMORIN", email = "", notice = "", error = "", cafeContext = null } = {}) {
   // Check remembered device state
   let rememberedEmail = email;
-  let rememberedOrg = organisationId;
+  let rememberedOrg = cafeContext?.organisationId || organisationId;
   let isRemembered = false;
   try {
     const raw = localStorage.getItem("zamorin_remembered_device");
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed.email) {
+      if (parsed?.email && !email) {
         rememberedEmail = parsed.email;
-        rememberedOrg = parsed.organisationId || organisationId;
+        if (parsed?.organisationId && !cafeContext?.organisationId) rememberedOrg = parsed.organisationId;
         isRemembered = true;
       }
     }
   } catch {}
 
+  const cafeIdAttr = cafeContext?.cafeId ? `data-target-cafe-id="${escHtml(cafeContext.cafeId)}"` : "";
+
   return `
     ${renderBackgroundAndModalsHtml()}
     <div class="l2-glass-wrapper">
-      <div class="light-glass-container" id="login-view">
+      <div class="light-glass-container" id="login-view" ${cafeIdAttr}>
         <div class="l2-brand-header">
           <img src="/src/assets/zamorin-logo-stacked.svg" alt="Zamorin Café" class="l2-brand-logo" />
         </div>
@@ -194,6 +196,21 @@ export function renderLoginPage2({ organisationId = "ZAMORIN", email = "", notic
           <h2>Welcome Back</h2>
           <p class="login-subtitle">Please enter your enterprise credentials to sign in.</p>
         </div>
+
+        ${cafeContext ? `
+          <div class="l2-cafe-banner" style="background:rgba(177,125,56,0.18);border:1px solid #b17d38;border-radius:10px;padding:12px 16px;margin-bottom:18px;text-align:center;">
+            <div style="font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#d4a359;margin-bottom:2px;">
+              Signing in to:
+            </div>
+            <div style="font-size:17px;font-weight:800;color:#ffffff;">
+              ${escHtml(cafeContext.displayName || cafeContext.name || cafeContext.cafeName || 'Zamorin Café')}
+              <span style="font-family:monospace;font-size:13px;color:#d4a359;font-weight:700;">(${escHtml(cafeContext.cafeId)})</span>
+            </div>
+            ${cafeContext.city ? `
+              <div style="font-size:12px;color:#cccccc;margin-top:2px;">📍 ${escHtml(cafeContext.city)} Branch</div>
+            ` : ''}
+          </div>
+        ` : ""}
 
         ${notice ? `<div class="l2-notice-banner">${notice}</div>` : ""}
         <div id="l2-login-error" class="l2-error-banner" style="${error ? "" : "display:none;"}">${error}</div>
@@ -537,7 +554,8 @@ export function wireLoginPage2(container, { onSubmit, onForgotPassword, onCafeOp
       }
 
       try {
-        await onSubmit({ organisationId, email, password, rememberDevice });
+        const targetCafeId = container.querySelector("#login-view")?.dataset?.targetCafeId || null;
+        await onSubmit({ organisationId, email, password, rememberDevice, targetCafeId });
       } catch (err) {
         if (progressTimer) clearTimeout(progressTimer);
         isSubmitting = false;

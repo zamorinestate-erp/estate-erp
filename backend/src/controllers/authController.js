@@ -302,6 +302,14 @@ function getLoginInput(request) {
     );
   }
 
+  const targetCafeId = String(
+    body.targetCafeId ||
+    body.resolvedCafeId ||
+    body.cafeId ||
+    request.get('x-target-cafe-id') ||
+    ''
+  ).trim();
+
   return {
     organisationId:
       organisationId.trim(),
@@ -316,6 +324,8 @@ function getLoginInput(request) {
 
     network:
       buildNetworkMetadata(request),
+
+    targetCafeId: targetCafeId ? targetCafeId.toUpperCase() : null,
   };
 }
 
@@ -430,6 +440,20 @@ const login = asyncHandler(
       mfaSetupRequired,
       mustChangePassword,
     } = authenticationResult;
+
+    // REC-03: Enforce Authentication + Café Authorization Binding
+    if (loginInput.targetCafeId) {
+      const cafeService = require('../services/cafeService');
+      await cafeService.verifyCafeAccessBinding({
+        userId: user.userId,
+        role: user.role,
+        organisationId: user.organisationId,
+        assignedCafeIds: user.assignedCafeIds,
+        primaryCafeId: user.primaryCafeId,
+        targetCafeId: loginInput.targetCafeId,
+        isPrimaryMaster: Boolean(user.isPrimaryMaster),
+      });
+    }
 
     let requiresMfa = baseRequiresMfa;
     let isTrustedDevice = false;

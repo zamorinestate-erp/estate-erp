@@ -1672,13 +1672,13 @@ class CafeService {
     const publicOrigin = getPublicAppOrigin();
     let qrUrl = null;
     let linkUrl = null;
-    if (access.qrTokenEncrypted) {
+    if (access.qrTokenEncrypted && access.qrEnabled) {
       try {
         const qrToken = decryptSecret(access.qrTokenEncrypted);
         qrUrl = `${publicOrigin}/cafe-access/qr/${qrToken}`;
       } catch {}
     }
-    if (access.linkTokenEncrypted) {
+    if (access.linkTokenEncrypted && access.linkEnabled) {
       try {
         const linkToken = decryptSecret(access.linkTokenEncrypted);
         linkUrl = `${publicOrigin}/cafe-access/link/${linkToken}`;
@@ -1693,8 +1693,13 @@ class CafeService {
       provisioningStatus: access.provisioningStatus,
       permanentCafePinMasked: '••••••',
       qrEnabled: Boolean(access.qrEnabled),
+      qrStatus: access.qrRevokedAt ? 'REVOKED' : access.qrEnabled ? 'ACTIVE' : 'DISABLED',
       qrVersion: access.qrVersion || 1,
       qrCreatedAt: access.qrCreatedAt,
+      qrRevokedAt: access.qrRevokedAt || null,
+      qrRevokedBy: access.qrRevokedBy || null,
+      qrRevokeReason: access.qrRevokeReason || null,
+      qrHistory: Array.isArray(access.qrHistory) ? access.qrHistory : [],
       qrLastUsedAt: access.qrLastUsedAt,
       qrUrl,
       linkEnabled: Boolean(access.linkEnabled),
@@ -1811,11 +1816,26 @@ class CafeService {
       throw new ApiError(404, 'ACCESS_RECORD_NOT_FOUND', 'Café Access record not found.');
     }
 
+    const priorVersion = access.qrVersion || 1;
+    if (!access.qrHistory) access.qrHistory = [];
+    access.qrHistory.push({
+      version: priorVersion,
+      action: 'ROTATED',
+      actionAt: new Date(),
+      actorUserId: auth.userId,
+      actorRole: auth.role,
+      reason: `QR rotated to v${priorVersion + 1}`,
+    });
+
     const newQrToken = generateOpaqueToken();
     access.qrCredentialHash = hashOpaqueToken(newQrToken);
     access.qrTokenEncrypted = encryptSecret(newQrToken);
-    access.qrVersion = (access.qrVersion || 1) + 1;
+    access.qrVersion = priorVersion + 1;
+    access.qrEnabled = true;
     access.qrCreatedAt = new Date();
+    access.qrRevokedAt = null;
+    access.qrRevokedBy = null;
+    access.qrRevokeReason = null;
     access.updatedBy = auth.userId;
     await access.save();
 
@@ -1833,6 +1853,9 @@ class CafeService {
       riskClassification: 'HIGH',
       ipAddress: clientIp,
       userAgent,
+      metadata: {
+        qrVersion: access.qrVersion,
+      },
     });
 
     const publicOrigin = getPublicAppOrigin();
@@ -1842,6 +1865,96 @@ class CafeService {
       qrVersion: access.qrVersion,
       qrToken: newQrToken,
       qrUrl: `${publicOrigin}/cafe-access/qr/${newQrToken}`,
+    };
+  }
+
+  /**
+   * Explicitly revokes Café QR Credential: sets qrEnabled=false, closes gateway, retains café intact.
+   */
+  async revokeQrCredential({
+    organisationId,
+    cafeId,
+    auth,
+    reason = null,
+    currentPassword = null,
+    clientIp = null,
+    userAgent = null,
+  }) {
+    requireGovernanceAuthority(auth);
+
+    if (currentPassword) {
+      const user = await User.findOne({
+        userId: auth.userId,
+        organisationId: String(organisationId).toUpperCase(),
+      }).select('+passwordHash');
+      if (user && user.passwordHash) {
+        const ok = await bcrypt.compare(currentPassword, user.passwordHash);
+        if (!ok) throw new ApiError(401, 'INVALID_CREDENTIALS', 'Incorrect password.');
+      }
+    }
+
+    const access = await CafeAccess.findOne({
+      organisationId: String(organisationId).toUpperCase(),
+      cafeId: String(cafeId).toUpperCase(),
+    });
+
+    if (!access) {
+      throw new ApiError(404, 'ACCESS_RECORD_NOT_FOUND', 'Café Access record not found.');
+    }
+
+    if (!access.qrEnabled) {
+      return {
+        cafeId,
+        qrVersion: access.qrVersion,
+        qrEnabled: false,
+        qrRevokedAt: access.qrRevokedAt,
+        qrRevokeReason: access.qrRevokeReason,
+      };
+    }
+
+    if (!access.qrHistory) access.qrHistory = [];
+    access.qrHistory.push({
+      version: access.qrVersion || 1,
+      action: 'REVOKED',
+      actionAt: new Date(),
+      actorUserId: auth.userId,
+      actorRole: auth.role,
+      reason: reason || 'QR credential revoked by Master governance',
+    });
+
+    access.qrEnabled = false;
+    access.qrRevokedAt = new Date();
+    access.qrRevokedBy = auth.userId;
+    access.qrRevokeReason = reason || 'Revoked by governance authority';
+    access.updatedBy = auth.userId;
+    await access.save();
+
+    await auditService.recordAuditEvent({
+      organisationId,
+      cafeId,
+      actorUserId: auth.userId,
+      actorRole: auth.role,
+      module: 'CAFE_OPERATIONS',
+      action: 'CAFE_QR_REVOKED',
+      entityType: 'CAFE_ACCESS',
+      entityId: cafeId,
+      reason: reason || `QR access credential revoked for version ${access.qrVersion}. Gateway disabled.`,
+      result: 'SUCCESS',
+      riskClassification: 'CRITICAL',
+      ipAddress: clientIp,
+      userAgent,
+      metadata: {
+        qrVersion: access.qrVersion,
+      },
+    });
+
+    return {
+      cafeId,
+      qrVersion: access.qrVersion,
+      qrEnabled: false,
+      qrRevokedAt: access.qrRevokedAt,
+      qrRevokedBy: access.qrRevokedBy,
+      qrRevokeReason: access.qrRevokeReason,
     };
   }
 
@@ -2104,6 +2217,191 @@ class CafeService {
       accessMethod: cleanMethod,
       expiresAt: expiresAt.toISOString(),
     };
+  }
+
+  /**
+   * REC-03: Resolves public QR or Link token to safe public café context.
+   * Zero secrets, zero ObjectIDs, zero employee data.
+   */
+  async resolvePublicQrToken(token, { clientIp = null, userAgent = null, correlationId = null } = {}) {
+    if (!token || typeof token !== 'string' || !token.trim()) {
+      throw new ApiError(400, 'TOKEN_REQUIRED', 'Access QR token is required.');
+    }
+
+    const cleanToken = token.trim();
+    let hash;
+    try {
+      hash = hashOpaqueToken(cleanToken);
+    } catch {
+      throw new ApiError(401, 'INVALID_OR_EXPIRED_CAFE_ACCESS', 'Invalid or unavailable café access link.');
+    }
+
+    const access = await CafeAccess.findOne({
+      qrCredentialHash: hash,
+    });
+
+    if (!access) {
+      throw new ApiError(
+        401,
+        'INVALID_OR_EXPIRED_CAFE_ACCESS',
+        'Invalid or unavailable café access link.'
+      );
+    }
+
+    if (!access.qrEnabled || access.qrRevokedAt) {
+      throw new ApiError(
+        401,
+        'QR_REVOKED',
+        'This QR access code has been revoked. Please request a fresh QR code from management.'
+      );
+    }
+
+    if (access.accessStatus === 'LOCKED' || access.accessStatus === 'DISABLED') {
+      throw new ApiError(
+        403,
+        'CAFE_ACCESS_UNAVAILABLE',
+        'Café Operations access is currently unavailable.'
+      );
+    }
+
+    const cafe = await Cafe.findOne({
+      organisationId: access.organisationId,
+      cafeId: access.cafeId,
+    }).lean();
+
+    if (!cafe || ['ARCHIVED', 'CLOSED', 'SUSPENDED', 'INACTIVE'].includes(cafe.status)) {
+      throw new ApiError(
+        403,
+        'CAFE_INACTIVE',
+        'Café Operations access is currently unavailable.'
+      );
+    }
+
+    // Touch last used timestamp
+    await CafeAccess.updateOne({ _id: access._id }, { qrLastUsedAt: new Date() }).catch(() => {});
+
+    // Return strictly safe public context
+    return {
+      cafeId: access.cafeId,
+      displayName: cafe.displayName || cafe.name,
+      city: cafe.address?.city || cafe.city || null,
+      organisationId: access.organisationId,
+      operationalStatus: cafe.status,
+      brandLogo: '/src/assets/zamorin-estate-mark.png',
+      loginEnabled: true,
+      qrVersion: access.qrVersion || 1,
+    };
+  }
+
+  /**
+   * REC-03: Validates post-authentication café access binding.
+   * Enforces: AUTHENTICATED USER + RESOLVED CAFÉ + ORGANISATION + ROLE + ACTIVE ASSIGNMENT.
+   */
+  async verifyCafeAccessBinding({
+    userId,
+    role,
+    organisationId,
+    assignedCafeIds = [],
+    primaryCafeId = null,
+    targetCafeId,
+    isPrimaryMaster = false,
+  }) {
+    if (!targetCafeId || typeof targetCafeId !== 'string' || !targetCafeId.trim()) {
+      throw new ApiError(400, 'TARGET_CAFE_REQUIRED', 'Target café identifier is required.');
+    }
+
+    const cleanRole = String(role || '').toUpperCase();
+    const cleanTargetCafeId = String(targetCafeId).trim().toUpperCase();
+
+    // 1. Target café must exist and belong to the organisation
+    const cafe = await Cafe.findOne({
+      organisationId: String(organisationId).toUpperCase(),
+      cafeId: cleanTargetCafeId,
+    }).lean();
+
+    if (!cafe) {
+      throw new ApiError(404, 'CAFE_NOT_FOUND', 'Target café not found.');
+    }
+
+    if (['ARCHIVED', 'CLOSED', 'SUSPENDED', 'INACTIVE'].includes(cafe.status)) {
+      throw new ApiError(403, 'CAFE_INACTIVE', 'Café is inactive or suspended.');
+    }
+
+    // 2. Role-based authorization binding check
+    if (cleanRole === 'MASTER') {
+      // Master is authorised across the organisation's cafés
+      return {
+        authorized: true,
+        isPrimaryMaster: Boolean(isPrimaryMaster),
+        cafeId: cleanTargetCafeId,
+        targetCafeId: cleanTargetCafeId,
+        cafeName: cafe.name,
+        displayName: cafe.displayName || cafe.name,
+      };
+    }
+
+    if (cleanRole === 'OWNER') {
+      const ownerCafes = [
+        ...(Array.isArray(assignedCafeIds) ? assignedCafeIds : [assignedCafeIds]),
+        primaryCafeId,
+      ]
+        .filter(Boolean)
+        .map((c) => String(c).trim().toUpperCase());
+
+      // If owner has explicitly assigned cafes, check assignment; otherwise authorised org-wide
+      if (ownerCafes.length === 0 || ownerCafes.includes(cleanTargetCafeId)) {
+        return {
+          authorized: true,
+          cafeId: cleanTargetCafeId,
+          targetCafeId: cleanTargetCafeId,
+          cafeName: cafe.name,
+          displayName: cafe.displayName || cafe.name,
+        };
+      }
+      throw new ApiError(403, 'CAFE_ACCESS_DENIED', 'Owner is not authorised for this café.');
+    }
+
+    if (cleanRole === 'CAFE_ADMIN' || cleanRole === 'ADMIN') {
+      const adminCafes = [
+        ...(Array.isArray(assignedCafeIds) ? assignedCafeIds : [assignedCafeIds]),
+        primaryCafeId,
+      ]
+        .filter(Boolean)
+        .map((c) => String(c).trim().toUpperCase());
+
+      if (adminCafes.includes(cleanTargetCafeId)) {
+        return {
+          authorized: true,
+          cafeId: cleanTargetCafeId,
+          targetCafeId: cleanTargetCafeId,
+          cafeName: cafe.name,
+          displayName: cafe.displayName || cafe.name,
+        };
+      }
+      throw new ApiError(403, 'CAFE_ACCESS_DENIED', 'Café Admin is not authorised for this café.');
+    }
+
+    if (cleanRole === 'STAFF' || cleanRole === 'EMPLOYEE') {
+      const staffCafes = [
+        ...(Array.isArray(assignedCafeIds) ? assignedCafeIds : [assignedCafeIds]),
+        primaryCafeId,
+      ]
+        .filter(Boolean)
+        .map((c) => String(c).trim().toUpperCase());
+
+      if (staffCafes.includes(cleanTargetCafeId)) {
+        return {
+          authorized: true,
+          cafeId: cleanTargetCafeId,
+          targetCafeId: cleanTargetCafeId,
+          cafeName: cafe.name,
+          displayName: cafe.displayName || cafe.name,
+        };
+      }
+      throw new ApiError(403, 'CAFE_ACCESS_DENIED', 'Employee is not authorised for this café.');
+    }
+
+    throw new ApiError(403, 'CAFE_ACCESS_DENIED', 'User is not authorised for this café.');
   }
 
   /**
