@@ -2240,19 +2240,11 @@ class CafeService {
       qrCredentialHash: hash,
     });
 
-    if (!access) {
+    if (!access || !access.qrEnabled || access.qrRevokedAt) {
       throw new ApiError(
         401,
-        'INVALID_OR_EXPIRED_CAFE_ACCESS',
-        'Invalid or unavailable café access link.'
-      );
-    }
-
-    if (!access.qrEnabled || access.qrRevokedAt) {
-      throw new ApiError(
-        401,
-        'QR_REVOKED',
-        'This QR access code has been revoked. Please request a fresh QR code from management.'
+        'CAFE_ACCESS_LINK_UNAVAILABLE',
+        'This café access link is unavailable or has expired.'
       );
     }
 
@@ -2280,7 +2272,7 @@ class CafeService {
     // Touch last used timestamp
     await CafeAccess.updateOne({ _id: access._id }, { qrLastUsedAt: new Date() }).catch(() => {});
 
-    // Return strictly safe public context
+    // Return strictly safe public context (qrVersion removed per Section 6 minimization)
     return {
       cafeId: access.cafeId,
       displayName: cafe.displayName || cafe.name,
@@ -2289,7 +2281,6 @@ class CafeService {
       operationalStatus: cafe.status,
       brandLogo: '/src/assets/zamorin-estate-mark.png',
       loginEnabled: true,
-      qrVersion: access.qrVersion || 1,
     };
   }
 
