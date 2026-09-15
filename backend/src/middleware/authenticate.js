@@ -141,6 +141,7 @@ async function authenticate(
         user.permissionsVersion,
     };
 
+    request.user = request.auth;
     request.authenticatedUser = user;
     request.authenticatedSession = session;
 

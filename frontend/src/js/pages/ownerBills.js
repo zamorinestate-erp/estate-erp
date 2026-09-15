@@ -1904,7 +1904,7 @@ async function openReceiptModal(billId) {
             ${bill.gstRegistrationNumber ? `GSTIN: <strong>${escapeHtml(bill.gstRegistrationNumber)}</strong>` : 'GST: Unregistered / Composition'}
           </div>
           <div style="font-size:10px; color:var(--muted); margin-top:2px; font-style:italic;">
-            E-Invoice: Not Applicable / Integration Not Implemented
+            E-Invoice: Not Applicable (B2C Retail Outlets Exempt)
           </div>
         </div>
 

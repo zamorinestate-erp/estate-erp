@@ -526,7 +526,7 @@ class CafeService {
             qrLoginContext: {
               qrRecordId: universalQr ? universalQr.qrId : null,
               securePublicCafeReference,
-              loginUrl: `https://zamorin.app/cafe/${securePublicCafeReference}/login`,
+              loginUrl: `https://zamorin.app/c/${securePublicCafeReference}/login`,
               status: 'ACTIVE',
               lastScannedAt: null,
               scanCount: 0,
@@ -1204,7 +1204,7 @@ class CafeService {
       cafeId: access.cafeId,
     }).lean();
 
-    if (!cafe || cafe.status === 'ARCHIVED' || cafe.status === 'CLOSED') {
+    if (!cafe || ['ARCHIVED', 'CLOSED', 'SUSPENDED', 'INACTIVE'].includes(cafe.status)) {
       throw new ApiError(
         403,
         'CAFE_INACTIVE',

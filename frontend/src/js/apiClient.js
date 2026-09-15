@@ -1189,3 +1189,11 @@ export async function apiUpload(path, formData, { signal, headers = {} } = {}) {
 
   return payload;
 }
+
+export const api = {
+  get: apiGet,
+  post: (path, body, options) => apiPost(path, body, options),
+  put: (path, body, options) => apiPut(path, body, options),
+  patch: (path, body, options) => apiPatch(path, body, options),
+  delete: apiDelete,
+};

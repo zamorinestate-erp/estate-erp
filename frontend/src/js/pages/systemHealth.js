@@ -7,7 +7,7 @@
  * backup status, active alerts, kill switches, and maintenance mode.
  */
 
-import { api } from '../api.js';
+import { api } from '../apiClient.js';
 
 export function renderSystemHealthPage() {
   const user = JSON.parse(localStorage.getItem('zamorin_user') || '{}');

@@ -732,17 +732,27 @@ async function renderPage() {
       wireCafeOperationsDevices(content, subroute);
       break;
 
+    case "c":
+    case "cafe":
     case "cafe-gateway":
-      stopCafeOpsInactivityTimer();
-      mountPublicCafeGateway(content);
-      break;
-
     case "cafe-access": {
       stopCafeOpsInactivityTimer();
+      let token = "";
+      let method = "QR";
       if (subroute.startsWith("qr/")) {
-        mountPublicCafeGateway(content, { method: "QR", token: subroute.slice(3) });
+        token = subroute.slice(3);
+        method = "QR";
       } else if (subroute.startsWith("link/")) {
-        mountPublicCafeGateway(content, { method: "LINK", token: subroute.slice(5) });
+        token = subroute.slice(5);
+        method = "LINK";
+      } else if (subroute) {
+        // Form: /c/<public-ref>/login or /c/<public-ref>
+        const parts = subroute.split("/").filter(Boolean);
+        token = parts[0] || "";
+        method = "LINK";
+      }
+      if (token) {
+        mountPublicCafeGateway(content, { method, token });
       } else {
         mountPublicCafeGateway(content);
       }

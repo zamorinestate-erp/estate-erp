@@ -147,7 +147,7 @@ export function showGlassAlert(message, callback) {
   const msgEl = document.getElementById("l2-glass-alert-msg");
   const okBtn = document.getElementById("l2-glass-alert-ok");
   if (!modal || !msgEl) {
-    window.alert(message);
+    console.warn(message);
     if (typeof callback === "function") callback();
     return;
   }
