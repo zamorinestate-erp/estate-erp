@@ -77,6 +77,7 @@ function renderMultiStepWizard(container, opts) {
     gstin: '',
     fssaiRequired: true,
     fssaiNumber: '',
+    fssaiKindOfBusiness: 'RESTAURANT',
     fssaiType: 'STATE_LICENCE',
     fssaiExpiryDate: '',
 
@@ -420,10 +421,18 @@ function renderMultiStepWizard(container, opts) {
                 </label>
                 <span class="status success" style="font-size:10px;">FoSCoS Regulated</span>
               </div>
-              <div id="wiz-fssai-fields" style="display:${data.fssaiRequired ? 'grid' : 'none'};grid-template-columns:1fr 1fr 1fr;gap:14px;">
+              <div id="wiz-fssai-fields" style="display:${data.fssaiRequired ? 'grid' : 'none'};grid-template-columns:1fr 1fr;gap:14px;">
                 <div class="form-group">
                   <label style="font-size:11.5px;font-weight:700;display:block;margin-bottom:4px;color:var(--muted);">FSSAI Licence Number (14 digits)</label>
                   <input type="text" id="wiz-f-fssainum" class="form-control" value="${escHtml(data.fssaiNumber)}" placeholder="10024000000000" maxlength="14" style="width:100%;" />
+                </div>
+                <div class="form-group">
+                  <label style="font-size:11.5px;font-weight:700;display:block;margin-bottom:4px;color:var(--muted);">FSSAI Kind of Business (Regulatory)</label>
+                  <select id="wiz-f-fssaikob" class="form-control" style="width:100%;">
+                    <option value="RESTAURANT" ${data.fssaiKindOfBusiness === 'RESTAURANT' ? 'selected' : ''}>Food Services — Restaurants &amp; Cafés</option>
+                    <option value="FOOD_VENDING_ESTABLISHMENT" ${data.fssaiKindOfBusiness === 'FOOD_VENDING_ESTABLISHMENT' ? 'selected' : ''}>Food Vending / Kiosks / Express</option>
+                    <option value="CLUB_CANTEEN_CATERER" ${data.fssaiKindOfBusiness === 'CLUB_CANTEEN_CATERER' ? 'selected' : ''}>Club / Canteen / Catering Services</option>
+                  </select>
                 </div>
                 <div class="form-group">
                   <label style="font-size:11.5px;font-weight:700;display:block;margin-bottom:4px;color:var(--muted);">FSSAI 2026 Category (Perpetual Regime)</label>
@@ -434,8 +443,8 @@ function renderMultiStepWizard(container, opts) {
                   </select>
                 </div>
                 <div class="form-group">
-                  <label style="font-size:11.5px;font-weight:700;display:block;margin-bottom:4px;color:var(--muted);">Annual Fee Tracking (Perpetual Validity)</label>
-                  <input type="text" id="wiz-f-fssaifee" class="form-control" value="Perpetual Regime (Fee Tracked Annually)" readonly style="width:100%;color:var(--muted);" />
+                  <label style="font-size:11.5px;font-weight:700;display:block;margin-bottom:4px;color:var(--muted);">Applicable Statutory Annual Fee</label>
+                  <input type="text" id="wiz-f-fssaifee" class="form-control" value="${data.fssaiType === 'REGISTRATION' ? '₹100 / annum (Perpetual)' : (data.fssaiType === 'CENTRAL_LICENCE' ? '₹7,500 / annum (Perpetual)' : (data.fssaiKindOfBusiness === 'RESTAURANT' ? '₹5,000 / annum (Perpetual)' : '₹2,000 / annum (Perpetual)'))}" readonly style="width:100%;color:var(--muted);" />
                 </div>
               </div>
             </div>
@@ -537,6 +546,7 @@ function renderMultiStepWizard(container, opts) {
         formData.gstin = container.querySelector('#wiz-f-gstin')?.value?.trim() || '';
         formData.fssaiRequired = container.querySelector('#wiz-f-fssaiapp')?.checked ?? true;
         formData.fssaiNumber = container.querySelector('#wiz-f-fssainum')?.value?.trim() || '';
+        formData.fssaiKindOfBusiness = container.querySelector('#wiz-f-fssaikob')?.value || 'RESTAURANT';
         formData.fssaiType = container.querySelector('#wiz-f-fssaitype')?.value || 'STATE_LICENCE';
         formData.fssaiExpiryDate = container.querySelector('#wiz-f-fssaiexp')?.value || '';
         break;
@@ -629,6 +639,24 @@ function renderMultiStepWizard(container, opts) {
       if (fF) fF.style.display = e.target.checked ? 'grid' : 'none';
     });
 
+    const updateFeeDisplay = () => {
+      const kob = container.querySelector('#wiz-f-fssaikob')?.value || 'RESTAURANT';
+      const tier = container.querySelector('#wiz-f-fssaitype')?.value || 'STATE_LICENCE';
+      const feeInput = container.querySelector('#wiz-f-fssaifee');
+      if (!feeInput) return;
+      if (tier === 'REGISTRATION') {
+        feeInput.value = '₹100 / annum (Perpetual)';
+      } else if (tier === 'CENTRAL_LICENCE') {
+        feeInput.value = '₹7,500 / annum (Perpetual)';
+      } else {
+        const fee = kob === 'RESTAURANT' ? 5000 : 2000;
+        feeInput.value = `₹${fee.toLocaleString('en-IN')} / annum (Perpetual)`;
+      }
+    };
+
+    container.querySelector('#wiz-f-fssaikob')?.addEventListener('change', updateFeeDisplay);
+    container.querySelector('#wiz-f-fssaitype')?.addEventListener('change', updateFeeDisplay);
+
     // Final form submission
     const form = container.querySelector('#wiz-form');
     form?.addEventListener('submit', async (e) => {
@@ -663,6 +691,8 @@ function renderMultiStepWizard(container, opts) {
             closingTime: formData.closingTime,
             gstin: formData.gstin,
             fssaiNumber: formData.fssaiNumber,
+            fssaiKindOfBusiness: formData.fssaiKindOfBusiness || 'RESTAURANT',
+            fssaiType: formData.fssaiType || 'STATE_LICENCE',
             seatingCapacity: formData.seatingCapacity,
             hardwareProfile: formData.hardware,
           },

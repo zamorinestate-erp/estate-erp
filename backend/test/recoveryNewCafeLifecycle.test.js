@@ -27,7 +27,9 @@ const {
   resolveStateByCode,
   validateGstinFormat,
   validateFssaiNumber,
+  resolveFssaiEligibilityAndFee,
   determineFssaiCategoryByTurnover,
+  getFssaiRuleSet,
   resolveFinancialYear,
 } = require('../src/config/regulatoryCompliance2026');
 
@@ -317,23 +319,90 @@ test('REC-02: Complete New Café / Restaurant Creation, Provisioning & Activatio
   });
 
   // ---------------------------------------------------------------------------
-  // 4. FSSAI 2026 TURNOVER SLABS & PERPETUAL REGIME
   // ---------------------------------------------------------------------------
-  await t.test('4. FSSAI 2026 Framework: Correct turnover categories and perpetual validity', () => {
-    // Turnover <= 1.5 crore -> REGISTRATION
-    const cat1 = determineFssaiCategoryByTurnover(12000000); // 1.2 crore
-    assert.equal(cat1.key, 'REGISTRATION');
-    assert.equal(cat1.isPerpetual, true);
+  // 4. FSSAI 2026 FRAMEWORK: KIND OF BUSINESS, STATUTORY FEES & PERPETUAL REGIME
+  // ---------------------------------------------------------------------------
+  await t.test('4. FSSAI 2026 Framework: Kind of Business, Turnover Bands, Statutory Fees & Versioning', () => {
+    // 4.1 Restaurant: Turnover <= 1.5 crore -> REGISTRATION / ₹100 / Perpetual
+    const resReg = resolveFssaiEligibilityAndFee({
+      kindOfBusiness: 'RESTAURANT',
+      annualTurnoverInr: 12000000, // ₹1.2 crore
+    });
+    assert.equal(resReg.matched, true);
+    assert.equal(resReg.category, 'REGISTRATION');
+    assert.equal(resReg.feePerAnnum, 100);
+    assert.equal(resReg.isPerpetual, true);
 
-    // Turnover between 1.5 crore and 50 crore -> STATE_LICENCE
-    const cat2 = determineFssaiCategoryByTurnover(35000000); // 3.5 crore
-    assert.equal(cat2.key, 'STATE_LICENCE');
-    assert.equal(cat2.isPerpetual, true);
+    // 4.2 Restaurant Boundary: Exactly ₹1.5 crore -> REGISTRATION / ₹100
+    const resRegBound = resolveFssaiEligibilityAndFee({
+      kindOfBusiness: 'RESTAURANT',
+      annualTurnoverInr: 15000000, // ₹1.5 crore exactly
+    });
+    assert.equal(resRegBound.category, 'REGISTRATION');
+    assert.equal(resRegBound.feePerAnnum, 100);
 
-    // Turnover > 50 crore -> CENTRAL_LICENCE
-    const cat3 = determineFssaiCategoryByTurnover(650000000); // 65 crore
-    assert.equal(cat3.key, 'CENTRAL_LICENCE');
-    assert.equal(cat3.isPerpetual, true);
+    // 4.3 Restaurant: Turnover > 1.5 crore and <= 50 crore -> STATE_LICENCE / ₹5,000 / Perpetual
+    const resState = resolveFssaiEligibilityAndFee({
+      kindOfBusiness: 'RESTAURANT',
+      annualTurnoverInr: 35000000, // ₹3.5 crore
+    });
+    assert.equal(resState.matched, true);
+    assert.equal(resState.category, 'STATE_LICENCE');
+    assert.equal(resState.feePerAnnum, 5000);
+    assert.equal(resState.isPerpetual, true);
+
+    // 4.4 Restaurant Boundary: Exactly ₹50 crore -> STATE_LICENCE / ₹5,000
+    const resStateBound = resolveFssaiEligibilityAndFee({
+      kindOfBusiness: 'RESTAURANT',
+      annualTurnoverInr: 500000000, // ₹50 crore exactly
+    });
+    assert.equal(resStateBound.category, 'STATE_LICENCE');
+    assert.equal(resStateBound.feePerAnnum, 5000);
+
+    // 4.5 Restaurant: Turnover > 50 crore -> CENTRAL_LICENCE / ₹7,500 / Perpetual
+    const resCentral = resolveFssaiEligibilityAndFee({
+      kindOfBusiness: 'RESTAURANT',
+      annualTurnoverInr: 650000000, // ₹65 crore
+    });
+    assert.equal(resCentral.matched, true);
+    assert.equal(resCentral.category, 'CENTRAL_LICENCE');
+    assert.equal(resCentral.feePerAnnum, 7500);
+    assert.equal(resCentral.isPerpetual, true);
+
+    // 4.6 Distinct Kind of Business (Food Vending / Kiosk) resolves different State Licence fee (₹2,000)
+    const vendingState = resolveFssaiEligibilityAndFee({
+      kindOfBusiness: 'FOOD_VENDING_ESTABLISHMENT',
+      annualTurnoverInr: 35000000, // ₹3.5 crore
+    });
+    assert.equal(vendingState.matched, true);
+    assert.equal(vendingState.category, 'STATE_LICENCE');
+    assert.equal(vendingState.feePerAnnum, 2000); // Distinct statutory fee for vending/kiosks
+    assert.equal(vendingState.isPerpetual, true);
+
+    // 4.7 Unknown Kind of Business: Does NOT invent amounts
+    const unknownKob = resolveFssaiEligibilityAndFee({
+      kindOfBusiness: 'UNKNOWN_OR_ARBITRARY_BUSINESS',
+      annualTurnoverInr: 50000000,
+    });
+    assert.equal(unknownKob.matched, false);
+    assert.equal(unknownKob.category, null);
+    assert.equal(unknownKob.feePerAnnum, null);
+    assert.ok(unknownKob.reason.includes('No fee invented'));
+
+    // 4.8 Historical Rule-Version lookup remains deterministic
+    const historicalSet = getFssaiRuleSet('FSSAI_RULES_HISTORICAL_2021');
+    assert.equal(historicalSet.ruleVersion, 'FSSAI_RULES_HISTORICAL_2021');
+    assert.equal(historicalSet.turnoverThresholds.registrationMaxInr, 1200000); // Pre-2026 ₹12 Lakh threshold
+    assert.equal(historicalSet.isPerpetualRegime, false);
+
+    const historicalRes = resolveFssaiEligibilityAndFee({
+      kindOfBusiness: 'RESTAURANT',
+      annualTurnoverInr: 1000000, // ₹10 lakh
+      ruleVersion: 'FSSAI_RULES_HISTORICAL_2021',
+    });
+    assert.equal(historicalRes.ruleVersion, 'FSSAI_RULES_HISTORICAL_2021');
+    assert.equal(historicalRes.category, 'REGISTRATION');
+    assert.equal(historicalRes.isPerpetual, false);
   });
 
   // ---------------------------------------------------------------------------

@@ -118,34 +118,192 @@ function validateGstinFormat(gstin, expectedStateCode = null) {
 }
 
 // ---------------------------------------------------------------------------
-// 3. FSSAI 2026 REGULATORY FRAMEWORK (TURNOVER SLABS & PERPETUAL REGIME)
+// 3. FSSAI 2026 REGULATORY FRAMEWORK (KIND OF BUSINESS, VERSIONING & FEES)
 // ---------------------------------------------------------------------------
-const FSSAI_2026_CATEGORIES = Object.freeze({
-  REGISTRATION: {
-    key: 'REGISTRATION',
-    displayName: 'FSSAI Registration (Petty Food Business)',
-    maxTurnoverInr: 15000000, // Up to ₹1.5 crore
-    minTurnoverInr: 0,
-    description: 'Turnover up to ₹1.5 crore',
-    isPerpetual: true,
+
+/**
+ * Versioned FSSAI Regulatory Rule Sets.
+ * Ensures historical onboarding records maintain immutable regulatory baselines
+ * while supporting the current 1 April 2026 turnover & perpetual fee schedules.
+ */
+const FSSAI_RULE_SETS = Object.freeze({
+  FSSAI_RULES_2026_V1: {
+    ruleVersion: 'FSSAI_RULES_2026_V1',
+    effectiveFrom: '2026-04-01T00:00:00.000Z',
+    effectiveTo: null,
+    sourceVersion: 'FSSAI FoSCoS Regulatory Revision (Effective 1 April 2026)',
+    isPerpetualRegime: true,
+    turnoverThresholds: {
+      registrationMaxInr: 15000000,   // ₹1.5 crore
+      stateLicenceMaxInr: 500000000, // ₹50 crore
+    },
+    kindsOfBusiness: {
+      RESTAURANT: {
+        key: 'RESTAURANT',
+        displayName: 'Food Services — Restaurants & Cafés',
+        description: 'Stand-alone restaurants, dining spaces, bistros, and sit-down cafés',
+        tiers: [
+          {
+            tierKey: 'REGISTRATION',
+            licenceCategory: 'REGISTRATION',
+            licensingAuthority: 'Designated Registering Authority (Local Municipal / District)',
+            eligibilityCriteria: 'Annual turnover up to ₹1.5 crore (Petty Food Business)',
+            turnoverMinInr: 0,
+            turnoverMaxInr: 15000000,
+            feePerAnnum: 100,
+            isPerpetual: true,
+          },
+          {
+            tierKey: 'STATE_LICENCE',
+            licenceCategory: 'STATE_LICENCE',
+            licensingAuthority: 'State Food Safety Authority (FoSCoS State Directorate)',
+            eligibilityCriteria: 'Annual turnover above ₹1.5 crore and up to ₹50 crore',
+            turnoverMinInr: 15000001,
+            turnoverMaxInr: 500000000,
+            feePerAnnum: 5000, // Statutory Restaurant State Licence rate: ₹5,000
+            isPerpetual: true,
+          },
+          {
+            tierKey: 'CENTRAL_LICENCE',
+            licenceCategory: 'CENTRAL_LICENCE',
+            licensingAuthority: 'Central Food Safety Authority (FSSAI HQ / Regional Directorate)',
+            eligibilityCriteria: 'Annual turnover above ₹50 crore or central agency jurisdiction',
+            turnoverMinInr: 50000001,
+            turnoverMaxInr: Infinity,
+            feePerAnnum: 7500, // Statutory Central Licence rate: ₹7,500
+            isPerpetual: true,
+          },
+        ],
+      },
+      FOOD_VENDING_ESTABLISHMENT: {
+        key: 'FOOD_VENDING_ESTABLISHMENT',
+        displayName: 'Food Vending / Kiosks / Quick Service Stalls',
+        description: 'Takeaway stalls, kiosks, express counters, and mobile food vending',
+        tiers: [
+          {
+            tierKey: 'REGISTRATION',
+            licenceCategory: 'REGISTRATION',
+            licensingAuthority: 'Designated Registering Authority (Local)',
+            eligibilityCriteria: 'Annual turnover up to ₹1.5 crore',
+            turnoverMinInr: 0,
+            turnoverMaxInr: 15000000,
+            feePerAnnum: 100,
+            isPerpetual: true,
+          },
+          {
+            tierKey: 'STATE_LICENCE',
+            licenceCategory: 'STATE_LICENCE',
+            licensingAuthority: 'State Food Safety Authority',
+            eligibilityCriteria: 'Annual turnover above ₹1.5 crore and up to ₹50 crore',
+            turnoverMinInr: 15000001,
+            turnoverMaxInr: 500000000,
+            feePerAnnum: 2000, // Other Food Service State Licence rate: ₹2,000
+            isPerpetual: true,
+          },
+          {
+            tierKey: 'CENTRAL_LICENCE',
+            licenceCategory: 'CENTRAL_LICENCE',
+            licensingAuthority: 'Central Food Safety Authority',
+            eligibilityCriteria: 'Annual turnover above ₹50 crore',
+            turnoverMinInr: 50000001,
+            turnoverMaxInr: Infinity,
+            feePerAnnum: 7500,
+            isPerpetual: true,
+          },
+        ],
+      },
+      CLUB_CANTEEN_CATERER: {
+        key: 'CLUB_CANTEEN_CATERER',
+        displayName: 'Club / Canteen / Catering Services',
+        description: 'Institutional catering, mess services, clubs, and event canteens',
+        tiers: [
+          {
+            tierKey: 'REGISTRATION',
+            licenceCategory: 'REGISTRATION',
+            licensingAuthority: 'Designated Registering Authority (Local)',
+            eligibilityCriteria: 'Annual turnover up to ₹1.5 crore',
+            turnoverMinInr: 0,
+            turnoverMaxInr: 15000000,
+            feePerAnnum: 100,
+            isPerpetual: true,
+          },
+          {
+            tierKey: 'STATE_LICENCE',
+            licenceCategory: 'STATE_LICENCE',
+            licensingAuthority: 'State Food Safety Authority',
+            eligibilityCriteria: 'Annual turnover above ₹1.5 crore and up to ₹50 crore',
+            turnoverMinInr: 15000001,
+            turnoverMaxInr: 500000000,
+            feePerAnnum: 2000, // Canteen / Caterer State rate: ₹2,000
+            isPerpetual: true,
+          },
+          {
+            tierKey: 'CENTRAL_LICENCE',
+            licenceCategory: 'CENTRAL_LICENCE',
+            licensingAuthority: 'Central Food Safety Authority',
+            eligibilityCriteria: 'Annual turnover above ₹50 crore or transport hub operations',
+            turnoverMinInr: 50000001,
+            turnoverMaxInr: Infinity,
+            feePerAnnum: 7500,
+            isPerpetual: true,
+          },
+        ],
+      },
+    },
   },
-  STATE_LICENCE: {
-    key: 'STATE_LICENCE',
-    displayName: 'FSSAI State Licence',
-    minTurnoverInr: 15000001, // Above ₹1.5 crore
-    maxTurnoverInr: 500000000, // Up to ₹50 crore
-    description: 'Above ₹1.5 crore and up to ₹50 crore',
-    isPerpetual: true,
-  },
-  CENTRAL_LICENCE: {
-    key: 'CENTRAL_LICENCE',
-    displayName: 'FSSAI Central Licence',
-    minTurnoverInr: 500000001, // Above ₹50 crore
-    maxTurnoverInr: Infinity,
-    description: 'Above ₹50 crore',
-    isPerpetual: true,
+
+  FSSAI_RULES_HISTORICAL_2021: {
+    ruleVersion: 'FSSAI_RULES_HISTORICAL_2021',
+    effectiveFrom: '2021-01-01T00:00:00.000Z',
+    effectiveTo: '2026-03-31T23:59:59.999Z',
+    sourceVersion: 'FSSAI Licensing Regulations 2011/2021 (Pre-2026 ₹12-Lakh Regime)',
+    isPerpetualRegime: false,
+    turnoverThresholds: {
+      registrationMaxInr: 1200000,   // ₹12 lakh
+      stateLicenceMaxInr: 200000000, // ₹20 crore
+    },
+    kindsOfBusiness: {
+      RESTAURANT: {
+        key: 'RESTAURANT',
+        displayName: 'Restaurants (Historical Pre-2026)',
+        tiers: [
+          {
+            tierKey: 'REGISTRATION',
+            licenceCategory: 'REGISTRATION',
+            licensingAuthority: 'Registering Authority (Local)',
+            eligibilityCriteria: 'Turnover up to ₹12 lakh per annum',
+            turnoverMinInr: 0,
+            turnoverMaxInr: 1200000,
+            feePerAnnum: 100,
+            isPerpetual: false,
+          },
+          {
+            tierKey: 'STATE_LICENCE',
+            licenceCategory: 'STATE_LICENCE',
+            licensingAuthority: 'State Food Safety Authority',
+            eligibilityCriteria: 'Turnover between ₹12 lakh and ₹20 crore per annum',
+            turnoverMinInr: 1200001,
+            turnoverMaxInr: 200000000,
+            feePerAnnum: 2000,
+            isPerpetual: false,
+          },
+          {
+            tierKey: 'CENTRAL_LICENCE',
+            licenceCategory: 'CENTRAL_LICENCE',
+            licensingAuthority: 'Central Licensing Authority',
+            eligibilityCriteria: 'Turnover above ₹20 crore per annum',
+            turnoverMinInr: 200000001,
+            turnoverMaxInr: Infinity,
+            feePerAnnum: 7500,
+            isPerpetual: false,
+          },
+        ],
+      },
+    },
   },
 });
+
+const ACTIVE_FSSAI_RULE_VERSION = 'FSSAI_RULES_2026_V1';
 
 const FSSAI_STATUSES = Object.freeze([
   'ACTIVE',
@@ -155,18 +313,107 @@ const FSSAI_STATUSES = Object.freeze([
   'UNDER_REVIEW',
 ]);
 
-function determineFssaiCategoryByTurnover(annualTurnoverInr) {
+/**
+ * Retrieve the applicable FSSAI rule set by explicit version key or effective date.
+ * Deterministic for both historical audit lookups and active 2026 governance.
+ */
+function getFssaiRuleSet(versionOrDate = null) {
+  if (typeof versionOrDate === 'string' && FSSAI_RULE_SETS[versionOrDate]) {
+    return FSSAI_RULE_SETS[versionOrDate];
+  }
+
+  if (versionOrDate instanceof Date || (typeof versionOrDate === 'string' && !isNaN(Date.parse(versionOrDate)))) {
+    const targetDate = new Date(versionOrDate);
+    const splitDate = new Date('2026-04-01T00:00:00.000Z');
+    if (targetDate < splitDate) {
+      return FSSAI_RULE_SETS.FSSAI_RULES_HISTORICAL_2021;
+    }
+    return FSSAI_RULE_SETS.FSSAI_RULES_2026_V1;
+  }
+
+  return FSSAI_RULE_SETS[ACTIVE_FSSAI_RULE_VERSION];
+}
+
+/**
+ * Resolve official FSSAI eligibility, licence tier, licensing authority, and applicable
+ * annual fee based on:
+ * Kind of Business + turnover / eligibility criteria + licence category
+ *
+ * Never invents amounts for unknown kinds of business.
+ */
+function resolveFssaiEligibilityAndFee({
+  kindOfBusiness = 'RESTAURANT',
+  annualTurnoverInr = 0,
+  ruleVersion = null,
+  asOfDate = null,
+} = {}) {
+  const ruleSet = getFssaiRuleSet(ruleVersion || asOfDate);
+  const cleanKob = String(kindOfBusiness || '').trim().toUpperCase();
+
+  const kobConfig = ruleSet.kindsOfBusiness[cleanKob];
+  if (!kobConfig) {
+    return {
+      matched: false,
+      ruleVersion: ruleSet.ruleVersion,
+      kindOfBusiness: cleanKob,
+      category: null,
+      feePerAnnum: null,
+      licensingAuthority: null,
+      eligibilityCriteria: null,
+      isPerpetual: ruleSet.isPerpetualRegime,
+      reason: `Unknown or unconfigured FSSAI Kind of Business '${cleanKob}'. No fee invented.`,
+    };
+  }
+
   const amount = Number(annualTurnoverInr);
-  if (isNaN(amount) || amount < 0) {
-    return FSSAI_2026_CATEGORIES.REGISTRATION;
-  }
-  if (amount <= 15000000) {
-    return FSSAI_2026_CATEGORIES.REGISTRATION;
-  }
-  if (amount <= 500000000) {
-    return FSSAI_2026_CATEGORIES.STATE_LICENCE;
-  }
-  return FSSAI_2026_CATEGORIES.CENTRAL_LICENCE;
+  const validAmount = !isNaN(amount) && amount >= 0 ? amount : 0;
+
+  const matchedTier = kobConfig.tiers.find((tier) => {
+    return validAmount >= tier.turnoverMinInr && validAmount <= tier.turnoverMaxInr;
+  }) || kobConfig.tiers[kobConfig.tiers.length - 1];
+
+  return {
+    matched: true,
+    ruleVersion: ruleSet.ruleVersion,
+    effectiveFrom: ruleSet.effectiveFrom,
+    sourceVersion: ruleSet.sourceVersion,
+    isPerpetualRegime: ruleSet.isPerpetualRegime,
+    kindOfBusiness: kobConfig.key,
+    kindOfBusinessDisplayName: kobConfig.displayName,
+    category: matchedTier.licenceCategory,
+    licensingAuthority: matchedTier.licensingAuthority,
+    eligibilityCriteria: matchedTier.eligibilityCriteria,
+    turnoverMinInr: matchedTier.turnoverMinInr,
+    turnoverMaxInr: matchedTier.turnoverMaxInr,
+    annualTurnoverInr: validAmount,
+    feePerAnnum: matchedTier.feePerAnnum,
+    isPerpetual: matchedTier.isPerpetual,
+  };
+}
+
+/**
+ * Backward-compatible helper for existing callers.
+ * Evaluates FSSAI Category and Fee using the Kind of Business architecture.
+ */
+function determineFssaiCategoryByTurnover(annualTurnoverInr, kindOfBusiness = 'RESTAURANT') {
+  const resolution = resolveFssaiEligibilityAndFee({
+    kindOfBusiness,
+    annualTurnoverInr,
+  });
+
+  return {
+    key: resolution.category,
+    category: resolution.category,
+    displayName: resolution.matched ? `${resolution.kindOfBusinessDisplayName} (${resolution.category})` : 'FSSAI Classification',
+    annualTurnoverInr: resolution.annualTurnoverInr,
+    feePerAnnum: resolution.feePerAnnum,
+    annualFeeInr: resolution.feePerAnnum,
+    isPerpetual: resolution.isPerpetual,
+    licensingAuthority: resolution.licensingAuthority,
+    eligibilityCriteria: resolution.eligibilityCriteria,
+    ruleVersion: resolution.ruleVersion,
+    matched: resolution.matched,
+  };
 }
 
 function validateFssaiNumber(number) {
@@ -205,8 +452,11 @@ module.exports = {
   GSTIN_REGEX,
   GST_VERIFICATION_STATUSES,
   validateGstinFormat,
-  FSSAI_2026_CATEGORIES,
+  FSSAI_RULE_SETS,
+  ACTIVE_FSSAI_RULE_VERSION,
   FSSAI_STATUSES,
+  getFssaiRuleSet,
+  resolveFssaiEligibilityAndFee,
   determineFssaiCategoryByTurnover,
   validateFssaiNumber,
   resolveFinancialYear,

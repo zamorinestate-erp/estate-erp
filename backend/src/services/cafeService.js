@@ -30,6 +30,7 @@ const {
   resolveStateByName,
   validateGstinFormat,
   validateFssaiNumber,
+  resolveFssaiEligibilityAndFee,
   determineFssaiCategoryByTurnover,
   resolveFinancialYear,
 } = require('../config/regulatoryCompliance2026');
@@ -320,7 +321,19 @@ class CafeService {
         // Non-blocking fallback if running in standalone test environment
       }
 
-      // 4c. Create Cafe Record with Full 12-Section Profile
+      // 4c. Resolve FSSAI 2026 eligibility and fee based on Kind of Business
+      const kindOfBusiness = (
+        sanitized.fssaiKindOfBusiness ||
+        sanitized.fssai?.kindOfBusiness ||
+        'RESTAURANT'
+      ).trim().toUpperCase();
+      const turnover = sanitized.estimatedAnnualTurnoverInr || sanitized.annualTurnoverInr || 0;
+      const fssaiResolution = resolveFssaiEligibilityAndFee({
+        kindOfBusiness,
+        annualTurnoverInr: turnover,
+      });
+
+      // 4d. Create Cafe Record with Full 12-Section Profile
       const [cafeDoc] = await Cafe.create(
         [
           {
@@ -416,11 +429,17 @@ class CafeService {
               fssai: {
                 isApplicable: sanitized.fssai?.isApplicable !== false,
                 number: sanitized.fssaiNumber || sanitized.fssai?.number || '',
-                licenseType: sanitized.fssaiType || sanitized.fssai?.licenseType || 'State Licence',
-                kindOfBusiness: sanitized.fssai?.kindOfBusiness || 'Food Service / Café',
-                issuingAuthority: sanitized.fssai?.issuingAuthority || 'FSSAI FoSCoS',
+                kindOfBusiness: fssaiResolution.kindOfBusiness || sanitized.fssaiKindOfBusiness || sanitized.fssai?.kindOfBusiness || 'RESTAURANT',
+                category: fssaiResolution.category || sanitized.fssaiType || sanitized.fssai?.category || 'STATE_LICENCE',
+                licenseType: fssaiResolution.category === 'REGISTRATION' ? 'Registration' : (fssaiResolution.category === 'CENTRAL_LICENCE' ? 'Central Licence' : 'State Licence'),
+                issuingAuthority: fssaiResolution.licensingAuthority || sanitized.fssai?.issuingAuthority || 'FSSAI FoSCoS',
+                eligibilityCriteria: fssaiResolution.eligibilityCriteria || '',
+                annualFeeInr: fssaiResolution.feePerAnnum || 0,
+                ruleVersion: fssaiResolution.ruleVersion || 'FSSAI_RULES_2026_V1',
                 validFrom: sanitized.fssai?.validFrom || null,
                 validTill: sanitized.fssaiExpiryDate || sanitized.fssai?.validTill || null,
+                isPerpetual: true,
+                status: 'ACTIVE',
                 certificateUrl: sanitized.fssai?.certificateUrl || '',
                 renewalReminderDate: sanitized.fssai?.renewalReminderDate || null,
               },
@@ -911,17 +930,30 @@ class CafeService {
       }
     }
 
-    // FSSAI 2026 framework validation
+    // FSSAI 2026 framework validation (Kind of Business & Turnover Bands)
     const fssaiNumber = (sanitized.fssaiNumber || sanitized.fssai?.number || '').trim();
+    const kindOfBusiness = (
+      sanitized.fssaiKindOfBusiness ||
+      sanitized.fssai?.kindOfBusiness ||
+      cafeData.fssaiKindOfBusiness ||
+      cafeData.kindOfBusiness ||
+      'RESTAURANT'
+    ).trim().toUpperCase();
+    const turnover = cafeData.estimatedAnnualTurnoverInr || cafeData.annualTurnoverInr || sanitized.estimatedAnnualTurnoverInr || sanitized.annualTurnoverInr || 0;
+
     let fssaiCategory = null;
     if (fssaiNumber) {
       const fssaiResult = validateFssaiNumber(fssaiNumber);
       if (!fssaiResult.valid) {
         errors.push(`FSSAI Error: ${fssaiResult.reason}`);
       }
-      const turnover = cafeData.estimatedAnnualTurnoverInr || cafeData.annualTurnoverInr || sanitized.estimatedAnnualTurnoverInr || sanitized.annualTurnoverInr || 0;
-      fssaiCategory = determineFssaiCategoryByTurnover(turnover);
     }
+
+    const fssaiResolution = resolveFssaiEligibilityAndFee({
+      kindOfBusiness,
+      annualTurnoverInr: turnover,
+    });
+    fssaiCategory = fssaiResolution;
 
     return {
       valid: errors.length === 0,
@@ -993,7 +1025,14 @@ class CafeService {
       fssaiCompliance: {
         isApplicable: true,
         fssaiNumber: sanitized.fssaiNumber || sanitized.fssai?.number || '',
-        category: fssaiCategory ? fssaiCategory.key : (sanitized.fssaiType || 'STATE_LICENCE'),
+        kindOfBusiness: fssaiCategory?.kindOfBusiness || 'RESTAURANT',
+        kindOfBusinessDisplayName: fssaiCategory?.kindOfBusinessDisplayName || 'Food Services — Restaurants & Cafés',
+        category: fssaiCategory ? fssaiCategory.category : (sanitized.fssaiType || 'STATE_LICENCE'),
+        licensingAuthority: fssaiCategory?.licensingAuthority || 'State Food Safety Authority',
+        eligibilityCriteria: fssaiCategory?.eligibilityCriteria || '',
+        annualFeeInr: fssaiCategory?.feePerAnnum || 0,
+        feePerAnnum: fssaiCategory?.feePerAnnum || 0,
+        ruleVersion: fssaiCategory?.ruleVersion || 'FSSAI_RULES_2026_V1',
         regime: '2026_AMENDMENT_PERPETUAL',
         isPerpetual: true,
         annualFeeTracking: true,
@@ -1087,7 +1126,12 @@ class CafeService {
           fssai: {
             isApplicable: true,
             number: sanitized.fssaiNumber || sanitized.fssai?.number || '',
-            category: valResult.fssaiCategory?.key || sanitized.fssaiType || 'STATE_LICENCE',
+            kindOfBusiness: valResult.fssaiCategory?.kindOfBusiness || sanitized.fssaiKindOfBusiness || 'RESTAURANT',
+            category: valResult.fssaiCategory?.category || sanitized.fssaiType || 'STATE_LICENCE',
+            licensingAuthority: valResult.fssaiCategory?.licensingAuthority || 'State Food Safety Authority',
+            eligibilityCriteria: valResult.fssaiCategory?.eligibilityCriteria || '',
+            annualFeeInr: valResult.fssaiCategory?.feePerAnnum || 0,
+            ruleVersion: valResult.fssaiCategory?.ruleVersion || 'FSSAI_RULES_2026_V1',
             isPerpetual: true,
             status: 'ACTIVE',
           },
