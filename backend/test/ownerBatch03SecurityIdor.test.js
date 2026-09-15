@@ -190,7 +190,8 @@ describe('BATCH 03 — Multi-Tenant Security & IDOR Isolation Suite (Stages 11-1
           billId: 'BILL-20260914-9999',
           billAmount: 500,
           pointsToAccrue: 25,
-          idempotencyKey: `LOY-IDOR-${Date.now()}`
+          idempotencyKey: `LOY-IDOR-${Date.now()}`,
+          enableLoyaltyOverride: true
         }, USER_FOREIGN);
       },
       /CUSTOMER_NOT_FOUND/

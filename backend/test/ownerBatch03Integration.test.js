@@ -211,7 +211,8 @@ describe('BATCH 03 — Cross-Stage (11-15) Strategic Integration Suite', () => {
       billId: testBillId,
       billAmount: 800,
       pointsToAccrue: 40,
-      idempotencyKey
+      idempotencyKey,
+      enableLoyaltyOverride: true
     }, USER_OWNER);
 
     assert.equal(accrual.success, true);

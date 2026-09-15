@@ -122,8 +122,8 @@ describe('STAGE 14 — Utilities, Waste & Energy Management Suite', () => {
     assert.equal(rolloverReading.consumption, 700);
   });
 
-  test('3. Reading Anomaly Detection: Flags consumption exceeding baseline threshold by >35%', async () => {
-    // Baseline is 1200. A single period reading of 1700 is > 35% above 1200
+  test('3. Reading Anomaly Detection: Flags consumption exceeding baseline threshold (35% default policy, configurable)', async () => {
+    // 1. Default policy (35%): Baseline is 1200. A single period reading of 1750 is 45.8% above 1200 (> 35% default)
     const anomalyReading = await ownerUtilitiesWasteService.recordMeterReading(TEST_ORG, {
       meterId: testElectricityMeterId,
       startReading: 2000,
@@ -135,6 +135,19 @@ describe('STAGE 14 — Utilities, Waste & Energy Management Suite', () => {
     assert.equal(anomalyReading.consumption, 1750);
     assert.equal(anomalyReading.isAnomaly, true);
     assert.ok(anomalyReading.anomalyReason.includes('above monthly baseline'));
+
+    // 2. Configurable / Scoped override: Setting anomalyThresholdPercent to 50% ensures a 45.8% surge is NOT flagged
+    const nonAnomalyWithCustomThreshold = await ownerUtilitiesWasteService.recordMeterReading(TEST_ORG, {
+      meterId: testElectricityMeterId,
+      startReading: 4000,
+      endReading: 5750, // consumption = 1750 (45.8% above baseline 1200)
+      periodStart: new Date('2026-10-01'),
+      periodEnd: new Date('2026-10-15'),
+      anomalyThresholdPercent: 50 // Configurable override policy
+    }, USER_OWNER);
+
+    assert.equal(nonAnomalyWithCustomThreshold.consumption, 1750);
+    assert.equal(nonAnomalyWithCustomThreshold.isAnomaly, false);
   });
 
   test('4. Waste Recording & Inventory Linkage: Prevents financial double counting with WastageRecord', async () => {

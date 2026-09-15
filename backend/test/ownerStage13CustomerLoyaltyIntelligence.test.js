@@ -191,7 +191,21 @@ describe('STAGE 13 — Customer & Loyalty Intelligence Suite', () => {
     assert.equal(cohorts.sensitiveTraitInferenceStatus, 'STRICTLY_PROHIBITED');
   });
 
-  test('3. Idempotent Loyalty Points Accrual: Enforces exactly-once accrual per bill', async () => {
+  test('3. Idempotent Loyalty Points Accrual: Default-off invariant & exactly-once accrual per bill', async () => {
+    // 1. Default-off invariant: Calling accrueLoyaltyPoints without ENABLE_LOYALTY=true is rejected
+    await assert.rejects(
+      async () => {
+        await ownerCustomerLoyaltyService.accrueLoyaltyPoints(TEST_ORG, {
+          customerId: testCustomerId,
+          billId: testBillId,
+          billAmount: 750,
+          pointsToAccrue: 25
+        }, USER_OWNER);
+      },
+      (err) => err.message.includes('LOYALTY_PROGRAMME_DISABLED')
+    );
+
+    // 2. Governed Execution with explicit override
     const rKey = Math.floor(Math.random() * 89999 + 10000);
     const idempotencyKey = `LOY-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${rKey}`;
     const accrual1 = await ownerCustomerLoyaltyService.accrueLoyaltyPoints(TEST_ORG, {
@@ -199,7 +213,8 @@ describe('STAGE 13 — Customer & Loyalty Intelligence Suite', () => {
       billId: testBillId,
       billAmount: 750,
       pointsToAccrue: 25,
-      idempotencyKey
+      idempotencyKey,
+      enableLoyaltyOverride: true
     }, USER_OWNER);
 
     assert.equal(accrual1.success, true);
@@ -214,20 +229,34 @@ describe('STAGE 13 — Customer & Loyalty Intelligence Suite', () => {
           billId: testBillId,
           billAmount: 750,
           pointsToAccrue: 25,
-          idempotencyKey: `LOY-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${rKey + 1}`
+          idempotencyKey: `LOY-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${rKey + 1}`,
+          enableLoyaltyOverride: true
         }, USER_OWNER);
       },
       (err) => err.message.includes('Duplicate loyalty accrual rejected')
     );
   });
 
-  test('4. Loyalty Points Redemption: Validates balance and enforces idempotency', async () => {
+  test('4. Loyalty Points Redemption: Default-off invariant, balance validation & idempotency', async () => {
+    // 1. Default-off invariant: Calling redeemLoyaltyPoints without ENABLE_LOYALTY=true is rejected
+    await assert.rejects(
+      async () => {
+        await ownerCustomerLoyaltyService.redeemLoyaltyPoints(TEST_ORG, {
+          customerId: testCustomerId,
+          pointsToRedeem: 45
+        }, USER_OWNER);
+      },
+      (err) => err.message.includes('LOYALTY_PROGRAMME_DISABLED')
+    );
+
+    // 2. Governed Redemption with explicit override
     const rRedKey = Math.floor(Math.random() * 89999 + 10000);
     const redemptionKey = `LOY-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${rRedKey}`;
     const redemption = await ownerCustomerLoyaltyService.redeemLoyaltyPoints(TEST_ORG, {
       customerId: testCustomerId,
       pointsToRedeem: 45,
-      idempotencyKey: redemptionKey
+      idempotencyKey: redemptionKey,
+      enableLoyaltyOverride: true
     }, USER_OWNER);
 
     assert.equal(redemption.success, true);
@@ -240,7 +269,8 @@ describe('STAGE 13 — Customer & Loyalty Intelligence Suite', () => {
         await ownerCustomerLoyaltyService.redeemLoyaltyPoints(TEST_ORG, {
           customerId: testCustomerId,
           pointsToRedeem: 45,
-          idempotencyKey: redemptionKey
+          idempotencyKey: redemptionKey,
+          enableLoyaltyOverride: true
         }, USER_OWNER);
       },
       (err) => err.message.includes('Duplicate redemption rejected')
@@ -252,7 +282,8 @@ describe('STAGE 13 — Customer & Loyalty Intelligence Suite', () => {
         await ownerCustomerLoyaltyService.redeemLoyaltyPoints(TEST_ORG, {
           customerId: testCustomerId,
           pointsToRedeem: 500,
-          idempotencyKey: `LOY-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${rRedKey + 1}`
+          idempotencyKey: `LOY-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${rRedKey + 1}`,
+          enableLoyaltyOverride: true
         }, USER_OWNER);
       },
       (err) => err.message.includes('INSUFFICIENT_LOYALTY_POINTS')
@@ -310,7 +341,8 @@ describe('STAGE 13 — Customer & Loyalty Intelligence Suite', () => {
         await ownerCustomerLoyaltyService.accrueLoyaltyPoints(FOREIGN_ORG, {
           customerId: testCustomerId,
           billId: 'BILL-FOREIGN-99',
-          pointsToAccrue: 10
+          pointsToAccrue: 10,
+          enableLoyaltyOverride: true
         }, USER_OWNER);
       },
       (err) => err.message.includes('CUSTOMER_NOT_FOUND')

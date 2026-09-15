@@ -149,6 +149,12 @@ class OwnerCustomerLoyaltyService {
     const orgUpper = organisationId.toString().toUpperCase();
     const orgFilter = { $or: [{ organisationId }, { organisationId: organisationId.toString() }, { organisationId: orgUpper }] };
 
+    // Canonical runtime invariant: Loyalty earn/redeem is disabled by default (ENABLE_LOYALTY=false)
+    const isLoyaltyEnabled = process.env.ENABLE_LOYALTY === 'true' || payload.enableLoyaltyOverride === true;
+    if (!isLoyaltyEnabled) {
+      throw new Error('LOYALTY_PROGRAMME_DISABLED: Runtime loyalty is disabled by default (ENABLE_LOYALTY=false). No approved Zamorin loyalty programme active.');
+    }
+
     // Check if points already accrued for this billId (IDEMPOTENCY)
     if (LoyaltyLedger) {
       const existingAccrual = await LoyaltyLedger.findOne({
@@ -230,6 +236,12 @@ class OwnerCustomerLoyaltyService {
 
     const orgUpper = organisationId.toString().toUpperCase();
     const orgFilter = { $or: [{ organisationId }, { organisationId: organisationId.toString() }, { organisationId: orgUpper }] };
+
+    // Canonical runtime invariant: Loyalty earn/redeem is disabled by default (ENABLE_LOYALTY=false)
+    const isLoyaltyEnabled = process.env.ENABLE_LOYALTY === 'true' || payload.enableLoyaltyOverride === true;
+    if (!isLoyaltyEnabled) {
+      throw new Error('LOYALTY_PROGRAMME_DISABLED: Runtime loyalty is disabled by default (ENABLE_LOYALTY=false). No approved Zamorin loyalty programme active.');
+    }
 
     // Idempotency check on redemption
     if (LoyaltyLedger && idempotencyKey) {

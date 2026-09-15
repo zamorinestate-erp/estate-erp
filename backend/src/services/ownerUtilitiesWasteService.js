@@ -110,15 +110,20 @@ class OwnerUtilitiesWasteService {
       throw new Error('DUPLICATE_READING_PERIOD: A reading already exists for this exact period.');
     }
 
-    // Anomaly evaluation against baseline
+    // Anomaly evaluation against baseline (configurable/versioned Zamorin internal policy; default: 35%)
     let isAnomaly = false;
     let anomalyNotes = null;
     const baseline = meter.baselineMonthlyConsumption || 0;
+    const anomalyThresholdPercent = (typeof payload.anomalyThresholdPercent === 'number' && !isNaN(payload.anomalyThresholdPercent))
+      ? payload.anomalyThresholdPercent
+      : (typeof meter.anomalyThresholdPercent === 'number' && !isNaN(meter.anomalyThresholdPercent))
+        ? meter.anomalyThresholdPercent
+        : (process.env.UTILITY_ANOMALY_THRESHOLD_PERCENT ? parseFloat(process.env.UTILITY_ANOMALY_THRESHOLD_PERCENT) : 35);
     if (baseline > 0) {
       const variancePercent = ((consumption - baseline) / baseline) * 100;
-      if (variancePercent > 35) {
+      if (variancePercent > anomalyThresholdPercent) {
         isAnomaly = true;
-        anomalyNotes = `Consumption of ${consumption} is ${variancePercent.toFixed(1)}% above monthly baseline (${baseline}).`;
+        anomalyNotes = `Consumption of ${consumption} is ${variancePercent.toFixed(1)}% above monthly baseline (${baseline}) [threshold: ${anomalyThresholdPercent}%].`;
       }
     }
 
