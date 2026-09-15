@@ -86,7 +86,7 @@ function renderMultiStepWizard(container, opts) {
       thermalPrinter: true,
       barcodeScanner: false,
       weighingScale: false,
-      kitchenDisplay: true,
+      customerDisplay: true,
     }
   };
 
@@ -200,8 +200,10 @@ function renderMultiStepWizard(container, opts) {
               <div class="form-group">
                 <label style="font-size:12px;font-weight:700;display:block;margin-bottom:4px;color:var(--ink);">Establishment Category</label>
                 <select id="wiz-f-type" class="form-control" style="width:100%;">
-                  <option value="STANDARD_CAFE" ${data.cafeType === 'STANDARD_CAFE' ? 'selected' : ''}>Café / Coffeehouse</option>
-                  <option value="RESTAURANT" ${data.cafeType === 'RESTAURANT' ? 'selected' : ''}>Restaurant / Bistro</option>
+                  <option value="CAFE" ${data.cafeType === 'CAFE' ? 'selected' : ''}>Café</option>
+                  <option value="RESTAURANT" ${data.cafeType === 'RESTAURANT' ? 'selected' : ''}>Restaurant</option>
+                  <option value="CAFE_AND_RESTAURANT" ${data.cafeType === 'CAFE_AND_RESTAURANT' ? 'selected' : ''}>Café &amp; Restaurant</option>
+                  <option value="STANDARD_CAFE" ${data.cafeType === 'STANDARD_CAFE' ? 'selected' : ''}>Standard Café</option>
                   <option value="BAKERY" ${data.cafeType === 'BAKERY' ? 'selected' : ''}>Bakery &amp; Patisserie</option>
                   <option value="QSR" ${data.cafeType === 'QSR' ? 'selected' : ''}>Quick Service Restaurant (QSR)</option>
                   <option value="KIOSK" ${data.cafeType === 'KIOSK' ? 'selected' : ''}>Kiosk / Express Bar</option>
@@ -424,16 +426,16 @@ function renderMultiStepWizard(container, opts) {
                   <input type="text" id="wiz-f-fssainum" class="form-control" value="${escHtml(data.fssaiNumber)}" placeholder="10024000000000" maxlength="14" style="width:100%;" />
                 </div>
                 <div class="form-group">
-                  <label style="font-size:11.5px;font-weight:700;display:block;margin-bottom:4px;color:var(--muted);">Licence Type</label>
+                  <label style="font-size:11.5px;font-weight:700;display:block;margin-bottom:4px;color:var(--muted);">FSSAI 2026 Category (Perpetual Regime)</label>
                   <select id="wiz-f-fssaitype" class="form-control" style="width:100%;">
-                    <option value="STATE_LICENCE" ${data.fssaiType === 'STATE_LICENCE' ? 'selected' : ''}>State Licence</option>
-                    <option value="REGISTRATION" ${data.fssaiType === 'REGISTRATION' ? 'selected' : ''}>Basic Registration</option>
-                    <option value="CENTRAL_LICENCE" ${data.fssaiType === 'CENTRAL_LICENCE' ? 'selected' : ''}>Central Licence</option>
+                    <option value="REGISTRATION" ${data.fssaiType === 'REGISTRATION' ? 'selected' : ''}>Registration (Turnover ≤ ₹1.5 Cr)</option>
+                    <option value="STATE_LICENCE" ${data.fssaiType === 'STATE_LICENCE' ? 'selected' : ''}>State Licence (Turnover ₹1.5 Cr - ₹50 Cr)</option>
+                    <option value="CENTRAL_LICENCE" ${data.fssaiType === 'CENTRAL_LICENCE' ? 'selected' : ''}>Central Licence (Turnover > ₹50 Cr)</option>
                   </select>
                 </div>
                 <div class="form-group">
-                  <label style="font-size:11.5px;font-weight:700;display:block;margin-bottom:4px;color:var(--muted);">Expiry Date (Automatic 90/60/30-day Alerts)</label>
-                  <input type="date" id="wiz-f-fssaiexp" class="form-control" value="${data.fssaiExpiryDate}" style="width:100%;" />
+                  <label style="font-size:11.5px;font-weight:700;display:block;margin-bottom:4px;color:var(--muted);">Annual Fee Tracking (Perpetual Validity)</label>
+                  <input type="text" id="wiz-f-fssaifee" class="form-control" value="Perpetual Regime (Fee Tracked Annually)" readonly style="width:100%;color:var(--muted);" />
                 </div>
               </div>
             </div>
@@ -457,7 +459,7 @@ function renderMultiStepWizard(container, opts) {
                   <input type="checkbox" id="wiz-h-printer" ${data.hardware.thermalPrinter ? 'checked' : ''} /> Thermal Receipt Printer (58/80mm)
                 </label>
                 <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink);cursor:pointer;">
-                  <input type="checkbox" id="wiz-h-kds" ${data.hardware.kitchenDisplay ? 'checked' : ''} /> Kitchen Display (KDS)
+                  <input type="checkbox" id="wiz-h-customer" ${data.hardware.customerDisplay ? 'checked' : ''} /> Customer Display Screen
                 </label>
                 <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink);cursor:pointer;">
                   <input type="checkbox" id="wiz-h-scanner" ${data.hardware.barcodeScanner ? 'checked' : ''} /> Barcode / QR Scanner
@@ -543,7 +545,7 @@ function renderMultiStepWizard(container, opts) {
         formData.hardware = {
           posTerminal: container.querySelector('#wiz-h-pos')?.checked ?? true,
           thermalPrinter: container.querySelector('#wiz-h-printer')?.checked ?? true,
-          kitchenDisplay: container.querySelector('#wiz-h-kds')?.checked ?? true,
+          customerDisplay: container.querySelector('#wiz-h-customer')?.checked ?? true,
           barcodeScanner: container.querySelector('#wiz-h-scanner')?.checked ?? false,
           weighingScale: container.querySelector('#wiz-h-scale')?.checked ?? false,
         };
@@ -846,7 +848,7 @@ function renderSuccessScreen(container, { cafe, access }, opts) {
   container.querySelector('#succ-dl-qr-btn')?.addEventListener('click', () => {
     downloadQrSvg(qrUrl, `${cafeId}_Operations_QR.svg`, {
       title: `${cafe?.name} Operations QR`,
-      subtitle: `Official ID: ${cafeId} · Permanent PIN: ••••••`,
+      subtitle: `Official ID: ${cafeId} · Operations QR Gateway`,
     });
     showToast('Operations QR SVG downloaded.', 'success');
   });

@@ -20,6 +20,13 @@ const {
   regenerateCafeLoginQr,
   downloadPrintableQrCardPdf,
   getCafeComplianceAndLicences,
+  validateCafe,
+  previewCafe,
+  createDraft,
+  updateDraft,
+  provisionCafe,
+  verifyCafe,
+  activateCafe,
 } = require('../controllers/cafeController');
 
 const router = express.Router();
@@ -27,6 +34,15 @@ const router = express.Router();
 router.use(authenticate);
 
 router.get('/compliance/alerts', getComplianceAlerts);
+
+// REC-02: Multi-stage New Café Onboarding Lifecycle Endpoints
+router.post('/validate', validateCafe);
+router.post('/preview', previewCafe);
+router.post('/draft', createDraft);
+router.put('/:cafeId/draft', updateDraft);
+router.post('/:cafeId/provision', provisionCafe);
+router.post('/:cafeId/verify', verifyCafe);
+router.post('/:cafeId/activate', activateCafe);
 
 router
   .route('/')

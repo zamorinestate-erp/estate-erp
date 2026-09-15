@@ -125,10 +125,9 @@ test('REC-10: New Café Full End-to-End Acceptance Lifecycle Suite', async (t) =
     assert.ok(Array.isArray(cafeInDb.inventorySetup.coldStorageLocations));
     assert.ok(cafeInDb.qrLoginContext.loginUrl.includes('/c/'));
 
-    // Verify Permanent PIN reservation
+    // Verify Permanent PIN reservation is retired in REC-02 (zero new reservations generated)
     const pinReservation = await CafePinReservation.findOne({ cafeId: createdCafeId });
-    assert.ok(pinReservation);
-    assert.equal(pinReservation.isArchived, false);
+    assert.equal(pinReservation, null);
   });
 
   await t.test('2. Independent QR & Deep Link Tokens provisioned with safe public URL', async () => {

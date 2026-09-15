@@ -51,17 +51,18 @@ const cafeAccessSchema = new mongoose.Schema(
       index: true,
     },
 
-    // Permanent 6-digit Café PIN storage (AES-256-GCM iv:authTag:ciphertext)
+    // Permanent 6-digit Café PIN storage (Legacy commissioning artifact - retired in REC-02)
     permanentCafePinEncrypted: {
       type: String,
-      required: true,
+      required: false,
       select: false, // Never return in unprojected queries
     },
 
     // HMAC-SHA256 index for constant-time lookups without exposing plaintext
     permanentCafePinLookupHash: {
       type: String,
-      required: true,
+      required: false,
+      sparse: true,
       unique: true,
       index: true,
       select: false,

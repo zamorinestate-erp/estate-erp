@@ -616,6 +616,138 @@ const getCafeComplianceAndLicences = asyncHandler(
   }
 );
 
+// ---------------------------------------------------------------------------
+// REC-02: CANONICAL ONBOARDING LIFECYCLE CONTROLLERS
+// ---------------------------------------------------------------------------
+const validateCafe = asyncHandler(async (request, response) => {
+  requireMaster(request);
+  const result = await cafeService.validateCafeCreationPayload({
+    cafeData: request.body || {},
+    isDraft: false,
+    organisationId: request.auth.organisationId,
+  });
+
+  return response.status(result.valid ? 200 : 400).json({
+    success: result.valid,
+    message: result.valid ? 'Café validation passed.' : 'Validation errors occurred.',
+    data: result,
+    correlationId: request.correlationId || null,
+  });
+});
+
+const previewCafe = asyncHandler(async (request, response) => {
+  requireMaster(request);
+  const preview = await cafeService.previewCafeCreation({
+    auth: request.auth,
+    cafeData: request.body || {},
+  });
+
+  return response.status(200).json({
+    success: true,
+    message: 'Café creation preview generated successfully.',
+    data: preview,
+    correlationId: request.correlationId || null,
+  });
+});
+
+const createDraft = asyncHandler(async (request, response) => {
+  requireMaster(request);
+  const result = await cafeService.createCafeDraft({
+    auth: request.auth,
+    cafeData: request.body || {},
+    clientIp: request.ip,
+    userAgent: request.headers ? request.headers['user-agent'] : '',
+    correlationId: request.correlationId || null,
+  });
+
+  return response.status(201).json({
+    success: true,
+    message: 'Café draft created successfully.',
+    data: result,
+    correlationId: request.correlationId || null,
+  });
+});
+
+const updateDraft = asyncHandler(async (request, response) => {
+  requireMaster(request);
+  const cafeId = normalizeIdentifier(request.params.cafeId);
+  const result = await cafeService.updateCafeDraft({
+    organisationId: request.auth.organisationId,
+    cafeId,
+    auth: request.auth,
+    cafeData: request.body || {},
+    clientIp: request.ip,
+    userAgent: request.headers ? request.headers['user-agent'] : '',
+    correlationId: request.correlationId || null,
+  });
+
+  return response.status(200).json({
+    success: true,
+    message: 'Café draft updated successfully.',
+    data: result,
+    correlationId: request.correlationId || null,
+  });
+});
+
+const provisionCafe = asyncHandler(async (request, response) => {
+  requireMaster(request);
+  const cafeId = normalizeIdentifier(request.params.cafeId);
+  const result = await cafeService.provisionCafeSubsystems({
+    organisationId: request.auth.organisationId,
+    cafeId,
+    auth: request.auth,
+    options: request.body || {},
+    clientIp: request.ip,
+    userAgent: request.headers ? request.headers['user-agent'] : '',
+    correlationId: request.correlationId || null,
+  });
+
+  return response.status(200).json({
+    success: true,
+    message: 'Café subsystems provisioned successfully.',
+    data: result,
+    correlationId: request.correlationId || null,
+  });
+});
+
+const verifyCafe = asyncHandler(async (request, response) => {
+  requireMaster(request);
+  const cafeId = normalizeIdentifier(request.params.cafeId);
+  const result = await cafeService.verifyCafeProvisioning({
+    organisationId: request.auth.organisationId,
+    cafeId,
+    auth: request.auth,
+  });
+
+  return response.status(result.verified ? 200 : 400).json({
+    success: result.verified,
+    message: result.verified ? 'Café provisioning verification succeeded.' : 'Café provisioning verification failed.',
+    data: result,
+    correlationId: request.correlationId || null,
+  });
+});
+
+const activateCafe = asyncHandler(async (request, response) => {
+  requireMaster(request);
+  const cafeId = normalizeIdentifier(request.params.cafeId);
+  const result = await cafeService.activateCafeLifecycle({
+    organisationId: request.auth.organisationId,
+    cafeId,
+    reason: request.body?.reason || 'Operational activation authorized by governance.',
+    auth: request.auth,
+    clientIp: request.ip,
+    userAgent: request.headers ? request.headers['user-agent'] : '',
+    correlationId: request.correlationId || null,
+  });
+
+  return response.status(200).json({
+    success: true,
+    message: 'Café operational lifecycle activated successfully.',
+    data: result,
+    correlationId: request.correlationId || null,
+  });
+});
+
 module.exports = {
   listCafes,
   getCafe,
@@ -630,4 +762,11 @@ module.exports = {
   regenerateCafeLoginQr,
   downloadPrintableQrCardPdf,
   getCafeComplianceAndLicences,
+  validateCafe,
+  previewCafe,
+  createDraft,
+  updateDraft,
+  provisionCafe,
+  verifyCafe,
+  activateCafe,
 };
