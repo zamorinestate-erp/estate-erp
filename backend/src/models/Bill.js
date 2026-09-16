@@ -630,6 +630,24 @@ const billSchema = new mongoose.Schema(
       default: [],
     },
 
+    printStatus: {
+      type: String,
+      enum: ['NOT_REQUESTED', 'PRINT_PENDING', 'PRINT_DISPATCHED', 'PRINTED', 'PRINT_FAILED'],
+      default: 'NOT_REQUESTED',
+      index: true,
+    },
+
+    printJobs: [
+      {
+        printJobId: { type: String, trim: true },
+        jobType: { type: String, default: 'RECEIPT' },
+        status: { type: String, default: 'QUEUED' },
+        dispatchedAt: { type: Date, default: Date.now },
+        completedAt: { type: Date, default: null },
+        failureCode: { type: String, default: null },
+      },
+    ],
+
     businessDate: {
       type: String,
       required: true,
@@ -699,6 +717,25 @@ const billSchema = new mongoose.Schema(
       index: true,
     },
 
+    // REC-04A: Explicit BOM/inventory depletion reconciliation state.
+    // 'DEPLETED' = stock consumed successfully.
+    // 'FAILED'   = depletion threw; bill is COMPLETED but stock was NOT consumed.
+    //              Operations must reconcile manually. Queryable for alert dashboards.
+    // 'NOT_ATTEMPTED' = BOM not applicable (no recipe linked).
+    // 'ALREADY_DEPLETED' = idempotent replay; depletion skipped safely.
+    bomDepletionStatus: {
+      type: String,
+      enum: ['NOT_ATTEMPTED', 'DEPLETED', 'FAILED', 'ALREADY_DEPLETED'],
+      default: 'NOT_ATTEMPTED',
+      index: true,
+    },
+
+    bomDepletionError: {
+      type: String,
+      default: null,
+      maxlength: 250,
+    },
+
     clientOfflineId: {
       type: String,
       trim: true,
@@ -726,7 +763,7 @@ billSchema.index(
 
 billSchema.index(
   { organisationId: 1, invoiceNumber: 1 },
-  { name: 'org_invoice_number' }
+  { unique: true, sparse: true, name: 'org_invoice_number_unique' }
 );
 
 billSchema.index(

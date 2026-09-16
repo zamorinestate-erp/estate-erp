@@ -241,8 +241,8 @@ function renderTerminalView() {
           <button class="pos-service-mode-btn" id="register-session-btn" style="padding:6px 12px;font-size:12px;" type="button">
             💵 Cash Drawer
           </button>
-          <button class="pos-service-mode-btn" id="kds-view-btn" style="padding:6px 12px;font-size:12px;" type="button">
-            🍳 Kitchen KDS
+          <button class="pos-service-mode-btn" id="pos-reprint-last-btn" style="padding:6px 12px;font-size:12px;" title="Reprint Last Finalized Receipt" type="button">
+            🔁 Reprint Last
           </button>
           <button class="btn btn-sm btn-secondary" id="view-past-orders-btn" style="font-size:12px;padding:6px 12px;font-weight:700;min-height:32px;" type="button">
             📜 Past Orders
@@ -477,13 +477,16 @@ function renderTerminalView() {
               </div>
             ` : ""}
 
-            <!-- Action Buttons Grid: Preview Receipt & Charge with Duplicate-Lock -->
-            <div style="display:grid;grid-template-columns:1fr 2fr;gap:8px;">
-              <button class="btn btn-secondary" id="preview-receipt-btn" ${grandTotal <= 0 ? "disabled" : ""} style="padding:12px;font-size:13px;font-weight:700;min-height:46px;border-radius:8px;" type="button">
+            <!-- Action Buttons Grid: Preview, Save, and Save & Print with Duplicate-Lock -->
+            <div style="display:grid;grid-template-columns:1fr 1fr 1.6fr;gap:6px;">
+              <button class="btn btn-secondary" id="preview-receipt-btn" ${grandTotal <= 0 ? "disabled" : ""} style="padding:10px 4px;font-size:12px;font-weight:700;min-height:46px;border-radius:8px;" type="button">
                 👁️ Preview
               </button>
-              <button class="btn btn-primary" id="process-charge-btn" ${grandTotal <= 0 || isPaymentInProgress ? "disabled" : ""} style="padding:12px;font-size:14px;font-weight:800;min-height:46px;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.15);" type="button">
-                ${isPaymentInProgress ? "Confirming Payment…" : `Charge ₹${grandTotal.toLocaleString("en-IN")} (${activeTender})`}
+              <button class="btn btn-secondary" id="pos-save-only-btn" ${grandTotal <= 0 || isPaymentInProgress ? "disabled" : ""} style="padding:10px 4px;font-size:12px;font-weight:700;min-height:46px;border-radius:8px;" type="button">
+                💾 Save
+              </button>
+              <button class="btn btn-primary" id="process-charge-btn" ${grandTotal <= 0 || isPaymentInProgress ? "disabled" : ""} style="padding:10px 6px;font-size:12.5px;font-weight:800;min-height:46px;border-radius:8px;box-shadow:0 2px 6px rgba(0,0,0,0.15);" type="button">
+                ${isPaymentInProgress ? "Finalizing…" : `⚡ Save & Print ₹${grandTotal.toLocaleString("en-IN")}`}
               </button>
             </div>
           </div>
@@ -1238,6 +1241,34 @@ function wirePOSEventListeners(root) {
     });
   }
 
+  // REC-04 CTL-05: Reprint Last Finalized Bill (browser-refresh resilient)
+  // Fetches the most recent COMPLETED bill from the server and opens the receipt modal
+  // in reprint mode — works even after a full page reload since state is server-side.
+  const reprintLastBtn = root.querySelector("#pos-reprint-last-btn");
+  if (reprintLastBtn) {
+    reprintLastBtn.addEventListener("click", async () => {
+      const cafeId = resolvePosCafeId();
+      if (!cafeId) {
+        showToast("Select a café before reprinting.", "danger");
+        return;
+      }
+      reprintLastBtn.disabled = true;
+      reprintLastBtn.textContent = "⏳ Fetching...";
+      try {
+        const res = await apiGet(`/pos/orders/last/${cafeId}`);
+        const bill = res?.data || res?.bill;
+        if (!bill) throw new Error("No recent bill found.");
+        closeModal();
+        openReceiptModal(bill, true);
+      } catch (err) {
+        showToast(err.message || "No recent finalized bill found for this outlet.", "warning");
+      } finally {
+        reprintLastBtn.disabled = false;
+        reprintLastBtn.textContent = "🔁 Reprint Last";
+      }
+    });
+  }
+
   // Tender selection
   root.querySelectorAll("[data-select-tender]").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -1690,7 +1721,7 @@ function openSplitPaymentModal(root) {
   });
 }
 
-async function executeFinalSale(grandTotal, tender, root, paymentRef = "", customTenders = null) {
+async function executeFinalSale(grandTotal, tender, root, paymentRef = "", customTenders = null, posAction = "SAVE_AND_PRINT") {
   try {
     isPaymentInProgress = true;
     const idempotencyKey = `IDEM-SALE-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
@@ -1717,7 +1748,11 @@ async function executeFinalSale(grandTotal, tender, root, paymentRef = "", custo
       return;
     }
 
+    // REC-04: Route all POS commits through the idempotent /pos/orders/commit endpoint.
+    // This ensures: idempotency deduplication, GST invoice allocation (Rule 46(b)),
+    // atomic BOM depletion, print-job tracking, and IDOR protection — all in one commit.
     const payload = {
+      action: posAction,           // SAVE | SAVE_AND_PRINT
       cafeId,
       orderType: activeServiceMode,
       serviceMode: activeServiceMode,
@@ -1739,8 +1774,30 @@ async function executeFinalSale(grandTotal, tender, root, paymentRef = "", custo
       isImmediateCompletion: true,
     };
 
-    const res = await apiPost("/bills", payload);
-    const billData = res?.data || {
+    // Primary: idempotent POS commit endpoint (REC-04)
+    // REC-04A: fallback is ONLY permitted for HTTP 404/405 (route not found = rolling deployment).
+    // ALL other failures (timeout, 500, 502-504, network loss, unknown) must surface to the user.
+    // Retrying via /bills after an ambiguous failure risks creating a DUPLICATE SALE.
+    let res;
+    try {
+      res = await apiPost("/pos/orders/commit", payload);
+    } catch (commitErr) {
+      const status = commitErr?.status || commitErr?.statusCode || commitErr?.httpStatus;
+      const isRouteNotFound = status === 404 || status === 405;
+      if (!isRouteNotFound) {
+        // Unknown outcome — the server may have already committed this sale.
+        // Do NOT fall through to /bills. Surface to user with guidance to check Reprint Last.
+        throw new Error(
+          commitErr?.message ||
+          "Sale commit failed. Check \u2018Reprint Last\u2019 \u2014 your sale may already be recorded. If not, retry with the same session."
+        );
+      }
+      // Route definitively absent (rolling deployment) — safe to use legacy endpoint
+      console.warn("[POS] /pos/orders/commit not found on this server version (HTTP " + status + "), using /bills fallback");
+      res = await apiPost("/bills", payload);
+    }
+
+    const billData = res?.data || res?.bill || {
       billId: `BILL-${Date.now()}`,
       invoiceNumber: `ZAM-BILL-${Math.floor(100000 + Math.random() * 900000)}`,
       totalPaisa: grandTotal * 100,
@@ -1756,18 +1813,30 @@ async function executeFinalSale(grandTotal, tender, root, paymentRef = "", custo
       tenders: tendersList,
     };
 
+    // Surface any printer warning from the backend (non-fatal — DB commit is already done)
+    if (res?.printerWarning || res?.printStatus === "FAILED") {
+      showToast(
+        `⚠️ Bill saved (${billData.invoiceNumber || billData.billId}). Printer offline — use Reprint when ready.`,
+        "warning"
+      );
+    } else {
+      showToast(
+        posAction === "SAVE" ? `Bill saved: ${billData.invoiceNumber || billData.billId}` : `Payment of ₹${grandTotal} confirmed — receipt issued.`,
+        "mint"
+      );
+    }
+
     cart = [];
     discountPaisa = 0;
     discountReason = "";
     cashReceivedAmount = 0;
     isPaymentInProgress = false;
 
-    showToast(`Payment of ₹${grandTotal} confirmed successfully!`, "mint");
     openReceiptModal(billData, false);
     refreshPOSView(root);
   } catch (err) {
     isPaymentInProgress = false;
-    showToast(err.message || "Sale failed", "error");
+    showToast(err.message || "Sale failed. Check network and try again.", "error");
     refreshPOSView(root);
   }
 }
@@ -1799,8 +1868,19 @@ function openReceiptModal(bill, isReprint = false) {
     showToast(`Official Tax Invoice PDF saved: ${filename}`, "mint");
   };
 
-  const printThermal = () => {
-    showToast("Thermal print command sent to POS printer.", "mint");
+  const printThermal = async () => {
+    // REC-04: Send print command to backend (logs PrintJob, generates thermal buffer)
+    // then invoke browser print as the local rendering fallback.
+    if (bill.billId && !bill.billId.startsWith("PREVIEW")) {
+      try {
+        await apiPost(`/pos/orders/${bill.billId}/print`, { reason: "Terminal thermal print" });
+        showToast("Thermal print job queued on POS printer.", "mint");
+      } catch (printErr) {
+        // Non-fatal: log and fall through to browser print
+        console.warn("[POS] Backend print endpoint error:", printErr.message);
+        showToast("Printer bridge unavailable — printing via browser fallback.", "warning");
+      }
+    }
     window.print();
   };
 
