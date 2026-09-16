@@ -48,6 +48,15 @@ const {
   archiveOrderDocument,
   getPoDocumentMatchingStatus,
   getSupplierContextualIntelligence,
+  vendorConfirmOrder,
+  backorderLine,
+  vendorUnavailableLine,
+  closeShortLine,
+  cancelLine,
+  proposeSubstitution,
+  decideSubstitution,
+  sourceElsewhere,
+  getVendorFulfillmentAnalytics,
 } = require('../controllers/procurementController');
 
 const UPLOAD_STAGING_DIR = path.join(os.tmpdir(), 'zamorin_procurement_staging');
@@ -284,5 +293,61 @@ router.post(
   authorize('PROCUREMENT_WRITE', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
   cancelOrder
 );
+
+// ── REC-17 Vendor Shortage, Backorder, Substitution & Sourcing Endpoints ──
+router.post(
+  '/orders/:purchaseOrderId/vendor-confirm',
+  authorize('PROCUREMENT_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
+  vendorConfirmOrder
+);
+
+router.post(
+  '/orders/:purchaseOrderId/lines/:lineId/backorder',
+  authorize('PROCUREMENT_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
+  backorderLine
+);
+
+router.post(
+  '/orders/:purchaseOrderId/lines/:lineId/vendor-unavailable',
+  authorize('PROCUREMENT_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
+  vendorUnavailableLine
+);
+
+router.post(
+  '/orders/:purchaseOrderId/lines/:lineId/close-short',
+  authorize('PROCUREMENT_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
+  closeShortLine
+);
+
+router.post(
+  '/orders/:purchaseOrderId/lines/:lineId/cancel-line',
+  authorize('PROCUREMENT_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
+  cancelLine
+);
+
+router.post(
+  '/orders/:purchaseOrderId/lines/:lineId/substitute/propose',
+  authorize('PROCUREMENT_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
+  proposeSubstitution
+);
+
+router.post(
+  '/orders/:purchaseOrderId/lines/:lineId/substitute/decide',
+  authorize('PROCUREMENT_APPROVE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
+  decideSubstitution
+);
+
+router.post(
+  '/orders/:purchaseOrderId/lines/:lineId/source-elsewhere',
+  authorize('PROCUREMENT_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
+  sourceElsewhere
+);
+
+router.get(
+  '/suppliers/:vendorId/fulfillment-metrics',
+  authorize('PROCUREMENT_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  getVendorFulfillmentAnalytics
+);
+
 
 module.exports = router;

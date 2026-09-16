@@ -35,6 +35,30 @@ const PO_STATUSES = [
   'CANCELLED',
 ];
 
+const PO_FULFILLMENT_STATUSES = [
+  'PENDING_RECEIPT',
+  'PARTIALLY_RECEIVED',
+  'BACKORDER_PENDING',
+  'SHORT_SUPPLY_ACTION_REQUIRED',
+  'FULLY_RECEIVED',
+  'CLOSED_WITH_SHORTAGE',
+  'CANCELLED',
+];
+
+const PO_LINE_FULFILLMENT_STATUSES = [
+  'ORDERED',
+  'VENDOR_CONFIRMED',
+  'PARTIALLY_CONFIRMED',
+  'PENDING_RECEIPT',
+  'PARTIALLY_RECEIVED',
+  'BACKORDERED',
+  'VENDOR_UNAVAILABLE',
+  'SUBSTITUTION_PENDING',
+  'FULLY_RECEIVED',
+  'CLOSED_SHORT',
+  'CANCELLED',
+];
+
 const poLineItemSchema = new mongoose.Schema(
   {
     itemId: {
@@ -97,6 +121,144 @@ const poLineItemSchema = new mongoose.Schema(
       default: 0,
     },
 
+    acceptedReceivedQty: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+
+    rejectedQty: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+
+    outstandingQty: {
+      type: Number,
+      min: 0,
+      default: function () {
+        return this.orderedQuantityBase || 0;
+      },
+    },
+
+    backorderedQty: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+
+    vendorUnavailableQty: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+
+    closedShortQty: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+
+    buyerCancelledQty: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+
+    fulfillmentStatus: {
+      type: String,
+      enum: PO_LINE_FULFILLMENT_STATUSES,
+      default: 'ORDERED',
+    },
+
+    backorderDetails: {
+      expectedDeliveryDate: { type: Date, default: null },
+      confirmationRef: { type: String, trim: true, default: '' },
+      note: { type: String, trim: true, default: '' },
+      backorderedAt: { type: Date, default: null },
+      backorderedByUserId: { type: String, trim: true, uppercase: true, default: null },
+      isOverdue: { type: Boolean, default: false },
+    },
+
+    vendorUnavailableDetails: {
+      reason: {
+        type: String,
+        enum: [
+          'OUT_OF_STOCK',
+          'DISCONTINUED',
+          'SUPPLY_CHAIN_DELAY',
+          'MINIMUM_ORDER_NOT_MET',
+          'PRICE_CHANGED',
+          'VENDOR_REFUSED',
+          'ITEM_NOT_AVAILABLE',
+          'SEASONAL_UNAVAILABLE',
+          'OTHER',
+        ],
+        default: 'OUT_OF_STOCK',
+      },
+      note: { type: String, trim: true, default: '' },
+      recordedAt: { type: Date, default: null },
+      recordedByUserId: { type: String, trim: true, uppercase: true, default: null },
+    },
+
+    closeShortDetails: {
+      reason: { type: String, trim: true, default: '' },
+      note: { type: String, trim: true, default: '' },
+      closedAt: { type: Date, default: null },
+      closedByUserId: { type: String, trim: true, uppercase: true, default: null },
+      isVendorFault: { type: Boolean, default: true },
+    },
+
+    buyerCancellationDetails: {
+      reason: { type: String, trim: true, default: '' },
+      note: { type: String, trim: true, default: '' },
+      cancelledAt: { type: Date, default: null },
+      cancelledByUserId: { type: String, trim: true, uppercase: true, default: null },
+    },
+
+    substitution: {
+      status: {
+        type: String,
+        enum: ['NONE', 'PROPOSED', 'APPROVED', 'REJECTED'],
+        default: 'NONE',
+      },
+      proposedItemId: { type: String, trim: true, uppercase: true, default: null },
+      proposedItemName: { type: String, trim: true, default: '' },
+      proposedQuantityBase: { type: Number, min: 0, default: 0 },
+      proposedUnitPricePaisa: { type: Number, min: 0, default: 0 },
+      originalUnitPricePaisa: { type: Number, min: 0, default: 0 },
+      priceDifferencePaisa: { type: Number, default: 0 },
+      reason: { type: String, trim: true, default: '' },
+      proposedAt: { type: Date, default: null },
+      proposedByUserId: { type: String, trim: true, uppercase: true, default: null },
+      decidedAt: { type: Date, default: null },
+      decidedByUserId: { type: String, trim: true, uppercase: true, default: null },
+      decisionReason: { type: String, trim: true, default: '' },
+    },
+
+    sourceElsewhere: {
+      status: {
+        type: String,
+        enum: ['NONE', 'SOURCED'],
+        default: 'NONE',
+      },
+      shortageQty: { type: Number, min: 0, default: 0 },
+      replacementVendorId: { type: String, trim: true, uppercase: true, default: null },
+      replacementPurchaseOrderId: { type: String, trim: true, uppercase: true, default: null },
+      sourcedAt: { type: Date, default: null },
+      sourcedByUserId: { type: String, trim: true, uppercase: true, default: null },
+    },
+
+    vendorConfirmationDetails: {
+      confirmedSupplyQty: { type: Number, min: 0, default: 0 },
+      backorderQty: { type: Number, min: 0, default: 0 },
+      cannotSupplyQty: { type: Number, min: 0, default: 0 },
+      expectedDeliveryDate: { type: Date, default: null },
+      confirmationReference: { type: String, trim: true, default: '' },
+      confirmedAt: { type: Date, default: null },
+      confirmedByUserId: { type: String, trim: true, uppercase: true, default: null },
+    },
+
     invoicedQuantityBase: {
       type: Number,
       min: 0,
@@ -156,6 +318,12 @@ const grnItemSchema = new mongoose.Schema(
     manufacturingDate: { type: Date, default: null },
     expiryDate: { type: Date, default: null },
     rejectionReason: { type: String, trim: true, default: null },
+    disposition: {
+      type: String,
+      enum: ['KEEP_OPEN', 'BACKORDER', 'VENDOR_CANNOT_SUPPLY', 'SUBSTITUTION_PROPOSED', 'SOURCE_ELSEWHERE', 'CLOSE_REMAINING', null],
+      default: null,
+    },
+    notes: { type: String, trim: true, default: '' },
   },
   { _id: false }
 );
@@ -383,8 +551,14 @@ const purchaseOrderSchema = new mongoose.Schema(
     // ── Receiving & Invoicing Arrays ───────────────────────────────────────────
     receivingStatus: {
       type: String,
-      enum: ['PENDING', 'PARTIALLY_RECEIVED', 'RECEIVED_PENDING_FINAL_POSTING', 'POSTED_TO_INVENTORY'],
+      enum: ['PENDING', 'PARTIALLY_RECEIVED', 'RECEIVED', 'RECEIVED_PENDING_FINAL_POSTING', 'POSTED_TO_INVENTORY'],
       default: 'PENDING',
+    },
+    fulfillmentStatus: {
+      type: String,
+      enum: PO_FULFILLMENT_STATUSES,
+      default: 'PENDING_RECEIPT',
+      index: true,
     },
     grnReceipts: {
       type: [grnSchema],
@@ -500,6 +674,140 @@ purchaseOrderSchema.index(
 
 // ── Normalisation ────────────────────────────────────────────────────────────
 
+// ── Normalisation & Fulfillment Derivation ──────────────────────────────
+
+purchaseOrderSchema.methods.recalculateFulfillment = function recalculateFulfillment() {
+  if (this.status === 'CANCELLED') {
+    this.fulfillmentStatus = 'CANCELLED';
+    if (Array.isArray(this.lineItems)) {
+      for (const li of this.lineItems) {
+        li.fulfillmentStatus = 'CANCELLED';
+      }
+    }
+    return this.fulfillmentStatus;
+  }
+
+  if (!Array.isArray(this.lineItems) || this.lineItems.length === 0) {
+    return this.fulfillmentStatus || 'PENDING_RECEIPT';
+  }
+
+  let allLinesFullyReceived = true;
+  let allLinesClosedOrFull = true;
+  let hasClosedShort = false;
+  let hasPendingSubstitution = false;
+  let hasVendorUnavailable = false;
+  let hasBackorder = false;
+  let hasAnyAcceptedReceipt = false;
+  let allCancelled = true;
+
+  for (const li of this.lineItems) {
+    const ordered = Number(li.orderedQuantityBase || 0);
+
+    // Synchronize receivedQuantityBase and acceptedReceivedQty
+    const acceptedFromRec = Number(li.receivedQuantityBase || 0);
+    const acceptedFromField = Number(li.acceptedReceivedQty || 0);
+    const accepted = Math.max(acceptedFromRec, acceptedFromField);
+    li.acceptedReceivedQty = accepted;
+    li.receivedQuantityBase = accepted;
+
+    const closedShort = Number(li.closedShortQty || 0);
+    const buyerCancelled = Number(li.buyerCancelledQty || 0);
+    const outstanding = Math.max(0, ordered - accepted - closedShort - buyerCancelled);
+    li.outstandingQty = outstanding;
+
+    if (buyerCancelled < ordered) {
+      allCancelled = false;
+    }
+
+    if (accepted > 0) {
+      hasAnyAcceptedReceipt = true;
+    }
+
+    // Check overdue backorders
+    if (li.backorderDetails && li.backorderDetails.expectedDeliveryDate) {
+      const exp = new Date(li.backorderDetails.expectedDeliveryDate);
+      if (exp < new Date() && (li.backorderedQty > 0 || outstanding > 0)) {
+        li.backorderDetails.isOverdue = true;
+      } else {
+        li.backorderDetails.isOverdue = false;
+      }
+    }
+
+    // Determine line fulfillmentStatus
+    if (buyerCancelled >= ordered) {
+      li.fulfillmentStatus = 'CANCELLED';
+    } else if (accepted >= ordered) {
+      li.fulfillmentStatus = 'FULLY_RECEIVED';
+    } else if (outstanding === 0 && closedShort > 0) {
+      li.fulfillmentStatus = 'CLOSED_SHORT';
+      hasClosedShort = true;
+    } else if (li.substitution && li.substitution.status === 'PROPOSED') {
+      li.fulfillmentStatus = 'SUBSTITUTION_PENDING';
+      hasPendingSubstitution = true;
+      allLinesFullyReceived = false;
+      allLinesClosedOrFull = false;
+    } else if (li.vendorUnavailableQty > 0 && (accepted + li.vendorUnavailableQty >= ordered)) {
+      li.fulfillmentStatus = 'VENDOR_UNAVAILABLE';
+      hasVendorUnavailable = true;
+      allLinesFullyReceived = false;
+      allLinesClosedOrFull = false;
+    } else if (accepted === 0 && li.vendorConfirmationDetails && li.vendorConfirmationDetails.confirmedSupplyQty > 0) {
+      if (li.vendorConfirmationDetails.confirmedSupplyQty < ordered) {
+        li.fulfillmentStatus = 'PARTIALLY_CONFIRMED';
+      } else {
+        li.fulfillmentStatus = 'VENDOR_CONFIRMED';
+      }
+      if (li.backorderedQty > 0) hasBackorder = true;
+      if (li.vendorUnavailableQty > 0) hasVendorUnavailable = true;
+      allLinesFullyReceived = false;
+      allLinesClosedOrFull = false;
+    } else if (li.backorderedQty > 0) {
+      li.fulfillmentStatus = 'BACKORDERED';
+      hasBackorder = true;
+      allLinesFullyReceived = false;
+      allLinesClosedOrFull = false;
+    } else if (accepted > 0) {
+      li.fulfillmentStatus = 'PARTIALLY_RECEIVED';
+      allLinesFullyReceived = false;
+      allLinesClosedOrFull = false;
+    } else {
+      if (!['ORDERED', 'PENDING_RECEIPT'].includes(li.fulfillmentStatus)) {
+        li.fulfillmentStatus = 'ORDERED';
+      }
+      allLinesFullyReceived = false;
+      allLinesClosedOrFull = false;
+    }
+
+    if (li.fulfillmentStatus !== 'FULLY_RECEIVED') {
+      allLinesFullyReceived = false;
+    }
+    if (!['FULLY_RECEIVED', 'CLOSED_SHORT'].includes(li.fulfillmentStatus)) {
+      allLinesClosedOrFull = false;
+    }
+    if (li.fulfillmentStatus === 'CLOSED_SHORT') {
+      hasClosedShort = true;
+    }
+  }
+
+  if (allCancelled && this.lineItems.length > 0) {
+    this.fulfillmentStatus = 'CANCELLED';
+  } else if (allLinesFullyReceived) {
+    this.fulfillmentStatus = 'FULLY_RECEIVED';
+  } else if (allLinesClosedOrFull && hasClosedShort) {
+    this.fulfillmentStatus = 'CLOSED_WITH_SHORTAGE';
+  } else if (hasPendingSubstitution || hasVendorUnavailable) {
+    this.fulfillmentStatus = 'SHORT_SUPPLY_ACTION_REQUIRED';
+  } else if (hasBackorder) {
+    this.fulfillmentStatus = 'BACKORDER_PENDING';
+  } else if (hasAnyAcceptedReceipt) {
+    this.fulfillmentStatus = 'PARTIALLY_RECEIVED';
+  } else {
+    this.fulfillmentStatus = 'PENDING_RECEIPT';
+  }
+
+  return this.fulfillmentStatus;
+};
+
 purchaseOrderSchema.pre('validate', function normalisePOFields() {
   const upperFields = [
     'purchaseOrderId', 'organisationId', 'cafeId', 'vendorId',
@@ -514,6 +822,9 @@ purchaseOrderSchema.pre('validate', function normalisePOFields() {
   if (this.status) {
     this.status = this.status.trim().toUpperCase();
   }
+  if (Array.isArray(this.lineItems) && this.lineItems.length > 0) {
+    this.recalculateFulfillment();
+  }
 });
 
 const PurchaseOrder =
@@ -523,4 +834,7 @@ const PurchaseOrder =
 module.exports = {
   PurchaseOrder,
   PO_STATUSES,
+  PO_FULFILLMENT_STATUSES,
+  PO_LINE_FULFILLMENT_STATUSES,
 };
+

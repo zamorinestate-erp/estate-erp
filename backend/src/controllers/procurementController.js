@@ -263,6 +263,22 @@ function assertCafeAccess(request, cafeId) {
   }
 }
 
+function assertProcurementMutationAccess(request, cafeId) {
+  if (!request.auth || !request.auth.role) {
+    throw new ApiError(401, 'UNAUTHORIZED', 'Authentication required.');
+  }
+  if (request.auth.role === 'STAFF') {
+    throw new ApiError(403, 'FORBIDDEN_ROLE', 'Staff is strictly denied procurement access.');
+  }
+  if (request.auth.role === 'OWNER') {
+    throw new ApiError(403, 'FORBIDDEN_MUTATION', 'Owner is strictly read-only for procurement operations.');
+  }
+  if (!['MASTER', 'CAFE_ADMIN'].includes(request.auth.role)) {
+    throw new ApiError(403, 'FORBIDDEN_ROLE', `Role ${request.auth.role} is not authorized for procurement operations.`);
+  }
+  assertCafeAccess(request, cafeId);
+}
+
 const poLocks = new Map();
 let poLocksDisabled = false;
 function _setPoLocksDisabled(val) {
@@ -745,10 +761,43 @@ const receiveOrder = asyncHandler(async (request, response) => {
   const rawDeliveries = request.body.deliveries || (request.body.receivedItems
     ? request.body.receivedItems.map((r) => ({
         itemId: r.itemId,
-        quantityReceived: r.receivedQuantityBase || r.quantityReceived,
+        lineId: r.lineId || r._id,
+        quantityReceived: r.receivedQuantityBase !== undefined ? r.receivedQuantityBase : r.quantityReceived,
+        acceptedQuantity: r.acceptedQuantity !== undefined ? r.acceptedQuantity : (r.acceptedQty !== undefined ? r.acceptedQty : (r.receivedQuantityBase !== undefined ? r.receivedQuantityBase : r.quantityReceived)),
+        rejectedQuantity: r.rejectedQuantity !== undefined ? r.rejectedQuantity : (r.rejectedQty || 0),
+        disposition: r.disposition || null,
+        rejectionReason: r.rejectionReason || null,
+        lotNumber: r.lotNumber || null,
+        manufacturingDate: r.manufacturingDate || null,
+        expiryDate: r.expiryDate || null,
+        expectedDeliveryDate: r.expectedDeliveryDate || null,
+        notes: r.notes || '',
       }))
-    : []);
-  const { vendorInvoiceNumber, vendorInvoiceDate } = request.body;
+    : (request.body.items
+      ? request.body.items.map((r) => ({
+          itemId: r.itemId,
+          lineId: r.lineId || r._id,
+          quantityReceived: r.receivedQuantityBase !== undefined ? r.receivedQuantityBase : r.quantityReceived,
+          acceptedQuantity: r.acceptedQuantity !== undefined ? r.acceptedQuantity : (r.acceptedQty !== undefined ? r.acceptedQty : (r.receivedQuantityBase !== undefined ? r.receivedQuantityBase : (r.quantityReceived !== undefined ? r.quantityReceived : (r.deliveredQty || 0)))),
+          rejectedQuantity: r.rejectedQuantity !== undefined ? r.rejectedQuantity : (r.rejectedQty || 0),
+          disposition: r.disposition || null,
+          rejectionReason: r.rejectionReason || null,
+          lotNumber: r.lotNumber || null,
+          manufacturingDate: r.manufacturingDate || null,
+          expiryDate: r.expiryDate || null,
+          expectedDeliveryDate: r.expectedDeliveryDate || null,
+          notes: r.notes || '',
+        }))
+      : []));
+
+  const {
+    vendorInvoiceNumber,
+    vendorInvoiceDate,
+    deliveryNote,
+    deliveryNoteNumber,
+    idempotencyKey: rawIdempotencyKey,
+    notes = '',
+  } = request.body;
 
   if (!Array.isArray(rawDeliveries) || rawDeliveries.length === 0) {
     throw new ApiError(400, 'DELIVERIES_REQUIRED', 'At least one item delivery quantity is required.');
@@ -763,108 +812,302 @@ const receiveOrder = asyncHandler(async (request, response) => {
   if (!order) {
     throw new ApiError(404, 'NOT_FOUND', 'Purchase order not found.');
   }
-  assertCafeAccess(request, order.cafeId);
+  assertProcurementMutationAccess(request, order.cafeId);
 
-  if (!['ORDERED', 'PARTIALLY_RECEIVED'].includes(order.status)) {
+  // Idempotent retry check
+  const idempotencyKey = normalizeId(rawIdempotencyKey || request.headers?.['idempotency-key']);
+  if (idempotencyKey && Array.isArray(order.grnReceipts)) {
+    const existing = order.grnReceipts.find(
+      (r) => r.idempotencyKey && r.idempotencyKey === idempotencyKey
+    );
+    if (existing) {
+      return response.status(200).json({
+        success: true,
+        data: {
+          order: order.toObject(),
+          grn: existing,
+          isIdempotentReplay: true,
+          movementsCreated: [],
+        },
+        correlationId: request.correlationId || null,
+      });
+    }
+  }
+
+  if (!['ORDERED', 'ORDER_PLACED', 'APPROVED', 'PARTIALLY_RECEIVED'].includes(order.status)) {
     throw new ApiError(409, 'INVALID_STATUS', `Cannot receive goods for a purchase order in ${order.status} status.`);
   }
 
   const businessDate = getIstBusinessDate();
   const datePart = businessDate.replace(/-/g, '');
   const movementsCreated = [];
+  const grnItems = [];
+  const now = new Date();
 
   for (const del of deliveries) {
     const iId = normalizeId(del.itemId);
-    const qtyReceived = Number(del.quantityReceived);
-
-    if (!Number.isFinite(qtyReceived) || qtyReceived <= 0) {
-      continue; // Skip zero or invalid received entries
-    }
-
-    const lineItem = order.lineItems.find((li) => li.itemId === iId);
+    const lineItem = order.lineItems.find(
+      (li) => (del.lineId && (String(li._id) === String(del.lineId) || li.lineId === del.lineId)) || li.itemId === iId
+    );
     if (!lineItem) {
       throw new ApiError(400, 'INVALID_LINE_ITEM', `Item ${iId} is not in this purchase order.`);
     }
 
-    // Check cafe stock config exists
-    const stockConfig = await CafeInventoryConfig.findOne({
-      organisationId: request.auth.organisationId,
-      cafeId: order.cafeId,
-      itemId: iId,
-    });
+    const previouslyAccepted = Number(lineItem.acceptedReceivedQty || lineItem.receivedQuantityBase || 0);
+    const orderedQty = Number(lineItem.orderedQuantityBase || 0);
+    const closedShort = Number(lineItem.closedShortQty || 0);
+    const buyerCancelled = Number(lineItem.buyerCancelledQty || 0);
+    const remainingOpen = Math.max(0, orderedQty - previouslyAccepted - closedShort - buyerCancelled);
 
-    if (!stockConfig) {
-      throw new ApiError(404, 'STOCK_CONFIG_NOT_FOUND', `Stock config for item ${iId} at café ${order.cafeId} not found.`);
+    const acceptedQty = Number(
+      del.acceptedQuantity !== undefined ? del.acceptedQuantity : (del.acceptedQty !== undefined ? del.acceptedQty : (del.quantityReceived !== undefined ? del.quantityReceived : 0))
+    );
+    const rejectedQty = Number(
+      del.rejectedQuantity !== undefined ? del.rejectedQuantity : (del.rejectedQty || 0)
+    );
+    const deliveredQty = Number(
+      del.deliveredQty !== undefined ? del.deliveredQty : (acceptedQty + rejectedQty)
+    );
+
+    if (!Number.isFinite(acceptedQty) || acceptedQty < 0 || !Number.isFinite(rejectedQty) || rejectedQty < 0) {
+      throw new ApiError(400, 'INVALID_QUANTITY', 'Accepted and rejected quantities must be non-negative numbers.');
     }
 
-    const balanceBefore = stockConfig.currentQuantityBase;
-    const balanceAfter = balanceBefore + qtyReceived;
+    // Concurrency / overdelivery guard
+    if (acceptedQty > remainingOpen) {
+      throw new ApiError(
+        400,
+        'QUANTITY_EXCEEDS_OUTSTANDING',
+        `Accepted quantity (${acceptedQty}) exceeds open outstanding quantity (${remainingOpen}) for item ${iId}.`
+      );
+    }
 
-    // Generate movement ID
-    const movId = await SequenceCounter.generateId({
-      organisationId: request.auth.organisationId,
-      sequenceKey: `STOCK_MOVEMENT_${datePart}`,
-      prefix: `SMOV-${datePart}`,
-      minimumDigits: 4,
-    });
-
-    // Create StockMovement record
-    const movement = new StockMovement({
-      movementId: movId,
-      organisationId: request.auth.organisationId,
-      cafeId: order.cafeId,
-      itemId: iId,
-      movementType: 'RECEIPT',
-      quantityDelta: qtyReceived,
-      balanceBefore,
-      balanceAfter,
-      businessDate,
-      serverTimestamp: new Date(),
-      status: 'ACTIVE',
-      sourceModule: 'PROCUREMENT',
-      sourceRecordId: purchaseOrderId,
-      description: `Goods receipt for PO ${purchaseOrderId}`,
-      createdByUserId: request.auth.userId,
-      createdByRole: request.auth.role,
-      correlationId: request.correlationId || null,
-    });
-
-    await movement.save();
-    movementsCreated.push(movId);
-
-    // Atomic update to cafe inventory
-    await CafeInventoryConfig.findOneAndUpdate(
-      {
+    // Only ACCEPTED quantity updates inventory and creates StockMovement
+    if (acceptedQty > 0) {
+      let stockConfig = await CafeInventoryConfig.findOne({
         organisationId: request.auth.organisationId,
         cafeId: order.cafeId,
         itemId: iId,
-      },
-      {
-        $inc: { currentQuantityBase: qtyReceived },
-        $set: { lastModifiedByUserId: request.auth.userId },
+      });
+
+      if (!stockConfig) {
+        stockConfig = new CafeInventoryConfig({
+          organisationId: request.auth.organisationId,
+          cafeId: order.cafeId,
+          itemId: iId,
+          currentQuantityBase: 0,
+          availableQuantityBase: 0,
+          createdByUserId: request.auth.userId,
+        });
       }
-    );
 
-    // Update PO line item
-    lineItem.receivedQuantityBase += qtyReceived;
-  }
+      const balanceBefore = Number(stockConfig.currentQuantityBase || 0);
+      const balanceAfter = balanceBefore + acceptedQty;
 
-  // Determine overall status
-  let allCompleted = true;
-  let anyReceived = false;
+      const movId = await SequenceCounter.generateId({
+        organisationId: request.auth.organisationId,
+        sequenceKey: `STOCK_MOVEMENT_${datePart}`,
+        prefix: `SMOV-${datePart}`,
+        minimumDigits: 4,
+      });
 
-  for (const li of order.lineItems) {
-    if (li.receivedQuantityBase >= li.orderedQuantityBase) {
-      anyReceived = true;
-    } else if (li.receivedQuantityBase > 0) {
-      anyReceived = true;
-      allCompleted = false;
-    } else {
-      allCompleted = false;
+      const movement = new StockMovement({
+        movementId: movId,
+        organisationId: request.auth.organisationId,
+        cafeId: order.cafeId,
+        itemId: iId,
+        movementType: 'RECEIPT',
+        quantityBase: acceptedQty,
+        quantityDelta: acceptedQty,
+        balanceBeforeBase: balanceBefore,
+        balanceAfterBase: balanceAfter,
+        balanceBefore,
+        balanceAfter,
+        businessDate,
+        serverTimestamp: now,
+        status: 'ACTIVE',
+        sourceModule: 'PROCUREMENT',
+        sourceRecordId: purchaseOrderId,
+        description: `Goods receipt for PO ${purchaseOrderId}`,
+        performedByUserId: request.auth.userId,
+        createdByUserId: request.auth.userId,
+        createdByRole: request.auth.role,
+        correlationId: request.correlationId || null,
+      });
+
+      await movement.save();
+      movementsCreated.push(movId);
+
+      await CafeInventoryConfig.findOneAndUpdate(
+        {
+          organisationId: request.auth.organisationId,
+          cafeId: order.cafeId,
+          itemId: iId,
+        },
+        {
+          $inc: { currentQuantityBase: acceptedQty, availableQuantityBase: acceptedQty },
+          $set: { lastModifiedByUserId: request.auth.userId },
+        },
+        { upsert: true, new: true }
+      );
+
+      // Create InventoryLot in AVAILABLE status
+      const lotId = await SequenceCounter.generateId({
+        organisationId: request.auth.organisationId,
+        sequenceKey: `LOT_${datePart}`,
+        prefix: `LOT-${datePart}`,
+        minimumDigits: 4,
+      });
+
+      const lotRecord = new InventoryLot({
+        organisationId: request.auth.organisationId,
+        lotId,
+        supplierLot: del.lotNumber || `SLOT-${Date.now().toString().slice(-6)}`,
+        itemId: iId,
+        cafeId: order.cafeId,
+        vendorId: order.vendorId,
+        procurementReference: order.purchaseOrderId,
+        storageLocation: 'Main Store',
+        mfgDate: del.manufacturingDate ? new Date(del.manufacturingDate).toISOString().slice(0, 10) : null,
+        expiryDate: del.expiryDate ? new Date(del.expiryDate).toISOString().slice(0, 10) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+        unit: lineItem.baseUnit || 'units',
+        initialQuantity: acceptedQty,
+        quantityBase: acceptedQty,
+        remainingQuantity: acceptedQty,
+        receivedAt: now,
+        status: 'AVAILABLE',
+      });
+      await lotRecord.save();
     }
+
+    // Rejected items: quarantined, do NOT update usable stock
+    if (rejectedQty > 0) {
+      lineItem.rejectedQty = (lineItem.rejectedQty || 0) + rejectedQty;
+
+      const qLotId = await SequenceCounter.generateId({
+        organisationId: request.auth.organisationId,
+        sequenceKey: `LOT_Q_${datePart}`,
+        prefix: `LOTQ-${datePart}`,
+        minimumDigits: 4,
+      });
+
+      const qLotDoc = new InventoryLot({
+        organisationId: request.auth.organisationId,
+        lotId: qLotId,
+        supplierLot: del.lotNumber || `REJ-${Date.now().toString().slice(-6)}`,
+        itemId: iId,
+        cafeId: order.cafeId,
+        vendorId: order.vendorId,
+        procurementReference: order.purchaseOrderId,
+        storageLocation: 'Quarantine Holding Bay',
+        expiryDate: del.expiryDate ? new Date(del.expiryDate).toISOString().slice(0, 10) : businessDate,
+        unit: lineItem.baseUnit || 'units',
+        initialQuantity: rejectedQty,
+        quantityBase: rejectedQty,
+        remainingQuantity: rejectedQty,
+        receivedAt: now,
+        status: 'QUARANTINE',
+        quarantineReason: del.rejectionReason || 'Rejected during dock receiving',
+        quarantineDate: now,
+        quarantinedByUserId: request.auth.userId,
+        dispositionStatus: 'RETURN_TO_VENDOR',
+      });
+      await qLotDoc.save();
+    }
+
+    // Update line item accepted quantities
+    lineItem.acceptedReceivedQty = previouslyAccepted + acceptedQty;
+    lineItem.receivedQuantityBase = lineItem.acceptedReceivedQty;
+
+    // Remaining shortfall after this receipt
+    const shortfall = Math.max(0, orderedQty - lineItem.acceptedReceivedQty - closedShort - buyerCancelled);
+
+    // Handle line item disposition
+    if (del.disposition === 'BACKORDER') {
+      lineItem.backorderedQty = shortfall;
+      lineItem.backorderDetails = {
+        expectedDeliveryDate: del.expectedDeliveryDate ? new Date(del.expectedDeliveryDate) : null,
+        confirmationRef: del.confirmationRef || '',
+        note: del.notes || '',
+        backorderedAt: now,
+        backorderedByUserId: request.auth.userId,
+        isOverdue: del.expectedDeliveryDate ? new Date(del.expectedDeliveryDate) < now : false,
+      };
+      lineItem.fulfillmentStatus = 'BACKORDERED';
+    } else if (del.disposition === 'VENDOR_CANNOT_SUPPLY') {
+      lineItem.vendorUnavailableQty = shortfall;
+      lineItem.vendorUnavailableDetails = {
+        reason: del.rejectionReason || 'OUT_OF_STOCK',
+        note: del.notes || '',
+        recordedAt: now,
+        recordedByUserId: request.auth.userId,
+      };
+      lineItem.fulfillmentStatus = 'VENDOR_UNAVAILABLE';
+    } else if (del.disposition === 'CLOSE_REMAINING') {
+      lineItem.closedShortQty = (lineItem.closedShortQty || 0) + shortfall;
+      lineItem.closeShortDetails = {
+        reason: del.notes || 'Closed remaining during receipt',
+        note: del.notes || '',
+        closedAt: now,
+        closedByUserId: request.auth.userId,
+        isVendorFault: true,
+      };
+      lineItem.outstandingQty = 0;
+      lineItem.fulfillmentStatus = 'CLOSED_SHORT';
+    }
+
+    grnItems.push({
+      itemId: iId,
+      deliveredQty,
+      acceptedQty,
+      rejectedQty,
+      lotNumber: del.lotNumber || null,
+      manufacturingDate: del.manufacturingDate || null,
+      expiryDate: del.expiryDate || null,
+      rejectionReason: del.rejectionReason || null,
+      disposition: del.disposition || null,
+      notes: del.notes || '',
+    });
   }
 
-  order.status = allCompleted ? 'RECEIVED' : (anyReceived ? 'PARTIALLY_RECEIVED' : order.status);
+  // Generate immutable GRN record
+  const grnId = await SequenceCounter.generateId({
+    organisationId: request.auth.organisationId,
+    sequenceKey: `GRN_${datePart}`,
+    prefix: `GRN-${datePart}`,
+    minimumDigits: 4,
+  });
+
+  const grnRecord = {
+    grnId,
+    idempotencyKey: idempotencyKey || grnId,
+    deliveryNoteNumber: String(deliveryNoteNumber || deliveryNote || '').trim(),
+    receivedAt: now,
+    receivedByUserId: request.auth.userId,
+    items: grnItems,
+    notes: notes || '',
+    status: grnItems.some((g) => g.rejectedQty > 0) ? 'PARTIAL' : 'ACCEPTED',
+  };
+
+  if (!order.grnReceipts) order.grnReceipts = [];
+  order.grnReceipts.push(grnRecord);
+
+  // Recalculate fulfillment and order statuses
+  order.recalculateFulfillment();
+
+  const allLinesFulfilled = (order.lineItems || []).every(
+    (l) => (Number(l.acceptedReceivedQty) || 0) >= (Number(l.orderedQuantityBase) || 0)
+  );
+  const anyLineReceived = (order.lineItems || []).some(
+    (l) => (Number(l.acceptedReceivedQty) || 0) > 0
+  );
+
+  order.status = allLinesFulfilled ? 'RECEIVED' : (anyLineReceived ? 'PARTIALLY_RECEIVED' : order.status);
+  if (allLinesFulfilled) {
+    order.receivingStatus = 'POSTED_TO_INVENTORY';
+  } else if (anyLineReceived) {
+    order.receivingStatus = 'PARTIALLY_RECEIVED';
+  }
   order.receivedDate = businessDate;
   if (vendorInvoiceNumber) order.vendorInvoiceNumber = String(vendorInvoiceNumber).trim();
   if (vendorInvoiceDate && /^\d{4}-\d{2}-\d{2}$/.test(vendorInvoiceDate)) order.vendorInvoiceDate = vendorInvoiceDate;
@@ -878,14 +1121,23 @@ const receiveOrder = asyncHandler(async (request, response) => {
     action: 'RECEIVE_PURCHASE_ORDER',
     entityType: 'PURCHASE_ORDER',
     entityId: purchaseOrderId,
-    after: { status: order.status, movementsCreatedCount: movementsCreated.length },
+    after: {
+      status: order.status,
+      fulfillmentStatus: order.fulfillmentStatus,
+      grnId,
+      movementsCreatedCount: movementsCreated.length,
+    },
     result: 'SUCCESS',
     riskClassification: 'MEDIUM',
   });
 
   return response.status(200).json({
     success: true,
-    data: { order: order.toObject(), movementsCreated },
+    data: {
+      order: order.toObject(),
+      grn: grnRecord,
+      movementsCreated,
+    },
     correlationId: request.correlationId || null,
   });
 });
@@ -2142,6 +2394,47 @@ const createGoodsReceipt = asyncHandler(async (request, response) => {
           const quality = item.qualityCondition || 'ACCEPTABLE';
 
           poLine.receivedQuantityBase = (poLine.receivedQuantityBase || 0) + acceptedQty;
+          poLine.acceptedReceivedQty = poLine.receivedQuantityBase;
+          if (rejectedQty > 0) {
+            poLine.rejectedQty = (poLine.rejectedQty || 0) + rejectedQty;
+          }
+
+          const shortfall = Math.max(
+            0,
+            (poLine.orderedQuantityBase || 0) - poLine.acceptedReceivedQty - (poLine.closedShortQty || 0) - (poLine.buyerCancelledQty || 0)
+          );
+          if (item.disposition === 'BACKORDER') {
+            poLine.backorderedQty = shortfall;
+            poLine.backorderDetails = {
+              expectedDeliveryDate: item.expectedDeliveryDate ? new Date(item.expectedDeliveryDate) : null,
+              confirmationRef: item.confirmationRef || '',
+              note: item.notes || '',
+              backorderedAt: now,
+              backorderedByUserId: request.auth.userId,
+              isOverdue: item.expectedDeliveryDate ? new Date(item.expectedDeliveryDate) < now : false,
+            };
+            poLine.fulfillmentStatus = 'BACKORDERED';
+          } else if (item.disposition === 'VENDOR_CANNOT_SUPPLY') {
+            poLine.vendorUnavailableQty = shortfall;
+            poLine.vendorUnavailableDetails = {
+              reason: item.rejectionReason || 'OUT_OF_STOCK',
+              note: item.notes || '',
+              recordedAt: now,
+              recordedByUserId: request.auth.userId,
+            };
+            poLine.fulfillmentStatus = 'VENDOR_UNAVAILABLE';
+          } else if (item.disposition === 'CLOSE_REMAINING') {
+            poLine.closedShortQty = (poLine.closedShortQty || 0) + shortfall;
+            poLine.closeShortDetails = {
+              reason: item.notes || 'Closed remaining during GRN',
+              note: item.notes || '',
+              closedAt: now,
+              closedByUserId: request.auth.userId,
+              isVendorFault: true,
+            };
+            poLine.outstandingQty = 0;
+            poLine.fulfillmentStatus = 'CLOSED_SHORT';
+          }
 
           const inspectionId = await SequenceCounter.generateId({
             organisationId: request.auth.organisationId,
@@ -2399,6 +2692,7 @@ const createGoodsReceipt = asyncHandler(async (request, response) => {
           details: `Goods receipt recorded with inspection and lot creation. Status: ${po.status}.`,
         });
 
+        po.recalculateFulfillment();
         await po.save(sessionOpt);
 
         await recordRequestAudit({
@@ -3189,6 +3483,788 @@ const getSupplierContextualIntelligence = asyncHandler(async (request, response)
   });
 });
 
+/**
+ * POST /orders/:purchaseOrderId/vendor-confirm
+ * Record pre-delivery vendor confirmation (quantities, expected date, ref).
+ */
+const vendorConfirmOrder = asyncHandler(async (request, response) => {
+  const purchaseOrderId = normalizeId(request.params.purchaseOrderId);
+  const { confirmations = [], confirmationReference = '', confirmationDate } = request.body;
+
+  const order = await PurchaseOrder.findOne({
+    purchaseOrderId,
+    organisationId: request.auth.organisationId,
+  });
+
+  if (!order) {
+    throw new ApiError(404, 'NOT_FOUND', 'Purchase order not found.');
+  }
+  assertProcurementMutationAccess(request, order.cafeId);
+
+  if (['CANCELLED', 'CLOSED'].includes(order.status)) {
+    throw new ApiError(400, 'INVALID_STATUS', `Cannot confirm a purchase order in ${order.status} status.`);
+  }
+
+  for (const conf of confirmations) {
+    const iId = normalizeId(conf.itemId);
+    const lineItem = order.lineItems.find(
+      (li) => (conf.lineId && String(li._id) === String(conf.lineId)) || li.itemId === iId
+    );
+    if (!lineItem) {
+      throw new ApiError(400, 'INVALID_LINE_ITEM', `Item ${iId} not in purchase order.`);
+    }
+
+    const ordered = Number(lineItem.orderedQuantityBase || 0);
+    const confirmedSupply = Number(conf.confirmedSupplyQty || 0);
+    const backorder = Number(conf.backorderQty || 0);
+    const cannotSupply = Number(conf.cannotSupplyQty || 0);
+
+    if (confirmedSupply < 0 || backorder < 0 || cannotSupply < 0) {
+      throw new ApiError(400, 'INVALID_QUANTITY', 'Quantities must be non-negative.');
+    }
+
+    if (confirmedSupply + backorder + cannotSupply > ordered) {
+      throw new ApiError(
+        400,
+        'QUANTITY_EXCEEDS_ORDERED',
+        `Sum of confirmed (${confirmedSupply}), backorder (${backorder}), and cannot-supply (${cannotSupply}) exceeds ordered (${ordered}) for item ${iId}.`
+      );
+    }
+
+    lineItem.vendorConfirmationDetails = {
+      confirmedSupplyQty: confirmedSupply,
+      backorderQty: backorder,
+      cannotSupplyQty: cannotSupply,
+      expectedDeliveryDate: conf.expectedDeliveryDate ? new Date(conf.expectedDeliveryDate) : null,
+      confirmationReference: String(confirmationReference || conf.confirmationReference || '').trim(),
+      confirmedAt: new Date(),
+      confirmedByUserId: request.auth.userId,
+    };
+
+    if (backorder > 0) {
+      lineItem.backorderedQty = backorder;
+      lineItem.backorderDetails = {
+        expectedDeliveryDate: conf.expectedDeliveryDate ? new Date(conf.expectedDeliveryDate) : null,
+        confirmationRef: String(confirmationReference || conf.confirmationReference || '').trim(),
+        note: conf.note || '',
+        backorderedAt: new Date(),
+        backorderedByUserId: request.auth.userId,
+        isOverdue: conf.expectedDeliveryDate ? new Date(conf.expectedDeliveryDate) < new Date() : false,
+      };
+    }
+
+    if (cannotSupply > 0) {
+      lineItem.vendorUnavailableQty = cannotSupply;
+      lineItem.vendorUnavailableDetails = {
+        reason: conf.unavailableReason || 'OUT_OF_STOCK',
+        note: conf.note || '',
+        recordedAt: new Date(),
+        recordedByUserId: request.auth.userId,
+      };
+    }
+
+    if (confirmedSupply < ordered) {
+      lineItem.fulfillmentStatus = 'PARTIALLY_CONFIRMED';
+    } else {
+      lineItem.fulfillmentStatus = 'VENDOR_CONFIRMED';
+    }
+  }
+
+  order.recalculateFulfillment();
+  order.supplierAcknowledgedAt = new Date();
+  order.supplierAcknowledgementStatus = order.lineItems.some((l) => l.vendorUnavailableQty > 0)
+    ? 'ACCEPTED_WITH_CHANGES'
+    : 'ACCEPTED';
+  order.lastModifiedByUserId = request.auth.userId;
+
+  await order.save();
+
+  await recordRequestAudit({
+    request,
+    module: 'PROCUREMENT',
+    action: 'VENDOR_CONFIRM_PURCHASE_ORDER',
+    entityType: 'PURCHASE_ORDER',
+    entityId: purchaseOrderId,
+    after: { fulfillmentStatus: order.fulfillmentStatus },
+    result: 'SUCCESS',
+    riskClassification: 'LOW',
+  });
+
+  return response.status(200).json({
+    success: true,
+    data: { order: order.toObject() },
+    correlationId: request.correlationId || null,
+  });
+});
+
+/**
+ * POST /orders/:purchaseOrderId/lines/:lineId/backorder
+ */
+const backorderLine = asyncHandler(async (request, response) => {
+  const purchaseOrderId = normalizeId(request.params.purchaseOrderId);
+  const rawLineId = String(request.params.lineId || '').trim();
+  const { backorderedQty, expectedDeliveryDate, confirmationRef = '', note = '' } = request.body;
+
+  const order = await PurchaseOrder.findOne({
+    purchaseOrderId,
+    organisationId: request.auth.organisationId,
+  });
+
+  if (!order) {
+    throw new ApiError(404, 'NOT_FOUND', 'Purchase order not found.');
+  }
+  assertProcurementMutationAccess(request, order.cafeId);
+
+  const lineItem = order.lineItems.find(
+    (li) => String(li._id) === rawLineId || li.itemId === rawLineId.toUpperCase()
+  );
+  if (!lineItem) {
+    throw new ApiError(404, 'LINE_ITEM_NOT_FOUND', `Line item ${rawLineId} not found on PO.`);
+  }
+
+  const outstanding = lineItem.outstandingQty !== undefined
+    ? lineItem.outstandingQty
+    : Math.max(0, lineItem.orderedQuantityBase - (lineItem.acceptedReceivedQty || lineItem.receivedQuantityBase || 0) - (lineItem.closedShortQty || 0) - (lineItem.buyerCancelledQty || 0));
+
+  const targetQty = backorderedQty !== undefined ? Number(backorderedQty) : outstanding;
+  if (!Number.isFinite(targetQty) || targetQty <= 0) {
+    throw new ApiError(400, 'INVALID_QUANTITY', 'Backordered quantity must be greater than zero.');
+  }
+  if (targetQty > outstanding) {
+    throw new ApiError(400, 'QUANTITY_EXCEEDS_OUTSTANDING', `Backordered quantity (${targetQty}) cannot exceed outstanding quantity (${outstanding}).`);
+  }
+
+  lineItem.backorderedQty = targetQty;
+  lineItem.backorderDetails = {
+    expectedDeliveryDate: expectedDeliveryDate ? new Date(expectedDeliveryDate) : null,
+    confirmationRef: String(confirmationRef).trim(),
+    note: String(note).trim(),
+    backorderedAt: new Date(),
+    backorderedByUserId: request.auth.userId,
+    isOverdue: expectedDeliveryDate ? new Date(expectedDeliveryDate) < new Date() : false,
+  };
+  lineItem.fulfillmentStatus = 'BACKORDERED';
+
+  order.recalculateFulfillment();
+  order.lastModifiedByUserId = request.auth.userId;
+
+  await order.save();
+
+  await recordRequestAudit({
+    request,
+    module: 'PROCUREMENT',
+    action: 'BACKORDER_PO_LINE',
+    entityType: 'PURCHASE_ORDER',
+    entityId: purchaseOrderId,
+    after: { lineId: lineItem._id, backorderedQty: targetQty, expectedDeliveryDate },
+    result: 'SUCCESS',
+    riskClassification: 'LOW',
+  });
+
+  return response.status(200).json({
+    success: true,
+    data: { order: order.toObject(), lineItem: lineItem.toObject() },
+    correlationId: request.correlationId || null,
+  });
+});
+
+/**
+ * POST /orders/:purchaseOrderId/lines/:lineId/vendor-unavailable
+ */
+const vendorUnavailableLine = asyncHandler(async (request, response) => {
+  const purchaseOrderId = normalizeId(request.params.purchaseOrderId);
+  const rawLineId = String(request.params.lineId || '').trim();
+  const { unavailableQty, reason = 'OUT_OF_STOCK', note = '' } = request.body;
+
+  const order = await PurchaseOrder.findOne({
+    purchaseOrderId,
+    organisationId: request.auth.organisationId,
+  });
+
+  if (!order) {
+    throw new ApiError(404, 'NOT_FOUND', 'Purchase order not found.');
+  }
+  assertProcurementMutationAccess(request, order.cafeId);
+
+  const lineItem = order.lineItems.find(
+    (li) => String(li._id) === rawLineId || li.itemId === rawLineId.toUpperCase()
+  );
+  if (!lineItem) {
+    throw new ApiError(404, 'LINE_ITEM_NOT_FOUND', `Line item ${rawLineId} not found on PO.`);
+  }
+
+  const outstanding = lineItem.outstandingQty !== undefined
+    ? lineItem.outstandingQty
+    : Math.max(0, lineItem.orderedQuantityBase - (lineItem.acceptedReceivedQty || lineItem.receivedQuantityBase || 0) - (lineItem.closedShortQty || 0) - (lineItem.buyerCancelledQty || 0));
+
+  const targetQty = unavailableQty !== undefined ? Number(unavailableQty) : outstanding;
+  if (!Number.isFinite(targetQty) || targetQty <= 0) {
+    throw new ApiError(400, 'INVALID_QUANTITY', 'Unavailable quantity must be greater than zero.');
+  }
+  if (targetQty > outstanding) {
+    throw new ApiError(400, 'QUANTITY_EXCEEDS_OUTSTANDING', `Unavailable quantity (${targetQty}) cannot exceed outstanding quantity (${outstanding}).`);
+  }
+
+  lineItem.vendorUnavailableQty = targetQty;
+  lineItem.vendorUnavailableDetails = {
+    reason: String(reason).trim().toUpperCase(),
+    note: String(note).trim(),
+    recordedAt: new Date(),
+    recordedByUserId: request.auth.userId,
+  };
+  lineItem.fulfillmentStatus = 'VENDOR_UNAVAILABLE';
+
+  order.recalculateFulfillment();
+  order.lastModifiedByUserId = request.auth.userId;
+
+  await order.save();
+
+  await recordRequestAudit({
+    request,
+    module: 'PROCUREMENT',
+    action: 'VENDOR_UNAVAILABLE_PO_LINE',
+    entityType: 'PURCHASE_ORDER',
+    entityId: purchaseOrderId,
+    after: { lineId: lineItem._id, unavailableQty: targetQty, reason },
+    result: 'SUCCESS',
+    riskClassification: 'LOW',
+  });
+
+  return response.status(200).json({
+    success: true,
+    data: { order: order.toObject(), lineItem: lineItem.toObject() },
+    correlationId: request.correlationId || null,
+  });
+});
+
+/**
+ * POST /orders/:purchaseOrderId/lines/:lineId/close-short
+ */
+const closeShortLine = asyncHandler(async (request, response) => {
+  const purchaseOrderId = normalizeId(request.params.purchaseOrderId);
+  const rawLineId = String(request.params.lineId || '').trim();
+  const { quantity, reason = 'Supplier short supply', note = '', isVendorFault = true } = request.body;
+
+  const order = await PurchaseOrder.findOne({
+    purchaseOrderId,
+    organisationId: request.auth.organisationId,
+  });
+
+  if (!order) {
+    throw new ApiError(404, 'NOT_FOUND', 'Purchase order not found.');
+  }
+  assertProcurementMutationAccess(request, order.cafeId);
+
+  const lineItem = order.lineItems.find(
+    (li) => String(li._id) === rawLineId || li.itemId === rawLineId.toUpperCase()
+  );
+  if (!lineItem) {
+    throw new ApiError(404, 'LINE_ITEM_NOT_FOUND', `Line item ${rawLineId} not found on PO.`);
+  }
+
+  const outstanding = lineItem.outstandingQty !== undefined
+    ? lineItem.outstandingQty
+    : Math.max(0, lineItem.orderedQuantityBase - (lineItem.acceptedReceivedQty || lineItem.receivedQuantityBase || 0) - (lineItem.closedShortQty || 0) - (lineItem.buyerCancelledQty || 0));
+
+  const qtyToClose = quantity !== undefined ? Number(quantity) : outstanding;
+  if (!Number.isFinite(qtyToClose) || qtyToClose <= 0) {
+    throw new ApiError(400, 'INVALID_QUANTITY', 'Quantity to close short must be greater than zero.');
+  }
+  if (qtyToClose > outstanding) {
+    throw new ApiError(400, 'QUANTITY_EXCEEDS_OUTSTANDING', `Close-short quantity (${qtyToClose}) exceeds remaining open quantity (${outstanding}).`);
+  }
+
+  lineItem.closedShortQty = (lineItem.closedShortQty || 0) + qtyToClose;
+  lineItem.closeShortDetails = {
+    reason: String(reason).trim(),
+    note: String(note).trim(),
+    closedAt: new Date(),
+    closedByUserId: request.auth.userId,
+    isVendorFault: Boolean(isVendorFault),
+  };
+
+  order.recalculateFulfillment();
+  order.lastModifiedByUserId = request.auth.userId;
+
+  await order.save();
+
+  await recordRequestAudit({
+    request,
+    module: 'PROCUREMENT',
+    action: 'CLOSE_SHORT_PO_LINE',
+    entityType: 'PURCHASE_ORDER',
+    entityId: purchaseOrderId,
+    after: { lineId: lineItem._id, closedShortQty: lineItem.closedShortQty, reason },
+    result: 'SUCCESS',
+    riskClassification: 'LOW',
+  });
+
+  return response.status(200).json({
+    success: true,
+    data: { order: order.toObject(), lineItem: lineItem.toObject() },
+    correlationId: request.correlationId || null,
+  });
+});
+
+/**
+ * POST /orders/:purchaseOrderId/lines/:lineId/cancel-line
+ */
+const cancelLine = asyncHandler(async (request, response) => {
+  const purchaseOrderId = normalizeId(request.params.purchaseOrderId);
+  const rawLineId = String(request.params.lineId || '').trim();
+  const { cancelledQty, reason = 'Buyer cancelled', note = '' } = request.body;
+
+  const order = await PurchaseOrder.findOne({
+    purchaseOrderId,
+    organisationId: request.auth.organisationId,
+  });
+
+  if (!order) {
+    throw new ApiError(404, 'NOT_FOUND', 'Purchase order not found.');
+  }
+  assertProcurementMutationAccess(request, order.cafeId);
+
+  const lineItem = order.lineItems.find(
+    (li) => String(li._id) === rawLineId || li.itemId === rawLineId.toUpperCase()
+  );
+  if (!lineItem) {
+    throw new ApiError(404, 'LINE_ITEM_NOT_FOUND', `Line item ${rawLineId} not found on PO.`);
+  }
+
+  const outstanding = lineItem.outstandingQty !== undefined
+    ? lineItem.outstandingQty
+    : Math.max(0, lineItem.orderedQuantityBase - (lineItem.acceptedReceivedQty || lineItem.receivedQuantityBase || 0) - (lineItem.closedShortQty || 0) - (lineItem.buyerCancelledQty || 0));
+
+  const targetQty = cancelledQty !== undefined ? Number(cancelledQty) : outstanding;
+  if (!Number.isFinite(targetQty) || targetQty <= 0) {
+    throw new ApiError(400, 'INVALID_QUANTITY', 'Cancelled quantity must be greater than zero.');
+  }
+  if (targetQty > outstanding) {
+    throw new ApiError(400, 'QUANTITY_EXCEEDS_OUTSTANDING', `Cancelled quantity (${targetQty}) exceeds remaining open quantity (${outstanding}).`);
+  }
+
+  lineItem.buyerCancelledQty = (lineItem.buyerCancelledQty || 0) + targetQty;
+  lineItem.buyerCancellationDetails = {
+    reason: String(reason).trim(),
+    note: String(note).trim(),
+    cancelledAt: new Date(),
+    cancelledByUserId: request.auth.userId,
+  };
+
+  order.recalculateFulfillment();
+  order.lastModifiedByUserId = request.auth.userId;
+
+  await order.save();
+
+  await recordRequestAudit({
+    request,
+    module: 'PROCUREMENT',
+    action: 'BUYER_CANCEL_PO_LINE',
+    entityType: 'PURCHASE_ORDER',
+    entityId: purchaseOrderId,
+    after: { lineId: lineItem._id, buyerCancelledQty: lineItem.buyerCancelledQty, reason },
+    result: 'SUCCESS',
+    riskClassification: 'LOW',
+  });
+
+  return response.status(200).json({
+    success: true,
+    data: { order: order.toObject(), lineItem: lineItem.toObject() },
+    correlationId: request.correlationId || null,
+  });
+});
+
+/**
+ * POST /orders/:purchaseOrderId/lines/:lineId/substitute/propose
+ */
+const proposeSubstitution = asyncHandler(async (request, response) => {
+  const purchaseOrderId = normalizeId(request.params.purchaseOrderId);
+  const rawLineId = String(request.params.lineId || '').trim();
+  const {
+    proposedItemId,
+    proposedItemName,
+    proposedQuantityBase,
+    proposedUnitPricePaisa,
+    reason = '',
+  } = request.body;
+
+  if (!proposedItemId || proposedUnitPricePaisa === undefined) {
+    throw new ApiError(400, 'PROPOSAL_FIELDS_REQUIRED', 'proposedItemId and proposedUnitPricePaisa are required.');
+  }
+
+  const order = await PurchaseOrder.findOne({
+    purchaseOrderId,
+    organisationId: request.auth.organisationId,
+  });
+
+  if (!order) {
+    throw new ApiError(404, 'NOT_FOUND', 'Purchase order not found.');
+  }
+  assertProcurementMutationAccess(request, order.cafeId);
+
+  const lineItem = order.lineItems.find(
+    (li) => String(li._id) === rawLineId || li.itemId === rawLineId.toUpperCase()
+  );
+  if (!lineItem) {
+    throw new ApiError(404, 'LINE_ITEM_NOT_FOUND', `Line item ${rawLineId} not found on PO.`);
+  }
+
+  const originalUnitPricePaisa = Number(lineItem.unitPricePaisa || 0);
+  const newUnitPricePaisa = Number(proposedUnitPricePaisa);
+  const priceDifferencePaisa = newUnitPricePaisa - originalUnitPricePaisa;
+  const propQty = Number(proposedQuantityBase || lineItem.orderedQuantityBase);
+
+  lineItem.substitution = {
+    status: 'PROPOSED',
+    proposedItemId: normalizeId(proposedItemId),
+    proposedItemName: String(proposedItemName || proposedItemId).trim(),
+    proposedQuantityBase: propQty,
+    proposedUnitPricePaisa: newUnitPricePaisa,
+    originalUnitPricePaisa,
+    priceDifferencePaisa,
+    reason: String(reason).trim(),
+    proposedAt: new Date(),
+    proposedByUserId: request.auth.userId,
+    decidedAt: null,
+    decidedByUserId: null,
+    decisionReason: '',
+  };
+  lineItem.fulfillmentStatus = 'SUBSTITUTION_PENDING';
+
+  order.recalculateFulfillment();
+  order.lastModifiedByUserId = request.auth.userId;
+
+  await order.save();
+
+  await recordRequestAudit({
+    request,
+    module: 'PROCUREMENT',
+    action: 'PROPOSE_PO_SUBSTITUTION',
+    entityType: 'PURCHASE_ORDER',
+    entityId: purchaseOrderId,
+    after: { lineId: lineItem._id, proposedItemId, priceDifferencePaisa },
+    result: 'SUCCESS',
+    riskClassification: 'LOW',
+  });
+
+  return response.status(200).json({
+    success: true,
+    data: {
+      order: order.toObject(),
+      lineItem: lineItem.toObject(),
+      priceImpact: {
+        originalUnitPricePaisa,
+        proposedUnitPricePaisa: newUnitPricePaisa,
+        priceDifferencePaisa,
+        totalVariancePaisa: priceDifferencePaisa * propQty,
+      },
+    },
+    correlationId: request.correlationId || null,
+  });
+});
+
+/**
+ * POST /orders/:purchaseOrderId/lines/:lineId/substitute/decide
+ */
+const decideSubstitution = asyncHandler(async (request, response) => {
+  const purchaseOrderId = normalizeId(request.params.purchaseOrderId);
+  const rawLineId = String(request.params.lineId || '').trim();
+  const { decision, reason = '' } = request.body;
+
+  if (!['APPROVE', 'REJECT'].includes(String(decision).toUpperCase())) {
+    throw new ApiError(400, 'INVALID_DECISION', "decision must be 'APPROVE' or 'REJECT'.");
+  }
+
+  const order = await PurchaseOrder.findOne({
+    purchaseOrderId,
+    organisationId: request.auth.organisationId,
+  });
+
+  if (!order) {
+    throw new ApiError(404, 'NOT_FOUND', 'Purchase order not found.');
+  }
+  assertProcurementMutationAccess(request, order.cafeId);
+
+  const lineItem = order.lineItems.find(
+    (li) => String(li._id) === rawLineId || li.itemId === rawLineId.toUpperCase()
+  );
+  if (!lineItem) {
+    throw new ApiError(404, 'LINE_ITEM_NOT_FOUND', `Line item ${rawLineId} not found on PO.`);
+  }
+
+  if (!lineItem.substitution || lineItem.substitution.status !== 'PROPOSED') {
+    throw new ApiError(400, 'NO_PROPOSED_SUBSTITUTION', 'No pending substitution proposal to decide.');
+  }
+
+  const isApproved = String(decision).toUpperCase() === 'APPROVE';
+  lineItem.substitution.status = isApproved ? 'APPROVED' : 'REJECTED';
+  lineItem.substitution.decidedAt = new Date();
+  lineItem.substitution.decidedByUserId = request.auth.userId;
+  lineItem.substitution.decisionReason = String(reason).trim();
+
+  if (isApproved) {
+    lineItem.lineNotes = `${lineItem.lineNotes ? lineItem.lineNotes + '; ' : ''}Approved substitute: ${lineItem.substitution.proposedItemId} (${lineItem.substitution.proposedItemName})`.trim();
+  }
+
+  order.recalculateFulfillment();
+  order.lastModifiedByUserId = request.auth.userId;
+
+  await order.save();
+
+  await recordRequestAudit({
+    request,
+    module: 'PROCUREMENT',
+    action: isApproved ? 'APPROVE_PO_SUBSTITUTION' : 'REJECT_PO_SUBSTITUTION',
+    entityType: 'PURCHASE_ORDER',
+    entityId: purchaseOrderId,
+    after: { lineId: lineItem._id, decision: lineItem.substitution.status, reason },
+    result: 'SUCCESS',
+    riskClassification: 'MEDIUM',
+  });
+
+  return response.status(200).json({
+    success: true,
+    data: { order: order.toObject(), lineItem: lineItem.toObject() },
+    correlationId: request.correlationId || null,
+  });
+});
+
+/**
+ * POST /orders/:purchaseOrderId/lines/:lineId/source-elsewhere
+ */
+const sourceElsewhere = asyncHandler(async (request, response) => {
+  const purchaseOrderId = normalizeId(request.params.purchaseOrderId);
+  const rawLineId = String(request.params.lineId || '').trim();
+  const { replacementVendorId, shortageQty, notes = '' } = request.body;
+
+  if (!replacementVendorId) {
+    throw new ApiError(400, 'REPLACEMENT_VENDOR_REQUIRED', 'replacementVendorId is required to source elsewhere.');
+  }
+
+  const order = await PurchaseOrder.findOne({
+    purchaseOrderId,
+    organisationId: request.auth.organisationId,
+  });
+
+  if (!order) {
+    throw new ApiError(404, 'NOT_FOUND', 'Purchase order not found.');
+  }
+  assertProcurementMutationAccess(request, order.cafeId);
+
+  const lineItem = order.lineItems.find(
+    (li) => String(li._id) === rawLineId || li.itemId === rawLineId.toUpperCase()
+  );
+  if (!lineItem) {
+    throw new ApiError(404, 'LINE_ITEM_NOT_FOUND', `Line item ${rawLineId} not found on PO.`);
+  }
+
+  // Idempotency / duplicate protection: Cannot double-source the shortage
+  if (lineItem.sourceElsewhere && lineItem.sourceElsewhere.status === 'SOURCED') {
+    throw new ApiError(
+      409,
+      'ALREADY_SOURCED_ELSEWHERE',
+      `Line item shortage has already been sourced elsewhere via PO ${lineItem.sourceElsewhere.replacementPurchaseOrderId}.`
+    );
+  }
+
+  const openQty = lineItem.outstandingQty !== undefined
+    ? lineItem.outstandingQty
+    : Math.max(0, lineItem.orderedQuantityBase - (lineItem.acceptedReceivedQty || lineItem.receivedQuantityBase || 0) - (lineItem.closedShortQty || 0) - (lineItem.buyerCancelledQty || 0));
+
+  const targetQty = shortageQty !== undefined ? Number(shortageQty) : (lineItem.vendorUnavailableQty || openQty);
+  if (!Number.isFinite(targetQty) || targetQty <= 0) {
+    throw new ApiError(400, 'INVALID_QUANTITY', 'Shortage quantity to source must be greater than zero.');
+  }
+
+  // Create a replacement draft PO for Vendor B
+  const datePart = getIstBusinessDate().replace(/-/g, '');
+  const replacementPoId = await SequenceCounter.generateId({
+    organisationId: request.auth.organisationId,
+    sequenceKey: `PO_${datePart}`,
+    prefix: `PO-${datePart}`,
+    minimumDigits: 4,
+  });
+
+  const repVendor = await Vendor.findOne({
+    organisationId: request.auth.organisationId,
+    vendorId: normalizeId(replacementVendorId),
+  }).lean();
+
+  const replacementPo = new PurchaseOrder({
+    purchaseOrderId: replacementPoId,
+    organisationId: order.organisationId,
+    cafeId: order.cafeId,
+    vendorId: normalizeId(replacementVendorId),
+    vendorNameSnapshot: repVendor ? repVendor.name : replacementVendorId,
+    status: 'DRAFT',
+    lineItems: [
+      {
+        itemId: lineItem.itemId,
+        itemNameSnapshot: lineItem.itemNameSnapshot || lineItem.itemId,
+        itemType: lineItem.itemType || 'GOODS',
+        packSize: lineItem.packSize || '1 UNIT',
+        uomConversionFactor: lineItem.uomConversionFactor || 1,
+        baseUnit: lineItem.baseUnit || 'units',
+        orderedQuantityBase: targetQty,
+        unitPricePaisa: lineItem.unitPricePaisa,
+        totalLinePaisa: targetQty * lineItem.unitPricePaisa,
+        lineNotes: `Source elsewhere replacement for PO ${order.purchaseOrderId} line ${lineItem.itemId}`,
+      },
+    ],
+    subtotalPaisa: targetQty * lineItem.unitPricePaisa,
+    totalPaisa: targetQty * lineItem.unitPricePaisa,
+    notes: `Replacement order for shortage on ${order.purchaseOrderId}. ${notes}`.trim(),
+    createdByUserId: request.auth.userId,
+  });
+
+  await replacementPo.save();
+
+  // Close/record shortage on original PO line
+  lineItem.sourceElsewhere = {
+    status: 'SOURCED',
+    shortageQty: targetQty,
+    replacementVendorId: normalizeId(replacementVendorId),
+    replacementPurchaseOrderId: replacementPoId,
+    sourcedAt: new Date(),
+    sourcedByUserId: request.auth.userId,
+  };
+
+  order.recalculateFulfillment();
+  order.lastModifiedByUserId = request.auth.userId;
+
+  await order.save();
+
+  await recordRequestAudit({
+    request,
+    module: 'PROCUREMENT',
+    action: 'SOURCE_ELSEWHERE_PO_LINE',
+    entityType: 'PURCHASE_ORDER',
+    entityId: purchaseOrderId,
+    after: {
+      lineId: lineItem._id,
+      replacementVendorId,
+      replacementPurchaseOrderId: replacementPoId,
+      shortageQty: targetQty,
+    },
+    result: 'SUCCESS',
+    riskClassification: 'MEDIUM',
+  });
+
+  return response.status(200).json({
+    success: true,
+    data: {
+      order: order.toObject(),
+      lineItem: lineItem.toObject(),
+      replacementPurchaseOrder: replacementPo.toObject(),
+    },
+    correlationId: request.correlationId || null,
+  });
+});
+
+/**
+ * GET /suppliers/:vendorId/fulfillment-metrics
+ * Calculates canonical vendor performance metrics (Fill rate, Backorder rate, Short-supply rate, On-time delivery).
+ */
+const getVendorFulfillmentAnalytics = asyncHandler(async (request, response) => {
+  const { organisationId } = request.auth;
+  const vendorId = normalizeId(request.params.vendorId);
+
+  const vendor = await Vendor.findOne({ organisationId, vendorId }).lean();
+  if (!vendor) {
+    throw new ApiError(404, 'VENDOR_NOT_FOUND', `Vendor ${vendorId} not found.`);
+  }
+
+  const orders = await PurchaseOrder.find({ organisationId, vendorId }).lean();
+
+  let totalOrderedQty = 0;
+  let totalAcceptedQty = 0;
+  let totalBuyerCancelledQty = 0;
+  let totalBackorderedQty = 0;
+  let totalShortSupplyQty = 0;
+  let totalLinesCount = 0;
+  let fullyReceivedLinesCount = 0;
+  let onTimeDeliveriesCount = 0;
+  let totalDeliveriesCount = 0;
+
+  for (const po of orders) {
+    for (const line of po.lineItems || []) {
+      totalLinesCount += 1;
+      const ord = Number(line.orderedQuantityBase || 0);
+      const acc = Number(line.acceptedReceivedQty || line.receivedQuantityBase || 0);
+      const bCanc = Number(line.buyerCancelledQty || 0);
+      const back = Number(line.backorderedQty || 0);
+      const unavail = Number(line.vendorUnavailableQty || 0);
+      const clShort = Number(line.closedShortQty || 0);
+
+      totalOrderedQty += ord;
+      totalAcceptedQty += acc;
+      totalBuyerCancelledQty += bCanc;
+      totalBackorderedQty += back;
+      totalShortSupplyQty += (unavail + clShort);
+
+      if (acc >= ord && ord > 0) {
+        fullyReceivedLinesCount += 1;
+      }
+    }
+
+    for (const grn of po.grnReceipts || []) {
+      totalDeliveriesCount += 1;
+      if (po.expectedDeliveryDate && grn.receivedAt) {
+        const exp = new Date(po.expectedDeliveryDate);
+        if (new Date(grn.receivedAt) <= exp) {
+          onTimeDeliveriesCount += 1;
+        }
+      } else {
+        onTimeDeliveriesCount += 1;
+      }
+    }
+  }
+
+  const effectiveOrderedQty = Math.max(0, totalOrderedQty - totalBuyerCancelledQty);
+  const fillRatePercent = effectiveOrderedQty > 0
+    ? Math.min(100, Math.round((totalAcceptedQty / effectiveOrderedQty) * 10000) / 100)
+    : 100;
+
+  const completeLineFulfillmentRatePercent = totalLinesCount > 0
+    ? Math.round((fullyReceivedLinesCount / totalLinesCount) * 10000) / 100
+    : 100;
+
+  const backorderRatePercent = totalOrderedQty > 0
+    ? Math.round((totalBackorderedQty / totalOrderedQty) * 10000) / 100
+    : 0;
+
+  const shortSupplyRatePercent = totalOrderedQty > 0
+    ? Math.round((totalShortSupplyQty / totalOrderedQty) * 10000) / 100
+    : 0;
+
+  const onTimeDeliveryPercent = totalDeliveriesCount > 0
+    ? Math.round((onTimeDeliveriesCount / totalDeliveriesCount) * 10000) / 100
+    : 100;
+
+  return response.status(200).json({
+    success: true,
+    data: {
+      vendorId,
+      vendorName: vendor.name,
+      metrics: {
+        fillRatePercent,
+        completeLineFulfillmentRatePercent,
+        backorderRatePercent,
+        shortSupplyRatePercent,
+        onTimeDeliveryPercent,
+        totalOrdersCount: orders.length,
+        totalLinesCount,
+        totalOrderedQty,
+        totalAcceptedQty,
+        totalBuyerCancelledQty,
+        totalBackorderedQty,
+        totalShortSupplyQty,
+      },
+    },
+    correlationId: request.correlationId || null,
+  });
+});
+
 module.exports = {
   getOrderDocuments,
   attachOrderDocument,
@@ -3222,6 +4298,15 @@ module.exports = {
   cancelAsn,
   getProcurementIntegrity,
   getSupplierContextualIntelligence,
+  vendorConfirmOrder,
+  backorderLine,
+  vendorUnavailableLine,
+  closeShortLine,
+  cancelLine,
+  proposeSubstitution,
+  decideSubstitution,
+  sourceElsewhere,
+  getVendorFulfillmentAnalytics,
   _setPoLocksDisabled,
   commitWithRetry,
   executeTransactionWithRetry,
