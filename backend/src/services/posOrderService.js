@@ -666,7 +666,7 @@ class PosOrderService {
     try {
       billId = await SequenceCounter.generateId({
         organisationId: orgId,
-        sequenceKey: `BILL_${cafeId}_${datePart}`,
+        sequenceKey: `BILL_${datePart}`,
         prefix: `BILL-${datePart}`,
         minimumDigits: 4,
       });
