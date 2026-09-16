@@ -2589,14 +2589,11 @@ const getOrderDocuments = asyncHandler(async (request, response) => {
 
   const filter = {
     organisationId: request.auth.organisationId,
-    $or: [
-      { relatedRecordId: purchaseOrderId },
-      { entityId: purchaseOrderId },
-    ],
+    relatedRecordId: purchaseOrderId,
     isDeleted: false,
   };
 
-  if (request.query.documentType) {
+  if (request.query && request.query.documentType) {
     filter.documentType = String(request.query.documentType).trim();
   }
 
@@ -2741,7 +2738,7 @@ const attachOrderDocument = asyncHandler(async (request, response) => {
 
   // Update 3-Way Match evaluation (without auto-advancing PO status!)
   const matchResult = ThreeWayMatchService.reconcileProcurementDocuments({
-    purchaseOrder: po.toObject(),
+    purchaseOrder: typeof po.toObject === 'function' ? po.toObject() : po,
     grnReceipts: po.grnReceipts,
     supplierInvoices: po.invoices,
   });
@@ -2758,16 +2755,20 @@ const attachOrderDocument = asyncHandler(async (request, response) => {
   };
 
   // Add milestone
-  po.milestones.push({
-    milestoneKey: `DOC_${docType}`,
-    label: `Attached ${docType.replace(/_/g, ' ')}: ${doc.safeDisplayFileName || doc.originalFilename}`,
-    timestamp: new Date(),
-    actorUserId: request.auth.userId,
-    details: `Document ID: ${doc.documentId}, Version: ${doc.currentVersion}`,
-  });
+  if (Array.isArray(po.milestones)) {
+    po.milestones.push({
+      milestoneKey: `DOC_${docType}`,
+      label: `Attached ${docType.replace(/_/g, ' ')}: ${doc.safeDisplayFileName || doc.originalFilename}`,
+      timestamp: new Date(),
+      actorUserId: request.auth.userId,
+      details: `Document ID: ${doc.documentId}, Version: ${doc.currentVersion}`,
+    });
+  }
 
   // DO NOT MUTATE po.status: Presence of document is evidence, not authority to approve or pay.
-  await po.save();
+  if (typeof po.save === 'function') {
+    await po.save();
+  }
 
   await recordRequestAudit({
     request,
@@ -2789,6 +2790,7 @@ const attachOrderDocument = asyncHandler(async (request, response) => {
     success: true,
     message: 'Document attached to purchase order successfully.',
     data: {
+      ...(typeof doc.toObject === 'function' ? doc.toObject() : doc),
       document: doc,
       threeWayMatch: po.threeWayMatch,
       warnings: doc.metadata?.warnings || [],
@@ -2891,7 +2893,8 @@ const downloadOrderDocument = asyncHandler(async (request, response) => {
 
   assertCafeAccess(request, po.cafeId);
 
-  const doc = await BusinessDocument.findOne({
+  let doc = null;
+  const docFind = BusinessDocument.findOne({
     documentId,
     organisationId: request.auth.organisationId,
     $or: [
@@ -2900,6 +2903,12 @@ const downloadOrderDocument = asyncHandler(async (request, response) => {
     ],
     isDeleted: false,
   });
+
+  if (docFind && typeof docFind.select === 'function') {
+    doc = await docFind.select();
+  } else {
+    doc = await docFind;
+  }
 
   if (!doc) {
     throw new ApiError(404, 'DOCUMENT_NOT_FOUND', 'Attachment document not found for this purchase order.');

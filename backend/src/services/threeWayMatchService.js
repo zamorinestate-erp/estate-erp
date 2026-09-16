@@ -156,7 +156,8 @@ class ThreeWayMatchService {
       : (primaryVariance || 'MANUAL_REVIEW_REQUIRED');
 
     return {
-      matchStatus: canonicalStatus,
+      matchStatus,
+      canonicalStatus,
       reconciliationStatus: canonicalStatus,
       primaryVariance: matchStatus === 'MATCHED' ? null : (primaryVariance || 'MANUAL_REVIEW_REQUIRED'),
       isMatched: matchStatus === 'MATCHED',
@@ -305,12 +306,18 @@ class ThreeWayMatchService {
           })),
     };
 
-    return this.performMatch({
+    const matchResult = this.performMatch({
       purchaseOrder,
       grn: combinedGrn,
       supplierInvoice: combinedInvoice,
       toleranceConfig,
     });
+
+    return {
+      ...matchResult,
+      matchStatus: matchResult.canonicalStatus || matchResult.matchStatus,
+      rawMatchStatus: matchResult.matchStatus,
+    };
   }
 }
 

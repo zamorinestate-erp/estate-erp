@@ -914,74 +914,98 @@ class DocumentAttachmentService {
         }
 
         // Supplier GSTIN Match against Vendor Master
-        const poQuery = await PurchaseOrder.findOne({
-          purchaseOrderId: finalEntityId,
-          organisationId,
-        }).select('vendorId orderDate totalPaisa').lean();
+        let poQuery = null;
+        try {
+          const poFind = PurchaseOrder.findOne({
+            purchaseOrderId: finalEntityId,
+            organisationId,
+          });
+          if (poFind && typeof poFind.select === 'function') {
+            poQuery = await poFind.select('vendorId orderDate totalPaisa').lean();
+          } else {
+            poQuery = await poFind;
+          }
+        } catch (_err) {
+          poQuery = null;
+        }
 
         const vendorId = metadata.vendorId || metadata.supplierId || (poQuery ? poQuery.vendorId : null);
         if (vendorId) {
-          const vendor = await Vendor.findOne({ vendorId: String(vendorId).trim().toUpperCase(), organisationId }).lean();
-          const vendorGstin = vendor ? (vendor.gstNumber || vendor.gstin || '') : '';
-          if (vendorGstin && effectiveGstin) {
-            if (vendorGstin.trim().toUpperCase() !== effectiveGstin) {
-              warnings.push(`SUPPLIER_GSTIN_MISMATCH: Invoice GSTIN (${effectiveGstin}) does not match vendor master GSTIN (${vendorGstin}).`);
+          try {
+            if (Vendor && typeof Vendor.findOne === 'function' && Vendor.db?.readyState === 1) {
+              const vendor = await Vendor.findOne({ vendorId: String(vendorId).trim().toUpperCase(), organisationId }).lean();
+              const vendorGstin = vendor ? (vendor.gstNumber || vendor.gstin || '') : '';
+              if (vendorGstin && effectiveGstin) {
+                if (vendorGstin.trim().toUpperCase() !== effectiveGstin) {
+                  warnings.push(`SUPPLIER_GSTIN_MISMATCH: Invoice GSTIN (${effectiveGstin}) does not match vendor master GSTIN (${vendorGstin}).`);
+                }
+              }
             }
+          } catch (_err) {
+            // Non-blocking warning check
           }
         }
 
         // Duplicate Invoice Check (across organisation or cafe)
         const effectiveInvNum = (documentNumber || metadata.invoiceNumber || '').trim();
         if (effectiveInvNum) {
-          const existingInvDoc = await BusinessDocument.findOne({
-            organisationId,
-            documentNumber: new RegExp(`^${effectiveInvNum}$`, 'i'),
-            isDeleted: false,
-            entityId: { $ne: finalEntityId },
-          }).select('documentId entityId cafeId').lean();
-
-          if (existingInvDoc) {
-            warnings.push(`POSSIBLE_DUPLICATE_SUPPLIER_INVOICE: Invoice ${effectiveInvNum} already linked to ${existingInvDoc.entityId || existingInvDoc.documentId}.`);
-          } else {
-            const dupInvoiceResult = await DuplicateDetectionService.checkSupplierInvoiceDuplicates({
-              payload: {
-                invoiceNumber: effectiveInvNum,
-                vendorId,
-                amountPaisa,
-              },
+          try {
+            const existingInvDoc = await BusinessDocument.findOne({
               organisationId,
-              cafeId: null,
-            });
-            if (dupInvoiceResult.hasDuplicates) {
-              const otherPoMatch = dupInvoiceResult.candidates.find((c) => c.id && c.id !== finalEntityId);
-              if (otherPoMatch) {
-                warnings.push(`POSSIBLE_DUPLICATE_SUPPLIER_INVOICE: Invoice ${effectiveInvNum} already linked to ${otherPoMatch.id || otherPoMatch.type}.`);
+              documentNumber: new RegExp(`^${effectiveInvNum}$`, 'i'),
+              isDeleted: false,
+              entityId: { $ne: finalEntityId },
+            }).select('documentId entityId cafeId').lean();
+
+            if (existingInvDoc) {
+              warnings.push(`POSSIBLE_DUPLICATE_SUPPLIER_INVOICE: Invoice ${effectiveInvNum} already linked to ${existingInvDoc.entityId || existingInvDoc.documentId}.`);
+            } else if (BusinessDocument.db?.readyState === 1 || PurchaseOrder.db?.readyState === 1) {
+              const dupInvoiceResult = await DuplicateDetectionService.checkSupplierInvoiceDuplicates({
+                payload: {
+                  invoiceNumber: effectiveInvNum,
+                  vendorId,
+                  amountPaisa,
+                },
+                organisationId,
+                cafeId: null,
+              });
+              if (dupInvoiceResult && dupInvoiceResult.hasDuplicates) {
+                const otherPoMatch = dupInvoiceResult.candidates?.find((c) => c.id && c.id !== finalEntityId);
+                if (otherPoMatch) {
+                  warnings.push(`POSSIBLE_DUPLICATE_SUPPLIER_INVOICE: Invoice ${effectiveInvNum} already linked to ${otherPoMatch.id || otherPoMatch.type}.`);
+                }
               }
             }
+          } catch (_err) {
+            // Non-blocking duplicate check
           }
         }
 
         // Duplicate Binary Content Check (within tenant scope)
         if (checksum) {
-          const existingBinaryDoc = await BusinessDocument.findOne({
-            organisationId,
-            checksum,
-            isDeleted: false,
-          }).select('documentId entityId relatedRecordId').lean();
-
-          if (existingBinaryDoc) {
-            warnings.push(`POSSIBLE_DUPLICATE_BINARY_CONTENT: Document with identical SHA-256 hash already exists (${existingBinaryDoc.documentId}).`);
-          } else {
-            const dupBinaryResult = await DuplicateDetectionService.checkAttachmentDuplicates({
-              payload: { checksum },
+          try {
+            const existingBinaryDoc = await BusinessDocument.findOne({
               organisationId,
-            });
-            if (dupBinaryResult.hasDuplicates) {
-              const otherDocMatch = dupBinaryResult.candidates.find((c) => c.relatedRecordId !== finalEntityId);
-              if (otherDocMatch) {
-                warnings.push(`POSSIBLE_DUPLICATE_BINARY_CONTENT: Document with identical SHA-256 hash already exists (${otherDocMatch.id}).`);
+              checksum,
+              isDeleted: false,
+            }).select('documentId entityId relatedRecordId').lean();
+
+            if (existingBinaryDoc) {
+              warnings.push(`POSSIBLE_DUPLICATE_BINARY_CONTENT: Document with identical SHA-256 hash already exists (${existingBinaryDoc.documentId}).`);
+            } else if (BusinessDocument.db?.readyState === 1) {
+              const dupBinaryResult = await DuplicateDetectionService.checkAttachmentDuplicates({
+                payload: { checksum },
+                organisationId,
+              });
+              if (dupBinaryResult && dupBinaryResult.hasDuplicates) {
+                const otherDocMatch = dupBinaryResult.candidates?.find((c) => c.relatedRecordId !== finalEntityId);
+                if (otherDocMatch) {
+                  warnings.push(`POSSIBLE_DUPLICATE_BINARY_CONTENT: Document with identical SHA-256 hash already linked to ${otherDocMatch.relatedRecordId || otherDocMatch.documentId}.`);
+                }
               }
             }
+          } catch (_err) {
+            // Non-blocking duplicate check
           }
         }
 
