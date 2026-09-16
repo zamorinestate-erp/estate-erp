@@ -128,10 +128,41 @@ const getActiveOrders = asyncHandler(async (request, response) => {
   });
 });
 
+/**
+ * GET /api/v1/pos/orders/last/:cafeId
+ * Retrieves the most recent finalized bill for a café, enabling browser-refresh resilient reprint (CTL-05).
+ */
+const getLastCommittedBill = asyncHandler(async (request, response) => {
+  const cafeId = normalizeId(request.params.cafeId || request.query.cafeId || request.auth.primaryCafeId || request.auth.assignedCafeIds?.[0]);
+  if (!cafeId) {
+    throw new ApiError(400, 'CAFE_ID_REQUIRED', 'cafeId is required to retrieve the last receipt.');
+  }
+
+  assertCafeAccess(request, cafeId);
+
+  const bill = await Bill.findOne({
+    organisationId: request.auth.organisationId,
+    cafeId,
+    status: { $in: ['COMPLETED', 'PARTIALLY_REFUNDED'] },
+  }).sort({ createdAt: -1 });
+
+  if (!bill) {
+    throw new ApiError(404, 'NO_RECENT_BILLS', 'No recent finalized bill found for this café.');
+  }
+
+  const billData = typeof bill.toObject === 'function' ? bill.toObject() : bill;
+  return response.status(200).json({
+    success: true,
+    data: billData,
+    bill: billData,
+  });
+});
+
 module.exports = {
   commitOrder,
   previewOrder,
   printOrder,
   reprintOrder,
   getActiveOrders,
+  getLastCommittedBill,
 };

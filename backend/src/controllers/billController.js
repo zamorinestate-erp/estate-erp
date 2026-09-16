@@ -604,7 +604,22 @@ const createBill = asyncHandler(async (request, response) => {
     minimumDigits: 4,
   });
 
-  const invoiceNumber = `ZAM-BILL-${seqId.replace(/^BILL-/, '')}`;
+  let invoiceNumber = null;
+  try {
+    const { allocateInvoiceNumber } = require('../services/gstTaxService');
+    const invoiceAlloc = await allocateInvoiceNumber({
+      organisationId: request.auth.organisationId,
+      cafeId,
+      financialYear: typeof financialYear === 'string' && financialYear.trim() ? financialYear.trim() : '2026-27',
+      statutorySeriesCode: 'P',
+      seriesPrefix: 'P',
+    });
+    invoiceNumber = invoiceAlloc.invoiceNumber;
+  } catch {
+    const compactBranch = cafeId.replace(/[^A-Za-z0-9]/g, '').slice(-4).padStart(2, '0');
+    const seqTail = seqId.split('-').pop();
+    invoiceNumber = `P/${compactBranch}/2627/${seqTail}`.slice(0, 16);
+  }
   const shouldComplete = isImmediateCompletion !== false;
   const payMethod = PAYMENT_METHODS.includes(normalizeId(paymentMethod))
     ? normalizeId(paymentMethod)
@@ -1757,6 +1772,9 @@ const getBillPdf = asyncHandler(async (request, response) => {
   if (!bill) {
     throw new ApiError(404, 'BILL_NOT_FOUND', `Bill ${billId} was not found.`);
   }
+
+  assertResourceCafeOwnership(bill, request, 'Bill');
+  assertCafeAccess(request, bill.cafeId);
 
   let cafe = null;
   if (bill.cafeId) {

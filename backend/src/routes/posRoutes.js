@@ -14,6 +14,7 @@ const {
   printOrder,
   reprintOrder,
   getActiveOrders,
+  getLastCommittedBill,
 } = require('../controllers/posController');
 
 const router = express.Router();
@@ -27,5 +28,6 @@ router.post('/orders/preview', previewOrder);
 router.post('/orders/:billId/print', printOrder);
 router.post('/orders/:billId/reprint', reprintOrder);
 router.get('/orders/active/:cafeId', getActiveOrders);
+router.get('/orders/last/:cafeId', getLastCommittedBill);
 
 module.exports = router;
