@@ -153,8 +153,49 @@ async function deliverPasswordResetCode({
   }
 }
 
+/**
+ * Derives trusted application origin strictly from configured environment variables.
+ * Never derives from untrusted incoming request headers (Host, X-Forwarded-Host)
+ * to prevent password reset link poisoning attacks.
+ */
+function getTrustedApplicationOrigin() {
+  const configured =
+    process.env.APP_URL ||
+    process.env.FRONTEND_URL ||
+    process.env.PUBLIC_URL;
+
+  if (configured && typeof configured === 'string' && configured.trim()) {
+    try {
+      const parsed = new URL(configured.trim());
+      return parsed.origin;
+    } catch (_err) {
+      // Fall through to canonical default
+    }
+  }
+
+  return 'https://app.zamorincafe.com';
+}
+
+/**
+ * Builds a secure password reset URL strictly bound to the trusted application origin.
+ */
+function buildTrustedPasswordResetUrl(challengeId, resetToken) {
+  const origin = getTrustedApplicationOrigin();
+  const url = new URL('/auth/reset-password', origin);
+  if (challengeId) {
+    url.searchParams.set('challengeId', challengeId);
+  }
+  if (resetToken) {
+    url.searchParams.set('token', resetToken);
+  }
+  return url.toString();
+}
+
 module.exports = {
   isDevelopmentCodeLoggingEnabled,
   isPasswordResetDeliveryAvailable,
   deliverPasswordResetCode,
+  getTrustedApplicationOrigin,
+  buildTrustedPasswordResetUrl,
 };
+

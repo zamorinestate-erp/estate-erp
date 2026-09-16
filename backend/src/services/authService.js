@@ -163,6 +163,11 @@ const SCRYPT_DEFAULTS = {
   maxmem: 256 * 1024 * 1024,
 };
 
+// Pre-computed dummy scrypt verifier to ensure timing-constant execution when an account is not found
+const DUMMY_SCRYPT_HASH =
+  '$scrypt$v=1$N=65536,r=8,p=2$0123456789abcdef0123456789abcdef$0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
+
+
 /**
  * Normalizes password with Unicode NFC normalization to guarantee consistent
  * representation across diverse client platforms.
@@ -514,6 +519,8 @@ async function authenticatePassword({
   );
 
   if (!user) {
+    // Defense against timing enumeration: execute dummy scrypt verification so response latency matches a valid user
+    await verifyPassword(password, DUMMY_SCRYPT_HASH);
     throw new Error(
       'Invalid email or password.'
     );
