@@ -2,17 +2,16 @@
 
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
 const crypto = require('crypto');
 const { BusinessDocument } = require('../models/BusinessDocument');
 const { SequenceCounter } = require('../models/SequenceCounter');
 const auditService = require('./auditService');
-const { SecurityScannerService } = require('./securityScannerService');
+const { DocumentMalwareScanner, defaultMalwareScanner } = require('./security/DocumentMalwareScanner');
 const { documentStorageAdapter } = require('./documentStorageAdapter');
 const { ApiError } = require('../utils/ApiError');
 const { retentionPolicyService } = require('./retentionPolicyService');
 
-// Strict extension & MIME validation per OWASP recommendation: PDF, JPG, PNG only
+// Strict extension & MIME validation: PDF, JPG, PNG only
 const ALLOWED_MIME_TYPES = new Map([
   ['application/pdf', 'pdf'],
   ['image/jpeg', 'jpg'],
@@ -20,11 +19,77 @@ const ALLOWED_MIME_TYPES = new Map([
   ['image/png', 'png'],
 ]);
 
-const MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024; // 15MB hard boundary
+const ALLOWED_EXTENSIONS = new Set(['pdf', 'jpg', 'jpeg', 'png']);
+
+// Disallowed dangerous executable / script extensions
+const DANGEROUS_EXTENSIONS = new Set([
+  'exe', 'dll', 'bat', 'cmd', 'ps1', 'sh', 'js', 'html', 'htm', 'svg',
+  'vbs', 'jar', 'msi', 'com', 'scr', 'pif', 'php', 'asp', 'aspx', 'jsp',
+  'zip', 'rar', 'tar', 'gz', '7z', 'bz2'
+]);
+
+const DEFAULT_DOCUMENT_MAX_BYTES = 15 * 1024 * 1024; // 15MB hard boundary
 
 class DocumentAttachmentService {
   static getStorageAdapter() {
     return documentStorageAdapter;
+  }
+
+  static getMalwareScanner() {
+    return defaultMalwareScanner;
+  }
+
+  /**
+   * Sanitizes and validates filename against traversal, null bytes, and dangerous extensions.
+   */
+  static sanitizeFilename(rawFilename = '') {
+    if (!rawFilename || typeof rawFilename !== 'string') {
+      throw new ApiError(400, 'INVALID_FILENAME', 'A valid filename is mandatory.');
+    }
+
+    // 1. Null byte and control char check
+    if (rawFilename.includes('\0') || /[\x00-\x1f\x7f]/.test(rawFilename)) {
+      throw new ApiError(400, 'FILENAME_INJECTION_DETECTED', 'Filename contains prohibited control characters or null bytes.');
+    }
+
+    // 2. Traversal patterns check
+    const decoded = decodeURIComponent(rawFilename).replace(/\\/g, '/');
+    if (decoded.includes('../') || decoded.includes('/..') || decoded.startsWith('..')) {
+      throw new ApiError(400, 'DIRECTORY_TRAVERSAL_DETECTED', 'Path traversal characters are prohibited in filenames.');
+    }
+
+    const baseName = path.basename(decoded).trim();
+    if (!baseName || baseName === '.' || baseName === '..') {
+      throw new ApiError(400, 'INVALID_FILENAME', 'Invalid file base name.');
+    }
+
+    // 3. Double-extension attack inspection (e.g. invoice.pdf.exe, receipt.jpg.js)
+    const parts = baseName.split('.');
+    if (parts.length < 2) {
+      throw new ApiError(400, 'INVALID_FILE_EXTENSION', 'File must have an explicit extension.');
+    }
+
+    const ext = parts[parts.length - 1].toLowerCase();
+    if (!ALLOWED_EXTENSIONS.has(ext)) {
+      throw new ApiError(400, 'UNSUPPORTED_FILE_EXTENSION', `File extension .${ext} is prohibited. Allowed: .pdf, .jpg, .jpeg, .png.`);
+    }
+
+    // Check intermediate extensions for disguised executables / scripts / macros
+    for (let i = 1; i < parts.length - 1; i++) {
+      const intermediate = parts[i].toLowerCase();
+      if (DANGEROUS_EXTENSIONS.has(intermediate) || intermediate === 'pdf' || intermediate === 'jpg') {
+        throw new ApiError(400, 'DOUBLE_EXTENSION_PROHIBITED', `Double or disguised extension pattern '.${intermediate}.${ext}' detected.`);
+      }
+    }
+
+    // Safe display filename: strip non-alphanumeric except safe punctuation
+    const safeDisplay = baseName.replace(/[^a-zA-Z0-9._-]/g, '_');
+
+    return {
+      sanitizedName: baseName,
+      safeDisplayFileName: safeDisplay,
+      extension: ext,
+    };
   }
 
   static validateFileMime(mimeType, filename = '') {
@@ -35,9 +100,12 @@ class DocumentAttachmentService {
     return true;
   }
 
-  static validateFileSize(sizeBytes) {
-    if (sizeBytes > MAX_FILE_SIZE_BYTES) {
-      throw new ApiError(400, 'ATTACHMENT_SIZE_EXCEEDED', `File size exceeds 15MB limit.`);
+  static validateFileSize(sizeBytes, maxBytes = DEFAULT_DOCUMENT_MAX_BYTES) {
+    if (typeof sizeBytes !== 'number' || isNaN(sizeBytes) || sizeBytes <= 0) {
+      throw new ApiError(400, 'ZERO_BYTE_FILE_REJECTED', 'Zero-byte or invalid file size is prohibited.');
+    }
+    if (sizeBytes > maxBytes) {
+      throw new ApiError(400, 'ATTACHMENT_SIZE_EXCEEDED', `File size ${sizeBytes} exceeds maximum permitted limit of ${maxBytes} bytes.`);
     }
     return true;
   }
@@ -62,6 +130,8 @@ class DocumentAttachmentService {
       if (buffer[0] !== 0xff || buffer[1] !== 0xd8 || buffer[2] !== 0xff) {
         throw new ApiError(400, 'INVALID_FILE_SIGNATURE', 'File signature does not match valid JPEG specification.');
       }
+    } else {
+      throw new ApiError(400, 'UNSUPPORTED_ATTACHMENT_TYPE', `Unsupported MIME: ${norm}`);
     }
     return true;
   }
@@ -81,9 +151,24 @@ class DocumentAttachmentService {
     return crypto.createHash('sha256').update(bufferOrBase64).digest('hex');
   }
 
+  static generateDocumentId(moduleCode = 'DOC', cafeCode = 'ZC01') {
+    const d = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const rand = crypto.randomBytes(3).toString('hex').toUpperCase();
+    return `DOC-${moduleCode}-${cafeCode}-${d}-${rand}`;
+  }
+
+  /**
+   * Central Authorization & Record-Level Policy Evaluation.
+   * Checks actor validity, tenant isolation, café assignment, classification, and document lifecycle.
+   */
   static assertDocumentAuthorization(doc, auth, action = 'VIEW') {
     if (!auth || !auth.role) {
       throw new ApiError(401, 'UNAUTHENTICATED', 'Authentication required.');
+    }
+
+    // 0. Active User Verification (Revoked / disabled user cannot perform document actions)
+    if (auth.userStatus === 'DISABLED' || auth.isDisabled === true) {
+      throw new ApiError(403, 'USER_DISABLED', 'User account is disabled or revoked.');
     }
 
     const role = auth.role;
@@ -98,15 +183,77 @@ class DocumentAttachmentService {
       throw new ApiError(403, 'CROSS_ORG_ACCESS_DENIED', 'Unauthorized cross-organisation document access.');
     }
 
-    // 2. Cross-Café Isolation (unless Master, Owner, or Regional Manager)
-    if (doc.cafeId && doc.cafeId !== 'GLOBAL' && !isMaster && !isOwner && !isRegional) {
-      const assigned = (auth.assignedCafeIds && auth.assignedCafeIds.includes(doc.cafeId)) || auth.primaryCafeId === doc.cafeId;
+    // 2. Cross-Café Isolation
+    const docCafe = doc.cafeId || 'GLOBAL';
+    if (docCafe !== 'GLOBAL' && !isMaster && !isOwner && !isRegional) {
+      const assigned =
+        (auth.assignedCafeIds && auth.assignedCafeIds.includes(docCafe)) ||
+        auth.primaryCafeId === docCafe;
       if (!assigned) {
         throw new ApiError(403, 'CROSS_CAFE_ACCESS_DENIED', 'Unauthorized cross-café document access.');
       }
     }
 
-    // 3. Resource Classification Gate
+    const act = String(action || 'VIEW').toUpperCase();
+
+    // 3. Action: PERMANENT_DELETE check must be Master-only FIRST
+    if (act === 'PERMANENT_DELETE') {
+      if (!isMaster) {
+        throw new ApiError(403, 'PERMANENT_DELETE_DENIED', 'Permanent delete is strictly restricted to MASTER.');
+      }
+
+      // Legal Hold
+      if (doc.legalHold === true) {
+        throw new ApiError(400, 'LEGAL_HOLD_ACTIVE', 'Document is under active legal hold. Permanent deletion is prohibited.');
+      }
+
+      // Proceeding / Appeal / Revision Hold (Section 36 CGST Proviso)
+      if (doc.proceedingHold === true) {
+        throw new ApiError(400, 'PROCEEDING_HOLD_ACTIVE', 'Document is subject to an active appeal, revision, or proceeding hold. Permanent deletion is prohibited.');
+      }
+
+      // Investigation / Audit Hold
+      if (doc.investigationHold === true) {
+        throw new ApiError(400, 'INVESTIGATION_HOLD_ACTIVE', 'Document is under active investigation or audit hold. Permanent deletion is prohibited.');
+      }
+
+      // Retention Period Check
+      let effectiveRetentionUntil = doc.effectiveRetentionUntil || doc.retentionUntil || null;
+      if (!effectiveRetentionUntil &&
+          (doc.statutoryRecord || doc.financialRecord ||
+           (doc.documentType && doc.documentType.includes('INVOICE')))) {
+        const documentDate = doc.invoiceDate || doc.uploadedAt || new Date();
+        const gst = retentionPolicyService.calculateGstStatutoryRetention(documentDate);
+        effectiveRetentionUntil = gst.statutoryRetentionUntil;
+      }
+
+      if (effectiveRetentionUntil && new Date() < new Date(effectiveRetentionUntil)) {
+        throw new ApiError(
+          400,
+          'RETENTION_PERIOD_ACTIVE',
+          `Document retention period is active until ${new Date(effectiveRetentionUntil).toISOString().slice(0, 10)}. Permanent deletion prohibited.`
+        );
+      }
+
+      if (doc.dispositionEligibleAt && new Date() < new Date(doc.dispositionEligibleAt)) {
+        throw new ApiError(400, 'RETENTION_PERIOD_ACTIVE', 'Document is not yet eligible for disposition.');
+      }
+
+      return true;
+    }
+
+    // 4. Historical / archived preview and download checks
+    if (doc.isDeleted && act !== 'RESTORE') {
+      if (doc.status === 'DISPOSED' || doc.documentStatus === 'DISPOSED') {
+        throw new ApiError(410, 'DOCUMENT_DISPOSED', 'Document content has been permanently disposed under retention policy.');
+      }
+      if (!isMaster && !isOwner) {
+        throw new ApiError(403, 'ARCHIVED_DOCUMENT_RESTRICTED', 'Archived historical records can only be accessed by authorized historical/audit users.');
+      }
+      return true;
+    }
+
+    // 5. Resource Classification Gate
     const classification = doc.classification || 'PROCUREMENT';
 
     if (classification === 'MANAGEMENT_CONFIDENTIAL') {
@@ -121,13 +268,13 @@ class DocumentAttachmentService {
       }
     }
 
-    if (classification === 'FINANCE') {
+    if (classification === 'FINANCE' || classification === 'RESTRICTED_FINANCIAL') {
       if (isStaff) {
         throw new ApiError(403, 'FINANCE_RESOURCE_DENIED', 'Staff are prohibited from accessing finance attachments.');
       }
     }
 
-    if (classification === 'HR_CONFIDENTIAL') {
+    if (classification === 'HR_CONFIDENTIAL' || classification === 'RESTRICTED_HR') {
       if (isStaff) {
         throw new ApiError(403, 'HR_CONFIDENTIAL_DENIED', 'Staff are prohibited from accessing confidential HR documents.');
       }
@@ -135,17 +282,26 @@ class DocumentAttachmentService {
 
     if (classification === 'HR_SELF') {
       if (isStaff) {
-        const isOwn = (doc.employeeId && doc.employeeId === auth.userId) ||
-                      (doc.relatedRecordId && doc.relatedRecordId === auth.userId) ||
-                      (doc.uploadedBy && doc.uploadedBy === auth.userId);
+        const isOwn =
+          (doc.employeeId && doc.employeeId === auth.userId) ||
+          (doc.relatedRecordId && doc.relatedRecordId === auth.userId) ||
+          (doc.entityId && doc.entityId === auth.userId) ||
+          (doc.uploadedByUserId && doc.uploadedByUserId === auth.userId) ||
+          (doc.uploadedBy && doc.uploadedBy === auth.userId);
         if (!isOwn) {
           throw new ApiError(403, 'UNRELATED_STAFF_RESOURCE_DENIED', 'Staff cannot access another employee HR records in the same café.');
         }
       }
     }
 
-    // 4. Action-specific Authorization Matrix
-    const act = String(action || 'VIEW').toUpperCase();
+    // Procurement entity isolation: Staff have no procurement document access
+    if (doc.entityType === 'PURCHASE_ORDER' || doc.relatedModule === 'PROCUREMENT') {
+      if (isStaff) {
+        throw new ApiError(403, 'PROCUREMENT_RESOURCE_DENIED', 'Staff are prohibited from accessing procurement documents.');
+      }
+    }
+
+    // 6. Action-specific Authorization Matrix
     if (['REPLACE_VERSION', 'TAG_UPDATE', 'LINK_ENTITY', 'EXPIRY_UPDATE'].includes(act)) {
       if (isStaff) {
         throw new ApiError(403, 'ACTION_DENIED_STAFF', `Action ${act} is not permitted for STAFF.`);
@@ -170,88 +326,372 @@ class DocumentAttachmentService {
       }
     }
 
-    if (act === 'PERMANENT_DELETE') {
-      if (!isMaster) {
-        throw new ApiError(403, 'PERMANENT_DELETE_DENIED', 'Permanent delete is strictly restricted to MASTER.');
+    // 7. Content Download & Preview Availability Checks
+    if (['PREVIEW', 'DOWNLOAD'].includes(act)) {
+      if (doc.uploadStatus === 'MALWARE_REJECTED' || doc.scanStatus === 'INFECTED' || doc.securityScanStatus === 'REJECTED') {
+        throw new ApiError(403, 'MALWARE_DETECTED', 'Document access blocked: file was rejected by security scanner.');
       }
 
-      // -- Legal Hold --
-      if (doc.legalHold === true) {
-        throw new ApiError(400, 'LEGAL_HOLD_ACTIVE', 'Document is under active legal hold. Permanent deletion is prohibited.');
+      if (doc.uploadStatus === 'SCAN_FAILED' || doc.scanStatus === 'SCAN_ERROR') {
+        throw new ApiError(423, 'SCAN_FAILED', 'Document is unavailable due to malware scanner failure.');
       }
 
-      // -- Proceeding / Appeal / Revision Hold (Section 36 CGST Proviso) --
-      if (doc.proceedingHold === true) {
-        throw new ApiError(400, 'PROCEEDING_HOLD_ACTIVE', 'Document is subject to an active appeal, revision, or proceeding hold. Permanent deletion is prohibited.');
+      if (doc.uploadStatus === 'QUARANTINED' || doc.uploadStatus === 'SCANNING' || (doc.scanStatus === 'PENDING' && doc.uploadStatus !== 'AVAILABLE' && doc.status !== 'UPLOADED' && doc.status !== 'VERIFIED')) {
+        throw new ApiError(423, 'SCAN_IN_PROGRESS', 'Document is undergoing quarantine and scanning. Content is not yet available.');
       }
 
-      // -- Investigation / Audit Hold --
-      if (doc.investigationHold === true) {
-        throw new ApiError(400, 'INVESTIGATION_HOLD_ACTIVE', 'Document is under active investigation or audit hold. Permanent deletion is prohibited.');
-      }
-
-      // -- Retention Period Check --
-      // Use stored effectiveRetentionUntil first, then retentionUntil.
-      // If neither is stored but the document is a statutory/financial record,
-      // derive the correct GST 72-month retention (NEVER use fixed-day arithmetic).
-      let effectiveRetentionUntil = doc.effectiveRetentionUntil || doc.retentionUntil || null;
-
-      if (!effectiveRetentionUntil &&
-          (doc.statutoryRecord || doc.financialRecord ||
-           (doc.documentType && doc.documentType.includes('INVOICE')))) {
-        const documentDate = doc.invoiceDate || doc.uploadedAt || new Date();
-        const gst = retentionPolicyService.calculateGstStatutoryRetention(documentDate);
-        effectiveRetentionUntil = gst.statutoryRetentionUntil;
-      }
-
-      if (effectiveRetentionUntil && new Date() < new Date(effectiveRetentionUntil)) {
-        throw new ApiError(
-          400,
-          'RETENTION_PERIOD_ACTIVE',
-          `Document retention period is active until ${new Date(effectiveRetentionUntil).toISOString().slice(0, 10)}. Permanent deletion prohibited.`
-        );
-      }
-
-      if (doc.dispositionEligibleAt && new Date() < new Date(doc.dispositionEligibleAt)) {
-        throw new ApiError(400, 'RETENTION_PERIOD_ACTIVE', 'Document is not yet eligible for disposition.');
-      }
-    }
-
-    // Historical / archived preview and download checks
-    if (doc.isDeleted && act !== 'RESTORE' && act !== 'PERMANENT_DELETE') {
-      if (doc.status === 'DISPOSED') {
-        throw new ApiError(410, 'DOCUMENT_DISPOSED', 'Document content has been permanently disposed under retention policy.');
-      }
-      if (!isMaster && !isOwner) {
-        throw new ApiError(403, 'ARCHIVED_DOCUMENT_RESTRICTED', 'Archived historical records can only be accessed by authorized historical/audit users.');
-      }
-    }
-
-    // Quarantine guard for content access
-    if (['PREVIEW', 'DOWNLOAD', 'VERIFY'].includes(act)) {
-      if (doc.securityScanStatus === 'REJECTED' || doc.status === 'REJECTED') {
-        throw new ApiError(400, 'CANNOT_ACCESS_QUARANTINED', 'Cannot access quarantined or rejected document.');
+      if (doc.uploadStatus === 'UPLOAD_FAILED' || (doc.uploadStatus === 'INITIATED' && doc.quarantineObjectKey && !doc.storageObjectKey)) {
+        throw new ApiError(404, 'DOCUMENT_NOT_AVAILABLE', 'Document upload is incomplete or failed.');
       }
     }
 
     return true;
   }
 
-  static generateDocumentId(moduleCode = 'DOC', cafeCode = 'ZC01') {
-    const d = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-    const rand = crypto.randomBytes(3).toString('hex').toUpperCase();
-    return `DOC-${moduleCode}-${cafeCode}-${d}-${rand}`;
+  /**
+   * Phase 1 of Direct-to-Object-Storage Upload:
+   * Authorizes upload intent, validates metadata, generates quarantine key and short-lived upload grant.
+   */
+  static async initiateUploadIntent({
+    organisationId,
+    cafeId = null,
+    entityType,
+    entityId,
+    documentType,
+    originalFilename,
+    declaredMimeType,
+    expectedSizeBytes,
+    classification = 'PROCUREMENT',
+    visibilityScope = 'CAFE_SCOPED',
+    documentNumber = '',
+    entityName = '',
+    invoiceDate = null,
+    amountPaisa = null,
+    gstin = '',
+    notes = '',
+    auth,
+  }) {
+    if (!organisationId || !entityType || !entityId || !documentType || !originalFilename) {
+      throw new ApiError(400, 'MISSING_FIELDS', 'Mandatory upload parameters missing.');
+    }
+
+    // Validate actor and scopes
+    const normFilenameInfo = this.sanitizeFilename(originalFilename);
+    const normMime = String(declaredMimeType || '').trim().toLowerCase();
+    this.validateFileMime(normMime, normFilenameInfo.sanitizedName);
+    this.validateFileSize(expectedSizeBytes);
+
+    // Generate canonical document ID: DOC-<MODULE>-<SEQ>
+    const documentId = await SequenceCounter.generateId({
+      organisationId,
+      sequenceKey: 'BUSINESS_DOC',
+      prefix: 'DOC',
+      minimumDigits: 6,
+    });
+
+    const quarantineKey = documentStorageAdapter.generateQuarantineKey({
+      organisationId,
+      cafeId: cafeId || 'GLOBAL',
+      documentId,
+      mimeType: normMime,
+    });
+
+    // Create short-lived upload grant (e.g. 5-minute presigned PUT)
+    const uploadGrant = await documentStorageAdapter.createUploadGrant({
+      storageKey: quarantineKey,
+      mimeType: normMime,
+      sizeBytes: expectedSizeBytes,
+      expiresInSeconds: 300,
+    });
+
+    const doc = await BusinessDocument.create({
+      documentId,
+      organisationId,
+      cafeId: cafeId || null,
+      entityType: entityType.trim().toUpperCase(),
+      entityId: entityId.trim().toUpperCase(),
+      relatedModule: entityType.trim().toUpperCase(),
+      relatedRecordId: entityId.trim().toUpperCase(),
+      documentType: documentType.trim(),
+      classification,
+      visibilityScope,
+      documentNumber: documentNumber ? documentNumber.trim() : '',
+      entityName: entityName ? entityName.trim() : '',
+      invoiceDate: invoiceDate ? new Date(invoiceDate) : null,
+      amountPaisa: amountPaisa !== null ? Math.round(amountPaisa) : null,
+      gstin: gstin ? gstin.trim().toUpperCase() : '',
+      originalFilename: normFilenameInfo.sanitizedName,
+      originalFileName: normFilenameInfo.sanitizedName,
+      safeDisplayFileName: normFilenameInfo.safeDisplayFileName,
+      extension: normFilenameInfo.extension,
+      declaredMimeType: normMime,
+      mimeType: normMime,
+      sizeBytes: expectedSizeBytes,
+      fileSizeBytes: expectedSizeBytes,
+      quarantineObjectKey: quarantineKey,
+      uploadStatus: 'INITIATED',
+      scanStatus: 'PENDING',
+      securityScanStatus: 'PENDING_SCAN',
+      documentStatus: 'UPLOADED',
+      status: 'UPLOADED',
+      notes,
+      uploadedBy: auth.name || auth.userId || 'Operator',
+      uploadedByUserId: auth.userId || null,
+      uploadedByRole: auth.role || null,
+      uploadedAt: new Date(),
+    });
+
+    await auditService.recordAuditEvent({
+      organisationId,
+      cafeId: cafeId || 'GLOBAL',
+      actorUserId: auth.userId,
+      actorRole: auth.role,
+      module: 'DOCUMENT_ATTACHMENT',
+      action: 'DOCUMENT_UPLOAD_INITIATED',
+      entityType: 'BUSINESS_DOCUMENT',
+      entityId: documentId,
+      reason: `Initiated upload intent for ${documentType} on ${entityType}:${entityId}`,
+      result: 'SUCCESS',
+      metadata: {
+        documentId,
+        quarantineObjectKey: quarantineKey,
+        expectedSizeBytes,
+        declaredMimeType: normMime,
+      },
+    }).catch(() => {});
+
+    return {
+      documentId,
+      uploadGrant,
+      quarantineObjectKey: quarantineKey,
+      expiresAt: uploadGrant.expiresAt,
+    };
   }
 
   /**
-   * Validate and attach a business document to any record.
-   * Uses temporary disk-backed staging and persists into durable document storage.
+   * Phase 2 of Direct-to-Object-Storage Upload:
+   * Validates physical object existence in quarantine, verifies signature, SHA-256,
+   * performs malware scan, and promotes to permanent durable storage.
+   */
+  static async finalizeUpload({ documentId, organisationId, auth, uploadedBytes = null }) {
+    const doc = await BusinessDocument.findOne({
+      documentId: documentId.trim().toUpperCase(),
+      organisationId,
+      isDeleted: false,
+    });
+
+    if (!doc) {
+      throw new ApiError(404, 'DOCUMENT_NOT_FOUND', 'Upload intent document record not found.');
+    }
+
+    if (doc.uploadStatus === 'AVAILABLE') {
+      return doc; // Already finalized idempotently
+    }
+
+    const quarantineKey = doc.quarantineObjectKey;
+    if (!quarantineKey) {
+      throw new ApiError(400, 'INVALID_UPLOAD_STATE', 'Document lacks active quarantine reference.');
+    }
+
+    // 1. Verify object exists in storage
+    const exists = await documentStorageAdapter.exists({ storageKey: quarantineKey });
+    if (!exists && !uploadedBytes) {
+      doc.uploadStatus = 'UPLOAD_FAILED';
+      await doc.save();
+      throw new ApiError(400, 'STORAGE_OBJECT_MISSING', 'Uploaded binary not found in quarantine storage.');
+    }
+
+    // 2. Read object bytes/stream from quarantine for validation & scan
+    let binaryBuffer = uploadedBytes;
+    if (!binaryBuffer) {
+      const stream = await documentStorageAdapter.getStream({ storageKey: quarantineKey });
+      const chunks = [];
+      binaryBuffer = await new Promise((resolve, reject) => {
+        stream.on('data', (c) => chunks.push(c));
+        stream.on('end', () => resolve(Buffer.concat(chunks)));
+        stream.on('error', reject);
+      });
+    }
+
+    // Check size & zero bytes
+    this.validateFileSize(binaryBuffer.length);
+
+    // 3. File signature / Magic-byte verification
+    this.validateMagicBytes(binaryBuffer, doc.declaredMimeType || doc.mimeType);
+
+    // 4. Compute cryptographic SHA-256 Checksum
+    const sha256 = crypto.createHash('sha256').update(binaryBuffer).digest('hex');
+
+    // 5. Malware Scanner Dispatch
+    doc.uploadStatus = 'SCANNING';
+    await doc.save();
+
+    const scanner = this.getMalwareScanner();
+    const scanResult = await scanner.scanObject({
+      buffer: binaryBuffer,
+      mimeType: doc.declaredMimeType || doc.mimeType,
+      filename: doc.originalFilename,
+      objectKey: quarantineKey,
+    });
+
+    if (scanResult.status === 'INFECTED') {
+      doc.uploadStatus = 'MALWARE_REJECTED';
+      doc.scanStatus = 'INFECTED';
+      doc.securityScanStatus = 'REJECTED';
+      doc.documentStatus = 'REJECTED';
+      doc.status = 'REJECTED';
+      doc.securityScanDetails = scanResult.details;
+      doc.rejectedAt = new Date();
+      await doc.save();
+
+      // Clean up infected object from quarantine
+      await documentStorageAdapter.delete({ storageKey: quarantineKey }).catch(() => {});
+
+      await auditService.recordAuditEvent({
+        organisationId,
+        cafeId: doc.cafeId || 'GLOBAL',
+        actorUserId: auth.userId,
+        actorRole: auth.role,
+        module: 'DOCUMENT_ATTACHMENT',
+        action: 'DOCUMENT_MALWARE_REJECTED',
+        entityType: 'BUSINESS_DOCUMENT',
+        entityId: doc.documentId,
+        reason: `Malware detected by scanner: ${scanResult.threatName || scanResult.details}`,
+        result: 'REJECTED',
+        metadata: {
+          documentId: doc.documentId,
+          threatName: scanResult.threatName,
+          sha256,
+        },
+      }).catch(() => {});
+
+      throw new ApiError(400, 'MALWARE_DETECTED', `File rejected by malware scanner: ${scanResult.details}`);
+    }
+
+    if (scanResult.status === 'SCAN_ERROR') {
+      // FAIL CLOSED: Never mark clean if scanner fails
+      doc.uploadStatus = 'SCAN_FAILED';
+      doc.scanStatus = 'SCAN_ERROR';
+      doc.securityScanStatus = 'SCAN_FAILED';
+      doc.securityScanDetails = scanResult.details;
+      await doc.save();
+
+      await auditService.recordAuditEvent({
+        organisationId,
+        cafeId: doc.cafeId || 'GLOBAL',
+        actorUserId: auth.userId,
+        actorRole: auth.role,
+        module: 'DOCUMENT_ATTACHMENT',
+        action: 'DOCUMENT_SCAN_FAILED',
+        entityType: 'BUSINESS_DOCUMENT',
+        entityId: doc.documentId,
+        reason: `Malware scanner unavailable or error: ${scanResult.details}`,
+        result: 'SCAN_FAILED',
+        metadata: {
+          documentId: doc.documentId,
+          error: scanResult.details,
+        },
+      }).catch(() => {});
+
+      throw new ApiError(503, 'SCANNER_UNAVAILABLE', 'Malware scanning service unavailable. Document cannot be promoted to AVAILABLE.');
+    }
+
+    // 6. Promotion to Permanent Durable Document Storage
+    const canonicalKey = documentStorageAdapter.generateStorageKey({
+      organisationId,
+      cafeId: doc.cafeId || 'GLOBAL',
+      classification: doc.classification || 'PROCUREMENT',
+      documentId: doc.documentId,
+      mimeType: doc.declaredMimeType || doc.mimeType,
+    });
+
+    // Copy or Put into canonical location
+    await documentStorageAdapter.put({
+      buffer: binaryBuffer,
+      storageKey: canonicalKey,
+      mimeType: doc.declaredMimeType || doc.mimeType,
+      sizeBytes: binaryBuffer.length,
+      organisationId,
+    });
+
+    // Clean up temporary quarantine object
+    if (quarantineKey && quarantineKey !== canonicalKey) {
+      await documentStorageAdapter.delete({ storageKey: quarantineKey }).catch(() => {});
+    }
+
+    const internalFilename = `${doc.documentId}.${doc.extension || 'bin'}`;
+
+    doc.uploadStatus = 'AVAILABLE';
+    doc.scanStatus = 'CLEAN';
+    doc.securityScanStatus = 'CLEAN';
+    doc.securityScanDetails = scanResult.details;
+    doc.storageKey = canonicalKey;
+    doc.storageObjectKey = canonicalKey;
+    doc.internalFilename = internalFilename;
+    doc.sizeBytes = binaryBuffer.length;
+    doc.fileSizeBytes = binaryBuffer.length;
+    doc.checksum = sha256;
+    doc.sha256 = sha256;
+    doc.availableAt = new Date();
+    doc.currentVersion = 1;
+    doc.versions = [
+      {
+        version: 1,
+        originalFilename: doc.originalFilename,
+        internalFilename,
+        mimeType: doc.mimeType,
+        sizeBytes: binaryBuffer.length,
+        checksum: sha256,
+        sha256,
+        storageKey: canonicalKey,
+        storageObjectKey: canonicalKey,
+        storageDriver: 'PRIVATE_OBJECT_STORAGE',
+        storageProvider: 'S3_COMPATIBLE',
+        securityScanStatus: 'CLEAN',
+        scanStatus: 'CLEAN',
+        securityScanDetails: scanResult.details,
+        changeReason: 'Initial upload',
+        uploadedBy: auth.name || auth.userId || 'Operator',
+        uploadedByUserId: auth.userId || null,
+        uploadedByRole: auth.role || null,
+        uploadedAt: new Date(),
+      },
+    ];
+
+    await doc.save();
+
+    await auditService.recordAuditEvent({
+      organisationId,
+      cafeId: doc.cafeId || 'GLOBAL',
+      actorUserId: auth.userId,
+      actorRole: auth.role,
+      module: 'DOCUMENT_ATTACHMENT',
+      action: 'DOCUMENT_UPLOAD_COMPLETED',
+      entityType: 'BUSINESS_DOCUMENT',
+      entityId: doc.documentId,
+      reason: `Uploaded and verified ${doc.documentType} to ${doc.entityType}:${doc.entityId}`,
+      result: 'SUCCESS',
+      metadata: {
+        documentId: doc.documentId,
+        storageObjectKey: canonicalKey,
+        sha256,
+        sizeBytes: binaryBuffer.length,
+      },
+    }).catch(() => {});
+
+    return doc;
+  }
+
+  /**
+   * Direct Attach (combines intent, staging, scanning, and persistence for multipart forms)
    */
   static async attachDocument({
     organisationId,
     cafeId = null,
-    relatedModule,
-    relatedRecordId,
+    entityType = null,
+    entityId = null,
+    relatedModule = null,
+    relatedRecordId = null,
     documentType,
     documentNumber = '',
     entityName = '',
@@ -264,48 +704,40 @@ class DocumentAttachmentService {
     tempFilePath = null,
     fileBuffer = null,
     fileBase64 = null,
+    classification = 'PROCUREMENT',
+    visibilityScope = 'CAFE_SCOPED',
     notes = '',
     auth = {},
   }) {
-    if (!organisationId || !relatedModule || !relatedRecordId || !documentType || !originalFilename) {
+    const finalEntityType = (entityType || relatedModule || '').trim().toUpperCase();
+    const finalEntityId = (entityId || relatedRecordId || '').trim().toUpperCase();
+
+    if (!organisationId || !finalEntityType || !finalEntityId || !documentType || !originalFilename) {
       if (tempFilePath && fs.existsSync(tempFilePath)) {
         await fs.promises.unlink(tempFilePath).catch(() => {});
       }
       throw new ApiError(400, 'MISSING_FIELDS', 'Mandatory document parameters missing.');
     }
 
+    const normFilenameInfo = this.sanitizeFilename(originalFilename);
     const normMime = String(mimeType || '').trim().toLowerCase();
-    try {
-      this.validateFileMime(normMime, originalFilename);
-    } catch (mimeErr) {
-      if (tempFilePath && fs.existsSync(tempFilePath)) {
-        await fs.promises.unlink(tempFilePath).catch(() => {});
-      }
-      throw mimeErr;
-    }
+    this.validateFileMime(normMime, normFilenameInfo.sanitizedName);
 
     let effectiveSize = sizeBytes;
-    if (tempFilePath) {
-      try {
-        const stat = await fs.promises.stat(tempFilePath);
-        effectiveSize = stat.size;
-      } catch (e) {
-        throw new ApiError(400, 'FILE_READ_ERROR', 'Failed to inspect temporary uploaded file.');
-      }
+    if (tempFilePath && fs.existsSync(tempFilePath)) {
+      const stat = await fs.promises.stat(tempFilePath);
+      effectiveSize = stat.size;
     } else if (fileBuffer) {
       effectiveSize = fileBuffer.length;
+    } else if (fileBase64) {
+      effectiveSize = Buffer.from(fileBase64, 'base64').length;
     }
 
-    if (effectiveSize > MAX_FILE_SIZE_BYTES) {
-      if (tempFilePath && fs.existsSync(tempFilePath)) {
-        await fs.promises.unlink(tempFilePath).catch(() => {});
-      }
-      throw new ApiError(400, 'FILE_TOO_LARGE', `File size exceeds 15MB limit.`);
-    }
+    this.validateFileSize(effectiveSize);
 
     try {
-      // 1. Magic-byte verification without buffering whole file into memory
-      if (tempFilePath) {
+      // 1. Magic bytes validation
+      if (tempFilePath && fs.existsSync(tempFilePath)) {
         const fd = await fs.promises.open(tempFilePath, 'r');
         const header = Buffer.alloc(8);
         await fd.read(header, 0, 8, 0);
@@ -314,36 +746,46 @@ class DocumentAttachmentService {
       } else if (fileBuffer) {
         this.validateMagicBytes(fileBuffer, normMime);
       } else if (fileBase64) {
-        const decodedBuf = Buffer.from(fileBase64, 'base64');
-        this.validateMagicBytes(decodedBuf, normMime);
+        const decoded = Buffer.from(fileBase64, 'base64');
+        this.validateMagicBytes(decoded, normMime);
       }
 
-      // 2. Cryptographic SHA-256 Checksum Calculation
+      // 2. SHA-256 Checksum Calculation
       let checksum = null;
-      if (tempFilePath) {
+      let binaryBuffer = fileBuffer;
+      if (tempFilePath && fs.existsSync(tempFilePath)) {
         checksum = await this.computeStreamChecksum(tempFilePath);
+        binaryBuffer = await fs.promises.readFile(tempFilePath);
       } else if (fileBuffer) {
         checksum = crypto.createHash('sha256').update(fileBuffer).digest('hex');
       } else if (fileBase64) {
-        checksum = crypto.createHash('sha256').update(fileBase64, 'utf8').digest('hex');
+        binaryBuffer = Buffer.from(fileBase64, 'base64');
+        checksum = crypto.createHash('sha256').update(binaryBuffer).digest('hex');
       }
 
-      // 3. Pluggable Upload Security / Malware Scanning Layer
-      const scanResult = await SecurityScannerService.scanFile({
+      // 3. Malware Scan
+      const scanResult = await this.getMalwareScanner().scanObject({
         filePath: tempFilePath,
-        fileBuffer,
+        buffer: binaryBuffer,
         mimeType: normMime,
-        filename: originalFilename,
+        filename: normFilenameInfo.sanitizedName,
       });
 
-      if (scanResult.status === 'REJECTED') {
+      if (scanResult.status === 'INFECTED') {
         if (tempFilePath && fs.existsSync(tempFilePath)) {
           await fs.promises.unlink(tempFilePath).catch(() => {});
         }
         throw new ApiError(400, 'MALWARE_DETECTED', `File upload rejected by security scanner: ${scanResult.details}`);
       }
 
-      // 4. Generate safe internal filename & ID: DOC-{MODULE}-{SEQ}
+      if (scanResult.status === 'SCAN_ERROR') {
+        if (tempFilePath && fs.existsSync(tempFilePath)) {
+          await fs.promises.unlink(tempFilePath).catch(() => {});
+        }
+        throw new ApiError(503, 'SCANNER_UNAVAILABLE', `Scanner unavailable: ${scanResult.details}`);
+      }
+
+      // 4. Generate Document ID & Canonical Key
       const documentId = await SequenceCounter.generateId({
         organisationId,
         sequenceKey: 'BUSINESS_DOC',
@@ -351,39 +793,30 @@ class DocumentAttachmentService {
         minimumDigits: 6,
       });
 
-      const ext = ALLOWED_MIME_TYPES.get(normMime);
-      const internalFilename = `${documentId}.${ext}`;
-
-      // 5. Safe Persistence via Durable Document Storage Adapter
-      const storageKey = documentStorageAdapter.generateStorageKey({
+      const internalFilename = `${documentId}.${normFilenameInfo.extension}`;
+      const canonicalKey = documentStorageAdapter.generateStorageKey({
         organisationId,
+        cafeId: cafeId || 'GLOBAL',
+        classification,
         documentId,
         mimeType: normMime,
       });
 
+      // 5. Durable Storage Persistence
       let storedResult = null;
-      if (tempFilePath) {
+      if (tempFilePath && fs.existsSync(tempFilePath)) {
         storedResult = await documentStorageAdapter.put({
           filePath: tempFilePath,
-          storageKey,
+          storageKey: canonicalKey,
           mimeType: normMime,
           sizeBytes: effectiveSize,
           organisationId,
         });
-        // Clean up temporary staged file after successful persistence
         await fs.promises.unlink(tempFilePath).catch(() => {});
-      } else if (fileBuffer) {
+      } else if (binaryBuffer) {
         storedResult = await documentStorageAdapter.put({
-          buffer: fileBuffer,
-          storageKey,
-          mimeType: normMime,
-          sizeBytes: effectiveSize,
-          organisationId,
-        });
-      } else if (fileBase64) {
-        storedResult = await documentStorageAdapter.put({
-          buffer: Buffer.from(fileBase64, 'base64'),
-          storageKey,
+          buffer: binaryBuffer,
+          storageKey: canonicalKey,
           mimeType: normMime,
           sizeBytes: effectiveSize,
           organisationId,
@@ -394,51 +827,71 @@ class DocumentAttachmentService {
         documentId,
         organisationId,
         cafeId,
-        relatedModule: relatedModule.trim().toUpperCase(),
-        relatedRecordId: relatedRecordId.trim().toUpperCase(),
+        entityType: finalEntityType,
+        entityId: finalEntityId,
+        relatedModule: finalEntityType,
+        relatedRecordId: finalEntityId,
         documentType: documentType.trim(),
         documentNumber: documentNumber ? documentNumber.trim() : '',
         entityName: entityName ? entityName.trim() : '',
         invoiceDate: invoiceDate ? new Date(invoiceDate) : null,
         amountPaisa: amountPaisa !== null ? Math.round(amountPaisa) : null,
         gstin: gstin ? gstin.trim().toUpperCase() : '',
-        originalFilename: originalFilename.trim(),
+        originalFilename: normFilenameInfo.sanitizedName,
+        originalFileName: normFilenameInfo.sanitizedName,
+        safeDisplayFileName: normFilenameInfo.safeDisplayFileName,
+        extension: normFilenameInfo.extension,
         internalFilename,
+        declaredMimeType: normMime,
         mimeType: normMime,
         sizeBytes: effectiveSize,
+        fileSizeBytes: effectiveSize,
         checksum,
-        storageKey: storedResult?.storageKey || storageKey,
+        sha256: checksum,
+        classification,
+        visibilityScope,
+        storageKey: storedResult?.storageKey || canonicalKey,
+        storageObjectKey: storedResult?.storageKey || canonicalKey,
         storagePath: storedResult?.storagePath || null,
-        storageDriver: storedResult?.storageDriver || 'RENDER_PERSISTENT_DISK',
-        fileBuffer: fileBuffer || null,
-        fileData: fileBase64 || null,
-        securityScanStatus: scanResult.status,
+        storageDriver: storedResult?.storageDriver || 'PRIVATE_OBJECT_STORAGE',
+        storageProvider: storedResult?.storageProvider || 'S3_COMPATIBLE',
+        uploadStatus: 'AVAILABLE',
+        scanStatus: 'CLEAN',
+        securityScanStatus: 'CLEAN',
         securityScanDetails: scanResult.details,
+        documentStatus: 'UPLOADED',
+        status: 'UPLOADED',
         currentVersion: 1,
         versions: [
           {
             version: 1,
-            originalFilename: originalFilename.trim(),
+            originalFilename: normFilenameInfo.sanitizedName,
             internalFilename,
             mimeType: normMime,
             sizeBytes: effectiveSize,
             checksum,
-            storageKey: storedResult?.storageKey || storageKey,
+            sha256: checksum,
+            storageKey: storedResult?.storageKey || canonicalKey,
+            storageObjectKey: storedResult?.storageKey || canonicalKey,
             storagePath: storedResult?.storagePath || null,
-            storageDriver: storedResult?.storageDriver || 'RENDER_PERSISTENT_DISK',
-            fileBuffer: fileBuffer || null,
-            fileData: fileBase64 || null,
-            securityScanStatus: scanResult.status,
+            storageDriver: storedResult?.storageDriver || 'PRIVATE_OBJECT_STORAGE',
+            storageProvider: storedResult?.storageProvider || 'S3_COMPATIBLE',
+            securityScanStatus: 'CLEAN',
+            scanStatus: 'CLEAN',
             securityScanDetails: scanResult.details,
             changeReason: 'Initial upload',
             uploadedBy: auth.name || auth.userId || 'Operator',
+            uploadedByUserId: auth.userId || null,
+            uploadedByRole: auth.role || null,
             uploadedAt: new Date(),
           },
         ],
-        status: 'UPLOADED',
         notes,
         uploadedBy: auth.name || auth.userId || 'Operator',
+        uploadedByUserId: auth.userId || null,
+        uploadedByRole: auth.role || null,
         uploadedAt: new Date(),
+        availableAt: new Date(),
       });
 
       await auditService.recordAuditEvent({
@@ -450,18 +903,15 @@ class DocumentAttachmentService {
         action: 'DOCUMENT_ATTACHED',
         entityType: 'BUSINESS_DOCUMENT',
         entityId: documentId,
-        reason: `Attached ${documentType} to ${relatedModule}:${relatedRecordId}`,
+        reason: `Attached ${documentType} to ${finalEntityType}:${finalEntityId}`,
         result: 'SUCCESS',
         metadata: {
           documentId,
-          originalFilename,
+          originalFilename: normFilenameInfo.sanitizedName,
           sizeBytes: effectiveSize,
           mimeType: normMime,
-          storageKey: storedResult?.storageKey,
-          storageDriver: storedResult?.storageDriver,
-          securityScanStatus: scanResult.status,
-          relatedModule,
-          relatedRecordId,
+          storageObjectKey: storedResult?.storageKey || canonicalKey,
+          sha256: checksum,
         },
       }).catch(() => {});
 
@@ -475,7 +925,66 @@ class DocumentAttachmentService {
   }
 
   /**
-   * Uploads a new version of an existing business document without overwriting.
+   * Generates a short-lived download grant for an authorized caller.
+   */
+  static async createAuthorizedDownloadGrant({ documentId, organisationId, auth, expiresInSeconds = 180 }) {
+    const doc = await BusinessDocument.findOne({
+      documentId: documentId.trim().toUpperCase(),
+      organisationId,
+      isDeleted: false,
+    });
+
+    if (!doc) {
+      throw new ApiError(404, 'DOCUMENT_NOT_FOUND', 'Business document not found.');
+    }
+
+    // Re-authorizes actor against current state
+    this.assertDocumentAuthorization(doc, auth, 'DOWNLOAD');
+
+    const key = doc.storageObjectKey || doc.storageKey;
+    if (!key) {
+      throw new ApiError(404, 'STORAGE_OBJECT_NOT_FOUND', 'Document binary key is missing.');
+    }
+
+    const grant = await documentStorageAdapter.createDownloadGrant({
+      storageKey: key,
+      expiresInSeconds,
+      safeFilename: doc.safeDisplayFileName || doc.originalFilename,
+    });
+
+    // Audit download access (zero secrets or signed URLs in audit!)
+    await auditService.recordAuditEvent({
+      organisationId,
+      cafeId: doc.cafeId || 'GLOBAL',
+      actorUserId: auth.userId,
+      actorRole: auth.role,
+      module: 'DOCUMENT_ATTACHMENT',
+      action: 'DOCUMENT_DOWNLOADED',
+      entityType: 'BUSINESS_DOCUMENT',
+      entityId: doc.documentId,
+      reason: `Authorized download grant issued for ${doc.documentId}`,
+      result: 'SUCCESS',
+      metadata: {
+        documentId: doc.documentId,
+        entityType: doc.entityType,
+        entityId: doc.entityId,
+        classification: doc.classification,
+        grantType: grant.grantType,
+        expiresAt: grant.expiresAt,
+      },
+    }).catch(() => {});
+
+    return {
+      downloadUrl: grant.downloadUrl,
+      expiresAt: grant.expiresAt,
+      safeFilename: doc.safeDisplayFileName || doc.originalFilename,
+      mimeType: doc.mimeType,
+      sizeBytes: doc.sizeBytes,
+    };
+  }
+
+  /**
+   * Replaces document version with an immutable new binary.
    */
   static async replaceVersion({
     documentId,
@@ -502,154 +1011,146 @@ class DocumentAttachmentService {
       throw new ApiError(404, 'DOCUMENT_NOT_FOUND', 'Business document not found.');
     }
 
-    if (!changeReason) {
+    this.assertDocumentAuthorization(doc, auth, 'REPLACE_VERSION');
+
+    if (!changeReason || changeReason.trim().length < 5) {
       if (tempFilePath && fs.existsSync(tempFilePath)) {
         await fs.promises.unlink(tempFilePath).catch(() => {});
       }
-      throw new ApiError(400, 'REASON_REQUIRED', 'A reason is mandatory when replacing a document version.');
+      throw new ApiError(400, 'REASON_REQUIRED', 'A detailed reason (min 5 chars) is mandatory when replacing a document version.');
     }
 
+    const normFilenameInfo = this.sanitizeFilename(originalFilename);
     const normMime = String(mimeType || '').trim().toLowerCase();
-    try {
-      this.validateFileMime(normMime, originalFilename);
-    } catch (mimeErr) {
-      if (tempFilePath && fs.existsSync(tempFilePath)) {
-        await fs.promises.unlink(tempFilePath).catch(() => {});
-      }
-      throw mimeErr;
-    }
+    this.validateFileMime(normMime, normFilenameInfo.sanitizedName);
 
     let effectiveSize = sizeBytes;
-    if (tempFilePath) {
-      try {
-        const stat = await fs.promises.stat(tempFilePath);
-        effectiveSize = stat.size;
-      } catch (e) {
-        throw new ApiError(400, 'FILE_READ_ERROR', 'Failed to inspect temporary uploaded file.');
-      }
+    if (tempFilePath && fs.existsSync(tempFilePath)) {
+      const stat = await fs.promises.stat(tempFilePath);
+      effectiveSize = stat.size;
     } else if (fileBuffer) {
       effectiveSize = fileBuffer.length;
+    } else if (fileBase64) {
+      effectiveSize = Buffer.from(fileBase64, 'base64').length;
     }
-
-    if (effectiveSize > MAX_FILE_SIZE_BYTES) {
-      if (tempFilePath && fs.existsSync(tempFilePath)) {
-        await fs.promises.unlink(tempFilePath).catch(() => {});
-      }
-      throw new ApiError(400, 'FILE_TOO_LARGE', `File size exceeds 15MB limit.`);
-    }
+    this.validateFileSize(effectiveSize);
 
     try {
-      // 1. Magic-bytes validation
-      if (tempFilePath) {
+      // Magic bytes check
+      let binaryBuffer = fileBuffer;
+      if (tempFilePath && fs.existsSync(tempFilePath)) {
         const fd = await fs.promises.open(tempFilePath, 'r');
         const header = Buffer.alloc(8);
         await fd.read(header, 0, 8, 0);
         await fd.close();
         this.validateMagicBytes(header, normMime);
+        binaryBuffer = await fs.promises.readFile(tempFilePath);
       } else if (fileBuffer) {
         this.validateMagicBytes(fileBuffer, normMime);
       } else if (fileBase64) {
-        const decodedBuf = Buffer.from(fileBase64, 'base64');
-        this.validateMagicBytes(decodedBuf, normMime);
+        binaryBuffer = Buffer.from(fileBase64, 'base64');
+        this.validateMagicBytes(binaryBuffer, normMime);
       }
 
-      const nextVersion = doc.currentVersion + 1;
-      const ext = ALLOWED_MIME_TYPES.get(normMime);
-      const internalFilename = `${doc.documentId}_v${nextVersion}.${ext}`;
+      const sha256 = crypto.createHash('sha256').update(binaryBuffer).digest('hex');
 
-      let checksum = null;
-      if (tempFilePath) {
-        checksum = await this.computeStreamChecksum(tempFilePath);
-      } else if (fileBuffer) {
-        checksum = crypto.createHash('sha256').update(fileBuffer).digest('hex');
-      } else if (fileBase64) {
-        checksum = crypto.createHash('sha256').update(fileBase64, 'utf8').digest('hex');
-      }
-
-      // Security scan
-      const scanResult = await SecurityScannerService.scanFile({
+      // Malware scan
+      const scanResult = await this.getMalwareScanner().scanObject({
         filePath: tempFilePath,
-        fileBuffer,
+        buffer: binaryBuffer,
         mimeType: normMime,
-        filename: originalFilename,
+        filename: normFilenameInfo.sanitizedName,
       });
 
-      if (scanResult.status === 'REJECTED') {
+      if (scanResult.status === 'INFECTED') {
         if (tempFilePath && fs.existsSync(tempFilePath)) {
           await fs.promises.unlink(tempFilePath).catch(() => {});
         }
         throw new ApiError(400, 'MALWARE_DETECTED', `Replacement version rejected by security scanner: ${scanResult.details}`);
       }
 
-      const newVersionKey = documentStorageAdapter.generateStorageKey({
+      if (scanResult.status === 'SCAN_ERROR') {
+        if (tempFilePath && fs.existsSync(tempFilePath)) {
+          await fs.promises.unlink(tempFilePath).catch(() => {});
+        }
+        throw new ApiError(503, 'SCANNER_UNAVAILABLE', `Scanner unavailable: ${scanResult.details}`);
+      }
+
+      const nextVersion = doc.currentVersion + 1;
+      const canonicalKey = documentStorageAdapter.generateStorageKey({
         organisationId,
+        cafeId: doc.cafeId || 'GLOBAL',
+        classification: doc.classification || 'PROCUREMENT',
         documentId: `${doc.documentId}_v${nextVersion}`,
         mimeType: normMime,
       });
 
-      let storedResult = null;
-      if (tempFilePath) {
-        storedResult = await documentStorageAdapter.put({
-          filePath: tempFilePath,
-          storageKey: newVersionKey,
-          mimeType: normMime,
-          sizeBytes: effectiveSize,
-          organisationId,
-        });
+      await documentStorageAdapter.put({
+        buffer: binaryBuffer,
+        storageKey: canonicalKey,
+        mimeType: normMime,
+        sizeBytes: effectiveSize,
+        organisationId,
+      });
+
+      if (tempFilePath && fs.existsSync(tempFilePath)) {
         await fs.promises.unlink(tempFilePath).catch(() => {});
-      } else if (fileBuffer) {
-        storedResult = await documentStorageAdapter.put({
-          buffer: fileBuffer,
-          storageKey: newVersionKey,
-          mimeType: normMime,
-          sizeBytes: effectiveSize,
-          organisationId,
-        });
-      } else if (fileBase64) {
-        storedResult = await documentStorageAdapter.put({
-          buffer: Buffer.from(fileBase64, 'base64'),
-          storageKey: newVersionKey,
-          mimeType: normMime,
-          sizeBytes: effectiveSize,
-          organisationId,
-        });
       }
 
-      // Retain previous binary as an archived version
+      // Preserve previous version record
+      const previousInternalFilename = doc.internalFilename || `${doc.documentId}.${doc.extension || normFilenameInfo.extension || 'bin'}`;
       const previousVersionRecord = {
         version: doc.currentVersion,
         originalFilename: doc.originalFilename,
-        internalFilename: doc.internalFilename,
+        internalFilename: previousInternalFilename,
         mimeType: doc.mimeType,
         sizeBytes: doc.sizeBytes,
-        checksum: doc.checksum,
+        checksum: doc.sha256 || doc.checksum,
+        sha256: doc.sha256 || doc.checksum,
         storageKey: doc.storageKey,
+        storageObjectKey: doc.storageObjectKey || doc.storageKey,
         storagePath: doc.storagePath,
         storageDriver: doc.storageDriver,
-        fileBuffer: doc.fileBuffer,
-        fileData: doc.fileData,
+        storageProvider: doc.storageProvider,
         securityScanStatus: doc.securityScanStatus,
+        scanStatus: doc.scanStatus,
         securityScanDetails: doc.securityScanDetails,
         changeReason: changeReason.trim(),
         uploadedBy: doc.uploadedBy,
+        uploadedByUserId: doc.uploadedByUserId,
+        uploadedByRole: doc.uploadedByRole,
         uploadedAt: doc.uploadedAt || new Date(),
       };
 
-      doc.versions.push(previousVersionRecord);
+      if (!Array.isArray(doc.versions)) {
+        doc.versions = [];
+      }
+      const existingIdx = doc.versions.findIndex(v => (v.versionNumber || v.version) === doc.currentVersion);
+      if (existingIdx >= 0) {
+        doc.versions[existingIdx] = previousVersionRecord;
+      } else {
+        doc.versions.push(previousVersionRecord);
+      }
       doc.currentVersion = nextVersion;
-      doc.originalFilename = originalFilename.trim();
-      doc.internalFilename = internalFilename;
+      doc.originalFilename = normFilenameInfo.sanitizedName;
+      doc.originalFileName = normFilenameInfo.sanitizedName;
+      doc.safeDisplayFileName = normFilenameInfo.safeDisplayFileName;
+      doc.extension = normFilenameInfo.extension;
+      doc.internalFilename = `${doc.documentId}_v${nextVersion}.${normFilenameInfo.extension}`;
       doc.mimeType = normMime;
+      doc.declaredMimeType = normMime;
       doc.sizeBytes = effectiveSize;
-      doc.checksum = checksum;
-      doc.storageKey = storedResult?.storageKey || newVersionKey;
-      doc.storagePath = storedResult?.storagePath || null;
-      doc.storageDriver = storedResult?.storageDriver || 'RENDER_PERSISTENT_DISK';
-      doc.fileBuffer = fileBuffer || null;
-      doc.fileData = fileBase64 || null;
-      doc.securityScanStatus = scanResult.status;
+      doc.fileSizeBytes = effectiveSize;
+      doc.checksum = sha256;
+      doc.sha256 = sha256;
+      doc.storageKey = canonicalKey;
+      doc.storageObjectKey = canonicalKey;
+      doc.uploadStatus = 'AVAILABLE';
+      doc.scanStatus = 'CLEAN';
+      doc.securityScanStatus = 'CLEAN';
       doc.securityScanDetails = scanResult.details;
-      doc.status = 'UPLOADED'; // Requires re-verification
+      doc.documentStatus = 'UPLOADED';
+      doc.status = 'UPLOADED';
       doc.verifiedBy = null;
       doc.verifiedAt = null;
 
@@ -664,12 +1165,13 @@ class DocumentAttachmentService {
         action: 'DOCUMENT_VERSION_REPLACED',
         entityType: 'BUSINESS_DOCUMENT',
         entityId: doc.documentId,
-        reason: changeReason,
+        reason: changeReason.trim(),
         result: 'SUCCESS',
         metadata: {
           documentId: doc.documentId,
           newVersion: nextVersion,
-          originalFilename,
+          originalFilename: normFilenameInfo.sanitizedName,
+          sha256,
         },
       }).catch(() => {});
 
@@ -685,13 +1187,7 @@ class DocumentAttachmentService {
   /**
    * Verify or reject a business document.
    */
-  static async verifyDocument({
-    documentId,
-    organisationId,
-    decision, // 'VERIFIED' or 'REJECTED'
-    reason = '',
-    auth,
-  }) {
+  static async verifyDocument({ documentId, organisationId, decision, reason = '', auth }) {
     if (auth.role !== 'MASTER' && auth.role !== 'OWNER') {
       throw new ApiError(403, 'VERIFICATION_DENIED', 'Only Master and Owner can verify business documents.');
     }
@@ -706,13 +1202,18 @@ class DocumentAttachmentService {
       throw new ApiError(404, 'DOCUMENT_NOT_FOUND', 'Business document not found.');
     }
 
-    if (doc.securityScanStatus === 'REJECTED' || doc.status === 'REJECTED') {
-      if (decision === 'VERIFIED') {
-        throw new ApiError(400, 'CANNOT_VERIFY_QUARANTINED', 'Cannot verify a quarantined or rejected document.');
-      }
+    if (
+      doc.uploadStatus === 'MALWARE_REJECTED' ||
+      doc.scanStatus === 'INFECTED' ||
+      doc.securityScanStatus === 'REJECTED' ||
+      doc.status === 'REJECTED' ||
+      doc.uploadStatus === 'QUARANTINED'
+    ) {
+      throw new ApiError(400, 'CANNOT_VERIFY_QUARANTINED', 'Cannot verify a quarantined or rejected document.');
     }
 
-    doc.status = decision === 'VERIFIED' ? 'VERIFIED' : 'REJECTED';
+    doc.documentStatus = decision === 'VERIFIED' ? 'VERIFIED' : 'REJECTED';
+    doc.status = doc.documentStatus;
     doc.verifiedBy = auth.name || auth.userId || 'Master';
     doc.verifiedAt = new Date();
     doc.verificationReason = reason;
@@ -738,12 +1239,7 @@ class DocumentAttachmentService {
   /**
    * Soft delete a document with mandatory reason.
    */
-  static async deleteDocument({
-    documentId,
-    organisationId,
-    reason,
-    auth,
-  }) {
+  static async deleteDocument({ documentId, organisationId, reason, auth }) {
     if (auth.role !== 'MASTER' && auth.role !== 'OWNER') {
       throw new ApiError(403, 'DELETE_DENIED', 'Only Master and Owner can remove business documents.');
     }
@@ -766,7 +1262,9 @@ class DocumentAttachmentService {
     doc.deletedAt = new Date();
     doc.deletedBy = auth.name || auth.userId || 'Master';
     doc.deletionReason = reason.trim();
+    doc.documentStatus = 'ARCHIVED';
     doc.status = 'ARCHIVED';
+    doc.uploadStatus = 'DELETED';
 
     await doc.save();
 
@@ -789,12 +1287,7 @@ class DocumentAttachmentService {
   /**
    * Permanent deletion of a business document enforcing statutory retention & legal hold.
    */
-  static async permanentDeleteDocument({
-    documentId,
-    organisationId,
-    reason,
-    auth,
-  }) {
+  static async permanentDeleteDocument({ documentId, organisationId, reason, auth }) {
     if (!reason || reason.trim().length < 5) {
       throw new ApiError(400, 'REASON_REQUIRED', 'A detailed reason (min 5 chars) is mandatory for permanent deletion.');
     }
@@ -808,25 +1301,27 @@ class DocumentAttachmentService {
       throw new ApiError(404, 'DOCUMENT_NOT_FOUND', 'Business document not found.');
     }
 
-    // 1. Authorize role and verify retention / legal hold policies
+    // Authorize role and verify statutory retention / legal hold policies
     this.assertDocumentAuthorization(doc, auth, 'PERMANENT_DELETE');
 
-    // 2. Physical cleanup of storage adapters
-    if (doc.storageKey) {
-      await documentStorageAdapter.deleteFile({ storageKey: doc.storageKey }).catch(() => {});
+    // Physical cleanup from storage provider
+    const key = doc.storageObjectKey || doc.storageKey;
+    if (key) {
+      await documentStorageAdapter.delete({ storageKey: key }).catch(() => {});
     }
     if (doc.storagePath && fs.existsSync(doc.storagePath)) {
       await fs.promises.unlink(doc.storagePath).catch(() => {});
     }
     if (Array.isArray(doc.versions)) {
       for (const v of doc.versions) {
-        if (v.storageKey) {
-          await documentStorageAdapter.deleteFile({ storageKey: v.storageKey }).catch(() => {});
+        const vKey = v.storageObjectKey || v.storageKey;
+        if (vKey) {
+          await documentStorageAdapter.delete({ storageKey: vKey }).catch(() => {});
         }
       }
     }
 
-    // 3. Immutable audit tombstone recording (zero secret content retained)
+    // Immutable audit tombstone recording (zero secret content retained)
     await auditService.recordAuditEvent({
       organisationId,
       cafeId: doc.cafeId || 'GLOBAL',
@@ -842,7 +1337,8 @@ class DocumentAttachmentService {
         documentId: doc.documentId,
         classification: doc.classification,
         documentType: doc.documentType,
-        checksum: doc.checksum,
+        sha256: doc.sha256,
+        checksum: doc.checksum || doc.sha256,
         originalFilename: doc.originalFilename,
         sizeBytes: doc.sizeBytes,
         disposedAt: new Date().toISOString(),
@@ -851,12 +1347,14 @@ class DocumentAttachmentService {
       },
     }).catch(() => {});
 
-    // 4. Update BusinessDocument to permanent DISPOSED tombstone state (content stripped)
+    // Update BusinessDocument to permanent DISPOSED tombstone state
+    doc.documentStatus = 'DISPOSED';
     doc.status = 'DISPOSED';
     doc.isDeleted = true;
     doc.fileBuffer = null;
     doc.fileData = null;
     doc.storageKey = null;
+    doc.storageObjectKey = null;
     doc.storagePath = null;
     doc.versions = [];
     doc.disposedAt = new Date();
@@ -906,6 +1404,7 @@ class DocumentAttachmentService {
       }
       doc.retentionUntil = newDate;
       doc.dispositionEligibleAt = newDate;
+      doc.effectiveRetentionUntil = newDate;
     }
 
     if (legalHold !== undefined) {
@@ -944,4 +1443,7 @@ class DocumentAttachmentService {
 
 module.exports = {
   DocumentAttachmentService,
+  DEFAULT_DOCUMENT_MAX_BYTES,
+  ALLOWED_EXTENSIONS,
+  ALLOWED_MIME_TYPES,
 };

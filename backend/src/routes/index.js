@@ -143,6 +143,9 @@ const dashboardRoutes =
 const fileRoutes =
   require('./fileRoutes');
 
+const documentRoutes =
+  require('./documentRoutes');
+
 const trashRoutes =
   require('./trashRoutes');
 
@@ -450,6 +453,11 @@ router.use(
 router.use(
   '/files',
   fileRoutes
+);
+
+router.use(
+  '/documents',
+  documentRoutes
 );
 
 router.use(
