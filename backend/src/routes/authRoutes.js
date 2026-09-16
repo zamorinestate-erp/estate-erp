@@ -220,8 +220,8 @@ const mfaAccountRateLimiter = rateLimit({
 // Authentication endpoints
 router.post('/login', loginIpRateLimiter, loginAccountRateLimiter, login);
 router.post('/password/forgot', passwordResetIpRateLimiter, passwordResetAccountRateLimiter, requestPasswordReset);
-router.post('/password/reset/verify', passwordResetIpRateLimiter, verifyPasswordResetCode);
-router.post('/password/reset', passwordResetIpRateLimiter, resetPassword);
+router.post('/password/reset/verify', passwordResetIpRateLimiter, passwordResetAccountRateLimiter, verifyPasswordResetCode);
+router.post('/password/reset', passwordResetIpRateLimiter, passwordResetAccountRateLimiter, resetPassword);
 router.post('/refresh', refreshSession);
 
 // Feature Gate: Passkeys / WebAuthn are deferred in current release (ENABLE_PASSKEY_AUTH=false by default)

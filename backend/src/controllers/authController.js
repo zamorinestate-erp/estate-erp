@@ -165,11 +165,18 @@ function getCookieOptions() {
   const isProduction =
     process.env.NODE_ENV === 'production';
 
+  // Explicit topology-driven SameSite: 'none' for direct cross-origin browser->Render (MODE B),
+  // 'lax' or 'strict' for same-origin Vercel /api proxy (MODE A) or local development.
+  const configuredSameSite = (process.env.AUTH_COOKIE_SAMESITE || '').toLowerCase().trim();
+  const sameSite =
+    configuredSameSite === 'lax' || configuredSameSite === 'strict' || configuredSameSite === 'none'
+      ? configuredSameSite
+      : (isProduction ? 'none' : 'lax');
+
   return {
     httpOnly: true,
-    secure: isProduction,
-    sameSite:
-      isProduction ? 'none' : 'lax',
+    secure: isProduction || sameSite === 'none',
+    sameSite,
     path: '/',
   };
 }
