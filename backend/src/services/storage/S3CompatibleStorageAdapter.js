@@ -50,6 +50,10 @@ class S3CompatibleStorageAdapter extends DocumentStorageProvider {
     return true;
   }
 
+  isProductionDriver() {
+    return true;
+  }
+
   async putObject({ objectKey, stream = null, buffer = null, filePath = null, mimeType = 'application/octet-stream', sizeBytes = 0, metadata = {} }) {
     if (!objectKey) {
       throw new ApiError(400, 'MISSING_STORAGE_KEY', 'Storage object key is required.');

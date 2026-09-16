@@ -262,6 +262,27 @@ class DocumentStorageAdapter {
       };
     }
   }
+
+  /**
+   * Returns authoritative runtime capability vs configuration status for storage.
+   */
+  static getStorageRuntimeStatus() {
+    const isProduction = process.env.NODE_ENV === 'production';
+    const isS3Configured = Boolean(
+      process.env.DOCUMENT_STORAGE_BUCKET &&
+      (process.env.DOCUMENT_STORAGE_ENDPOINT || process.env.AWS_REGION) &&
+      process.env.DOCUMENT_STORAGE_ACCESS_KEY_ID &&
+      process.env.DOCUMENT_STORAGE_SECRET_ACCESS_KEY
+    );
+
+    return {
+      PRODUCTION_STORAGE_ADAPTER_IMPLEMENTED: true,
+      LIVE_PRODUCTION_OBJECT_STORAGE_CONFIGURED: isS3Configured ? true : 'EXTERNAL_PENDING',
+      LOCAL_MOCK_ADAPTERS_ALLOWED_IN_PRODUCTION: false,
+      RENDER_FILESYSTEM_PRODUCTION_FALLBACK: false,
+      STORAGE_DRIVER_SELECTED: isProduction ? 'S3_COMPATIBLE_DURABLE_OBJECT_STORE' : 'LOCAL_DEV_OR_MOCK_STORE',
+    };
+  }
 }
 
 const documentStorageAdapter = new DocumentStorageAdapter();

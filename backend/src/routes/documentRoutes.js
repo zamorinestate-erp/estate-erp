@@ -606,4 +606,36 @@ router.post(
   })
 );
 
+// ── GET /api/v1/documents/runtime-status (Capability vs Configuration) ──────
+router.get(
+  '/runtime-status',
+  authorize('REPORTS_READ', { allowedRoles: ['MASTER', 'OWNER'] }),
+  asyncHandler(async (req, res) => {
+    const status = await DocumentAttachmentService.getRuntimeStatus();
+    return res.status(200).json({
+      success: true,
+      data: status,
+    });
+  })
+);
+
+// ── POST /api/v1/documents/:documentId/rescan (Idempotent Rescan) ───────────
+router.post(
+  '/:documentId/rescan',
+  authorize('PROCUREMENT_APPROVE', { allowedRoles: ['MASTER', 'OWNER'] }),
+  asyncHandler(async (req, res) => {
+    const doc = await DocumentAttachmentService.rescanDocument({
+      documentId: req.params.documentId,
+      organisationId: req.auth.organisationId,
+      auth: req.auth,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Document rescan executed.',
+      data: doc,
+    });
+  })
+);
+
 module.exports = router;

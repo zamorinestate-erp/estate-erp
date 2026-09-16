@@ -6,7 +6,7 @@ const crypto = require('crypto');
 const { BusinessDocument } = require('../models/BusinessDocument');
 const { SequenceCounter } = require('../models/SequenceCounter');
 const auditService = require('./auditService');
-const { DocumentMalwareScanner, defaultMalwareScanner } = require('./security/DocumentMalwareScanner');
+const { DocumentMalwareScanner, defaultMalwareScanner, StaticFileSecurityValidator, getScannerRuntimeStatus } = require('./security/DocumentMalwareScanner');
 const { documentStorageAdapter } = require('./documentStorageAdapter');
 const { ApiError } = require('../utils/ApiError');
 const { retentionPolicyService } = require('./retentionPolicyService');
@@ -326,22 +326,52 @@ class DocumentAttachmentService {
       }
     }
 
-    // 7. Content Download & Preview Availability Checks
+    // 7. Content Download & Preview Availability Checks (Strict Fail-Closed on Non-Clean States)
     if (['PREVIEW', 'DOWNLOAD'].includes(act)) {
-      if (doc.uploadStatus === 'MALWARE_REJECTED' || doc.scanStatus === 'INFECTED' || doc.securityScanStatus === 'REJECTED') {
+      if (
+        doc.uploadStatus === 'MALWARE_REJECTED' ||
+        doc.scanStatus === 'INFECTED' ||
+        doc.securityScanStatus === 'REJECTED'
+      ) {
         throw new ApiError(403, 'MALWARE_DETECTED', 'Document access blocked: file was rejected by security scanner.');
       }
 
-      if (doc.uploadStatus === 'SCAN_FAILED' || doc.scanStatus === 'SCAN_ERROR') {
-        throw new ApiError(423, 'SCAN_FAILED', 'Document is unavailable due to malware scanner failure.');
+      if (
+        doc.uploadStatus === 'SCAN_FAILED' ||
+        doc.scanStatus === 'SCAN_ERROR' ||
+        doc.securityScanStatus === 'SCAN_FAILED'
+      ) {
+        throw new ApiError(423, 'SCAN_FAILED', 'Document is unavailable due to malware scanner failure or outage.');
       }
 
-      if (doc.uploadStatus === 'QUARANTINED' || doc.uploadStatus === 'SCANNING' || (doc.scanStatus === 'PENDING' && doc.uploadStatus !== 'AVAILABLE' && doc.status !== 'UPLOADED' && doc.status !== 'VERIFIED')) {
-        throw new ApiError(423, 'SCAN_IN_PROGRESS', 'Document is undergoing quarantine and scanning. Content is not yet available.');
+      if (
+        doc.uploadStatus === 'MANUAL_REVIEW_REQUIRED' ||
+        doc.scanStatus === 'MANUAL_REVIEW_REQUIRED'
+      ) {
+        throw new ApiError(423, 'MANUAL_REVIEW_REQUIRED', 'Document is undergoing manual security review and is not downloadable.');
       }
 
-      if (doc.uploadStatus === 'UPLOAD_FAILED' || (doc.uploadStatus === 'INITIATED' && doc.quarantineObjectKey && !doc.storageObjectKey)) {
+      if (
+        doc.uploadStatus === 'QUARANTINED' ||
+        doc.uploadStatus === 'SCANNING' ||
+        doc.scanStatus === 'PENDING' ||
+        (doc.quarantineObjectKey && !doc.storageObjectKey)
+      ) {
+        // Only allow if document was previously certified CLEAN
+        if (doc.securityScanStatus !== 'CLEAN' && doc.scanStatus !== 'CLEAN') {
+          throw new ApiError(423, 'SCAN_IN_PROGRESS', 'Document is undergoing quarantine and scanning. Content is not yet available.');
+        }
+      }
+
+      if (
+        doc.uploadStatus === 'UPLOAD_FAILED' ||
+        (doc.uploadStatus === 'INITIATED' && doc.quarantineObjectKey && !doc.storageObjectKey)
+      ) {
         throw new ApiError(404, 'DOCUMENT_NOT_AVAILABLE', 'Document upload is incomplete or failed.');
+      }
+
+      if (doc.uploadStatus !== 'AVAILABLE' && doc.status !== 'UPLOADED' && doc.status !== 'VERIFIED' && !doc.isDeleted) {
+        throw new ApiError(423, 'DOCUMENT_NOT_AVAILABLE', 'Document is not in AVAILABLE state.');
       }
     }
 
@@ -522,7 +552,48 @@ class DocumentAttachmentService {
     // 4. Compute cryptographic SHA-256 Checksum
     const sha256 = crypto.createHash('sha256').update(binaryBuffer).digest('hex');
 
-    // 5. Malware Scanner Dispatch
+    // 5. Static File Security Validation (Layer 1 Defense-in-depth)
+    const staticResult = await StaticFileSecurityValidator.validate({
+      buffer: binaryBuffer,
+      mimeType: doc.declaredMimeType || doc.mimeType,
+      filename: doc.originalFilename,
+    });
+
+    if (!staticResult.valid) {
+      doc.uploadStatus = 'MALWARE_REJECTED';
+      doc.scanStatus = 'INFECTED';
+      doc.securityScanStatus = 'REJECTED';
+      doc.documentStatus = 'REJECTED';
+      doc.status = 'REJECTED';
+      doc.securityScanDetails = staticResult.details;
+      doc.rejectedAt = new Date();
+      await doc.save();
+
+      await documentStorageAdapter.delete({ storageKey: quarantineKey }).catch(() => {});
+
+      await auditService.recordAuditEvent({
+        organisationId,
+        cafeId: doc.cafeId || 'GLOBAL',
+        actorUserId: auth.userId,
+        actorRole: auth.role,
+        module: 'DOCUMENT_ATTACHMENT',
+        action: 'DOCUMENT_MALWARE_REJECTED',
+        entityType: 'BUSINESS_DOCUMENT',
+        entityId: doc.documentId,
+        reason: `Static security validation failed: ${staticResult.threatName || staticResult.details}`,
+        result: 'REJECTED',
+        metadata: {
+          documentId: doc.documentId,
+          threatName: staticResult.threatName,
+          classification: 'STATIC_FILE_SECURITY_VALIDATION',
+          sha256,
+        },
+      }).catch(() => {});
+
+      throw new ApiError(400, 'MALWARE_DETECTED', `File rejected by static security validator: ${staticResult.details}`);
+    }
+
+    // 6. Production Malware Scanner Dispatch (Layer 2)
     doc.uploadStatus = 'SCANNING';
     await doc.save();
 
@@ -763,7 +834,22 @@ class DocumentAttachmentService {
         checksum = crypto.createHash('sha256').update(binaryBuffer).digest('hex');
       }
 
-      // 3. Malware Scan
+      // 3a. Static File Security Validation (Layer 1 Defense-in-depth)
+      const staticResult = await StaticFileSecurityValidator.validate({
+        filePath: tempFilePath,
+        buffer: binaryBuffer,
+        mimeType: normMime,
+        filename: normFilenameInfo.sanitizedName,
+      });
+
+      if (!staticResult.valid) {
+        if (tempFilePath && fs.existsSync(tempFilePath)) {
+          await fs.promises.unlink(tempFilePath).catch(() => {});
+        }
+        throw new ApiError(400, 'MALWARE_DETECTED', `File upload rejected by static security validator: ${staticResult.details}`);
+      }
+
+      // 3b. Production Malware Scan (Layer 2)
       const scanResult = await this.getMalwareScanner().scanObject({
         filePath: tempFilePath,
         buffer: binaryBuffer,
@@ -1054,7 +1140,22 @@ class DocumentAttachmentService {
 
       const sha256 = crypto.createHash('sha256').update(binaryBuffer).digest('hex');
 
-      // Malware scan
+      // Static File Security Validation (Layer 1)
+      const staticResult = await StaticFileSecurityValidator.validate({
+        filePath: tempFilePath,
+        buffer: binaryBuffer,
+        mimeType: normMime,
+        filename: normFilenameInfo.sanitizedName,
+      });
+
+      if (!staticResult.valid) {
+        if (tempFilePath && fs.existsSync(tempFilePath)) {
+          await fs.promises.unlink(tempFilePath).catch(() => {});
+        }
+        throw new ApiError(400, 'MALWARE_DETECTED', `Replacement version rejected by static security validator: ${staticResult.details}`);
+      }
+
+      // Malware scan (Layer 2)
       const scanResult = await this.getMalwareScanner().scanObject({
         filePath: tempFilePath,
         buffer: binaryBuffer,
@@ -1438,6 +1539,145 @@ class DocumentAttachmentService {
     }).catch(() => {});
 
     return doc;
+  }
+
+  /**
+   * Rescans a quarantined or scan-failed document idempotently.
+   * Does NOT create duplicate document records, object keys, or versions.
+   */
+  static async rescanDocument({ documentId, organisationId, auth }) {
+    const doc = await BusinessDocument.findOne({
+      documentId: documentId.trim().toUpperCase(),
+      organisationId,
+      isDeleted: false,
+    });
+
+    if (!doc) {
+      throw new ApiError(404, 'DOCUMENT_NOT_FOUND', 'Business document not found.');
+    }
+
+    this.assertDocumentAuthorization(doc, auth, 'VERIFY');
+
+    const quarantineKey = doc.quarantineObjectKey;
+    if (!quarantineKey) {
+      throw new ApiError(400, 'NO_QUARANTINE_OBJECT', 'Document does not have a quarantined binary available for rescan.');
+    }
+
+    const stream = await documentStorageAdapter.getStream({ storageKey: quarantineKey });
+    const chunks = [];
+    const binaryBuffer = await new Promise((resolve, reject) => {
+      stream.on('data', (c) => chunks.push(c));
+      stream.on('end', () => resolve(Buffer.concat(chunks)));
+      stream.on('error', reject);
+    });
+
+    // 1. Static Validation
+    const staticResult = await StaticFileSecurityValidator.validate({
+      buffer: binaryBuffer,
+      mimeType: doc.declaredMimeType || doc.mimeType,
+      filename: doc.originalFilename,
+    });
+
+    if (!staticResult.valid) {
+      doc.uploadStatus = 'MALWARE_REJECTED';
+      doc.scanStatus = 'INFECTED';
+      doc.securityScanStatus = 'REJECTED';
+      doc.documentStatus = 'REJECTED';
+      doc.status = 'REJECTED';
+      doc.securityScanDetails = staticResult.details;
+      doc.rejectedAt = new Date();
+      await doc.save();
+
+      await documentStorageAdapter.delete({ storageKey: quarantineKey }).catch(() => {});
+      return doc;
+    }
+
+    // 2. Production Scanner
+    doc.uploadStatus = 'SCANNING';
+    await doc.save();
+
+    const scanner = this.getMalwareScanner();
+    const scanResult = await scanner.scanObject({
+      buffer: binaryBuffer,
+      mimeType: doc.declaredMimeType || doc.mimeType,
+      filename: doc.originalFilename,
+      objectKey: quarantineKey,
+    });
+
+    if (scanResult.status === 'INFECTED') {
+      doc.uploadStatus = 'MALWARE_REJECTED';
+      doc.scanStatus = 'INFECTED';
+      doc.securityScanStatus = 'REJECTED';
+      doc.documentStatus = 'REJECTED';
+      doc.status = 'REJECTED';
+      doc.securityScanDetails = scanResult.details;
+      doc.rejectedAt = new Date();
+      await doc.save();
+
+      await documentStorageAdapter.delete({ storageKey: quarantineKey }).catch(() => {});
+      return doc;
+    }
+
+    if (scanResult.status === 'SCAN_ERROR') {
+      doc.uploadStatus = 'SCAN_FAILED';
+      doc.scanStatus = 'SCAN_ERROR';
+      doc.securityScanStatus = 'SCAN_FAILED';
+      doc.securityScanDetails = scanResult.details;
+      await doc.save();
+      return doc;
+    }
+
+    // CLEAN: promote to durable storage (idempotent, single record & object)
+    const canonicalKey = documentStorageAdapter.generateStorageKey({
+      organisationId,
+      cafeId: doc.cafeId || 'GLOBAL',
+      classification: doc.classification,
+      documentId: doc.documentId,
+      mimeType: doc.declaredMimeType || doc.mimeType,
+    });
+
+    await documentStorageAdapter.copy({
+      sourceKey: quarantineKey,
+      destinationKey: canonicalKey,
+    });
+
+    await documentStorageAdapter.delete({ storageKey: quarantineKey }).catch(() => {});
+
+    doc.storageObjectKey = canonicalKey;
+    doc.storageKey = canonicalKey;
+    doc.quarantineObjectKey = null;
+    doc.uploadStatus = 'AVAILABLE';
+    doc.scanStatus = 'CLEAN';
+    doc.securityScanStatus = 'CLEAN';
+    doc.securityScanDetails = scanResult.details;
+    doc.availableAt = new Date();
+    await doc.save();
+
+    return doc;
+  }
+
+  /**
+   * Returns authoritative runtime capability vs configuration status.
+   */
+  static async getRuntimeStatus() {
+    const isProduction = process.env.NODE_ENV === 'production';
+    const isS3Configured = Boolean(
+      process.env.DOCUMENT_STORAGE_BUCKET &&
+      (process.env.DOCUMENT_STORAGE_ENDPOINT || process.env.AWS_REGION) &&
+      process.env.DOCUMENT_STORAGE_ACCESS_KEY_ID &&
+      process.env.DOCUMENT_STORAGE_SECRET_ACCESS_KEY
+    );
+    const isScannerConfigured = Boolean(process.env.MALWARE_SCANNER_URL);
+
+    return {
+      PRODUCTION_STORAGE_ADAPTER_IMPLEMENTED: true,
+      LIVE_PRODUCTION_OBJECT_STORAGE_CONFIGURED: isS3Configured ? true : 'EXTERNAL_PENDING',
+      PRODUCTION_SCANNER_ADAPTER_IMPLEMENTED: true,
+      LIVE_PRODUCTION_MALWARE_SCANNER_CONFIGURED: isScannerConfigured ? true : 'EXTERNAL_PENDING',
+      LOCAL_MOCK_ADAPTERS_ALLOWED_IN_PRODUCTION: false,
+      RENDER_FILESYSTEM_PRODUCTION_FALLBACK: false,
+      ENVIRONMENT: process.env.NODE_ENV || 'development',
+    };
   }
 }
 
