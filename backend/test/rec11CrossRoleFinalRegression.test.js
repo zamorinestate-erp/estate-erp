@@ -540,61 +540,75 @@ test('REC-11: Final Cross-Role Regression, Multi-Tenant Security Boundary & Inte
   });
 
   // ===========================================================================
-  // 11. PERSONAL LEDGER RESTRICTION
+  // 11. PERSONAL LEDGER RESTRICTION (REC-11B AUTHORITATIVE RULE)
   // ===========================================================================
-  await t.test('11. Personal Ledger: Non-primary Master, Owner, Café Admin, and Staff denied; Primary Master allowed', async () => {
-    // Primary Master allowed
-    assert.equal(primaryMasterUser.role, 'MASTER');
-    assert.equal(primaryMasterUser.isPrimaryMaster, true);
-
-    // Normal Master denied
-    assert.throws(
-      () => {
-        const { role, isPrimaryMaster } = normalMasterUser;
-        if (role === 'MASTER' && !isPrimaryMaster) {
-          throw new ApiError(403, 'PRIMARY_MASTER_AUTHORITY_REQUIRED', 'Primary Master required');
+  await t.test('11. Personal Ledger Authority: Primary Master & Owner ALLOWED; Normal Master, Café Admin & Staff DENIED', async () => {
+    function authorizePersonalLedger(authCtx) {
+      const { role, isPrimaryMaster } = authCtx || {};
+      if (role === 'MASTER') {
+        if (!isPrimaryMaster) {
+          throw new ApiError(403, 'PRIMARY_MASTER_AUTHORITY_REQUIRED', 'This action requires Primary Master authority. Normal Masters are denied access.');
         }
-      },
+        return 'PRIMARY_MASTER';
+      }
+      if (role === 'OWNER') {
+        return 'OWNER';
+      }
+      throw new ApiError(403, 'ABSOLUTE_ROLE_RESTRICTION', 'Access permanently restricted.');
+    }
+
+    // 1. Primary Master is ALLOWED
+    const pmAccess = authorizePersonalLedger({ role: 'MASTER', isPrimaryMaster: true, userId: primaryMasterUser.userId });
+    assert.equal(pmAccess, 'PRIMARY_MASTER');
+
+    // 2. Owner is ALLOWED
+    const ownerAccess = authorizePersonalLedger({ role: 'OWNER', isPrimaryMaster: false, userId: ownerUser.userId });
+    assert.equal(ownerAccess, 'OWNER');
+
+    // 3. Normal Master (role = MASTER, isPrimaryMaster = false) is DENIED (403)
+    assert.throws(
+      () => authorizePersonalLedger({ role: 'MASTER', isPrimaryMaster: false, userId: normalMasterUser.userId }),
+      (err) => {
+        assert.equal(err.statusCode, 403);
+        assert.equal(err.code, 'PRIMARY_MASTER_AUTHORITY_REQUIRED');
+        return true;
+      }
+    );
+
+    // 4. Café Admin is DENIED (403)
+    assert.throws(
+      () => authorizePersonalLedger({ role: 'CAFE_ADMIN', isPrimaryMaster: false, userId: adminA1User.userId }),
+      (err) => {
+        assert.equal(err.statusCode, 403);
+        assert.equal(err.code, 'ABSOLUTE_ROLE_RESTRICTION');
+        return true;
+      }
+    );
+
+    // 5. Staff is DENIED (403)
+    assert.throws(
+      () => authorizePersonalLedger({ role: 'STAFF', isPrimaryMaster: false, userId: staffA1User.userId }),
+      (err) => {
+        assert.equal(err.statusCode, 403);
+        assert.equal(err.code, 'ABSOLUTE_ROLE_RESTRICTION');
+        return true;
+      }
+    );
+
+    // 6. Execution-Time Role Change: Primary Master demoted to Normal Master -> DENIED
+    const stalePmCtx = { role: 'MASTER', isPrimaryMaster: false };
+    assert.throws(
+      () => authorizePersonalLedger(stalePmCtx),
       (err) => {
         assert.equal(err.code, 'PRIMARY_MASTER_AUTHORITY_REQUIRED');
         return true;
       }
     );
 
-    // Owner denied from general personal ledger governance
+    // 7. Execution-Time Role Change: Owner demoted away from OWNER -> DENIED
+    const staleOwnerCtx = { role: 'STAFF', isPrimaryMaster: false };
     assert.throws(
-      () => {
-        // Owner attempting organisation-wide personal ledger access
-        throw new ApiError(403, 'AUTHORIZATION_DENIED', 'Personal Ledger is Master-only. Owner cannot access organisation ledger.');
-      },
-      (err) => {
-        assert.equal(err.code, 'AUTHORIZATION_DENIED');
-        return true;
-      }
-    );
-
-    // Café Admin denied
-    assert.throws(
-      () => {
-        const { role } = adminA1User;
-        if (role !== 'MASTER') {
-          throw new ApiError(403, 'ABSOLUTE_ROLE_RESTRICTION', 'Access permanently restricted.');
-        }
-      },
-      (err) => {
-        assert.equal(err.code, 'ABSOLUTE_ROLE_RESTRICTION');
-        return true;
-      }
-    );
-
-    // Staff denied
-    assert.throws(
-      () => {
-        const { role } = staffA1User;
-        if (role !== 'MASTER') {
-          throw new ApiError(403, 'ABSOLUTE_ROLE_RESTRICTION', 'Access permanently restricted.');
-        }
-      },
+      () => authorizePersonalLedger(staleOwnerCtx),
       (err) => {
         assert.equal(err.code, 'ABSOLUTE_ROLE_RESTRICTION');
         return true;
