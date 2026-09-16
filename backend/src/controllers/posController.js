@@ -12,7 +12,9 @@
  */
 
 const { PosOrderService } = require('../services/posOrderService');
+const { PosReconciliationService } = require('../services/posReconciliationService');
 const { Bill } = require('../models/Bill');
+const { IdempotencyRecord } = require('../models/IdempotencyRecord');
 const { asyncHandler } = require('../utils/asyncHandler');
 const { ApiError } = require('../utils/ApiError');
 const { assertResourceCafeOwnership, resolveEffectiveCafeScope } = require('../utils/cafeScope');
@@ -158,6 +160,117 @@ const getLastCommittedBill = asyncHandler(async (request, response) => {
   });
 });
 
+/**
+ * GET /api/v1/pos/orders/status/:transactionId
+ * REC-04B: Resolves transaction status by exact transaction identity (idempotencyKey or saleAttemptId).
+ * Safe recovery after unknown network outcomes without relying on "Reprint Last".
+ */
+const getOrderStatusByIdempotency = asyncHandler(async (request, response) => {
+  const transactionId = String(request.params.transactionId || '').trim();
+  if (!transactionId) {
+    throw new ApiError(400, 'TRANSACTION_ID_REQUIRED', 'transactionId (idempotencyKey or saleAttemptId) is required.');
+  }
+
+  const orgId = request.auth?.organisationId || 'ORG-ZAMORIN';
+  const cafeId = request.query.cafeId ? normalizeId(request.query.cafeId) : null;
+
+  const billQuery = {
+    organisationId: orgId,
+    $or: [{ correlationId: transactionId }, { saleAttemptId: transactionId }],
+  };
+  if (cafeId) billQuery.cafeId = cafeId;
+
+  const bill = await Bill.findOne(billQuery);
+  if (bill) {
+    const billData = typeof bill.toObject === 'function' ? bill.toObject() : bill;
+    return response.status(200).json({
+      success: true,
+      status: 'COMPLETED',
+      saleFinalized: true,
+      transactionId,
+      billId: billData.billId,
+      invoiceNumber: billData.invoiceNumber,
+      bill: billData,
+      data: billData,
+      message: 'Transaction completed successfully.',
+    });
+  }
+
+  const recordQuery = {
+    organisationId: orgId,
+    $or: [{ idempotencyKey: transactionId }, { saleAttemptId: transactionId }],
+  };
+  if (cafeId) recordQuery.cafeId = cafeId;
+
+  const record = await IdempotencyRecord.findOne(recordQuery);
+  if (record) {
+    if (record.status === 'COMPLETED') {
+      return response.status(200).json({
+        success: true,
+        status: 'COMPLETED',
+        saleFinalized: true,
+        transactionId,
+        billId: record.billId,
+        invoiceNumber: record.invoiceNumber,
+        bill: record.responseSnapshot?.bill || record.responseSnapshot?.data || null,
+        data: record.responseSnapshot,
+        message: 'Transaction completed successfully (from IdempotencyRecord).',
+      });
+    }
+
+    if (record.status === 'PROCESSING') {
+      return response.status(200).json({
+        success: true,
+        status: 'PROCESSING',
+        saleFinalized: false,
+        transactionId,
+        message: 'Transaction is currently processing.',
+      });
+    }
+
+    return response.status(200).json({
+      success: false,
+      status: 'FAILED',
+      saleFinalized: false,
+      transactionId,
+      error: record.errorDetails,
+      message: 'Transaction failed prior to finalization.',
+    });
+  }
+
+  return response.status(200).json({
+    success: true,
+    status: 'NOT_RECEIVED',
+    saleFinalized: false,
+    transactionId,
+    message: 'No transaction found for this identity. Safe to retry with same transaction identity.',
+  });
+});
+
+/**
+ * GET /api/v1/pos/reconciliation/pending
+ * REC-04B: Lists pending and manual-review reconciliation jobs for operational visibility.
+ */
+const getPendingReconciliations = asyncHandler(async (request, response) => {
+  const { cafeId, status } = request.query;
+  const result = await PosReconciliationService.getPendingReconciliations({
+    organisationId: request.auth.organisationId,
+    cafeId,
+    status,
+  });
+  return response.status(200).json(result);
+});
+
+/**
+ * POST /api/v1/pos/reconciliation/:jobId/retry
+ * REC-04B: Explicitly retries a reconciliation job with exactly-once safety.
+ */
+const retryReconciliation = asyncHandler(async (request, response) => {
+  const jobId = normalizeId(request.params.jobId);
+  const result = await PosReconciliationService.retryJob(jobId, request.auth);
+  return response.status(200).json(result);
+});
+
 module.exports = {
   commitOrder,
   previewOrder,
@@ -165,4 +278,8 @@ module.exports = {
   reprintOrder,
   getActiveOrders,
   getLastCommittedBill,
+  getOrderStatusByIdempotency,
+  getPendingReconciliations,
+  retryReconciliation,
 };
+

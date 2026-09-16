@@ -27,6 +27,7 @@ const { IdempotencyRecord } = require('../models/IdempotencyRecord');
 const { PrintJob } = require('../models/PrintJob');
 const { allocateInvoiceNumber } = require('./gstTaxService');
 const { BomDepletionService } = require('./bomDepletionService');
+const { PosReconciliationService } = require('./posReconciliationService');
 const crypto = require('node:crypto');
 const { ApiError } = require('../utils/ApiError');
 const auditService = require('./auditService');
@@ -36,11 +37,14 @@ const {
   buildDrawerKickBuffer,
 } = require('./hardwareBridgeService');
 
-// In-memory idempotency cache (TTL: 60 minutes)
+// In-memory idempotency cache (TTL: 60 minutes) — fast path read cache
 const IDEMPOTENCY_TTL_MS = 60 * 60 * 1000;
 const idempotencyCache = new Map();
 
-// In-memory lock map for in-flight requests (prevents race-condition double creation)
+// In-memory lock map for in-flight requests in the local Node process.
+// NOTE (REC-04B): Classified strictly as LOCAL_PROCESS_OPTIMIZATION_ONLY.
+// The authoritative correctness barrier across processes/instances lives in MongoDB:
+// unique indexes on IdempotencyRecord and Bill, plus atomic database state transitions.
 const activeIdempotencyLocks = new Map();
 
 function cleanExpiredIdempotency() {
@@ -334,12 +338,20 @@ class PosOrderService {
     const orgId = normalizeId(authContext.organisationId || 'ORG-ZAMORIN');
     const idempotencyKey = String(orderPayload.idempotencyKey || options.idempotencyKey || '').trim();
 
+    const saleAttemptId = String(
+      orderPayload.saleAttemptId ||
+      orderPayload.clientOfflineId ||
+      (idempotencyKey ? `ATT-${idempotencyKey}` : '')
+    ).trim() || null;
+    orderPayload.saleAttemptId = saleAttemptId;
+
     // Check Concurrency / Idempotency Cache
-    if (idempotencyKey) {
-      const cacheKey = `${orgId}:${cafeId}:${idempotencyKey}`;
+    if (idempotencyKey || saleAttemptId) {
+      const lockIdentifier = idempotencyKey || saleAttemptId;
+      const cacheKey = `${orgId}:${cafeId}:${lockIdentifier}`;
       const currentFingerprint = computeRequestFingerprint(orderPayload);
 
-      // 1. Memory cache check (instant, synchronous)
+      // 1. Memory cache check (instant, synchronous — local process optimization only)
       const cached = idempotencyCache.get(cacheKey);
       if (cached && cached.expiresAt > Date.now()) {
         if (cached.fingerprint && cached.fingerprint !== currentFingerprint) {
@@ -353,15 +365,16 @@ class PosOrderService {
           ...cached.response,
           isIdempotentReplay: true,
           correlationId: idempotencyKey,
+          saleAttemptId,
         };
       }
 
-      // 2. Concurrency lock check: if another request is in flight for this key, await it
+      // 2. Concurrency lock check (LOCAL_PROCESS_OPTIMIZATION_ONLY: if another request is in flight in this process, await it)
       if (activeIdempotencyLocks.has(cacheKey)) {
         return await activeIdempotencyLocks.get(cacheKey);
       }
 
-      // 3. Synchronously acquire lock for this key before ANY async operations
+      // 3. Synchronously acquire lock for this key in local process before ANY async operations
       let resolveLock;
       let rejectLock;
       const lockPromise = new Promise((resolve, reject) => {
@@ -371,101 +384,129 @@ class PosOrderService {
       activeIdempotencyLocks.set(cacheKey, lockPromise);
 
       try {
-        // 4. Persistent Database check for IdempotencyRecord
-        try {
-          const existingRecord = await IdempotencyRecord.findOne({
-            organisationId: orgId,
-            cafeId,
-            idempotencyKey,
-          });
+        // 4. Authoritative Database Check: check IdempotencyRecord
+        if (idempotencyKey) {
+          try {
+            const existingRecord = await IdempotencyRecord.findOne({
+              organisationId: orgId,
+              cafeId,
+              idempotencyKey,
+            });
 
-          if (existingRecord) {
-            if (existingRecord.requestFingerprint && existingRecord.requestFingerprint !== currentFingerprint) {
-              throw new ApiError(
-                409,
-                'IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST',
-                'The idempotency key was previously submitted with a different transaction payload.'
-              );
-            }
-            if (existingRecord.status === 'COMPLETED' && existingRecord.responseSnapshot) {
-              idempotencyCache.set(cacheKey, {
-                response: existingRecord.responseSnapshot,
-                fingerprint: currentFingerprint,
-                expiresAt: Date.now() + IDEMPOTENCY_TTL_MS,
-              });
-              const replayData = {
-                ...existingRecord.responseSnapshot,
-                isIdempotentReplay: true,
-                correlationId: idempotencyKey,
-              };
-              resolveLock(replayData);
-              return replayData;
-            }
-          }
-        } catch (err) {
-          if (err.statusCode === 409) throw err;
-        }
-
-        // 5. Check Bill by correlationId
-        const existingBill = await Bill.findOne({
-          organisationId: orgId,
-          cafeId,
-          correlationId: idempotencyKey,
-        });
-
-        if (existingBill) {
-          const billData = typeof existingBill.toObject === 'function' ? existingBill.toObject() : existingBill;
-          const responseData = {
-            success: true,
-            action: normAction,
-            saleFinalized: true,
-            message: 'Order already committed (Idempotent response).',
-            data: billData,
-            bill: billData,
-            printed: billData.printStatus === 'PRINTED',
-            printStatus: billData.printStatus || 'NOT_REQUESTED',
-            isIdempotentReplay: true,
-            correlationId: idempotencyKey,
-          };
-          idempotencyCache.set(cacheKey, {
-            response: responseData,
-            fingerprint: currentFingerprint,
-            expiresAt: Date.now() + IDEMPOTENCY_TTL_MS,
-          });
-          resolveLock(responseData);
-          return responseData;
-        }
-
-        // 6. Attempt to register IdempotencyRecord in DB
-        try {
-          const pendingRecord = new IdempotencyRecord({
-            organisationId: orgId,
-            cafeId,
-            idempotencyKey,
-            requestFingerprint: currentFingerprint,
-            status: 'PROCESSING',
-          });
-          await pendingRecord.save();
-        } catch (dbErr) {
-          if (dbErr.code === 11000 || dbErr.message?.includes('duplicate key')) {
-            const winner = await IdempotencyRecord.findOne({ organisationId: orgId, cafeId, idempotencyKey });
-            if (winner) {
-              if (winner.requestFingerprint && winner.requestFingerprint !== currentFingerprint) {
-                const conflictErr = new ApiError(
+            if (existingRecord) {
+              if (existingRecord.requestFingerprint && existingRecord.requestFingerprint !== currentFingerprint) {
+                throw new ApiError(
                   409,
                   'IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST',
                   'The idempotency key was previously submitted with a different transaction payload.'
                 );
-                throw conflictErr;
               }
-              if (winner.status === 'COMPLETED' && winner.responseSnapshot) {
+              if (existingRecord.status === 'COMPLETED' && existingRecord.responseSnapshot) {
+                idempotencyCache.set(cacheKey, {
+                  response: existingRecord.responseSnapshot,
+                  fingerprint: currentFingerprint,
+                  expiresAt: Date.now() + IDEMPOTENCY_TTL_MS,
+                });
                 const replayData = {
-                  ...winner.responseSnapshot,
+                  ...existingRecord.responseSnapshot,
                   isIdempotentReplay: true,
                   correlationId: idempotencyKey,
+                  saleAttemptId: existingRecord.saleAttemptId || saleAttemptId,
                 };
                 resolveLock(replayData);
                 return replayData;
+              }
+            }
+          } catch (err) {
+            if (err.statusCode === 409) throw err;
+          }
+        }
+
+        // 5. Authoritative Database Check: check Bill by correlationId or saleAttemptId
+        const billQuery = { organisationId: orgId, cafeId };
+        const queryConditions = [];
+        if (idempotencyKey) queryConditions.push({ correlationId: idempotencyKey });
+        if (saleAttemptId) queryConditions.push({ saleAttemptId });
+
+        if (queryConditions.length > 0) {
+          billQuery.$or = queryConditions;
+          const existingBill = await Bill.findOne(billQuery);
+
+          if (existingBill) {
+            const billData = typeof existingBill.toObject === 'function' ? existingBill.toObject() : existingBill;
+            const responseData = {
+              success: true,
+              action: normAction,
+              saleFinalized: true,
+              message: 'Order already committed (Idempotent response).',
+              data: billData,
+              bill: billData,
+              printed: billData.printStatus === 'PRINTED',
+              printStatus: billData.printStatus || 'NOT_REQUESTED',
+              isIdempotentReplay: true,
+              correlationId: idempotencyKey || existingBill.correlationId,
+              saleAttemptId: existingBill.saleAttemptId || saleAttemptId,
+            };
+            idempotencyCache.set(cacheKey, {
+              response: responseData,
+              fingerprint: currentFingerprint,
+              expiresAt: Date.now() + IDEMPOTENCY_TTL_MS,
+            });
+            resolveLock(responseData);
+            return responseData;
+          }
+        }
+
+        // 6. Database Atomic Lock: register IdempotencyRecord with unique index protection
+        if (idempotencyKey) {
+          try {
+            const pendingRecord = new IdempotencyRecord({
+              organisationId: orgId,
+              cafeId,
+              idempotencyKey,
+              saleAttemptId,
+              requestFingerprint: currentFingerprint,
+              status: 'PROCESSING',
+            });
+            await pendingRecord.save();
+          } catch (dbErr) {
+            if (dbErr.code === 11000 || String(dbErr.message || '').includes('duplicate key')) {
+              const winner = await IdempotencyRecord.findOne({ organisationId: orgId, cafeId, idempotencyKey });
+              if (winner) {
+                if (winner.requestFingerprint && winner.requestFingerprint !== currentFingerprint) {
+                  const conflictErr = new ApiError(
+                    409,
+                    'IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_REQUEST',
+                    'The idempotency key was previously submitted with a different transaction payload.'
+                  );
+                  throw conflictErr;
+                }
+                if (winner.status === 'COMPLETED' && winner.responseSnapshot) {
+                  const replayData = {
+                    ...winner.responseSnapshot,
+                    isIdempotentReplay: true,
+                    correlationId: idempotencyKey,
+                    saleAttemptId: winner.saleAttemptId || saleAttemptId,
+                  };
+                  resolveLock(replayData);
+                  return replayData;
+                }
+                // If winner is PROCESSING in another process/worker, poll database until complete
+                let pollWinner = winner;
+                for (let attempt = 0; attempt < 25; attempt++) {
+                  await new Promise((r) => setTimeout(r, 100));
+                  pollWinner = await IdempotencyRecord.findOne({ organisationId: orgId, cafeId, idempotencyKey });
+                  if (pollWinner?.status === 'COMPLETED' && pollWinner.responseSnapshot) {
+                    const replayData = {
+                      ...pollWinner.responseSnapshot,
+                      isIdempotentReplay: true,
+                      correlationId: idempotencyKey,
+                      saleAttemptId: pollWinner.saleAttemptId || saleAttemptId,
+                    };
+                    resolveLock(replayData);
+                    return replayData;
+                  }
+                }
               }
             }
           }
@@ -474,18 +515,22 @@ class PosOrderService {
         // 7. Execute order commit
         const result = await this.executeOrderCommit(orderPayload, authContext, normAction, options);
 
-        try {
-          await IdempotencyRecord.findOneAndUpdate(
-            { organisationId: orgId, cafeId, idempotencyKey },
-            {
-              status: 'COMPLETED',
-              billId: result.bill?.billId,
-              invoiceNumber: result.bill?.invoiceNumber,
-              responseSnapshot: result,
-            },
-            { upsert: true }
-          );
-        } catch {}
+        if (idempotencyKey) {
+          try {
+            await IdempotencyRecord.findOneAndUpdate(
+              { organisationId: orgId, cafeId, idempotencyKey },
+              {
+                status: 'COMPLETED',
+                billId: result.bill?.billId,
+                invoiceNumber: result.bill?.invoiceNumber,
+                saleAttemptId,
+                finalizedAt: new Date(),
+                responseSnapshot: result,
+              },
+              { upsert: true }
+            );
+          } catch {}
+        }
 
         idempotencyCache.set(cacheKey, {
           response: result,
@@ -495,9 +540,11 @@ class PosOrderService {
         resolveLock(result);
         return result;
       } catch (err) {
-        try {
-          await IdempotencyRecord.deleteOne({ organisationId: orgId, cafeId, idempotencyKey, status: 'PROCESSING' });
-        } catch {}
+        if (idempotencyKey) {
+          try {
+            await IdempotencyRecord.deleteOne({ organisationId: orgId, cafeId, idempotencyKey, status: 'PROCESSING' });
+          } catch {}
+        }
         rejectLock(err);
         throw err;
       } finally {
@@ -661,13 +708,42 @@ class PosOrderService {
       businessDate,
       cashierUserId: authContext.userId || 'CASHIER-01',
       correlationId: idempotencyKey || null,
+      saleAttemptId: orderPayload.saleAttemptId || null,
     });
 
-    await billDoc.save();
+    try {
+      await billDoc.save();
+    } catch (saveErr) {
+      if (saveErr.code === 11000 || String(saveErr.message || '').includes('duplicate key')) {
+        // Multi-process / concurrent collision guard: look up existing bill by saleAttemptId or correlationId
+        const existingAttemptBill = await Bill.findOne({
+          organisationId: orgId,
+          cafeId,
+          ...(orderPayload.saleAttemptId ? { saleAttemptId: orderPayload.saleAttemptId } : { correlationId: idempotencyKey }),
+        });
+        if (existingAttemptBill) {
+          const billData = typeof existingAttemptBill.toObject === 'function' ? existingAttemptBill.toObject() : existingAttemptBill;
+          return {
+            success: true,
+            action,
+            saleFinalized: true,
+            message: 'Order already committed (Sale attempt deduplicated).',
+            data: billData,
+            bill: billData,
+            printed: billData.printStatus === 'PRINTED',
+            printStatus: billData.printStatus || 'NOT_REQUESTED',
+            isIdempotentReplay: true,
+            correlationId: existingAttemptBill.correlationId || idempotencyKey,
+            saleAttemptId: existingAttemptBill.saleAttemptId || orderPayload.saleAttemptId,
+          };
+        }
+      }
+      throw saveErr;
+    }
 
     // 6.5. Inventory Depletion via FEFO — Executed exactly once per committed sale
     // REC-04A: BOM is now properly imported (destructured). Failure sets bomDepletionStatus
-    // to 'FAILED' for explicit reconciliation tracking — bill remains COMPLETED.
+    // to 'FAILED' and creates a durable PosReconciliationJob — bill remains COMPLETED.
     try {
       const bomResult = await BomDepletionService.depleteOrderBOM({
         organisationId: orgId,
@@ -686,13 +762,28 @@ class PosOrderService {
       } catch { /* non-fatal — status update failure does not reverse the depletion */ }
     } catch (invErr) {
       // Explicit reconciliation state — bill is COMPLETED (payment is real) but
-      // stock was NOT consumed. Operations must reconcile via bomDepletionStatus query.
+      // stock was NOT consumed. Operations must reconcile via PosReconciliationJob.
       console.warn('[POS] BOM depletion failed for bill', billId, invErr?.message);
       try {
         billDoc.bomDepletionStatus = 'FAILED';
         billDoc.bomDepletionError = String(invErr?.message || 'UNKNOWN').slice(0, 250);
         await billDoc.save();
       } catch { /* non-fatal — bill record stands, FAILED status update is best-effort */ }
+
+      try {
+        await PosReconciliationService.recordReconciliationFailure({
+          organisationId: orgId,
+          cafeId,
+          billId,
+          invoiceNumber,
+          effectType: 'BOM_DEPLETION',
+          error: invErr,
+          expectedAmount: 0,
+          payloadSnapshot: { lineItems: totals.lineItems, businessDate },
+        });
+      } catch (recErr) {
+        console.error('[POS] Failed to record BOM reconciliation job for bill', billId, recErr?.message);
+      }
     }
 
     // 7. Post-save operations: Register Session & Cash Book
@@ -758,6 +849,26 @@ class PosOrderService {
         await cashTx.save();
       } catch (err) {
         console.error('Failed to auto-post cash transaction for bill', billId, err);
+        // REC-04B: Mandatory durable reconciliation job for failed Cash Ledger posting
+        try {
+          await PosReconciliationService.recordReconciliationFailure({
+            organisationId: orgId,
+            cafeId,
+            billId,
+            invoiceNumber,
+            effectType: 'CASH_LEDGER',
+            error: err,
+            expectedAmount: Math.max(0.01, totals.totalPaisa / 100),
+            payloadSnapshot: {
+              amount: Math.max(0.01, totals.totalPaisa / 100),
+              invoiceNumber,
+              businessDate,
+              cashierUserId: authContext.userId,
+            },
+          });
+        } catch (recErr) {
+          console.error('[POS] Failed to record Cash Ledger reconciliation job for bill', billId, recErr?.message);
+        }
       }
     }
 

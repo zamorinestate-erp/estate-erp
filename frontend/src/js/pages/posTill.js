@@ -1725,6 +1725,7 @@ async function executeFinalSale(grandTotal, tender, root, paymentRef = "", custo
   try {
     isPaymentInProgress = true;
     const idempotencyKey = `IDEM-SALE-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+    const saleAttemptId = `ATT-${idempotencyKey}`;
     const cartEntries = [...cart];
     const subtotal = cartEntries.reduce((acc, l) => {
       const modPrice = l.modifiers?.modifierPricePaisa ? l.modifiers.modifierPricePaisa / 100 : 0;
@@ -1764,6 +1765,7 @@ async function executeFinalSale(grandTotal, tender, root, paymentRef = "", custo
       registerId: "REG-01",
       registerSessionId: activeRegisterSession?.registerSessionId || "",
       idempotencyKey,
+      saleAttemptId,
       lineItems: cartEntries.map((l) => ({
         menuItemId: l.item.id,
         quantity: l.qty,
@@ -1785,16 +1787,35 @@ async function executeFinalSale(grandTotal, tender, root, paymentRef = "", custo
       const status = commitErr?.status || commitErr?.statusCode || commitErr?.httpStatus;
       const isRouteNotFound = status === 404 || status === 405;
       if (!isRouteNotFound) {
-        // Unknown outcome — the server may have already committed this sale.
-        // Do NOT fall through to /bills. Surface to user with guidance to check Reprint Last.
-        throw new Error(
-          commitErr?.message ||
-          "Sale commit failed. Check \u2018Reprint Last\u2019 \u2014 your sale may already be recorded. If not, retry with the same session."
-        );
+        // REC-04B: Unknown outcome (timeout, connection drop, 502-504).
+        // Check transaction status using the EXACT transaction identity (idempotencyKey / saleAttemptId).
+        // NEVER guess using "Reprint Last" (which could return a previous customer's bill).
+        showToast("Checking transaction status\u2026", "info");
+        try {
+          const statusRes = await apiGet(`/pos/orders/status/${encodeURIComponent(idempotencyKey)}?cafeId=${encodeURIComponent(cafeId)}`);
+          if (statusRes?.status === "COMPLETED" && (statusRes?.bill || statusRes?.data)) {
+            res = statusRes;
+            showToast(`Transaction verified: Bill ${statusRes.invoiceNumber || statusRes.billId}`, "mint");
+          } else if (statusRes?.status === "PROCESSING") {
+            throw new Error("Transaction is currently processing on server. Please wait a moment and verify again with this transaction identity.");
+          } else {
+            throw new Error(
+              commitErr?.message ||
+              "Sale commit outcome unconfirmed. Transaction not found on server; safe to retry with same transaction."
+            );
+          }
+        } catch (statusErr) {
+          if (res) {
+            // Already recovered
+          } else {
+            throw statusErr;
+          }
+        }
+      } else {
+        // Route definitively absent (rolling deployment) — safe to use legacy endpoint
+        console.warn("[POS] /pos/orders/commit not found on this server version (HTTP " + status + "), using /bills fallback");
+        res = await apiPost("/bills", payload);
       }
-      // Route definitively absent (rolling deployment) — safe to use legacy endpoint
-      console.warn("[POS] /pos/orders/commit not found on this server version (HTTP " + status + "), using /bills fallback");
-      res = await apiPost("/bills", payload);
     }
 
     const billData = res?.data || res?.bill || {

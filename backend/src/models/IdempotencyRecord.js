@@ -50,6 +50,16 @@ const idempotencyRecordSchema = new mongoose.Schema(
       default: null,
       trim: true,
     },
+    saleAttemptId: {
+      type: String,
+      trim: true,
+      index: true,
+      default: null,
+    },
+    finalizedAt: {
+      type: Date,
+      default: null,
+    },
     responseSnapshot: {
       type: mongoose.Schema.Types.Mixed,
       default: null,

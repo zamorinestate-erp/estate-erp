@@ -747,6 +747,16 @@ const billSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+
+    // REC-04B: Canonical immutable checkout identity.
+    // Database-level uniqueness prevents multi-process / multi-worker duplicate sale creation.
+    saleAttemptId: {
+      type: String,
+      trim: true,
+      index: true,
+      sparse: true,
+      default: null,
+    },
   },
   {
     timestamps: true,
@@ -764,6 +774,11 @@ billSchema.index(
 billSchema.index(
   { organisationId: 1, invoiceNumber: 1 },
   { unique: true, sparse: true, name: 'org_invoice_number_unique' }
+);
+
+billSchema.index(
+  { organisationId: 1, cafeId: 1, saleAttemptId: 1 },
+  { unique: true, sparse: true, name: 'org_cafe_sale_attempt_unique' }
 );
 
 billSchema.index(

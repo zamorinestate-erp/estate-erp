@@ -15,6 +15,9 @@ const {
   reprintOrder,
   getActiveOrders,
   getLastCommittedBill,
+  getOrderStatusByIdempotency,
+  getPendingReconciliations,
+  retryReconciliation,
 } = require('../controllers/posController');
 
 const router = express.Router();
@@ -30,4 +33,12 @@ router.post('/orders/:billId/reprint', reprintOrder);
 router.get('/orders/active/:cafeId', getActiveOrders);
 router.get('/orders/last/:cafeId', getLastCommittedBill);
 
+// REC-04B: Transaction status & unknown-outcome recovery
+router.get('/orders/status/:transactionId', getOrderStatusByIdempotency);
+
+// REC-04B: Durable side-effect reconciliation management
+router.get('/reconciliation/pending', getPendingReconciliations);
+router.post('/reconciliation/:jobId/retry', retryReconciliation);
+
 module.exports = router;
+
