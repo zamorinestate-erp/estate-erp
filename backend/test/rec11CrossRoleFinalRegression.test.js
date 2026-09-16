@@ -542,7 +542,11 @@ test('REC-11: Final Cross-Role Regression, Multi-Tenant Security Boundary & Inte
   // ===========================================================================
   // 11. PERSONAL LEDGER RESTRICTION
   // ===========================================================================
-  await t.test('11. Personal Ledger: Non-primary Master and Staff denied, Primary Master allowed', async () => {
+  await t.test('11. Personal Ledger: Non-primary Master, Owner, Café Admin, and Staff denied; Primary Master allowed', async () => {
+    // Primary Master allowed
+    assert.equal(primaryMasterUser.role, 'MASTER');
+    assert.equal(primaryMasterUser.isPrimaryMaster, true);
+
     // Normal Master denied
     assert.throws(
       () => {
@@ -557,11 +561,37 @@ test('REC-11: Final Cross-Role Regression, Multi-Tenant Security Boundary & Inte
       }
     );
 
+    // Owner denied from general personal ledger governance
+    assert.throws(
+      () => {
+        // Owner attempting organisation-wide personal ledger access
+        throw new ApiError(403, 'AUTHORIZATION_DENIED', 'Personal Ledger is Master-only. Owner cannot access organisation ledger.');
+      },
+      (err) => {
+        assert.equal(err.code, 'AUTHORIZATION_DENIED');
+        return true;
+      }
+    );
+
+    // Café Admin denied
+    assert.throws(
+      () => {
+        const { role } = adminA1User;
+        if (role !== 'MASTER') {
+          throw new ApiError(403, 'ABSOLUTE_ROLE_RESTRICTION', 'Access permanently restricted.');
+        }
+      },
+      (err) => {
+        assert.equal(err.code, 'ABSOLUTE_ROLE_RESTRICTION');
+        return true;
+      }
+    );
+
     // Staff denied
     assert.throws(
       () => {
         const { role } = staffA1User;
-        if (!['MASTER', 'OWNER'].includes(role)) {
+        if (role !== 'MASTER') {
           throw new ApiError(403, 'ABSOLUTE_ROLE_RESTRICTION', 'Access permanently restricted.');
         }
       },
