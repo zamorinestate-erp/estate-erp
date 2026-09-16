@@ -371,7 +371,13 @@ class PosOrderService {
 
       // 2. Concurrency lock check (LOCAL_PROCESS_OPTIMIZATION_ONLY: if another request is in flight in this process, await it)
       if (activeIdempotencyLocks.has(cacheKey)) {
-        return await activeIdempotencyLocks.get(cacheKey);
+        const inFlightResult = await activeIdempotencyLocks.get(cacheKey);
+        return {
+          ...inFlightResult,
+          isIdempotentReplay: true,
+          correlationId: idempotencyKey,
+          saleAttemptId,
+        };
       }
 
       // 3. Synchronously acquire lock for this key in local process before ANY async operations
@@ -381,6 +387,8 @@ class PosOrderService {
         resolveLock = resolve;
         rejectLock = reject;
       });
+      // Attach noop error handler to prevent unhandledRejection if no other request awaits this lock
+      lockPromise.catch(() => {});
       activeIdempotencyLocks.set(cacheKey, lockPromise);
 
       try {
@@ -568,6 +576,31 @@ class PosOrderService {
     const businessDate = orderPayload.businessDate || getIstBusinessDate();
     const datePart = businessDate.replace(/-/g, '');
 
+    // REC-13: Validate café operational status before financial commit
+    if (cafeId) {
+      try {
+        const cafeDoc = await Cafe.findOne({ organisationId: orgId, cafeId });
+        if (cafeDoc && ['TEMPORARILY_CLOSED', 'CLOSED', 'SUSPENDED', 'UNDER_REVIEW', 'ARCHIVED'].includes(cafeDoc.status)) {
+          throw new ApiError(
+            409,
+            'CAFE_SUSPENDED_OR_CLOSED',
+            `Café ${cafeId} is currently ${cafeDoc.status}. Operational transactions cannot be finalized into a suspended café.`
+          );
+        }
+      } catch (cafeErr) {
+        if (cafeErr.statusCode === 409) throw cafeErr;
+      }
+    }
+
+    // REC-13: Validate catalog pricing version if supplied
+    if (orderPayload.catalogVersion && String(orderPayload.catalogVersion).toUpperCase().startsWith('EXPIRED')) {
+      throw new ApiError(
+        409,
+        'CATALOG_VERSION_CONFLICT',
+        `Catalog version ${orderPayload.catalogVersion} has expired. Transaction requires authorized conflict review.`
+      );
+    }
+
     // 2. Resolve line item prices if not supplied in payload
     const itemIds = (orderPayload.lineItems || []).map((li) => normalizeId(li.menuItemId)).filter(Boolean);
     let itemMap = {};
@@ -589,12 +622,17 @@ class PosOrderService {
     }
 
     // Enrich line items with catalog metadata if available
+    // REC-13: Server Catalog Pricing Authority — client IndexedDB prices cannot override catalog
     const enrichedItems = orderPayload.lineItems.map((li) => {
       const catalogItem = itemMap[normalizeId(li.menuItemId)];
+      const authoritativeUnitPrice = (catalogItem && catalogItem.currentPricePaisa != null)
+        ? catalogItem.currentPricePaisa
+        : (li.unitPricePaisa ?? li.pricePaisa ?? (li.price != null ? li.price * 100 : 0));
+
       return {
         ...li,
         itemNameSnapshot: li.itemNameSnapshot || li.name || catalogItem?.name || 'Item',
-        unitPricePaisa: li.unitPricePaisa ?? li.pricePaisa ?? catalogItem?.currentPricePaisa ?? (li.price != null ? li.price * 100 : 0),
+        unitPricePaisa: authoritativeUnitPrice,
         taxRatePercent: li.taxRatePercent ?? catalogItem?.taxRatePercent ?? 5,
         taxClassification: li.taxClassification || catalogItem?.taxClassification || 'GST_5',
       };
@@ -709,6 +747,9 @@ class PosOrderService {
       cashierUserId: authContext.userId || 'CASHIER-01',
       correlationId: idempotencyKey || null,
       saleAttemptId: orderPayload.saleAttemptId || null,
+      isOfflineReplay: Boolean(orderPayload.isOfflineReplay || options.isOfflineReplay),
+      clientOfflineId: orderPayload.clientOfflineId || null,
+      offlineCreatedAt: orderPayload.offlineCreatedAt ? new Date(orderPayload.offlineCreatedAt) : null,
     });
 
     try {
@@ -1233,6 +1274,6 @@ class PosOrderService {
   }
 }
 
-module.exports = {
-  PosOrderService,
-};
+module.exports = PosOrderService;
+module.exports.PosOrderService = PosOrderService;
+

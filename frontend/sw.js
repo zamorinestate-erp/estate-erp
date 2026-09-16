@@ -105,3 +105,17 @@ self.addEventListener('fetch', (event) => {
     );
   }
 });
+
+// 5. Background Synchronization API Handler (REC-13 / R02-09)
+// Feature-detected by browser. Dispatches sync trigger to active client windows without in-memory dependency.
+self.addEventListener('sync', (event) => {
+  if (event.tag === 'zamorin-pos-queue-sync') {
+    event.waitUntil(
+      self.clients.matchAll({ type: 'window' }).then((clients) => {
+        for (const client of clients) {
+          client.postMessage({ type: 'TRIGGER_OFFLINE_SYNC', reason: 'BACKGROUND_SYNC' });
+        }
+      })
+    );
+  }
+});

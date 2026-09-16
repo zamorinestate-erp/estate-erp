@@ -271,6 +271,37 @@ const retryReconciliation = asyncHandler(async (request, response) => {
   return response.status(200).json(result);
 });
 
+/**
+ * POST /api/v1/pos/offline-sync
+ * REC-13: Replays queued offline POS transactions through the canonical PosOrderService pipeline.
+ */
+const syncOfflineOrders = asyncHandler(async (request, response) => {
+  const { organisationId, userId } = request.auth;
+  const cafeId = normalizeId(request.body?.cafeId || request.query?.cafeId || request.auth?.primaryCafeId || '');
+  const { transactions, deviceId, operatorSessionId } = request.body || {};
+
+  if (!Array.isArray(transactions) || transactions.length === 0) {
+    throw new ApiError(400, 'VALIDATION_FAILED', 'Transactions array is required for offline sync.');
+  }
+
+  const OfflineSyncService = require('../services/offlineSyncService');
+  const syncResult = await OfflineSyncService.syncBatch({
+    organisationId,
+    cafeId,
+    deviceId: deviceId || request.deviceContext?.deviceId || '',
+    userId,
+    operatorSessionId,
+    transactions,
+  });
+
+  return response.status(200).json({
+    success: true,
+    message: `Processed ${transactions.length} offline transactions.`,
+    data: syncResult,
+    correlationId: request.correlationId || null,
+  });
+});
+
 module.exports = {
   commitOrder,
   previewOrder,
@@ -281,5 +312,7 @@ module.exports = {
   getOrderStatusByIdempotency,
   getPendingReconciliations,
   retryReconciliation,
+  syncOfflineOrders,
 };
+
 

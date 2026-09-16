@@ -12,6 +12,8 @@ import { showToast, openModal, closeModal, confirmAction } from "../components.j
 import { state } from "../state.js";
 import { ROLES } from "../navigation.js";
 import { generateInvoicePdf } from "../utils/invoicePdfGenerator.js";
+import { offlineManager, QUEUE_STATUSES } from "../utils/offlineManager.js";
+
 
 function resolvePosCafeId() {
   const user = state.auth?.user || state.user || {};
@@ -80,10 +82,9 @@ let activeRegisterSession = null;
 let openTicketsList = [];
 let openTicketsFilter = "ALL";
 let openTicketsSearch = "";
-let kdsStationFilter = "ALL";
-let kdsStationsList = [];
-let kdsTicketsList = [];
-let kdsMetrics = null;
+
+// REC-13 Offline Queue State & CTL-08 Sync Control
+let _offlinePendingCount = 0;
 
 // UPI Assistant State
 let upiState = "READY"; // READY | GENERATING | PRESENTED | CONFIRMING | PAID | EXPIRED | FAILED
@@ -105,11 +106,9 @@ export function renderPOS() {
   if (activeMainView === "PAST_ORDERS") {
     return renderPastOrdersView();
   }
-  if (activeMainView === "KDS") {
-    return renderKdsView();
-  }
   return renderTerminalView();
 }
+
 
 function renderTerminalView() {
   const isCafeOps = state.role === ROLES.CAFE_ADMIN;
@@ -250,10 +249,13 @@ function renderTerminalView() {
           <button class="pos-service-mode-btn" id="toggle-density-btn" style="padding:6px 10px;font-size:12px;" title="Toggle Compact Mode" type="button">
             ${isCompactMode ? "🖼️ Visual" : "☷ Compact"}
           </button>
-          <div id="pos-offline-status-container" style="display:inline-flex;align-items:center;">
-            <span id="pos-offline-badge" style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:700;background:rgba(16,185,129,0.12);color:#059669;">
-              🟢 Online
+          <div id="pos-offline-status-container" style="display:inline-flex;align-items:center;gap:6px;">
+            <span id="pos-offline-badge" style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:6px;font-size:11px;font-weight:700;background:${_offlinePendingCount > 0 ? "rgba(245,158,11,0.15)" : (navigator?.onLine ? "rgba(16,185,129,0.12)" : "rgba(239,68,68,0.15)")};color:${_offlinePendingCount > 0 ? "#b45309" : (navigator?.onLine ? "#059669" : "#dc2626")};">
+              ${_offlinePendingCount > 0 ? `⚠️ Offline — ${_offlinePendingCount} waiting to sync` : (navigator?.onLine ? "🟢 Online" : "🔴 Offline")}
             </span>
+            <button class="pos-service-mode-btn" id="pos-sync-queue-btn" style="padding:4px 10px;font-size:11px;font-weight:700;display:${_offlinePendingCount > 0 ? "inline-flex" : "none"};background:var(--bronze-600);color:#ffffff;border:none;border-radius:6px;cursor:pointer;" title="Sync Pending Sales (CTL-08)" type="button">
+              🔄 Sync Pending (${_offlinePendingCount})
+            </button>
           </div>
         </div>
       </div>
@@ -875,9 +877,29 @@ export async function wirePOS(root) {
 
     const sessionRes = await apiGet("/bills/register/session/current");
     if (sessionRes?.data) activeRegisterSession = sessionRes.data;
+
+    // REC-13: Fetch pending offline sales count from IndexedDB
+    const cafeId = resolvePosCafeId();
+    _offlinePendingCount = await offlineManager.getPendingCount(cafeId);
   } catch (e) {
     console.warn("POS background data load notice:", e.message);
   }
+
+  // REC-13: Subscribe to offlineManager events for real-time queue badge & connectivity
+  offlineManager.subscribe(async ({ pendingCount, isOnline }) => {
+    _offlinePendingCount = pendingCount;
+    const badge = root.querySelector("#pos-offline-badge");
+    const syncBtn = root.querySelector("#pos-sync-queue-btn");
+    if (badge) {
+      badge.style.background = _offlinePendingCount > 0 ? "rgba(245,158,11,0.15)" : (isOnline ? "rgba(16,185,129,0.12)" : "rgba(239,68,68,0.15)");
+      badge.style.color = _offlinePendingCount > 0 ? "#b45309" : (isOnline ? "#059669" : "#dc2626");
+      badge.textContent = _offlinePendingCount > 0 ? `⚠️ Offline — ${_offlinePendingCount} waiting to sync` : (isOnline ? "🟢 Online" : "🔴 Offline");
+    }
+    if (syncBtn) {
+      syncBtn.style.display = _offlinePendingCount > 0 ? "inline-flex" : "none";
+      syncBtn.textContent = `🔄 Sync Pending (${_offlinePendingCount})`;
+    }
+  });
 
   wirePOSEventListeners(root);
 }
@@ -892,6 +914,39 @@ function wirePOSEventListeners(root) {
     }
   };
   window.addEventListener("keydown", handleKeydown, { once: true });
+
+  // REC-13 / CTL-08: Sync Pending Offline Sales Button
+  const syncQueueBtn = root.querySelector("#pos-sync-queue-btn");
+  if (syncQueueBtn) {
+    syncQueueBtn.addEventListener("click", async () => {
+      const cafeId = resolvePosCafeId();
+      if (!cafeId) {
+        showToast("Select a café before syncing offline queue.", "danger");
+        return;
+      }
+      syncQueueBtn.disabled = true;
+      syncQueueBtn.textContent = "⏳ Syncing…";
+      showToast("Syncing offline POS queue…", "info");
+      try {
+        const res = await offlineManager.syncNow(apiPost, cafeId);
+        if (res.syncedCount > 0) {
+          showToast(`Synced ${res.syncedCount} offline sale(s) to server. Exactly-once confirmed.`, "mint");
+        } else if (res.conflictCount > 0) {
+          showToast(`${res.conflictCount} sale(s) require conflict review (pricing / café governance).`, "warning");
+        } else if (res.authRequiredCount > 0) {
+          showToast("Authentication required to sync queue. Please sign in.", "error");
+        } else {
+          showToast("No pending offline sales to sync.", "info");
+        }
+      } catch (err) {
+        showToast(err.message || "Failed to sync offline queue.", "error");
+      } finally {
+        _offlinePendingCount = await offlineManager.getPendingCount(cafeId);
+        syncQueueBtn.disabled = false;
+        refreshPOSView(root);
+      }
+    });
+  }
 
   // Subview toggle
   const pastOrdersBtn = root.querySelector("#view-past-orders-btn");
@@ -910,61 +965,6 @@ function wirePOSEventListeners(root) {
     });
   }
 
-  // KDS View Toggle & Actions
-  const kdsBtn = root.querySelector("#kds-view-btn");
-  if (kdsBtn) {
-    kdsBtn.addEventListener("click", async () => {
-      activeMainView = "KDS";
-      try {
-        const [ticketsRes, stationsRes] = await Promise.all([
-          apiGet(`/kds/tickets?prepStation=${kdsStationFilter}`),
-          apiGet('/kds/stations').catch(() => null),
-        ]);
-        if (stationsRes?.data?.stations) kdsStationsList = stationsRes.data.stations;
-        else if (stationsRes?.stations) kdsStationsList = stationsRes.stations;
-        if (ticketsRes?.data?.tickets) kdsTicketsList = ticketsRes.data.tickets;
-        else if (ticketsRes?.tickets) kdsTicketsList = ticketsRes.tickets;
-      } catch (_) {}
-      refreshPOSView(root);
-    });
-  }
-
-  const backToPosFromKds = root.querySelector("#back-to-pos-from-kds-btn");
-  if (backToPosFromKds) {
-    backToPosFromKds.addEventListener("click", () => {
-      activeMainView = "POS";
-      refreshPOSView(root);
-    });
-  }
-
-  const kdsRefreshBtn = root.querySelector("#kds-refresh-btn");
-  if (kdsRefreshBtn) {
-    kdsRefreshBtn.addEventListener("click", async () => {
-      try {
-        const [ticketsRes, stationsRes] = await Promise.all([
-          apiGet(`/kds/tickets?prepStation=${kdsStationFilter}`),
-          apiGet('/kds/stations').catch(() => null),
-        ]);
-        if (stationsRes?.data?.stations) kdsStationsList = stationsRes.data.stations;
-        else if (stationsRes?.stations) kdsStationsList = stationsRes.stations;
-        if (ticketsRes?.data?.tickets) kdsTicketsList = ticketsRes.data.tickets;
-        else if (ticketsRes?.tickets) kdsTicketsList = ticketsRes.tickets;
-      } catch (_) {}
-      refreshPOSView(root);
-    });
-  }
-
-  root.querySelectorAll("[data-kds-station]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      kdsStationFilter = btn.dataset.kdsStation;
-      try {
-        const res = await apiGet(`/kds/tickets?prepStation=${kdsStationFilter}`);
-        if (res?.data?.tickets) kdsTicketsList = res.data.tickets;
-        else if (res?.tickets) kdsTicketsList = res.tickets;
-      } catch (_) {}
-      refreshPOSView(root);
-    });
-  });
 
   root.querySelectorAll("[data-bump-ticket]").forEach((btn) => {
     btn.addEventListener("click", async () => {
@@ -1776,6 +1776,40 @@ async function executeFinalSale(grandTotal, tender, root, paymentRef = "", custo
       isImmediateCompletion: true,
     };
 
+    // REC-13: Upfront offline detection — tender policy enforcement
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      if (tender !== "CASH") {
+        isPaymentInProgress = false;
+        showToast(`Network connection required for ${tender}. Offline capture permitted for CASH only.`, "error");
+        return;
+      }
+
+      // Offline CASH capture into IndexedDB of record (REC-13)
+      try {
+        const queued = await offlineManager.enqueueSale({
+          ...payload,
+          totalPaisa: grandTotal * 100,
+          subtotalPaisa: subtotal * 100,
+          taxPaisa: Math.round(subtotal * 0.05) * 100,
+        });
+
+        showToast("Saved Offline — sale queued in terminal IndexedDB.", "mint");
+        cart = [];
+        discountPaisa = 0;
+        discountReason = "";
+        cashReceivedAmount = 0;
+        isPaymentInProgress = false;
+        _offlinePendingCount = await offlineManager.getPendingCount(cafeId);
+        openOfflineReceiptModal(queued);
+        refreshPOSView(root);
+        return;
+      } catch (storageErr) {
+        isPaymentInProgress = false;
+        showToast("Storage error: offline sale could not be persisted. Quota exceeded or IndexedDB blocked. Sale NOT saved.", "error");
+        return;
+      }
+    }
+
     // Primary: idempotent POS commit endpoint (REC-04)
     // REC-04A: fallback is ONLY permitted for HTTP 404/405 (route not found = rolling deployment).
     // ALL other failures (timeout, 500, 502-504, network loss, unknown) must surface to the user.
@@ -1808,6 +1842,32 @@ async function executeFinalSale(grandTotal, tender, root, paymentRef = "", custo
           if (res) {
             // Already recovered
           } else {
+            // REC-13: Network unreachable during request — queue offline if CASH
+            const isNetworkFailure = !status || status >= 500 || commitErr.name === "TypeError" || String(commitErr.message).includes("fetch");
+            if (isNetworkFailure && tender === "CASH") {
+              try {
+                const queued = await offlineManager.enqueueSale({
+                  ...payload,
+                  totalPaisa: grandTotal * 100,
+                  subtotalPaisa: subtotal * 100,
+                  taxPaisa: Math.round(subtotal * 0.05) * 100,
+                });
+                showToast("Network unreachable. Saved Offline — queued in terminal IndexedDB.", "warning");
+                cart = [];
+                discountPaisa = 0;
+                discountReason = "";
+                cashReceivedAmount = 0;
+                isPaymentInProgress = false;
+                _offlinePendingCount = await offlineManager.getPendingCount(cafeId);
+                openOfflineReceiptModal(queued);
+                refreshPOSView(root);
+                return;
+              } catch (storageErr) {
+                isPaymentInProgress = false;
+                showToast("Storage error: offline sale could not be persisted. Sale NOT saved.", "error");
+                return;
+              }
+            }
             throw statusErr;
           }
         }
@@ -1861,6 +1921,77 @@ async function executeFinalSale(grandTotal, tender, root, paymentRef = "", custo
     refreshPOSView(root);
   }
 }
+
+// REC-13: Canonical Offline Receipt (Pending Synchronization)
+function openOfflineReceiptModal(queued) {
+  const grandTotal = (queued.totalPaisa || 0) / 100;
+  const cafeName = state.user?.primaryCafeName || (state.cafes?.find((c) => c.cafeId === queued.cafeId)?.name) || "Zamorin Outlet";
+
+  openModal({
+    title: `OFFLINE SALE — PENDING SYNCHRONIZATION`,
+    maxWidth: "480px",
+    body: `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <div style="font-size:12px;"><span style="background:#fef3c7;color:#b45309;border:1px solid #fcd34d;padding:2px 8px;border-radius:4px;font-weight:700;font-size:11px;">OFFLINE CAPTURE (PENDING SYNC)</span></div>
+        <div style="font-size:11px;font-family:monospace;color:var(--ink);">Ref: ${queued.localQueueId}</div>
+      </div>
+
+      <div class="pos-thermal-receipt" style="background:#fff;color:#000;padding:16px;border-radius:6px;border:1px solid #e2e8f0;font-family:'Courier New',Courier,monospace;">
+        <div class="receipt-header" style="text-align:center;margin-bottom:12px;">
+          <div class="receipt-title" style="font-size:16px;font-weight:bold;letter-spacing:1px;">ZAMORIN CAFE ESTATE</div>
+          <div class="receipt-subtitle" style="font-size:11px;margin-top:2px;">${cafeName} · TERMINAL OFFLINE MODE</div>
+          <div class="receipt-doc-type" style="font-size:11px;font-weight:bold;margin-top:4px;color:#b45309;">
+            OFFLINE SALE — PENDING SYNCHRONIZATION
+          </div>
+        </div>
+        <div class="receipt-row" style="display:flex;justify-content:space-between;font-size:11px;">
+          <span>QUEUE ID: <strong>${queued.localQueueId}</strong></span>
+          <span>${new Date(queued.capturedAtClient || Date.now()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+        </div>
+        <div class="receipt-row" style="display:flex;justify-content:space-between;font-size:11px;color:#64748b;">
+          <span>CAPTURE DATE: ${(queued.capturedAtClient || new Date().toISOString()).substring(0, 10)}</span>
+          <span>TENDER: CASH</span>
+        </div>
+        <div class="receipt-row" style="display:flex;justify-content:space-between;font-size:11px;color:#64748b;">
+          <span>ATTEMPT ID: ${queued.saleAttemptId}</span>
+        </div>
+        <hr class="receipt-divider" style="border-top:1px dashed #94a3b8;margin:8px 0;" />
+
+        <div style="display:flex;font-size:10px;font-weight:bold;color:#475569;border-bottom:1px solid #cbd5e1;padding-bottom:3px;margin-bottom:4px;">
+          <span style="width:24px;">Sl.</span>
+          <span style="flex:1;">Item</span>
+          <span style="width:30px;text-align:center;">Qty</span>
+          <span style="width:60px;text-align:right;">Amount</span>
+        </div>
+
+        ${queued.lineItems?.map((li, idx) => `
+          <div style="display:flex;font-size:11px;padding:2px 0;">
+            <span style="width:24px;color:#64748b;">${idx + 1}</span>
+            <span style="flex:1;">${escapeHtml(li.itemNameSnapshot || li.name || 'Item')}</span>
+            <span style="width:30px;text-align:center;">${li.quantity}</span>
+            <span style="width:60px;text-align:right;font-weight:600;">₹${((li.unitPricePaisa * li.quantity) / 100).toFixed(0)}</span>
+          </div>
+        `).join("") || ""}
+
+        <hr class="receipt-divider" style="border-top:1px dashed #94a3b8;margin:8px 0;" />
+        <div style="display:flex;justify-content:space-between;font-weight:bold;font-size:13px;margin-top:4px;">
+          <span>TOTAL CASH PAID:</span>
+          <span>₹${grandTotal.toLocaleString("en-IN")}</span>
+        </div>
+
+        <div style="margin-top:12px;padding:8px;background:#fef3c7;border:1px dashed #d97706;border-radius:4px;font-size:10px;text-align:center;color:#92400e;line-height:1.4;">
+          ⚠️ NOTICE: Captured during network outage. Stored durably in terminal IndexedDB. Official statutory GST invoice will be allocated upon server synchronization.
+        </div>
+      </div>
+    `,
+    saveLabel: "Print Offline Receipt",
+    cancelLabel: "Close",
+    onSave: () => {
+      window.print();
+    },
+  });
+}
+
 
 function openReceiptModal(bill, isReprint = false) {
   const subtotal = bill.subtotalPaisa ? bill.subtotalPaisa / 100 : bill.totalPaisa ? bill.totalPaisa / 100 : 0;
