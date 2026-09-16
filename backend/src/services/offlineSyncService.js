@@ -502,21 +502,62 @@ class OfflineSyncService {
   }
 
   /**
-   * REC-13A: Retrieves pending offline review items scoped by organisation and café.
+   * REC-13A / REC-13B: Retrieves pending offline review items scoped by organisation and café.
+   * Enforces Policy A: Only Assigned CAFE_ADMIN and MASTER are permitted.
+   * OWNER and STAFF are strictly barred with 403 AUTHORIZATION_DENIED (Segregation of Duties).
    */
   static async getPendingReviews({ organisationId, cafeId = null, authUser }) {
     const cleanOrg = (organisationId || authUser?.organisationId || 'ORG-ZAMORIN').trim().toUpperCase();
+    const role = (authUser?.role || '').toUpperCase();
+
+    // Policy A / Segregation of Duties: Owner and Staff are barred from POS review operations
+    if (role === 'OWNER') {
+      const err = new Error('Owner does not possess offline POS review authorization (Segregation of Duties).');
+      err.statusCode = 403;
+      err.errorCode = 'AUTHORIZATION_DENIED';
+      err.code = 'AUTHORIZATION_DENIED';
+      throw err;
+    }
+
+    if (role === 'STAFF') {
+      const err = new Error('Staff users are not authorized to view or manage offline queue reviews.');
+      err.statusCode = 403;
+      err.errorCode = 'AUTHORIZATION_DENIED';
+      err.code = 'AUTHORIZATION_DENIED';
+      throw err;
+    }
+
+    if (!['CAFE_ADMIN', 'MASTER'].includes(role)) {
+      const err = new Error(`Role ${role} is not authorized for offline queue review.`);
+      err.statusCode = 403;
+      err.errorCode = 'AUTHORIZATION_DENIED';
+      err.code = 'AUTHORIZATION_DENIED';
+      throw err;
+    }
+
     const query = { organisationId: cleanOrg, status: 'PENDING_REVIEW' };
 
-    const role = (authUser?.role || '').toUpperCase();
-    if (role !== 'MASTER' && role !== 'OWNER') {
-      const assignedCafes = (authUser?.assignedCafeIds || []).map((c) => String(c).trim().toUpperCase());
+    if (role === 'CAFE_ADMIN') {
+      const assignedCafes = [
+        ...(authUser?.assignedCafeIds || []),
+        authUser?.primaryCafeId || authUser?.cafeId,
+      ].filter(Boolean).map((c) => String(c).trim().toUpperCase());
+
+      if (assignedCafes.length === 0) {
+        const err = new Error('Café Admin has no assigned cafés.');
+        err.statusCode = 403;
+        err.errorCode = 'CAFE_ACCESS_DENIED';
+        err.code = 'CAFE_ACCESS_DENIED';
+        throw err;
+      }
+
       if (cafeId) {
         const cleanCafe = String(cafeId).trim().toUpperCase();
         if (!assignedCafes.includes(cleanCafe)) {
           const err = new Error('You do not have access to this café.');
           err.statusCode = 403;
           err.errorCode = 'CAFE_ACCESS_DENIED';
+          err.code = 'CAFE_ACCESS_DENIED';
           throw err;
         }
         query.cafeId = cleanCafe;
@@ -531,12 +572,14 @@ class OfflineSyncService {
   }
 
   /**
-   * REC-13A: Executes authorized review of an offline-captured transaction.
+   * REC-13A / REC-13B: Executes authorized review of an offline-captured transaction.
    * Actions: APPROVE_AND_FINALIZE, REJECT, ESCALATE.
    *
    * Enforces:
-   * - Strict role authorization: Assigned CAFE_ADMIN, MASTER, OWNER (STAFF strictly denied)
+   * - Strict Policy A authorization: Assigned CAFE_ADMIN, MASTER (OWNER and STAFF strictly denied with 403)
    * - Cross-café denial (Foreign Café Admin denied with 403)
+   * - Re-checks reviewer current status and role against database at execution time
+   * - Atomic transition (PENDING_REVIEW -> APPROVING -> APPROVED_FINALIZED) to prevent race conditions
    * - Separation of originating cashier identity vs reviewer identity
    * - Idempotent replay: approving an already finalized review returns existing bill
    */
@@ -565,18 +608,28 @@ class OfflineSyncService {
     const reviewedByUserId = reviewerUserId;
     const cleanOrg = (authContext?.organisationId || 'ORG-ZAMORIN').trim().toUpperCase();
 
-    // 1. Role Governance Check
+    // 1. Initial Role Governance Check (Policy A: Owner and Staff are strictly barred)
+    if (reviewerRole === 'OWNER') {
+      const err = new Error('Owner does not possess offline POS review authorization (Segregation of Duties).');
+      err.statusCode = 403;
+      err.errorCode = 'AUTHORIZATION_DENIED';
+      err.code = 'AUTHORIZATION_DENIED';
+      throw err;
+    }
+
     if (reviewerRole === 'STAFF') {
       const err = new Error('Staff users are not authorized to perform offline queue governance review.');
       err.statusCode = 403;
       err.errorCode = 'AUTHORIZATION_DENIED';
+      err.code = 'AUTHORIZATION_DENIED';
       throw err;
     }
 
-    if (!['CAFE_ADMIN', 'MASTER', 'OWNER'].includes(reviewerRole)) {
+    if (!['CAFE_ADMIN', 'MASTER'].includes(reviewerRole)) {
       const err = new Error(`Role ${reviewerRole} is not authorized for offline queue review.`);
       err.statusCode = 403;
       err.errorCode = 'AUTHORIZATION_DENIED';
+      err.code = 'AUTHORIZATION_DENIED';
       throw err;
     }
 
@@ -590,17 +643,71 @@ class OfflineSyncService {
       const err = new Error(`Offline review item ${reviewId} not found.`);
       err.statusCode = 404;
       err.errorCode = 'NOT_FOUND';
+      err.code = 'NOT_FOUND';
       throw err;
     }
 
-    // 3. Cross-Café Scoping Check
     const itemCafeId = reviewItem.cafeId;
-    if (reviewerRole !== 'MASTER' && reviewerRole !== 'OWNER') {
-      const assignedCafes = (authContext?.assignedCafeIds || []).map((c) => String(c).trim().toUpperCase());
+
+    // 3. Cross-Café Scoping Check & Execution-Time Re-Authorization (Section 7)
+    // Validate caller authority against canonical database records
+    const canonicalReviewer = await User.findOne({
+      userId: reviewerUserId,
+      organisationId: cleanOrg,
+    }).lean();
+
+    if (canonicalReviewer) {
+      const accountStatus = String(canonicalReviewer.accountStatus || canonicalReviewer.status || 'ACTIVE').toUpperCase();
+      if (['DISABLED', 'TERMINATED', 'SUSPENDED', 'DEACTIVATED', 'ARCHIVED', 'LOCKED', 'EXITED'].includes(accountStatus)) {
+        const err = new Error(`Reviewer account ${reviewerUserId} is currently ${accountStatus}. Execution denied.`);
+        err.statusCode = 403;
+        err.errorCode = 'AUTHORIZATION_DENIED';
+        err.code = 'AUTHORIZATION_DENIED';
+        throw err;
+      }
+
+      const activeRole = String(canonicalReviewer.role || '').toUpperCase();
+      if (activeRole === 'OWNER') {
+        const err = new Error('Owner role does not possess offline POS review authorization (Segregation of Duties).');
+        err.statusCode = 403;
+        err.errorCode = 'AUTHORIZATION_DENIED';
+        err.code = 'AUTHORIZATION_DENIED';
+        throw err;
+      }
+
+      if (activeRole === 'STAFF' || !['CAFE_ADMIN', 'MASTER'].includes(activeRole)) {
+        const err = new Error(`Current role ${activeRole} is not authorized for offline review execution.`);
+        err.statusCode = 403;
+        err.errorCode = 'AUTHORIZATION_DENIED';
+        err.code = 'AUTHORIZATION_DENIED';
+        throw err;
+      }
+
+      if (activeRole === 'CAFE_ADMIN') {
+        const liveAssignedCafes = [
+          ...(canonicalReviewer.assignedCafeIds || []),
+          canonicalReviewer.primaryCafeId || canonicalReviewer.cafeId,
+        ].filter(Boolean).map((c) => String(c).trim().toUpperCase());
+
+        if (!liveAssignedCafes.includes(itemCafeId)) {
+          const err = new Error(`Café Admin ${reviewerUserId} is not assigned to café ${itemCafeId}. Authorization revoked.`);
+          err.statusCode = 403;
+          err.errorCode = 'CAFE_ACCESS_DENIED';
+          err.code = 'CAFE_ACCESS_DENIED';
+          throw err;
+        }
+      }
+    } else if (reviewerRole === 'CAFE_ADMIN') {
+      const assignedCafes = [
+        ...(authContext?.assignedCafeIds || []),
+        authContext?.primaryCafeId || authContext?.cafeId,
+      ].filter(Boolean).map((c) => String(c).trim().toUpperCase());
+
       if (!assignedCafes.includes(itemCafeId)) {
         const err = new Error(`Café Admin ${reviewerUserId} is not authorized for café ${itemCafeId}.`);
         err.statusCode = 403;
         err.errorCode = 'CAFE_ACCESS_DENIED';
+        err.code = 'CAFE_ACCESS_DENIED';
         throw err;
       }
     }
@@ -632,21 +739,58 @@ class OfflineSyncService {
       };
     }
 
-    // 5. Execute Action
+    // 6. Review Item State Race & Atomic Transition (Section 8)
+    const nextStatus = normAction === 'APPROVE_AND_FINALIZE' ? 'APPROVING' : (normAction === 'REJECT' ? 'REJECTED' : 'ESCALATED');
+    const lockedItem = await PosOfflineReviewItem.findOneAndUpdate(
+      {
+        _id: reviewItem._id,
+        status: 'PENDING_REVIEW',
+      },
+      {
+        $set: {
+          status: nextStatus,
+          reviewedByUserId,
+          reviewedByRole: reviewerRole,
+          reviewedAt: new Date(),
+          reviewDecision: normAction,
+          reviewNotes: reason || '',
+        },
+      },
+      { returnDocument: 'after' }
+    );
+
+    if (!lockedItem) {
+      // Race: item was already claimed, approving, or finalized concurrently
+      const freshItem = await PosOfflineReviewItem.findById(reviewItem._id).lean();
+      if (freshItem?.status === 'APPROVED_FINALIZED') {
+        return {
+          success: true,
+          isIdempotentReplay: true,
+          reviewStatus: 'APPROVED_FINALIZED',
+          message: 'Offline transaction was already reviewed, approved, and finalized.',
+          reviewId: freshItem.reviewId,
+          billId: freshItem.finalizedBillId,
+          invoiceNumber: freshItem.finalizedInvoiceNumber,
+          originatingUserId: freshItem.originatingUserId,
+          reviewedByUserId: freshItem.reviewedByUserId,
+        };
+      }
+      const err = new Error(`Concurrent review conflict: item is currently in status ${freshItem?.status}.`);
+      err.statusCode = 409;
+      err.errorCode = 'REVIEW_STATE_CONFLICT';
+      err.code = 'REVIEW_STATE_CONFLICT';
+      throw err;
+    }
+
+    // 7. Execute Action
     if (normAction === 'REJECT') {
       if (!reason || !reason.trim()) {
+        // Rollback state lock
+        await PosOfflineReviewItem.findByIdAndUpdate(reviewItem._id, { $set: { status: 'PENDING_REVIEW' } });
         const err = new Error('A rejection reason is mandatory when rejecting an offline transaction.');
         err.statusCode = 400;
         throw err;
       }
-
-      reviewItem.status = 'REJECTED';
-      reviewItem.reviewDecision = 'REJECT';
-      reviewItem.reviewedByUserId = reviewerUserId;
-      reviewItem.reviewedByRole = reviewerRole;
-      reviewItem.reviewNotes = reason.trim();
-      reviewItem.reviewedAt = new Date();
-      await reviewItem.save();
 
       // Audit Rejection
       try {
@@ -682,14 +826,6 @@ class OfflineSyncService {
     }
 
     if (normAction === 'ESCALATE') {
-      reviewItem.status = 'ESCALATED';
-      reviewItem.reviewDecision = 'ESCALATE';
-      reviewItem.reviewedByUserId = reviewerUserId;
-      reviewItem.reviewedByRole = reviewerRole;
-      reviewItem.reviewNotes = reason.trim() || 'Escalated to Master governance.';
-      reviewItem.reviewedAt = new Date();
-      await reviewItem.save();
-
       try {
         await auditService.recordAuditEvent({
           organisationId: cleanOrg,
@@ -715,137 +851,144 @@ class OfflineSyncService {
       };
     }
 
-    // 6. Action: APPROVE_AND_FINALIZE
-    // Run the canonical PosOrderService commit pipeline (REC-04B)
-    const tx = reviewItem.payloadSnapshot || {};
-    const totalPaisa = reviewItem.totalPaisa;
-    const mappedLineItems = (Array.isArray(tx.lineItems) && tx.lineItems.length > 0
-      ? tx.lineItems
-      : [{ menuItemId: 'ITEM-OFFLINE', itemNameSnapshot: 'Offline Sale Item', quantity: 1, unitPricePaisa: totalPaisa }]
-    ).map((item, idx) => {
-      const qty = Math.max(1, Math.floor(Number(item.quantity) || 1));
-      const price = Math.max(0, Math.round(Number(item.unitPricePaisa ?? item.pricePaisa ?? (item.price != null ? item.price * 100 : 0))));
-      return {
-        menuItemId: item.menuItemId || item.itemId || item.id || `ITEM-OFFLINE-${idx + 1}`,
-        itemNameSnapshot: item.itemNameSnapshot || item.name || 'Offline Sale Item',
-        quantity: qty,
-        unitPricePaisa: price,
-        modifiers: item.modifiers || {},
-        itemNotes: item.itemNotes || item.notes || `REVIEWED_BY_${reviewerUserId}`,
-        taxRatePercent: typeof item.taxRatePercent === 'number' ? item.taxRatePercent : 5,
-        taxClassification: item.taxClassification || 'GST_5',
-        discountPaisa: Math.max(0, Math.round(Number(item.discountPaisa || 0))),
-      };
-    });
+    // 8. Action: APPROVE_AND_FINALIZE
+    try {
+      const tx = reviewItem.payloadSnapshot || {};
+      const totalPaisa = reviewItem.totalPaisa;
+      const mappedLineItems = (Array.isArray(tx.lineItems) && tx.lineItems.length > 0
+        ? tx.lineItems
+        : [{ menuItemId: 'ITEM-OFFLINE', itemNameSnapshot: 'Offline Sale Item', quantity: 1, unitPricePaisa: totalPaisa }]
+      ).map((item, idx) => {
+        const qty = Math.max(1, Math.floor(Number(item.quantity) || 1));
+        const price = Math.max(0, Math.round(Number(item.unitPricePaisa ?? item.pricePaisa ?? (item.price != null ? item.price * 100 : 0))));
+        return {
+          menuItemId: item.menuItemId || item.itemId || item.id || `ITEM-OFFLINE-${idx + 1}`,
+          itemNameSnapshot: item.itemNameSnapshot || item.name || 'Offline Sale Item',
+          quantity: qty,
+          unitPricePaisa: price,
+          modifiers: item.modifiers || {},
+          itemNotes: item.itemNotes || item.notes || `REVIEWED_BY_${reviewerUserId}`,
+          taxRatePercent: typeof item.taxRatePercent === 'number' ? item.taxRatePercent : 5,
+          taxClassification: item.taxClassification || 'GST_5',
+          discountPaisa: Math.max(0, Math.round(Number(item.discountPaisa || 0))),
+        };
+      });
 
-    const orderPayload = {
-      action: 'SAVE',
-      cafeId: itemCafeId,
-      orderType: tx.orderType || 'QUICK_SALE',
-      serviceMode: tx.serviceMode || tx.orderType || 'QUICK_SALE',
-      tableNumber: tx.tableNumber || '',
-      tableToken: tx.tableToken || '',
-      guestCovers: Math.max(1, Number(tx.guestCovers) || 1),
-      discountPaisa: Math.max(0, Number(tx.discountPaisa) || 0),
-      paymentMethod: tx.paymentMethod || 'CASH',
-      registerId: tx.registerId || 'REG-01',
-      registerSessionId: tx.registerSessionId || tx.shiftId || '',
-      idempotencyKey: reviewItem.idempotencyKey,
-      saleAttemptId: reviewItem.saleAttemptId,
-      clientOfflineId: reviewItem.clientOfflineId,
-      offlineCreatedAt: reviewItem.capturedAtClient,
-      catalogVersion: reviewItem.catalogVersion,
-      lineItems: mappedLineItems,
-      tenders: tx.tenders || [
-        {
-          paymentMethod: tx.paymentMethod || 'CASH',
-          amountPaisa: totalPaisa,
-          provider: 'CASH_REGISTER',
-          paymentReference: tx.paymentReference || `CASH-${reviewItem.clientOfflineId}`,
-        },
-      ],
-      isImmediateCompletion: true,
-      isOfflineReplay: true,
-      reviewedByUserId,
-      reviewedByRole,
-      reviewReason: reason || 'Authorized review approval',
-      reviewId: reviewItem.reviewId,
-    };
-
-    // Keep original cashier as the originating identity
-    const commitAuthContext = {
-      organisationId: cleanOrg,
-      cafeId: itemCafeId,
-      userId: reviewItem.originatingUserId,
-      role: 'STAFF',
-    };
-
-    const commitResult = await PosOrderService.processOrder(
-      orderPayload,
-      commitAuthContext,
-      'SAVE',
-      {
-        isOfflineReplay: true,
+      const orderPayload = {
+        action: 'SAVE',
+        cafeId: itemCafeId,
+        orderType: tx.orderType || 'QUICK_SALE',
+        serviceMode: tx.serviceMode || tx.orderType || 'QUICK_SALE',
+        tableNumber: tx.tableNumber || '',
+        tableToken: tx.tableToken || '',
+        guestCovers: Math.max(1, Number(tx.guestCovers) || 1),
+        discountPaisa: Math.max(0, Number(tx.discountPaisa) || 0),
+        paymentMethod: tx.paymentMethod || 'CASH',
+        registerId: tx.registerId || 'REG-01',
+        registerSessionId: tx.registerSessionId || tx.shiftId || '',
+        idempotencyKey: reviewItem.idempotencyKey,
+        saleAttemptId: reviewItem.saleAttemptId,
         clientOfflineId: reviewItem.clientOfflineId,
+        offlineCreatedAt: reviewItem.capturedAtClient,
+        catalogVersion: reviewItem.catalogVersion,
+        lineItems: mappedLineItems,
+        tenders: tx.tenders || [
+          {
+            paymentMethod: tx.paymentMethod || 'CASH',
+            amountPaisa: totalPaisa,
+            provider: 'CASH_REGISTER',
+            paymentReference: tx.paymentReference || `CASH-${reviewItem.clientOfflineId}`,
+          },
+        ],
+        isImmediateCompletion: true,
+        isOfflineReplay: true,
         reviewedByUserId,
         reviewedByRole,
-        reviewReason: reason,
+        reviewReason: reason || 'Authorized review approval',
         reviewId: reviewItem.reviewId,
-      }
-    );
+      };
 
-    const finalizedBill = commitResult.bill || commitResult.data;
-    const billId = finalizedBill?.billId || commitResult.billId;
-    const invoiceNumber = finalizedBill?.invoiceNumber || commitResult.invoiceNumber;
-
-    reviewItem.status = 'APPROVED_FINALIZED';
-    reviewItem.reviewDecision = 'APPROVE_AND_FINALIZE';
-    reviewItem.reviewedByUserId = reviewerUserId;
-    reviewItem.reviewedByRole = reviewerRole;
-    reviewItem.reviewNotes = reason.trim() || 'Approved by authorized reviewer';
-    reviewItem.reviewedAt = new Date();
-    reviewItem.finalizedBillId = billId;
-    reviewItem.finalizedInvoiceNumber = invoiceNumber;
-    await reviewItem.save();
-
-    // Audit Approval
-    try {
-      await auditService.recordAuditEvent({
+      // Keep original cashier as the originating identity
+      const commitAuthContext = {
         organisationId: cleanOrg,
         cafeId: itemCafeId,
-        actorUserId: reviewerUserId,
-        actorRole: reviewerRole,
-        module: 'POS_OFFLINE_SYNC',
-        action: 'OFFLINE_POS_REVIEW_APPROVED',
-        entityType: 'POS_OFFLINE_REVIEW_ITEM',
-        entityId: reviewItem.reviewId,
-        reason: reason.trim() || 'Approved by authorized reviewer',
-        result: 'SUCCESS',
-        riskClassification: 'HIGH',
-        correlationId: reviewItem.idempotencyKey,
-        metadata: {
-          saleAttemptId: reviewItem.saleAttemptId,
-          originatingUserId: reviewItem.originatingUserId,
-          reviewerUserId,
-          billId,
-          invoiceNumber,
-          totalPaisa,
-        },
-      });
-    } catch (_) {}
+        userId: reviewItem.originatingUserId,
+        role: 'STAFF',
+      };
 
-    return {
-      success: true,
-      reviewStatus: 'APPROVED_FINALIZED',
-      message: 'Offline transaction approved and finalized under authorized review.',
-      reviewId: reviewItem.reviewId,
-      billId,
-      invoiceNumber,
-      originatingUserId: reviewItem.originatingUserId,
-      reviewedByUserId,
-      reviewedByRole,
-      bomDepletionStatus: finalizedBill?.bomDepletionStatus || 'DEPLETED',
-    };
+      const commitResult = await PosOrderService.processOrder(
+        orderPayload,
+        commitAuthContext,
+        'SAVE',
+        {
+          isOfflineReplay: true,
+          clientOfflineId: reviewItem.clientOfflineId,
+          reviewedByUserId,
+          reviewedByRole,
+          reviewReason: reason,
+          reviewId: reviewItem.reviewId,
+        }
+      );
+
+      const finalizedBill = commitResult.bill || commitResult.data;
+      const billId = finalizedBill?.billId || commitResult.billId;
+      const invoiceNumber = finalizedBill?.invoiceNumber || commitResult.invoiceNumber;
+
+      lockedItem.status = 'APPROVED_FINALIZED';
+      lockedItem.reviewDecision = 'APPROVE_AND_FINALIZE';
+      lockedItem.reviewedByUserId = reviewerUserId;
+      lockedItem.reviewedByRole = reviewerRole;
+      lockedItem.reviewNotes = reason.trim() || 'Approved by authorized reviewer';
+      lockedItem.reviewedAt = new Date();
+      lockedItem.finalizedBillId = billId;
+      lockedItem.finalizedInvoiceNumber = invoiceNumber;
+      await lockedItem.save();
+
+      // Audit Approval
+      try {
+        await auditService.recordAuditEvent({
+          organisationId: cleanOrg,
+          cafeId: itemCafeId,
+          actorUserId: reviewerUserId,
+          actorRole: reviewerRole,
+          module: 'POS_OFFLINE_SYNC',
+          action: 'OFFLINE_POS_REVIEW_APPROVED',
+          entityType: 'POS_OFFLINE_REVIEW_ITEM',
+          entityId: reviewItem.reviewId,
+          reason: reason.trim() || 'Approved by authorized reviewer',
+          result: 'SUCCESS',
+          riskClassification: 'HIGH',
+          correlationId: reviewItem.idempotencyKey,
+          metadata: {
+            saleAttemptId: reviewItem.saleAttemptId,
+            originatingUserId: reviewItem.originatingUserId,
+            reviewerUserId,
+            billId,
+            invoiceNumber,
+            totalPaisa: reviewItem.totalPaisa,
+          },
+        });
+      } catch (_) {}
+
+      return {
+        success: true,
+        reviewStatus: 'APPROVED_FINALIZED',
+        message: 'Offline transaction approved and finalized into official bill.',
+        reviewId: reviewItem.reviewId,
+        billId,
+        invoiceNumber,
+        originatingUserId: reviewItem.originatingUserId,
+        reviewedByUserId,
+        finalizedAt: lockedItem.reviewedAt,
+        bomDepletionStatus: finalizedBill?.bomDepletionStatus || 'DEPLETED',
+      };
+    } catch (commitErr) {
+      // Revert lock if commit failed before bill creation
+      await PosOfflineReviewItem.findByIdAndUpdate(reviewItem._id, {
+        $set: { status: 'PENDING_REVIEW' }
+      });
+      throw commitErr;
+    }
   }
 }
 

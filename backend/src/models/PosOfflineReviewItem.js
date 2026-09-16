@@ -19,6 +19,7 @@ const mongoose = require('mongoose');
 
 const OFFLINE_REVIEW_STATUSES = [
   'PENDING_REVIEW',
+  'APPROVING',
   'APPROVED_FINALIZED',
   'REJECTED',
   'ESCALATED',

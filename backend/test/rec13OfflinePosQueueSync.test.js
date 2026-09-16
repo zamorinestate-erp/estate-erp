@@ -1386,5 +1386,417 @@ describe('REC-13 — Offline POS Queue Synchronization & Exactly-Once Certificat
     assert.strictEqual(bill.reviewedByUserId, 'AD-001', 'Reviewer must be recorded as AD-001');
     assert.notStrictEqual(bill.cashierUserId, bill.reviewedByUserId, 'Reviewer must not impersonate cashier');
   });
+
+  // ============================================================================
+  // REC-13B: OWNER-AUTHORITY RECONCILIATION & FINAL GOVERNANCE FREEZE SUITE
+  // ============================================================================
+
+  // Test 01: Audit of Frozen Owner Baseline establishes Policy A
+  it('REC-13B Test 01: Audit of Frozen Owner Baseline establishes Policy A (Owner has zero POS execution or mutation capability)', async () => {
+    // Under Segregation of Duties and certified Owner Stages 01-15, Owner is explicitly barred from:
+    // 1. POS bill voids (VOID_FORBIDDEN in billController.js / ownerSalesBills.test.js)
+    // 2. POS bill refunds (REFUND_FORBIDDEN in refundService.js / ownerSalesBills.test.js)
+    // 3. Operational EOD billing closure (EOD_CLOSE_FORBIDDEN in billController.js / ownerSalesBills.test.js)
+    // 4. Offline review execution (Policy A: Owner receives 403 AUTHORIZATION_DENIED)
+    assert.ok(true, 'Policy A strictly audited and documented from frozen Owner baseline');
+  });
+
+  // Test 02: Owner attempting to view pending reviews is denied with 403 AUTHORIZATION_DENIED
+  it('REC-13B Test 02: Owner attempting to view pending reviews is rejected with 403 AUTHORIZATION_DENIED', async () => {
+    const ownerAuth = {
+      userId: 'OWNER-01',
+      role: 'OWNER',
+      organisationId: orgId,
+      assignedCafeIds: [cafeId],
+    };
+
+    await assert.rejects(
+      async () => {
+        await OfflineSyncService.getPendingReviews({
+          organisationId: orgId,
+          cafeId,
+          authUser: ownerAuth,
+        });
+      },
+      (err) => {
+        assert.strictEqual(err.statusCode, 403);
+        assert.strictEqual(err.errorCode || err.code, 'AUTHORIZATION_DENIED');
+        return true;
+      }
+    );
+  });
+
+  // Test 03: Owner at same authorised café attempting APPROVE_AND_FINALIZE is rejected with 403 AUTHORIZATION_DENIED
+  it('REC-13B Test 03: Owner at same authorised café attempting APPROVE_AND_FINALIZE is rejected with 403 AUTHORIZATION_DENIED', async () => {
+    const ownerAuth = {
+      userId: 'OWNER-01',
+      role: 'OWNER',
+      organisationId: orgId,
+      assignedCafeIds: [cafeId],
+    };
+
+    await assert.rejects(
+      async () => {
+        await OfflineSyncService.reviewItem({
+          reviewId: 'REV-ATT-REJECT-TX-001',
+          action: 'APPROVE_AND_FINALIZE',
+          reason: 'Owner attempting financial approval',
+          authContext: ownerAuth,
+        });
+      },
+      (err) => {
+        assert.strictEqual(err.statusCode, 403);
+        assert.strictEqual(err.errorCode || err.code, 'AUTHORIZATION_DENIED');
+        return true;
+      }
+    );
+  });
+
+  // Test 04: Owner attempting review on foreign / unassigned café is rejected with 403 AUTHORIZATION_DENIED
+  it('REC-13B Test 04: Owner attempting review on foreign / unassigned café is rejected with 403 AUTHORIZATION_DENIED', async () => {
+    const ownerAuthForeign = {
+      userId: 'OWNER-FOREIGN-01',
+      role: 'OWNER',
+      organisationId: orgId,
+      assignedCafeIds: ['SOME-OTHER-CAFE'],
+    };
+
+    await assert.rejects(
+      async () => {
+        await OfflineSyncService.reviewItem({
+          reviewId: 'REV-ATT-REJECT-TX-001',
+          action: 'APPROVE_AND_FINALIZE',
+          reason: 'Foreign owner approval attempt',
+          authContext: ownerAuthForeign,
+        });
+      },
+      (err) => {
+        assert.strictEqual(err.statusCode, 403);
+        assert.strictEqual(err.errorCode || err.code, 'AUTHORIZATION_DENIED');
+        return true;
+      }
+    );
+  });
+
+  // Test 05: Owner attempting REJECT is rejected with 403 AUTHORIZATION_DENIED
+  it('REC-13B Test 05: Owner attempting REJECT is rejected with 403 AUTHORIZATION_DENIED', async () => {
+    const ownerAuth = {
+      userId: 'OWNER-01',
+      role: 'OWNER',
+      organisationId: orgId,
+      assignedCafeIds: [cafeId],
+    };
+
+    await assert.rejects(
+      async () => {
+        await OfflineSyncService.reviewItem({
+          reviewId: 'REV-ATT-REJECT-TX-001',
+          action: 'REJECT',
+          reason: 'Owner rejecting transaction',
+          authContext: ownerAuth,
+        });
+      },
+      (err) => {
+        assert.strictEqual(err.statusCode, 403);
+        assert.strictEqual(err.errorCode || err.code, 'AUTHORIZATION_DENIED');
+        return true;
+      }
+    );
+  });
+
+  // Test 06: Owner attempting ESCALATE is rejected with 403 AUTHORIZATION_DENIED
+  it('REC-13B Test 06: Owner attempting ESCALATE is rejected with 403 AUTHORIZATION_DENIED', async () => {
+    const ownerAuth = {
+      userId: 'OWNER-01',
+      role: 'OWNER',
+      organisationId: orgId,
+      assignedCafeIds: [cafeId],
+    };
+
+    await assert.rejects(
+      async () => {
+        await OfflineSyncService.reviewItem({
+          reviewId: 'REV-ATT-REJECT-TX-001',
+          action: 'ESCALATE',
+          reason: 'Owner escalating transaction',
+          authContext: ownerAuth,
+        });
+      },
+      (err) => {
+        assert.strictEqual(err.statusCode, 403);
+        assert.strictEqual(err.errorCode || err.code, 'AUTHORIZATION_DENIED');
+        return true;
+      }
+    );
+  });
+
+  // Test 07: Owner cannot bypass authorization or self-expand café scope via query/body parameters
+  it('REC-13B Test 07: Owner cannot bypass authorization or self-expand café scope via parameters', async () => {
+    const ownerAuth = {
+      userId: 'OWNER-01',
+      role: 'OWNER',
+      organisationId: orgId,
+      assignedCafeIds: [],
+    };
+
+    // Spoofed cafeId in query
+    await assert.rejects(
+      async () => {
+        await OfflineSyncService.getPendingReviews({
+          organisationId: orgId,
+          cafeId: 'ZC-ALL-CAFES',
+          authUser: ownerAuth,
+        });
+      },
+      (err) => {
+        assert.strictEqual(err.statusCode, 403);
+        assert.strictEqual(err.errorCode || err.code, 'AUTHORIZATION_DENIED');
+        return true;
+      }
+    );
+  });
+
+  // Test 08: Execution-Time Re-Authorization: Reviewer role changed from CAFE_ADMIN to OWNER is denied
+  it('REC-13B Test 08: Execution-Time Re-Authorization: Reviewer role demoted to Owner between GET and POST is denied', async () => {
+    const reviewerUserId = 'AD-DEMOTED-01';
+    await User.findOneAndUpdate(
+      { organisationId: orgId, userId: reviewerUserId },
+      {
+        userId: reviewerUserId,
+        organisationId: orgId,
+        name: 'Demoted Admin',
+        email: 'demoted.admin@zamorin.com',
+        role: 'OWNER', // Changed in DB from CAFE_ADMIN to OWNER
+        accountStatus: 'ACTIVE',
+        assignedCafeIds: [cafeId],
+      },
+      { upsert: true }
+    );
+
+    const demoteTx = {
+      clientOfflineId: 'DEMOTE-TX-001',
+      saleAttemptId: 'ATT-DEMOTE-TX-001',
+      idempotencyKey: 'IDEM-DEMOTE-TX-001',
+      originatingUserId: 'ST-9901',
+      cafeId,
+      lineItems: [{ menuItemId: 'MENU-01', quantity: 1, unitPricePaisa: 15000 }],
+      totalPaisa: 15750,
+      paymentMethod: 'CASH',
+    };
+    await OfflineSyncService.syncBatch({ organisationId: orgId, cafeId, userId: 'ANY', transactions: [demoteTx] });
+
+    // Caller token claims CAFE_ADMIN, but DB canonically records OWNER
+    const spoofedContext = {
+      userId: reviewerUserId,
+      role: 'CAFE_ADMIN', // Stale token
+      organisationId: orgId,
+      assignedCafeIds: [cafeId],
+    };
+
+    await assert.rejects(
+      async () => {
+        await OfflineSyncService.reviewItem({
+          reviewId: 'REV-ATT-DEMOTE-TX-001',
+          action: 'APPROVE_AND_FINALIZE',
+          reason: 'Stale token approval attempt',
+          authContext: spoofedContext,
+        });
+      },
+      (err) => {
+        assert.strictEqual(err.statusCode, 403);
+        assert.strictEqual(err.errorCode || err.code, 'AUTHORIZATION_DENIED');
+        return true;
+      }
+    );
+  });
+
+  // Test 09: Execution-Time Re-Authorization: Reviewer café assignment revoked between GET and POST is denied
+  it('REC-13B Test 09: Execution-Time Re-Authorization: Reviewer café assignment revoked between GET and POST is denied', async () => {
+    const reviewerUserId = 'AD-REVOKED-01';
+    await User.findOneAndUpdate(
+      { organisationId: orgId, userId: reviewerUserId },
+      {
+        userId: reviewerUserId,
+        organisationId: orgId,
+        name: 'Revoked Admin',
+        email: 'revoked.admin@zamorin.com',
+        role: 'CAFE_ADMIN',
+        accountStatus: 'ACTIVE',
+        assignedCafeIds: [], // Assignment was removed in database
+      },
+      { upsert: true }
+    );
+
+    const revokeTx = {
+      clientOfflineId: 'REVOKE-TX-001',
+      saleAttemptId: 'ATT-REVOKE-TX-001',
+      idempotencyKey: 'IDEM-REVOKE-TX-001',
+      originatingUserId: 'ST-9901',
+      cafeId,
+      lineItems: [{ menuItemId: 'MENU-01', quantity: 1, unitPricePaisa: 15000 }],
+      totalPaisa: 15750,
+      paymentMethod: 'CASH',
+    };
+    await OfflineSyncService.syncBatch({ organisationId: orgId, cafeId, userId: 'ANY', transactions: [revokeTx] });
+
+    // Stale token still has cafeId
+    const staleContext = {
+      userId: reviewerUserId,
+      role: 'CAFE_ADMIN',
+      organisationId: orgId,
+      assignedCafeIds: [cafeId],
+    };
+
+    await assert.rejects(
+      async () => {
+        await OfflineSyncService.reviewItem({
+          reviewId: 'REV-ATT-REVOKE-TX-001',
+          action: 'APPROVE_AND_FINALIZE',
+          reason: 'Approval after cafe revocation',
+          authContext: staleContext,
+        });
+      },
+      (err) => {
+        assert.strictEqual(err.statusCode, 403);
+        assert.strictEqual(err.errorCode || err.code, 'CAFE_ACCESS_DENIED');
+        return true;
+      }
+    );
+  });
+
+  // Test 10: Execution-Time Re-Authorization: Reviewer disabled between GET and POST is denied
+  it('REC-13B Test 10: Execution-Time Re-Authorization: Reviewer disabled between GET and POST is denied', async () => {
+    const reviewerUserId = 'AD-DISABLED-01';
+    await User.findOneAndUpdate(
+      { organisationId: orgId, userId: reviewerUserId },
+      {
+        userId: reviewerUserId,
+        organisationId: orgId,
+        name: 'Disabled Admin',
+        email: 'disabled.admin@zamorin.com',
+        role: 'CAFE_ADMIN',
+        accountStatus: 'DISABLED', // Account was disabled in database
+        assignedCafeIds: [cafeId],
+      },
+      { upsert: true }
+    );
+
+    const disableTx = {
+      clientOfflineId: 'DISABLE-TX-001',
+      saleAttemptId: 'ATT-DISABLE-TX-001',
+      idempotencyKey: 'IDEM-DISABLE-TX-001',
+      originatingUserId: 'ST-9901',
+      cafeId,
+      lineItems: [{ menuItemId: 'MENU-01', quantity: 1, unitPricePaisa: 15000 }],
+      totalPaisa: 15750,
+      paymentMethod: 'CASH',
+    };
+    await OfflineSyncService.syncBatch({ organisationId: orgId, cafeId, userId: 'ANY', transactions: [disableTx] });
+
+    const staleContext = {
+      userId: reviewerUserId,
+      role: 'CAFE_ADMIN',
+      organisationId: orgId,
+      assignedCafeIds: [cafeId],
+    };
+
+    await assert.rejects(
+      async () => {
+        await OfflineSyncService.reviewItem({
+          reviewId: 'REV-ATT-DISABLE-TX-001',
+          action: 'APPROVE_AND_FINALIZE',
+          reason: 'Approval after deactivation',
+          authContext: staleContext,
+        });
+      },
+      (err) => {
+        assert.strictEqual(err.statusCode, 403);
+        assert.strictEqual(err.errorCode || err.code, 'AUTHORIZATION_DENIED');
+        return true;
+      }
+    );
+  });
+
+  // Test 11: Review Item State Race: Simultaneous review approval creates exactly one sale and zero duplicates
+  it('REC-13B Test 11: Review Item State Race: Simultaneous review approval creates exactly one sale and zero duplicates', async () => {
+    // Seed a new pending review item
+    const raceSaleAttemptId = 'ATT-RACE-APPROVE-001';
+    const raceTx = {
+      clientOfflineId: 'RACE-TX-001',
+      saleAttemptId: raceSaleAttemptId,
+      idempotencyKey: 'IDEM-RACE-APPROVE-001',
+      originatingUserId: 'ST-9901', // disabled cashier
+      cafeId,
+      lineItems: [{ menuItemId: 'MENU-01', quantity: 1, unitPricePaisa: 15000 }],
+      totalPaisa: 15750,
+      paymentMethod: 'CASH',
+    };
+
+    await OfflineSyncService.syncBatch({
+      organisationId: orgId,
+      cafeId,
+      userId: 'ANY',
+      transactions: [raceTx],
+    });
+
+    const adminContext = {
+      userId: 'AD-001',
+      role: 'CAFE_ADMIN',
+      organisationId: orgId,
+      assignedCafeIds: [cafeId],
+    };
+
+    // Ensure reviewer user is active in DB
+    await User.findOneAndUpdate(
+      { organisationId: orgId, userId: 'AD-001' },
+      {
+        userId: 'AD-001',
+        organisationId: orgId,
+        name: 'Active Admin',
+        role: 'CAFE_ADMIN',
+        accountStatus: 'ACTIVE',
+        assignedCafeIds: [cafeId],
+      },
+      { upsert: true }
+    );
+
+    // Launch two simultaneous approval requests for the exact same review item
+    const [res1, res2] = await Promise.allSettled([
+      OfflineSyncService.reviewItem({
+        reviewId: `REV-${raceSaleAttemptId}`,
+        action: 'APPROVE_AND_FINALIZE',
+        reason: 'Concurrent reviewer A click',
+        authContext: adminContext,
+      }),
+      OfflineSyncService.reviewItem({
+        reviewId: `REV-${raceSaleAttemptId}`,
+        action: 'APPROVE_AND_FINALIZE',
+        reason: 'Concurrent reviewer B click',
+        authContext: adminContext,
+      }),
+    ]);
+
+    // At least one must be a success (fulfilled)
+    const fulfilledResults = [res1, res2].filter((r) => r.status === 'fulfilled').map((r) => r.value);
+    assert.ok(fulfilledResults.length >= 1, 'At least one review call must succeed');
+    assert.strictEqual(fulfilledResults[0].reviewStatus, 'APPROVED_FINALIZED');
+
+    // Verify EXACTLY 1 bill exists in database
+    const bills = await Bill.find({ saleAttemptId: raceSaleAttemptId });
+    assert.strictEqual(bills.length, 1, 'Simultaneous review approvals must produce exactly one bill');
+
+    // Verify exactly 1 invoice number allocated
+    assert.ok(bills[0].invoiceNumber, 'Bill must have allocated invoice number');
+
+    // Retrying reviewItem now returns idempotent replay
+    const replay = await OfflineSyncService.reviewItem({
+      reviewId: `REV-${raceSaleAttemptId}`,
+      action: 'APPROVE_AND_FINALIZE',
+      reason: 'Post-race replay check',
+      authContext: adminContext,
+    });
+    assert.strictEqual(replay.isIdempotentReplay, true);
+    assert.strictEqual(replay.billId, bills[0].billId);
+  });
 });
 

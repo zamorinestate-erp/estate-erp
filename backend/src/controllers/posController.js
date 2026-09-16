@@ -304,9 +304,34 @@ const syncOfflineOrders = asyncHandler(async (request, response) => {
 
 /**
  * GET /api/v1/pos/offline-reviews/pending
- * REC-13A: Lists pending offline review items scoped by cafe and authorization.
+ * REC-13A / REC-13B: Lists pending offline review items scoped by cafe and authorization.
+ * Role-enforced: Only Assigned CAFE_ADMIN and MASTER are permitted.
+ * OWNER and STAFF are strictly barred (Segregation of Duties).
  */
 const getPendingOfflineReviews = asyncHandler(async (request, response) => {
+  const role = (request.auth?.role || '').toUpperCase();
+  if (role === 'OWNER') {
+    throw new ApiError(
+      403,
+      'AUTHORIZATION_DENIED',
+      'Owner does not possess offline POS review authorization (Segregation of Duties).'
+    );
+  }
+  if (role === 'STAFF') {
+    throw new ApiError(
+      403,
+      'AUTHORIZATION_DENIED',
+      'Staff users are not authorized to view or manage offline queue reviews.'
+    );
+  }
+  if (!['CAFE_ADMIN', 'MASTER'].includes(role)) {
+    throw new ApiError(
+      403,
+      'AUTHORIZATION_DENIED',
+      `Role ${role} is not authorized for offline queue review.`
+    );
+  }
+
   const { organisationId } = request.auth;
   const cafeId = normalizeId(request.query?.cafeId || request.params?.cafeId || '');
 
@@ -326,9 +351,34 @@ const getPendingOfflineReviews = asyncHandler(async (request, response) => {
 
 /**
  * POST /api/v1/pos/offline-reviews/:reviewId/review
- * REC-13A: Executes authorized review decision (APPROVE_AND_FINALIZE, REJECT, ESCALATE).
+ * REC-13A / REC-13B: Executes authorized review decision (APPROVE_AND_FINALIZE, REJECT, ESCALATE).
+ * Role-enforced: Only Assigned CAFE_ADMIN and MASTER are permitted.
+ * OWNER and STAFF are strictly barred (Segregation of Duties).
  */
 const reviewOfflineOrder = asyncHandler(async (request, response) => {
+  const role = (request.auth?.role || '').toUpperCase();
+  if (role === 'OWNER') {
+    throw new ApiError(
+      403,
+      'AUTHORIZATION_DENIED',
+      'Owner does not possess offline POS review authorization (Segregation of Duties).'
+    );
+  }
+  if (role === 'STAFF') {
+    throw new ApiError(
+      403,
+      'AUTHORIZATION_DENIED',
+      'Staff users are not authorized to perform offline queue governance review.'
+    );
+  }
+  if (!['CAFE_ADMIN', 'MASTER'].includes(role)) {
+    throw new ApiError(
+      403,
+      'AUTHORIZATION_DENIED',
+      `Role ${role} is not authorized for offline queue review.`
+    );
+  }
+
   const { reviewId } = request.params;
   const { action, reason } = request.body || {};
 
