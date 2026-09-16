@@ -614,7 +614,15 @@ function renderFilteredOrders(root) {
             <td><strong>${o.vendorName || o.vendorId}</strong></td>
             <td style="color:var(--muted);">${o.cafeId || '—'}</td>
             <td style="color:var(--muted);">${o.orderDate ? o.orderDate.split('T')[0] : '—'}</td>
-            <td>${renderStatusPill(o.status)}</td>
+            <td>
+              ${renderStatusPill(o.status)}
+              <div style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap;">
+                ${o.invoices && o.invoices.length > 0 ? `<span class="badge" style="font-size:9px;background:rgba(16,185,129,0.12);color:#10b981;">📄 ${o.invoices.length} Inv</span>` : ''}
+                ${o.deliveryChallanIds && o.deliveryChallanIds.length > 0 ? `<span class="badge" style="font-size:9px;background:rgba(59,130,246,0.12);color:#3b82f6;">📦 Challan</span>` : ''}
+                ${o.threeWayMatch?.matchStatus === 'MATCHED' ? `<span class="badge" style="font-size:9px;background:rgba(16,185,129,0.12);color:#10b981;">✓ Matched</span>` : ''}
+                ${o.threeWayMatch?.matchStatus && ['QUANTITY_VARIANCE', 'PRICE_VARIANCE', 'TAX_VARIANCE'].includes(o.threeWayMatch.matchStatus) ? `<span class="badge" style="font-size:9px;background:rgba(239,68,68,0.12);color:#ef4444;">⚠️ Variance</span>` : ''}
+              </div>
+            </td>
             <td style="text-align:right;font-weight:700;">${formatPaise(o.totalAmountPaisa)}</td>
             <td style="text-align:center;">
               <div style="display:flex;gap:4px;justify-content:center;">
@@ -1392,49 +1400,83 @@ function openReceiveGrnModal(root, po) {
 }
 
 function openPo360Modal(root, po) {
+  const userRole = state?.user?.role || 'STAFF';
+  const assignedCafes = state?.user?.assignedCafeIds || [];
+  const canAttach = userRole === 'MASTER' || (userRole === 'CAFE_ADMIN' && assignedCafes.includes(po.cafeId));
+  const isStaff = userRole === 'STAFF';
+
   const modalHtml = `
-    <div style="display:flex;flex-direction:column;gap:14px;width:100%;max-width:620px;">
-      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:8px;">
+    <div style="display:flex;flex-direction:column;gap:14px;width:100%;max-width:760px;" class="po-360-modal-container">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:10px;">
         <div>
-          <h2 style="font-size:16px;font-weight:800;color:var(--ink);margin:0;">PO 360° Inspector: ${po.purchaseOrderId}</h2>
-          <span style="font-size:11px;color:var(--muted);">Supplier: ${po.vendorName || po.vendorId}</span>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <h2 style="font-size:17px;font-weight:800;color:var(--ink);margin:0;">PO 360° Inspector: ${po.purchaseOrderId}</h2>
+            ${renderStatusPill(po.status)}
+          </div>
+          <span style="font-size:12px;color:var(--muted);margin-top:2px;display:block;">Supplier: <strong>${po.vendorName || po.vendorId}</strong> · Café: <strong>${po.cafeId}</strong></span>
         </div>
-        ${renderStatusPill(po.status)}
+        <div style="text-align:right;">
+          <span style="font-size:11px;color:var(--muted);display:block;">Order Value</span>
+          <strong style="font-size:16px;color:var(--accent);">${formatPaise(po.totalAmountPaisa)}</strong>
+        </div>
       </div>
 
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;font-size:12px;">
-        <div><span style="color:var(--muted);display:block;">Café</span><strong>${po.cafeId}</strong></div>
-        <div><span style="color:var(--muted);display:block;">Order Date</span><strong>${po.orderDate ? po.orderDate.split('T')[0] : '—'}</strong></div>
-        <div><span style="color:var(--muted);display:block;">Order Value</span><strong style="color:var(--accent);">${formatPaise(po.totalAmountPaisa)}</strong></div>
+      <!-- Navigation Tabs -->
+      <div style="display:flex;gap:8px;border-bottom:1px solid var(--line);padding-bottom:6px;">
+        <button class="btn btn-sm btn-ghost active" id="tab-po-items" style="font-size:12px;font-weight:700;" type="button">📋 Line Items</button>
+        <button class="btn btn-sm btn-ghost" id="tab-po-documents" style="font-size:12px;font-weight:700;" type="button">📎 Documents &amp; Evidence <span class="badge" id="po-doc-count-badge" style="font-size:9px;margin-left:4px;">0</span></button>
+        <button class="btn btn-sm btn-ghost" id="tab-po-matching" style="font-size:12px;font-weight:700;" type="button">⚖️ 3-Way Reconciliation</button>
       </div>
 
-      <div style="margin-top:8px;">
-        <h4 style="font-size:12px;font-weight:700;color:var(--ink);margin:0 0 6px 0;">Line Items</h4>
-        <table class="glass-table" style="width:100%;font-size:11px;">
-          <thead>
-            <tr>
-              <th>Item / SKU</th>
-              <th style="text-align:right;">Ordered</th>
-              <th style="text-align:right;">Received</th>
-              <th style="text-align:right;">Unit Price</th>
-              <th style="text-align:right;">Line Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${(po.lineItems || []).map((l) => `
+      <!-- TAB 1: Line Items -->
+      <div id="po-tab-content-items" style="display:block;">
+        <div style="max-height:260px;overflow-y:auto;border:1px solid var(--line);border-radius:6px;">
+          <table class="glass-table" style="width:100%;font-size:11px;">
+            <thead>
               <tr>
-                <td><strong>${l.itemNameSnapshot || l.itemId}</strong></td>
-                <td style="text-align:right;">${l.orderedQuantityBase} ${l.baseUnit || ''}</td>
-                <td style="text-align:right;color:var(--mint, #10b981);">${l.receivedQuantityBase || 0}</td>
-                <td style="text-align:right;">${formatPaise(l.unitPricePaisa)}</td>
-                <td style="text-align:right;font-weight:700;">${formatPaise(l.totalLinePaisa)}</td>
+                <th>Item / SKU</th>
+                <th style="text-align:right;">Ordered</th>
+                <th style="text-align:right;">Received</th>
+                <th style="text-align:right;">Unit Price</th>
+                <th style="text-align:right;">Line Total</th>
               </tr>
-            `).join('')}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              ${(po.lineItems || []).map((l) => `
+                <tr>
+                  <td><strong>${l.itemNameSnapshot || l.itemId}</strong></td>
+                  <td style="text-align:right;">${l.orderedQuantityBase} ${l.baseUnit || ''}</td>
+                  <td style="text-align:right;color:var(--mint, #10b981);font-weight:700;">${l.receivedQuantityBase || 0}</td>
+                  <td style="text-align:right;">${formatPaise(l.unitPricePaisa)}</td>
+                  <td style="text-align:right;font-weight:700;">${formatPaise(l.totalLinePaisa)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;">
+      <!-- TAB 2: Documents & Evidence -->
+      <div id="po-tab-content-documents" style="display:none;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <span style="font-size:12px;color:var(--muted);">Audited procurement evidence (Invoices, Delivery Challans, Receipts, Quotations)</span>
+          ${canAttach ? `
+            <button class="btn btn-sm btn-primary" id="btn-po-attach-document" style="font-size:11px;font-weight:700;" type="button">📎 Attach Document</button>
+          ` : (isStaff ? `<span class="badge warning" style="font-size:10px;">Staff: No Attachment Access</span>` : '')}
+        </div>
+        <div id="po-documents-table-wrapper" style="min-height:160px;max-height:280px;overflow-y:auto;border:1px solid var(--line);border-radius:6px;background:var(--surface-sunken);">
+          ${skeleton('140px')}
+        </div>
+      </div>
+
+      <!-- TAB 3: 3-Way Reconciliation -->
+      <div id="po-tab-content-matching" style="display:none;">
+        <div id="po-matching-wrapper" style="padding:12px;background:var(--surface-sunken);border-radius:6px;border:1px solid var(--line);">
+          ${skeleton('120px')}
+        </div>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;border-top:1px solid var(--line);padding-top:8px;">
         <button class="btn btn-sm btn-ghost" id="modal-po360-print" style="font-size:12px;" type="button">🖨️ Print PO</button>
         <button class="btn btn-ghost" id="modal-po360-close" style="font-size:12px;" type="button">Close</button>
       </div>
@@ -1442,9 +1484,496 @@ function openPo360Modal(root, po) {
   `;
 
   openModal(modalHtml);
+
+  const tabItemsBtn = document.getElementById('tab-po-items');
+  const tabDocsBtn = document.getElementById('tab-po-documents');
+  const tabMatchBtn = document.getElementById('tab-po-matching');
+  const contentItems = document.getElementById('po-tab-content-items');
+  const contentDocs = document.getElementById('po-tab-content-documents');
+  const contentMatch = document.getElementById('po-tab-content-matching');
+
+  function setPoTab(active) {
+    [tabItemsBtn, tabDocsBtn, tabMatchBtn].forEach((b) => b?.classList.remove('active'));
+    [contentItems, contentDocs, contentMatch].forEach((c) => { if (c) c.style.display = 'none'; });
+
+    if (active === 'items') {
+      tabItemsBtn?.classList.add('active');
+      if (contentItems) contentItems.style.display = 'block';
+    } else if (active === 'documents') {
+      tabDocsBtn?.classList.add('active');
+      if (contentDocs) contentDocs.style.display = 'block';
+      loadPoDocuments(po);
+    } else if (active === 'matching') {
+      tabMatchBtn?.classList.add('active');
+      if (contentMatch) contentMatch.style.display = 'block';
+      loadPoMatching(po);
+    }
+  }
+
+  tabItemsBtn?.addEventListener('click', () => setPoTab('items'));
+  tabDocsBtn?.addEventListener('click', () => setPoTab('documents'));
+  tabMatchBtn?.addEventListener('click', () => setPoTab('matching'));
+
   document.getElementById('modal-po360-close')?.addEventListener('click', closeModal);
-  document.getElementById('modal-po360-print')?.addEventListener('click', () => {
-    window.print();
+  document.getElementById('modal-po360-print')?.addEventListener('click', () => window.print());
+
+  document.getElementById('btn-po-attach-document')?.addEventListener('click', () => {
+    openAttachPoDocumentModal(root, po, () => {
+      loadPoDocuments(po);
+      loadPoMatching(po);
+      loadOrdersSubtabData(root);
+    });
+  });
+
+  // Preload documents count for badge
+  loadPoDocuments(po, true);
+}
+
+async function loadPoDocuments(po, countOnly = false) {
+  const wrapper = document.getElementById('po-documents-table-wrapper');
+  const badge = document.getElementById('po-doc-count-badge');
+  const userRole = state?.user?.role || 'STAFF';
+  const assignedCafes = state?.user?.assignedCafeIds || [];
+  const canMutate = userRole === 'MASTER' || (userRole === 'CAFE_ADMIN' && assignedCafes.includes(po.cafeId));
+
+  try {
+    const res = await apiGet(`/procurement/orders/${po.purchaseOrderId}/documents`);
+    const docs = res?.data?.documents || [];
+    if (badge) badge.textContent = docs.length;
+
+    if (countOnly) return;
+    if (!wrapper) return;
+
+    if (docs.length === 0) {
+      wrapper.innerHTML = `
+        <div style="padding:32px 16px;text-align:center;color:var(--muted);font-size:12px;">
+          <div style="font-size:24px;margin-bottom:6px;">📂</div>
+          <strong>No procurement documents attached.</strong>
+          <p style="margin:4px 0 0 0;">Supplier tax invoices, delivery challans, and goods receipts can be attached above.</p>
+        </div>
+      `;
+      return;
+    }
+
+    wrapper.innerHTML = `
+      <table class="glass-table" style="width:100%;font-size:11px;">
+        <thead>
+          <tr>
+            <th>Type</th>
+            <th>Filename / Number</th>
+            <th>Date</th>
+            <th>Security / Status</th>
+            <th>Ver</th>
+            <th>Size</th>
+            <th style="text-align:center;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${docs.map((d) => {
+            const isClean = d.scanStatus === 'CLEAN' && d.uploadStatus === 'AVAILABLE';
+            const statusColor = isClean ? '#10b981' : (d.scanStatus === 'INFECTED' ? '#ef4444' : '#f59e0b');
+            const statusLabel = isClean ? 'Clean · Available' : (d.scanStatus === 'INFECTED' ? 'Malware Rejected' : 'Scan Pending');
+
+            return `
+              <tr data-doc-id="${d.documentId}">
+                <td><span class="badge" style="font-size:9px;font-weight:700;">${d.documentType}</span></td>
+                <td>
+                  <strong style="color:var(--ink);">${d.originalFilename}</strong>
+                  ${d.documentNumber ? `<span style="font-size:10px;color:var(--muted);display:block;">Ref: ${d.documentNumber}</span>` : ''}
+                </td>
+                <td style="color:var(--muted);">${d.invoiceDate ? d.invoiceDate.split('T')[0] : (d.uploadedAt ? d.uploadedAt.split('T')[0] : '—')}</td>
+                <td>
+                  <span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;color:${statusColor};">
+                    <span style="width:6px;height:6px;border-radius:50%;background:${statusColor};"></span>
+                    ${statusLabel}
+                  </span>
+                </td>
+                <td style="font-family:var(--font-mono);color:var(--muted);">v${d.currentVersion || 1}</td>
+                <td style="color:var(--muted);">${d.sizeBytes ? (d.sizeBytes > 1048576 ? (d.sizeBytes/1048576).toFixed(1) + ' MB' : Math.round(d.sizeBytes/1024) + ' KB') : '—'}</td>
+                <td style="text-align:center;">
+                  <div style="display:flex;gap:4px;justify-content:center;">
+                    <button class="btn btn-sm btn-ghost" data-preview-doc="${d.documentId}" style="padding:2px 6px;font-size:11px;" ${!isClean ? 'disabled title="Document scan pending or infected"' : 'title="Safe Inline Preview"'}>👁️ Preview</button>
+                    <button class="btn btn-sm btn-ghost" data-download-doc="${d.documentId}" style="padding:2px 6px;font-size:11px;" ${!isClean ? 'disabled title="Document scan pending or infected"' : 'title="Download binary"'}>⬇️ Download</button>
+                    ${canMutate ? `
+                      <button class="btn btn-sm btn-ghost" data-replace-doc="${d.documentId}" style="padding:2px 6px;font-size:11px;" title="Upload revised version">🔄 Replace</button>
+                      <button class="btn btn-sm btn-ghost" data-archive-doc="${d.documentId}" style="padding:2px 6px;font-size:11px;color:var(--coral, #ef4444);" title="Archive from active PO">🗑️</button>
+                    ` : ''}
+                  </div>
+                </td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+    `;
+
+    // Wire actions
+    wrapper.querySelectorAll('[data-preview-doc]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        openPoDocumentPreviewModal(po.purchaseOrderId, btn.dataset.previewDoc);
+      });
+    });
+
+    wrapper.querySelectorAll('[data-download-doc]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const docId = btn.dataset.downloadDoc;
+        const downloadUrl = `/api/v1/procurement/orders/${po.purchaseOrderId}/documents/${docId}/download`;
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.target = '_blank';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      });
+    });
+
+    wrapper.querySelectorAll('[data-replace-doc]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        openReplacePoDocumentModal(po, btn.dataset.replaceDoc, () => loadPoDocuments(po));
+      });
+    });
+
+    wrapper.querySelectorAll('[data-archive-doc]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        confirmAction({
+          title: 'Archive Procurement Document?',
+          message: 'This document will be archived from active PO display while maintaining complete statutory audit retention.',
+          confirmText: 'Archive Evidence',
+          confirmVariant: 'coral',
+          onConfirm: async () => {
+            try {
+              const res = await fetch(`/api/v1/procurement/orders/${po.purchaseOrderId}/documents/${btn.dataset.archiveDoc}`, {
+                method: 'DELETE',
+                headers: {
+                  'Content-Type': 'application/json',
+                  ...(state.token ? { Authorization: `Bearer ${state.token}` } : {}),
+                },
+                body: JSON.stringify({ reason: 'Archived by user action' }),
+              });
+              const json = await res.json();
+              if (!res.ok) throw new Error(json?.error?.message || 'Archive failed');
+              showToast('Document archived successfully.', 'mint');
+              loadPoDocuments(po);
+            } catch (err) {
+              showToast(err.message || 'Failed to archive document.', 'coral');
+            }
+          },
+        });
+      });
+    });
+  } catch (err) {
+    if (wrapper) wrapper.innerHTML = `<div style="padding:16px;color:var(--coral);font-size:11px;">Failed to load documents: ${err.message}</div>`;
+  }
+}
+
+async function loadPoMatching(po) {
+  const wrapper = document.getElementById('po-matching-wrapper');
+  if (!wrapper) return;
+
+  try {
+    const res = await apiGet(`/procurement/orders/${po.purchaseOrderId}/matching-status`);
+    const match = res?.data || {};
+
+    const statusBadgeClass = match.reconciliationStatus === 'MATCHED' ? 'pill-mint' : (match.reconciliationStatus === 'DOCUMENT_MISSING' ? 'pill-amber' : 'pill-coral');
+
+    wrapper.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <h4 style="font-size:13px;font-weight:700;color:var(--ink);margin:0;">3-Way Match &amp; Audit Reconciliation</h4>
+        <span class="pill ${statusBadgeClass}" style="font-size:10px;font-weight:700;">${match.reconciliationStatus || 'NOT_READY'}</span>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));gap:8px;font-size:11px;margin-bottom:10px;">
+        <div style="background:var(--surface);padding:8px 10px;border-radius:4px;">
+          <span style="color:var(--muted);display:block;">PO Grand Total</span>
+          <strong style="color:var(--ink);">${formatPaise(match.poGrandTotal || po.totalAmountPaisa)}</strong>
+        </div>
+        <div style="background:var(--surface);padding:8px 10px;border-radius:4px;">
+          <span style="color:var(--muted);display:block;">Invoiced Total</span>
+          <strong style="color:var(--ink);">${formatPaise(match.invGrandTotal || 0)}</strong>
+        </div>
+        <div style="background:var(--surface);padding:8px 10px;border-radius:4px;">
+          <span style="color:var(--muted);display:block;">Variance</span>
+          <strong style="color:${(match.totalDifferencePaisa || 0) === 0 ? 'var(--mint, #10b981)' : 'var(--coral, #ef4444)'};">${formatPaise(match.totalDifferencePaisa || 0)}</strong>
+        </div>
+      </div>
+
+      ${(match.discrepancies && match.discrepancies.length > 0) ? `
+        <div style="background:rgba(239,68,68,0.06);border:1px solid rgba(239,68,68,0.2);padding:8px 10px;border-radius:4px;font-size:11px;">
+          <strong style="color:var(--coral, #ef4444);">Discrepancies Identified:</strong>
+          <ul style="margin:4px 0 0 16px;padding:0;color:var(--coral, #ef4444);">
+            ${match.discrepancies.map((d) => (d.issues || []).map((iss) => `<li>${iss}</li>`).join('')).join('')}
+          </ul>
+        </div>
+      ` : `
+        <div style="background:rgba(16,185,129,0.06);border:1px solid rgba(16,185,129,0.2);padding:8px 10px;border-radius:4px;font-size:11px;color:var(--mint, #10b981);">
+          ✓ All quantities, rates, and GST taxes match within authorized tolerances.
+        </div>
+      `}
+    `;
+  } catch (err) {
+    wrapper.innerHTML = `<div style="padding:12px;color:var(--muted);font-size:11px;">Reconciliation summary unavailable: ${err.message}</div>`;
+  }
+}
+
+function openPoDocumentPreviewModal(purchaseOrderId, documentId) {
+  const previewUrl = `/api/v1/procurement/orders/${purchaseOrderId}/documents/${documentId}/preview`;
+  const downloadUrl = `/api/v1/procurement/orders/${purchaseOrderId}/documents/${documentId}/download`;
+
+  const modalHtml = `
+    <div style="display:flex;flex-direction:column;gap:10px;width:100%;max-width:800px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding-bottom:8px;">
+        <h3 style="font-size:15px;font-weight:700;color:var(--ink);margin:0;">Secure Document Preview</h3>
+        <div style="display:flex;gap:6px;">
+          <a class="btn btn-sm btn-secondary" href="${downloadUrl}" target="_blank" style="font-size:11px;text-decoration:none;">⬇️ Download File</a>
+          <button class="btn btn-sm btn-ghost" id="modal-preview-close" type="button">✕</button>
+        </div>
+      </div>
+      <div style="width:100%;height:480px;background:var(--surface-sunken);border-radius:6px;display:flex;align-items:center;justify-content:center;overflow:hidden;border:1px solid var(--line);">
+        <iframe src="${previewUrl}" style="width:100%;height:100%;border:none;" title="Document Preview"></iframe>
+      </div>
+    </div>
+  `;
+
+  openModal(modalHtml);
+  document.getElementById('modal-preview-close')?.addEventListener('click', closeModal);
+}
+
+function openAttachPoDocumentModal(root, po, onAttached) {
+  const modalHtml = `
+    <div style="display:flex;flex-direction:column;gap:12px;width:100%;max-width:560px;">
+      <div style="border-bottom:1px solid var(--line);padding-bottom:8px;">
+        <h3 style="font-size:15px;font-weight:800;color:var(--ink);margin:0;">Attach Procurement Document</h3>
+        <span style="font-size:11px;color:var(--muted);">Purchase Order: ${po.purchaseOrderId} · Supplier: ${po.vendorName || po.vendorId}</span>
+      </div>
+
+      <form id="form-po-attach-document" style="display:flex;flex-direction:column;gap:10px;font-size:12px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <div>
+            <label style="font-size:11px;font-weight:700;color:var(--muted);display:block;margin-bottom:3px;">Document Type *</label>
+            <select id="attach-doc-type" class="select" style="width:100%;font-size:12px;" required>
+              <option value="SUPPLIER_INVOICE">Supplier Invoice (Bill)</option>
+              <option value="DELIVERY_CHALLAN">Delivery Challan</option>
+              <option value="PURCHASE_RECEIPT">Purchase Receipt</option>
+              <option value="QUOTATION">Supplier Quotation</option>
+              <option value="CREDIT_NOTE">Credit Note</option>
+              <option value="DEBIT_NOTE">Debit Note</option>
+              <option value="PACKING_LIST">Packing List</option>
+              <option value="QUALITY_CERTIFICATE">Quality Certificate / COA</option>
+              <option value="TAX_SUPPORTING_DOCUMENT">Tax Supporting Document</option>
+              <option value="OTHER_PROCUREMENT_DOCUMENT">Other Procurement Document</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:700;color:var(--muted);display:block;margin-bottom:3px;" id="attach-doc-num-label">Invoice / Challan Number</label>
+            <input type="text" id="attach-doc-number" class="input" style="width:100%;font-size:12px;" placeholder="e.g. INV-2026-9042">
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <div>
+            <label style="font-size:11px;font-weight:700;color:var(--muted);display:block;margin-bottom:3px;">Document Date</label>
+            <input type="date" id="attach-doc-date" class="input" style="width:100%;font-size:12px;" value="${new Date().toISOString().slice(0, 10)}">
+          </div>
+          <div id="attach-gstin-group">
+            <label style="font-size:11px;font-weight:700;color:var(--muted);display:block;margin-bottom:3px;">Supplier GSTIN</label>
+            <input type="text" id="attach-doc-gstin" class="input" style="width:100%;font-size:12px;" placeholder="e.g. 32AABCS1429B1Z8" maxlength="15">
+          </div>
+        </div>
+
+        <div id="attach-invoice-fields" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <div>
+            <label style="font-size:11px;font-weight:700;color:var(--muted);display:block;margin-bottom:3px;">Taxable Value (₹)</label>
+            <input type="number" step="0.01" id="attach-doc-taxable" class="input" style="width:100%;font-size:12px;" placeholder="0.00">
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:700;color:var(--muted);display:block;margin-bottom:3px;">Total Invoice Amount (₹)</label>
+            <input type="number" step="0.01" id="attach-doc-total" class="input" style="width:100%;font-size:12px;" placeholder="${((po.totalAmountPaisa || 0) / 100).toFixed(2)}">
+          </div>
+        </div>
+
+        <div id="attach-challan-fields" style="display:none;grid-template-columns:1fr 1fr;gap:8px;">
+          <div>
+            <label style="font-size:11px;font-weight:700;color:var(--muted);display:block;margin-bottom:3px;">Transport / Vehicle Reference</label>
+            <input type="text" id="attach-doc-vehicle" class="input" style="width:100%;font-size:12px;" placeholder="e.g. KL-11-AK-4029">
+          </div>
+          <div>
+            <label style="font-size:11px;font-weight:700;color:var(--muted);display:block;margin-bottom:3px;">Linked GRN ID (Optional)</label>
+            <input type="text" id="attach-doc-grn" class="input" style="width:100%;font-size:12px;" placeholder="e.g. GRN-001">
+          </div>
+        </div>
+
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--muted);display:block;margin-bottom:3px;">Notes / Description</label>
+          <input type="text" id="attach-doc-notes" class="input" style="width:100%;font-size:12px;" placeholder="Optional context or delivery remarks">
+        </div>
+
+        <!-- File Upload Selector -->
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--muted);display:block;margin-bottom:3px;">Upload Binary File (PDF, JPG, PNG - Max 15MB) *</label>
+          <input type="file" id="attach-doc-file" class="input" style="width:100%;font-size:12px;padding:6px;" accept=".pdf,.jpg,.jpeg,.png" required>
+        </div>
+
+        <div id="attach-upload-status" style="display:none;padding:8px 10px;background:var(--surface-sunken);border-radius:4px;font-size:11px;"></div>
+
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px;border-top:1px solid var(--line);padding-top:8px;">
+          <button class="btn btn-ghost" id="modal-attach-cancel" type="button">Cancel</button>
+          <button class="btn btn-primary" id="modal-attach-submit" type="submit">Upload &amp; Scan Evidence</button>
+        </div>
+      </form>
+    </div>
+  `;
+
+  openModal(modalHtml);
+
+  const docTypeSelect = document.getElementById('attach-doc-type');
+  const invFields = document.getElementById('attach-invoice-fields');
+  const challanFields = document.getElementById('attach-challan-fields');
+  const gstinGroup = document.getElementById('attach-gstin-group');
+  const numLabel = document.getElementById('attach-doc-num-label');
+
+  docTypeSelect?.addEventListener('change', (e) => {
+    const val = e.target.value;
+    if (val === 'SUPPLIER_INVOICE') {
+      if (invFields) invFields.style.display = 'grid';
+      if (challanFields) challanFields.style.display = 'none';
+      if (gstinGroup) gstinGroup.style.display = 'block';
+      if (numLabel) numLabel.textContent = 'Invoice Number';
+    } else if (val === 'DELIVERY_CHALLAN') {
+      if (invFields) invFields.style.display = 'none';
+      if (challanFields) challanFields.style.display = 'grid';
+      if (gstinGroup) gstinGroup.style.display = 'none';
+      if (numLabel) numLabel.textContent = 'Challan Number';
+    } else {
+      if (invFields) invFields.style.display = 'none';
+      if (challanFields) challanFields.style.display = 'none';
+      if (gstinGroup) gstinGroup.style.display = 'none';
+      if (numLabel) numLabel.textContent = 'Reference Number';
+    }
+  });
+
+  document.getElementById('modal-attach-cancel')?.addEventListener('click', closeModal);
+
+  const form = document.getElementById('form-po-attach-document');
+  form?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const fileInput = document.getElementById('attach-doc-file');
+    const file = fileInput?.files?.[0];
+    if (!file) {
+      showToast('Please select a file to upload.', 'coral');
+      return;
+    }
+
+    const submitBtn = document.getElementById('modal-attach-submit');
+    const statusBox = document.getElementById('attach-upload-status');
+    if (submitBtn) submitBtn.disabled = true;
+    if (statusBox) {
+      statusBox.style.display = 'block';
+      statusBox.innerHTML = `<span>⏳ Uploading and executing security scan...</span>`;
+    }
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('documentType', docTypeSelect.value);
+      formData.append('documentNumber', document.getElementById('attach-doc-number').value.trim());
+      formData.append('invoiceNumber', document.getElementById('attach-doc-number').value.trim());
+      formData.append('challanNumber', document.getElementById('attach-doc-number').value.trim());
+      formData.append('documentDate', document.getElementById('attach-doc-date').value);
+      formData.append('supplierGSTIN', document.getElementById('attach-doc-gstin')?.value.trim() || '');
+      formData.append('totalAmount', document.getElementById('attach-doc-total')?.value || '');
+      formData.append('taxableValue', document.getElementById('attach-doc-taxable')?.value || '');
+      formData.append('notes', document.getElementById('attach-doc-notes')?.value || '');
+      formData.append('vehicleRef', document.getElementById('attach-doc-vehicle')?.value || '');
+      formData.append('linkedGrn', document.getElementById('attach-doc-grn')?.value || '');
+
+      const response = await fetch(`/api/v1/procurement/orders/${po.purchaseOrderId}/documents`, {
+        method: 'POST',
+        headers: {
+          ...(state.token ? { Authorization: `Bearer ${state.token}` } : {}),
+        },
+        body: formData,
+      });
+
+      const res = await response.json();
+      if (!response.ok) {
+        throw new Error(res?.error?.message || 'Failed to attach document.');
+      }
+
+      const warnings = res?.data?.warnings || [];
+      if (warnings.length > 0) {
+        showToast(`Document attached with warnings: ${warnings[0]}`, 'amber');
+      } else {
+        showToast('Document attached and verified clean.', 'mint');
+      }
+
+      closeModal();
+      if (typeof onAttached === 'function') onAttached();
+    } catch (err) {
+      if (statusBox) {
+        statusBox.innerHTML = `<span style="color:var(--coral, #ef4444);">❌ ${err.message}</span>`;
+      }
+      showToast(err.message, 'coral');
+      if (submitBtn) submitBtn.disabled = false;
+    }
+  });
+}
+
+function openReplacePoDocumentModal(po, documentId, onReplaced) {
+  const modalHtml = `
+    <div style="display:flex;flex-direction:column;gap:12px;width:100%;max-width:500px;">
+      <h3 style="font-size:15px;font-weight:700;color:var(--ink);margin:0;">Upload Revised Document Version</h3>
+      <p style="font-size:11px;color:var(--muted);margin:0;">Existing document version will be superseded. Complete audit history is preserved.</p>
+
+      <form id="form-po-replace-doc" style="display:flex;flex-direction:column;gap:10px;font-size:12px;">
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--muted);display:block;margin-bottom:3px;">Reason for Revision *</label>
+          <input type="text" id="replace-doc-reason" class="input" style="width:100%;font-size:12px;" placeholder="e.g. Corrected supplier tax invoice rate" required>
+        </div>
+
+        <div>
+          <label style="font-size:11px;font-weight:700;color:var(--muted);display:block;margin-bottom:3px;">Select New File *</label>
+          <input type="file" id="replace-doc-file" class="input" style="width:100%;font-size:12px;" accept=".pdf,.jpg,.jpeg,.png" required>
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:8px;">
+          <button class="btn btn-ghost" id="modal-replace-cancel" type="button">Cancel</button>
+          <button class="btn btn-primary" type="submit">Upload Revision</button>
+        </div>
+      </form>
+    </div>
+  `;
+
+  openModal(modalHtml);
+  document.getElementById('modal-replace-cancel')?.addEventListener('click', closeModal);
+
+  document.getElementById('form-po-replace-doc')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const file = document.getElementById('replace-doc-file')?.files?.[0];
+    const reason = document.getElementById('replace-doc-reason')?.value.trim();
+    if (!file || !reason) return;
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('changeReason', reason);
+
+      const response = await fetch(`/api/v1/procurement/orders/${po.purchaseOrderId}/documents/${documentId}/replace-version`, {
+        method: 'POST',
+        headers: {
+          ...(state.token ? { Authorization: `Bearer ${state.token}` } : {}),
+        },
+        body: formData,
+      });
+
+      const res = await response.json();
+      if (!response.ok) throw new Error(res?.error?.message || 'Failed to replace version');
+
+      showToast('Document version superseded and updated successfully.', 'mint');
+      closeModal();
+      if (typeof onReplaced === 'function') onReplaced();
+    } catch (err) {
+      showToast(err.message, 'coral');
+    }
   });
 }
 

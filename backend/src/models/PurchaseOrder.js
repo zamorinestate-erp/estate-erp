@@ -194,7 +194,17 @@ const threeWayMatchSchema = new mongoose.Schema(
   {
     matchStatus: {
       type: String,
-      enum: ['MATCHED', 'PRICE_VARIANCE', 'QUANTITY_VARIANCE', 'TAX_VARIANCE', 'REVIEW_REQUIRED', 'PENDING'],
+      enum: [
+        'MATCHED',
+        'PRICE_VARIANCE',
+        'QUANTITY_VARIANCE',
+        'TAX_VARIANCE',
+        'REVIEW_REQUIRED',
+        'PENDING',
+        'NOT_READY',
+        'DOCUMENT_MISSING',
+        'MANUAL_REVIEW_REQUIRED',
+      ],
       default: 'PENDING',
     },
     matchedAt: { type: Date, default: null },
@@ -391,6 +401,9 @@ const purchaseOrderSchema = new mongoose.Schema(
       ],
     },
     advanceShippingNoticeIds: [{ type: String, trim: true, uppercase: true }],
+    deliveryChallanIds: [{ type: String, trim: true }],
+    quotationIds: [{ type: String, trim: true }],
+    creditDebitNoteIds: [{ type: String, trim: true }],
     invoices: [supplierInvoiceRefSchema],
 
     // ── 3-Way Match & MASTER Approval & Inventory Posting ─────────────────────

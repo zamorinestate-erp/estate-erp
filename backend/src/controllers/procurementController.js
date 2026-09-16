@@ -75,6 +75,10 @@ const {
   documentStorageAdapter,
 } = require('../services/documentStorageAdapter');
 
+const {
+  ThreeWayMatchService,
+} = require('../services/threeWayMatchService');
+
 const fs = require('fs');
 
 const {
@@ -2565,63 +2569,137 @@ const getProcurementIntegrity = asyncHandler(async (request, response) => {
  * List documents attached to a purchase order.
  */
 const getOrderDocuments = asyncHandler(async (request, response) => {
-  const purchaseOrderId = normalizeId(request.params.purchaseOrderId);
-  const poQuery = PurchaseOrder.findOne({
+  request.auth = request.auth || request.user || {};
+  const purchaseOrderId = normalizeId(request.params.purchaseOrderId || request.params.id);
+  const po = await PurchaseOrder.findOne({
     purchaseOrderId,
     organisationId: request.auth.organisationId,
-  });
-  const po = poQuery && typeof poQuery.lean === 'function' ? await poQuery.lean() : await poQuery;
+  }).lean();
 
   if (!po) {
     throw new ApiError(404, 'NOT_FOUND', 'Purchase order not found.');
   }
+
+  // Staff strictly prohibited from listing procurement documents
+  if (request.auth.role === 'STAFF') {
+    throw new ApiError(403, 'PROCUREMENT_RESOURCE_DENIED', 'Staff are prohibited from listing PO documents.');
+  }
+
   assertCafeAccess(request, po.cafeId);
 
-  const documents = await BusinessDocument.find({
+  const filter = {
     organisationId: request.auth.organisationId,
-    relatedModule: 'PURCHASE_ORDER',
-    relatedRecordId: purchaseOrderId,
+    $or: [
+      { relatedRecordId: purchaseOrderId },
+      { entityId: purchaseOrderId },
+    ],
     isDeleted: false,
-  })
-    .select('-fileData -versions.fileData')
+  };
+
+  if (request.query.documentType) {
+    filter.documentType = String(request.query.documentType).trim();
+  }
+
+  const documents = await BusinessDocument.find(filter)
+    .select('-fileData -versions.fileData -fileBuffer')
     .sort({ createdAt: -1 })
     .lean();
 
+  // Strip internal storage paths / keys from client display
+  const sanitized = documents.map((d) => ({
+    documentId: d.documentId,
+    documentType: d.documentType,
+    originalFilename: d.safeDisplayFileName || d.originalFilename,
+    documentNumber: d.documentNumber,
+    entityName: d.entityName,
+    invoiceDate: d.invoiceDate,
+    amountPaisa: d.amountPaisa,
+    gstin: d.gstin,
+    sizeBytes: d.sizeBytes,
+    currentVersion: d.currentVersion,
+    scanStatus: d.scanStatus,
+    uploadStatus: d.uploadStatus,
+    documentStatus: d.documentStatus || d.status,
+    uploadedBy: d.uploadedBy,
+    uploadedAt: d.uploadedAt,
+    metadata: d.metadata || {},
+    versionsCount: (d.versions || []).length,
+  }));
+
   return response.status(200).json({
     success: true,
-    data: { documents, count: documents.length },
+    data: { documents: sanitized, count: sanitized.length },
     correlationId: request.correlationId || null,
   });
 });
 
 /**
  * POST /procurement/orders/:purchaseOrderId/documents
- * Attach a business document (e.g. signed PO, vendor invoice, delivery challan) to a purchase order.
+ * Attach a business document (supplier invoice, delivery challan, receipt, quotation, credit note)
+ * to a purchase order with full metadata validation and 3-way match reconciliation.
  */
 const attachOrderDocument = asyncHandler(async (request, response) => {
-  const purchaseOrderId = normalizeId(request.params.purchaseOrderId);
-  const poQuery = PurchaseOrder.findOne({
+  request.auth = request.auth || request.user || {};
+  const purchaseOrderId = normalizeId(request.params.purchaseOrderId || request.params.id);
+  const po = await PurchaseOrder.findOne({
     purchaseOrderId,
     organisationId: request.auth.organisationId,
   });
-  const po = poQuery && typeof poQuery.lean === 'function' ? await poQuery.lean() : await poQuery;
 
   if (!po) {
     throw new ApiError(404, 'NOT_FOUND', 'Purchase order not found.');
   }
+
+  // Role Gate: Master and assigned Cafe Admin only. Owner is view/download only. Staff denied.
+  if (request.auth.role === 'STAFF') {
+    throw new ApiError(403, 'PROCUREMENT_RESOURCE_DENIED', 'Staff are prohibited from attaching procurement documents.');
+  }
+  if (request.auth.role === 'OWNER') {
+    throw new ApiError(403, 'OWNER_PROCUREMENT_ATTACH_DENIED', 'Owner authority is restricted to view/download for procurement evidence.');
+  }
+
   assertCafeAccess(request, po.cafeId);
 
   const file = request.file;
   const body = request.body || {};
+  const docType = String(body.documentType || 'SUPPLIER_INVOICE').trim();
+  const docNum = String(body.documentNumber || body.invoiceNumber || body.challanNumber || body.referenceNumber || '').trim();
+  const docDate = body.documentDate || body.invoiceDate || body.challanDate || null;
+  const supplierId = String(body.supplierId || body.vendorId || po.vendorId || '').trim();
+  const gstin = String(body.supplierGSTIN || body.gstin || '').trim();
+  const amountPaisa = body.amountPaisa !== undefined
+    ? Number(body.amountPaisa)
+    : (body.totalAmount !== undefined ? Math.round(Number(body.totalAmount) * 100) : null);
+
+  const docMetadata = {
+    ...body,
+    purchaseOrderId,
+    supplierId,
+    vendorId: supplierId,
+    invoiceNumber: docNum,
+    invoiceDate: docDate,
+    challanNumber: docNum,
+    challanDate: docDate,
+    vehicleRef: body.vehicleRef || body.transportRef || null,
+    linkedGrn: body.linkedGrn || null,
+  };
 
   const doc = await DocumentAttachmentService.attachDocument({
     ...body,
     organisationId: request.auth.organisationId,
     cafeId: po.cafeId,
+    entityType: 'PURCHASE_ORDER',
+    entityId: purchaseOrderId,
     relatedModule: 'PURCHASE_ORDER',
     relatedRecordId: purchaseOrderId,
-    documentType: body.documentType || 'PURCHASE_ORDER',
-    originalFilename: file ? file.originalname : (body.originalFilename || `${purchaseOrderId}_attachment.pdf`),
+    documentType: docType,
+    documentNumber: docNum,
+    entityName: supplierId,
+    invoiceDate: docDate,
+    amountPaisa,
+    gstin,
+    metadata: docMetadata,
+    originalFilename: file ? file.originalname : (body.originalFilename || `${purchaseOrderId}_${docType.toLowerCase()}.pdf`),
     mimeType: file ? file.mimetype : (body.mimeType || 'application/pdf'),
     sizeBytes: file ? file.size : (body.sizeBytes || (body.fileBuffer ? body.fileBuffer.length : (body.fileBase64 ? Buffer.from(body.fileBase64, 'base64').length : 1024))),
     tempFilePath: file ? file.path : null,
@@ -2630,80 +2708,385 @@ const attachOrderDocument = asyncHandler(async (request, response) => {
     auth: request.auth,
   });
 
+  // Link secondary procurement references on PO
+  if (docType === 'SUPPLIER_INVOICE') {
+    const existingInv = (po.invoices || []).find((i) => i.invoiceNumber && i.invoiceNumber.trim().toUpperCase() === docNum.toUpperCase());
+    if (!existingInv) {
+      po.invoices.push({
+        invoiceId: doc.documentId,
+        invoiceNumber: docNum || doc.documentId,
+        invoiceDate: docDate ? new Date(docDate).toISOString().slice(0, 10) : getIstBusinessDate(),
+        amountPaisa: amountPaisa || po.totalPaisa || 0,
+        taxPaisa: Math.round(Number(body.cgst || 0) + Number(body.sgst || 0) + Number(body.igst || 0)),
+        totalPaisa: amountPaisa || po.totalPaisa || 0,
+        status: 'CAPTURED',
+      });
+    }
+  } else if (docType === 'DELIVERY_CHALLAN') {
+    if (!po.deliveryChallanIds) po.deliveryChallanIds = [];
+    if (!po.deliveryChallanIds.includes(docNum || doc.documentId)) {
+      po.deliveryChallanIds.push(docNum || doc.documentId);
+    }
+  } else if (docType === 'QUOTATION') {
+    if (!po.quotationIds) po.quotationIds = [];
+    if (!po.quotationIds.includes(docNum || doc.documentId)) {
+      po.quotationIds.push(docNum || doc.documentId);
+    }
+  } else if (docType === 'CREDIT_NOTE' || docType === 'DEBIT_NOTE') {
+    if (!po.creditDebitNoteIds) po.creditDebitNoteIds = [];
+    if (!po.creditDebitNoteIds.includes(docNum || doc.documentId)) {
+      po.creditDebitNoteIds.push(docNum || doc.documentId);
+    }
+  }
+
+  // Update 3-Way Match evaluation (without auto-advancing PO status!)
+  const matchResult = ThreeWayMatchService.reconcileProcurementDocuments({
+    purchaseOrder: po.toObject(),
+    grnReceipts: po.grnReceipts,
+    supplierInvoices: po.invoices,
+  });
+
+  po.threeWayMatch = {
+    matchStatus: matchResult.matchStatus,
+    matchedAt: new Date(),
+    matchedByUserId: request.auth.userId,
+    priceVariancePaisa: matchResult.priceVariancePaisa || 0,
+    quantityVarianceBase: matchResult.quantityVarianceBase || 0,
+    taxVariancePaisa: matchResult.taxVariancePaisa || 0,
+    isExceptionApproved: false,
+    exceptionReason: '',
+  };
+
+  // Add milestone
+  po.milestones.push({
+    milestoneKey: `DOC_${docType}`,
+    label: `Attached ${docType.replace(/_/g, ' ')}: ${doc.safeDisplayFileName || doc.originalFilename}`,
+    timestamp: new Date(),
+    actorUserId: request.auth.userId,
+    details: `Document ID: ${doc.documentId}, Version: ${doc.currentVersion}`,
+  });
+
+  // DO NOT MUTATE po.status: Presence of document is evidence, not authority to approve or pay.
+  await po.save();
+
+  await recordRequestAudit({
+    request,
+    module: 'PROCUREMENT',
+    action: 'PO_DOCUMENT_ATTACHED',
+    entityType: 'PURCHASE_ORDER',
+    entityId: purchaseOrderId,
+    cafeId: po.cafeId,
+    metadata: {
+      documentId: doc.documentId,
+      documentType: docType,
+      documentNumber: docNum,
+      reconciliationStatus: matchResult.reconciliationStatus,
+      warnings: doc.metadata?.warnings || [],
+    },
+  }).catch(() => {});
+
   return response.status(201).json({
     success: true,
     message: 'Document attached to purchase order successfully.',
-    data: doc,
+    data: {
+      document: doc,
+      threeWayMatch: po.threeWayMatch,
+      warnings: doc.metadata?.warnings || [],
+    },
     correlationId: request.correlationId || null,
   });
 });
 
 /**
- * GET /procurement/orders/:purchaseOrderId/documents/:documentId/download
- * Binary download with Content-Disposition, X-Export-Id, and SHA-256 verification.
+ * GET /procurement/orders/:purchaseOrderId/documents/:documentId/preview
+ * Inline stream with Content-Disposition inline for browser viewing.
  */
-const downloadOrderDocument = asyncHandler(async (request, response) => {
-  const purchaseOrderId = normalizeId(request.params.purchaseOrderId);
-  const documentId = normalizeId(request.params.documentId);
+const previewOrderDocument = asyncHandler(async (request, response) => {
+  request.auth = request.auth || request.user || {};
+  const purchaseOrderId = normalizeId(request.params.purchaseOrderId || request.params.id);
+  const documentId = normalizeId(request.params.documentId || request.params.docId);
 
-  const poQuery = PurchaseOrder.findOne({
+  const po = await PurchaseOrder.findOne({
     purchaseOrderId,
     organisationId: request.auth.organisationId,
-  });
-  const po = poQuery && typeof poQuery.lean === 'function' ? await poQuery.lean() : await poQuery;
+  }).lean();
 
   if (!po) {
     throw new ApiError(404, 'NOT_FOUND', 'Purchase order not found.');
   }
+
+  // Staff strictly prohibited from preview
+  if (request.auth.role === 'STAFF') {
+    throw new ApiError(403, 'PROCUREMENT_RESOURCE_DENIED', 'Staff are prohibited from previewing procurement documents.');
+  }
+
   assertCafeAccess(request, po.cafeId);
 
   const doc = await BusinessDocument.findOne({
     documentId,
-    relatedModule: 'PURCHASE_ORDER',
-    relatedRecordId: purchaseOrderId,
     organisationId: request.auth.organisationId,
+    $or: [
+      { relatedRecordId: purchaseOrderId },
+      { entityId: purchaseOrderId },
+    ],
     isDeleted: false,
-  }).select('+fileBuffer');
+  });
 
   if (!doc) {
     throw new ApiError(404, 'DOCUMENT_NOT_FOUND', 'Attachment document not found for this purchase order.');
   }
 
-  // Security scanning gate
-  if (doc.securityScanStatus === 'REJECTED') {
-    throw new ApiError(403, 'MALWARE_DETECTED', 'Document access blocked: file rejected by security scanner.');
+  // Canonical REC-06 execution-time re-authorization & fail-closed malware gate
+  DocumentAttachmentService.assertDocumentAuthorization(doc, request.auth, 'PREVIEW');
+
+  const key = doc.storageObjectKey || doc.storageKey;
+  if (!key) {
+    throw new ApiError(404, 'STORAGE_OBJECT_NOT_FOUND', 'Storage reference missing.');
   }
 
-  const exportId = `EXP-DOC-${Date.now().toString(36).toUpperCase()}`;
+  const safeFilename = doc.safeDisplayFileName || doc.originalFilename;
   response.setHeader('Content-Type', doc.mimeType);
-  response.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(doc.originalFilename)}"`);
-  response.setHeader('X-Export-Id', exportId);
-  response.setHeader('X-File-Checksum', doc.checksum || '');
+  response.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(safeFilename)}"`);
   response.setHeader('X-Content-Type-Options', 'nosniff');
-
-  // Stream from storage key if available
-  if (doc.storageKey) {
-    try {
-      const stream = await documentStorageAdapter.getStream({ storageKey: doc.storageKey });
-      response.setHeader('Content-Length', doc.sizeBytes);
-      return stream.pipe(response);
-    } catch (err) {
-      if (doc.storagePath && fs.existsSync(doc.storagePath)) {
-        const stat = await fs.promises.stat(doc.storagePath);
-        response.setHeader('Content-Length', stat.size);
-        const stream = fs.createReadStream(doc.storagePath);
-        return stream.pipe(response);
-      }
-    }
+  if (doc.sizeBytes) {
+    response.setHeader('Content-Length', doc.sizeBytes);
   }
 
-  const payload = doc.fileBuffer || (doc.fileData ? Buffer.from(doc.fileData, 'base64') : null);
-  if (!payload) {
-    throw new ApiError(404, 'FILE_CONTENT_UNAVAILABLE', 'Attachment file binary content is unavailable.');
+  await recordRequestAudit({
+    request,
+    module: 'PROCUREMENT',
+    action: 'PO_DOCUMENT_PREVIEWED',
+    entityType: 'BUSINESS_DOCUMENT',
+    entityId: documentId,
+    cafeId: po.cafeId,
+    metadata: { purchaseOrderId, documentType: doc.documentType },
+  }).catch(() => {});
+
+  const stream = await documentStorageAdapter.getStream({ storageKey: key });
+  return stream.pipe(response);
+});
+
+/**
+ * GET /procurement/orders/:purchaseOrderId/documents/:documentId/download
+ * Binary download with Content-Disposition attachment, X-Export-Id, and SHA-256 verification.
+ */
+const downloadOrderDocument = asyncHandler(async (request, response) => {
+  request.auth = request.auth || request.user || {};
+  const purchaseOrderId = normalizeId(request.params.purchaseOrderId || request.params.id);
+  const documentId = normalizeId(request.params.documentId || request.params.docId);
+
+  const po = await PurchaseOrder.findOne({
+    purchaseOrderId,
+    organisationId: request.auth.organisationId,
+  }).lean();
+
+  if (!po) {
+    throw new ApiError(404, 'NOT_FOUND', 'Purchase order not found.');
   }
 
-  response.setHeader('Content-Length', payload.length);
-  return response.send(payload);
+  // Staff strictly prohibited from downloading procurement documents
+  if (request.auth.role === 'STAFF') {
+    throw new ApiError(403, 'PROCUREMENT_RESOURCE_DENIED', 'Staff are prohibited from downloading procurement documents.');
+  }
+
+  assertCafeAccess(request, po.cafeId);
+
+  const doc = await BusinessDocument.findOne({
+    documentId,
+    organisationId: request.auth.organisationId,
+    $or: [
+      { relatedRecordId: purchaseOrderId },
+      { entityId: purchaseOrderId },
+    ],
+    isDeleted: false,
+  });
+
+  if (!doc) {
+    throw new ApiError(404, 'DOCUMENT_NOT_FOUND', 'Attachment document not found for this purchase order.');
+  }
+
+  // Canonical REC-06 execution-time re-authorization & malware gate
+  DocumentAttachmentService.assertDocumentAuthorization(doc, request.auth, 'DOWNLOAD');
+
+  const key = doc.storageObjectKey || doc.storageKey;
+  if (!key) {
+    throw new ApiError(404, 'STORAGE_OBJECT_NOT_FOUND', 'Storage reference missing.');
+  }
+
+  const exportId = `EXP-PO-DOC-${Date.now().toString(36).toUpperCase()}`;
+  const safeFilename = doc.safeDisplayFileName || doc.originalFilename;
+  response.setHeader('Content-Type', doc.mimeType);
+  response.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(safeFilename)}"`);
+  response.setHeader('X-Export-Id', exportId);
+  response.setHeader('X-File-Checksum', doc.sha256 || doc.checksum || '');
+  response.setHeader('X-Content-Type-Options', 'nosniff');
+  if (doc.sizeBytes) {
+    response.setHeader('Content-Length', doc.sizeBytes);
+  }
+
+  await recordRequestAudit({
+    request,
+    module: 'PROCUREMENT',
+    action: 'PO_DOCUMENT_DOWNLOADED',
+    entityType: 'BUSINESS_DOCUMENT',
+    entityId: documentId,
+    cafeId: po.cafeId,
+    metadata: { purchaseOrderId, documentType: doc.documentType, exportId },
+  }).catch(() => {});
+
+  const stream = await documentStorageAdapter.getStream({ storageKey: key });
+  return stream.pipe(response);
+});
+
+/**
+ * POST /procurement/orders/:purchaseOrderId/documents/:documentId/replace-version
+ * Replaces a procurement document with an updated version, preserving audit history.
+ */
+const replaceOrderDocumentVersion = asyncHandler(async (request, response) => {
+  request.auth = request.auth || request.user || {};
+  const purchaseOrderId = normalizeId(request.params.purchaseOrderId || request.params.id);
+  const documentId = normalizeId(request.params.documentId || request.params.docId);
+
+  const po = await PurchaseOrder.findOne({
+    purchaseOrderId,
+    organisationId: request.auth.organisationId,
+  }).lean();
+
+  if (!po) {
+    throw new ApiError(404, 'NOT_FOUND', 'Purchase order not found.');
+  }
+
+  if (request.auth.role === 'STAFF') {
+    throw new ApiError(403, 'PROCUREMENT_RESOURCE_DENIED', 'Staff are prohibited from replacing document versions.');
+  }
+  if (request.auth.role === 'OWNER') {
+    throw new ApiError(403, 'OWNER_PROCUREMENT_MUTATION_DENIED', 'Owner authority is restricted to view/download.');
+  }
+
+  assertCafeAccess(request, po.cafeId);
+
+  const file = request.file;
+  const body = request.body || {};
+
+  const updatedDoc = await DocumentAttachmentService.replaceVersion({
+    documentId,
+    organisationId: request.auth.organisationId,
+    originalFilename: file ? file.originalname : body.originalFilename,
+    mimeType: file ? file.mimetype : body.mimeType,
+    sizeBytes: file ? file.size : body.sizeBytes,
+    tempFilePath: file ? file.path : null,
+    fileBuffer: body.fileBuffer || null,
+    fileBase64: body.fileBase64 || null,
+    changeReason: body.changeReason || body.reason || 'Procurement document correction',
+    auth: request.auth,
+  });
+
+  await recordRequestAudit({
+    request,
+    module: 'PROCUREMENT',
+    action: 'PO_DOCUMENT_VERSION_REPLACED',
+    entityType: 'BUSINESS_DOCUMENT',
+    entityId: documentId,
+    cafeId: po.cafeId,
+    metadata: {
+      purchaseOrderId,
+      newVersion: updatedDoc.currentVersion,
+      changeReason: body.changeReason,
+    },
+  }).catch(() => {});
+
+  return response.status(200).json({
+    success: true,
+    message: `Document version replaced successfully (v${updatedDoc.currentVersion}).`,
+    data: updatedDoc,
+    correlationId: request.correlationId || null,
+  });
+});
+
+/**
+ * DELETE /procurement/orders/:purchaseOrderId/documents/:documentId
+ * Archives an attachment from the active PO view, preserving audit history and retention policy.
+ */
+const archiveOrderDocument = asyncHandler(async (request, response) => {
+  request.auth = request.auth || request.user || {};
+  const purchaseOrderId = normalizeId(request.params.purchaseOrderId || request.params.id);
+  const documentId = normalizeId(request.params.documentId || request.params.docId);
+
+  const po = await PurchaseOrder.findOne({
+    purchaseOrderId,
+    organisationId: request.auth.organisationId,
+  }).lean();
+
+  if (!po) {
+    throw new ApiError(404, 'NOT_FOUND', 'Purchase order not found.');
+  }
+
+  if (request.auth.role === 'STAFF') {
+    throw new ApiError(403, 'PROCUREMENT_RESOURCE_DENIED', 'Staff are prohibited from archiving procurement documents.');
+  }
+  if (request.auth.role === 'OWNER') {
+    throw new ApiError(403, 'OWNER_PROCUREMENT_MUTATION_DENIED', 'Owner authority is restricted to view/download.');
+  }
+
+  assertCafeAccess(request, po.cafeId);
+
+  const result = await DocumentAttachmentService.deleteDocument({
+    documentId,
+    organisationId: request.auth.organisationId,
+    reason: request.body?.reason || 'Procurement document archived from active view',
+    auth: request.auth,
+  });
+
+  await recordRequestAudit({
+    request,
+    module: 'PROCUREMENT',
+    action: 'PO_DOCUMENT_ARCHIVED',
+    entityType: 'BUSINESS_DOCUMENT',
+    entityId: documentId,
+    cafeId: po.cafeId,
+    metadata: { purchaseOrderId, reason: request.body?.reason },
+  }).catch(() => {});
+
+  return response.status(200).json({
+    success: true,
+    message: result.message || 'Document archived successfully.',
+    correlationId: request.correlationId || null,
+  });
+});
+
+/**
+ * GET /procurement/orders/:purchaseOrderId/matching-status
+ * Returns three-way matching reconciliation summary.
+ */
+const getPoDocumentMatchingStatus = asyncHandler(async (request, response) => {
+  request.auth = request.auth || request.user || {};
+  const purchaseOrderId = normalizeId(request.params.purchaseOrderId || request.params.id);
+  const po = await PurchaseOrder.findOne({
+    purchaseOrderId,
+    organisationId: request.auth.organisationId,
+  }).lean();
+
+  if (!po) {
+    throw new ApiError(404, 'NOT_FOUND', 'Purchase order not found.');
+  }
+
+  if (request.auth.role === 'STAFF') {
+    throw new ApiError(403, 'PROCUREMENT_RESOURCE_DENIED', 'Staff are prohibited from viewing matching status.');
+  }
+
+  assertCafeAccess(request, po.cafeId);
+
+  const matchSummary = ThreeWayMatchService.reconcileProcurementDocuments({
+    purchaseOrder: po,
+    grnReceipts: po.grnReceipts,
+    supplierInvoices: po.invoices,
+  });
+
+  return response.status(200).json({
+    success: true,
+    data: matchSummary,
+    correlationId: request.correlationId || null,
+  });
 });
 
 const getSupplierContextualIntelligence = asyncHandler(async (request, response) => {
@@ -2800,7 +3183,11 @@ const getSupplierContextualIntelligence = asyncHandler(async (request, response)
 module.exports = {
   getOrderDocuments,
   attachOrderDocument,
+  previewOrderDocument,
   downloadOrderDocument,
+  replaceOrderDocumentVersion,
+  archiveOrderDocument,
+  getPoDocumentMatchingStatus,
   listOrders,
   getOrder,
   createOrder,

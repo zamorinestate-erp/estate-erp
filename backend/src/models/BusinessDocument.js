@@ -432,6 +432,10 @@ const businessDocumentSchema = new mongoose.Schema(
       trim: true,
       default: '',
     },
+    metadata: {
+      type: mongoose.Schema.Types.Mixed,
+      default: () => ({}),
+    },
 
     // Actor Information & Timestamps
     uploadedBy: {
@@ -675,7 +679,17 @@ businessDocumentSchema.pre('validate', function () {
 });
 
 businessDocumentSchema.pre('save', function (next) {
-  const STATUTORY_TYPES = ['SUPPLIER_INVOICE', 'TAX_INVOICE', 'GST_CERTIFICATE', 'DELIVERY_CHALLAN', 'AP_INVOICE'];
+  const STATUTORY_TYPES = [
+    'SUPPLIER_INVOICE',
+    'TAX_INVOICE',
+    'GST_CERTIFICATE',
+    'DELIVERY_CHALLAN',
+    'AP_INVOICE',
+    'CREDIT_NOTE',
+    'DEBIT_NOTE',
+    'TAX_SUPPORTING_DOCUMENT',
+    'PURCHASE_RECEIPT',
+  ];
   if (STATUTORY_TYPES.includes(this.documentType) || this.classification === 'FINANCE' || this.classification === 'COMPLIANCE') {
     this.statutoryRecord = true;
     if (this.classification === 'FINANCE' || (this.documentType && this.documentType.includes('INVOICE'))) {
@@ -710,6 +724,14 @@ businessDocumentSchema.virtual('version').get(function () {
   return this.currentVersion;
 }).set(function (v) {
   this.currentVersion = v;
+});
+
+businessDocumentSchema.virtual('isPrivate').get(function () {
+  return this.visibilityScope !== 'PUBLIC';
+});
+
+businessDocumentSchema.virtual('isQuarantined').get(function () {
+  return this.uploadStatus === 'QUARANTINED' || Boolean(this.quarantineObjectKey && !this.storageObjectKey);
 });
 
 documentVersionSchema.virtual('versionNumber').get(function () {

@@ -6,9 +6,15 @@
  */
 
 const express = require('express');
+const multer = require('multer');
+const path = require('path');
+const os = require('os');
+const fs = require('fs');
+const crypto = require('crypto');
 const { authenticate } = require('../middleware/authenticate');
 const { authorize } = require('../middleware/authorize');
 const { attachDeviceContext } = require('../middleware/deviceContext');
+const { DEFAULT_DOCUMENT_MAX_BYTES } = require('../services/documentAttachmentService');
 const {
   listOrders,
   getOrder,
@@ -36,9 +42,38 @@ const {
   getProcurementIntegrity,
   getOrderDocuments,
   attachOrderDocument,
+  previewOrderDocument,
   downloadOrderDocument,
+  replaceOrderDocumentVersion,
+  archiveOrderDocument,
+  getPoDocumentMatchingStatus,
   getSupplierContextualIntelligence,
 } = require('../controllers/procurementController');
+
+const UPLOAD_STAGING_DIR = path.join(os.tmpdir(), 'zamorin_procurement_staging');
+
+const diskStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    try {
+      fs.mkdirSync(UPLOAD_STAGING_DIR, { recursive: true });
+      cb(null, UPLOAD_STAGING_DIR);
+    } catch (err) {
+      cb(err);
+    }
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = `stg-${Date.now()}-${crypto.randomBytes(8).toString('hex')}.tmp`;
+    cb(null, uniqueSuffix);
+  },
+});
+
+const upload = multer({
+  storage: diskStorage,
+  limits: {
+    fileSize: DEFAULT_DOCUMENT_MAX_BYTES,
+    files: 1,
+  },
+});
 
 const router = express.Router();
 
@@ -177,14 +212,40 @@ router.get(
 
 router.post(
   '/orders/:purchaseOrderId/documents',
-  authorize('PROCUREMENT_WRITE', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  authorize('PROCUREMENT_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
+  upload.single('file'),
   attachOrderDocument
+);
+
+router.get(
+  '/orders/:purchaseOrderId/documents/:documentId/preview',
+  authorize('PROCUREMENT_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  previewOrderDocument
 );
 
 router.get(
   '/orders/:purchaseOrderId/documents/:documentId/download',
   authorize('PROCUREMENT_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
   downloadOrderDocument
+);
+
+router.post(
+  '/orders/:purchaseOrderId/documents/:documentId/replace-version',
+  authorize('PROCUREMENT_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
+  upload.single('file'),
+  replaceOrderDocumentVersion
+);
+
+router.delete(
+  '/orders/:purchaseOrderId/documents/:documentId',
+  authorize('PROCUREMENT_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
+  archiveOrderDocument
+);
+
+router.get(
+  '/orders/:purchaseOrderId/matching-status',
+  authorize('PROCUREMENT_READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  getPoDocumentMatchingStatus
 );
 
 // Writes: MASTER, CAFE_ADMIN

@@ -10,6 +10,22 @@ const { DocumentMalwareScanner, defaultMalwareScanner, StaticFileSecurityValidat
 const { documentStorageAdapter } = require('./documentStorageAdapter');
 const { ApiError } = require('../utils/ApiError');
 const { retentionPolicyService } = require('./retentionPolicyService');
+const { Vendor } = require('../models/Vendor');
+const { PurchaseOrder } = require('../models/PurchaseOrder');
+const { DuplicateDetectionService } = require('./duplicateDetectionService');
+
+const CANONICAL_PROCUREMENT_DOCUMENT_TYPES = [
+  'SUPPLIER_INVOICE',
+  'DELIVERY_CHALLAN',
+  'PURCHASE_RECEIPT',
+  'QUOTATION',
+  'CREDIT_NOTE',
+  'DEBIT_NOTE',
+  'PACKING_LIST',
+  'QUALITY_CERTIFICATE',
+  'TAX_SUPPORTING_DOCUMENT',
+  'OTHER_PROCUREMENT_DOCUMENT',
+];
 
 // Strict extension & MIME validation: PDF, JPG, PNG only
 const ALLOWED_MIME_TYPES = new Map([
@@ -161,7 +177,16 @@ class DocumentAttachmentService {
    * Central Authorization & Record-Level Policy Evaluation.
    * Checks actor validity, tenant isolation, café assignment, classification, and document lifecycle.
    */
-  static assertDocumentAuthorization(doc, auth, action = 'VIEW') {
+  static assertDocumentAuthorization(docOrOptions, maybeAuth, maybeAction = 'VIEW') {
+    let doc = docOrOptions;
+    let auth = maybeAuth;
+    let action = maybeAction;
+    if (docOrOptions && typeof docOrOptions === 'object' && docOrOptions.doc && docOrOptions.auth) {
+      doc = docOrOptions.doc;
+      auth = docOrOptions.auth;
+      action = docOrOptions.action || maybeAction || 'VIEW';
+    }
+
     if (!auth || !auth.role) {
       throw new ApiError(401, 'UNAUTHENTICATED', 'Authentication required.');
     }
@@ -185,8 +210,10 @@ class DocumentAttachmentService {
 
     // 2. Cross-Café Isolation
     const docCafe = doc.cafeId || 'GLOBAL';
-    if (docCafe !== 'GLOBAL' && !isMaster && !isOwner && !isRegional) {
+    if (docCafe !== 'GLOBAL' && !isMaster && !isRegional) {
+      const isGlobalAssigned = Array.isArray(auth.assignedCafeIds) && auth.assignedCafeIds.includes('GLOBAL');
       const assigned =
+        isGlobalAssigned ||
         (auth.assignedCafeIds && auth.assignedCafeIds.includes(docCafe)) ||
         auth.primaryCafeId === docCafe;
       if (!assigned) {
@@ -370,7 +397,8 @@ class DocumentAttachmentService {
         throw new ApiError(404, 'DOCUMENT_NOT_AVAILABLE', 'Document upload is incomplete or failed.');
       }
 
-      if (doc.uploadStatus !== 'AVAILABLE' && doc.status !== 'UPLOADED' && doc.status !== 'VERIFIED' && !doc.isDeleted) {
+      const isAvailable = doc.uploadStatus === 'AVAILABLE' || doc.documentStatus === 'AVAILABLE';
+      if (!isAvailable && doc.status !== 'UPLOADED' && doc.status !== 'VERIFIED' && !doc.isDeleted) {
         throw new ApiError(423, 'DOCUMENT_NOT_AVAILABLE', 'Document is not in AVAILABLE state.');
       }
     }
@@ -769,6 +797,7 @@ class DocumentAttachmentService {
     invoiceDate = null,
     amountPaisa = null,
     gstin = '',
+    metadata = {},
     originalFilename,
     mimeType,
     sizeBytes,
@@ -871,6 +900,115 @@ class DocumentAttachmentService {
         throw new ApiError(503, 'SCANNER_UNAVAILABLE', `Scanner unavailable: ${scanResult.details}`);
       }
 
+      // 3c. Procurement Metadata Validations & Duplicate Checks
+      const warnings = Array.isArray(metadata.warnings) ? [...metadata.warnings] : [];
+      let effectiveGstin = (gstin || metadata.supplierGSTIN || metadata.gstin || '').trim().toUpperCase();
+
+      if (finalEntityType === 'PURCHASE_ORDER' || relatedModule === 'PURCHASE_ORDER') {
+        // GSTIN Format Check
+        if (effectiveGstin) {
+          const GSTIN_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+          if (!GSTIN_REGEX.test(effectiveGstin)) {
+            warnings.push('INVALID_GSTIN_FORMAT: Entered GSTIN does not follow standard 15-character statutory format.');
+          }
+        }
+
+        // Supplier GSTIN Match against Vendor Master
+        const poQuery = await PurchaseOrder.findOne({
+          purchaseOrderId: finalEntityId,
+          organisationId,
+        }).select('vendorId orderDate totalPaisa').lean();
+
+        const vendorId = metadata.vendorId || metadata.supplierId || (poQuery ? poQuery.vendorId : null);
+        if (vendorId) {
+          const vendor = await Vendor.findOne({ vendorId: String(vendorId).trim().toUpperCase(), organisationId }).lean();
+          const vendorGstin = vendor ? (vendor.gstNumber || vendor.gstin || '') : '';
+          if (vendorGstin && effectiveGstin) {
+            if (vendorGstin.trim().toUpperCase() !== effectiveGstin) {
+              warnings.push(`SUPPLIER_GSTIN_MISMATCH: Invoice GSTIN (${effectiveGstin}) does not match vendor master GSTIN (${vendorGstin}).`);
+            }
+          }
+        }
+
+        // Duplicate Invoice Check (across organisation or cafe)
+        const effectiveInvNum = (documentNumber || metadata.invoiceNumber || '').trim();
+        if (effectiveInvNum) {
+          const existingInvDoc = await BusinessDocument.findOne({
+            organisationId,
+            documentNumber: new RegExp(`^${effectiveInvNum}$`, 'i'),
+            isDeleted: false,
+            entityId: { $ne: finalEntityId },
+          }).select('documentId entityId cafeId').lean();
+
+          if (existingInvDoc) {
+            warnings.push(`POSSIBLE_DUPLICATE_SUPPLIER_INVOICE: Invoice ${effectiveInvNum} already linked to ${existingInvDoc.entityId || existingInvDoc.documentId}.`);
+          } else {
+            const dupInvoiceResult = await DuplicateDetectionService.checkSupplierInvoiceDuplicates({
+              payload: {
+                invoiceNumber: effectiveInvNum,
+                vendorId,
+                amountPaisa,
+              },
+              organisationId,
+              cafeId: null,
+            });
+            if (dupInvoiceResult.hasDuplicates) {
+              const otherPoMatch = dupInvoiceResult.candidates.find((c) => c.id && c.id !== finalEntityId);
+              if (otherPoMatch) {
+                warnings.push(`POSSIBLE_DUPLICATE_SUPPLIER_INVOICE: Invoice ${effectiveInvNum} already linked to ${otherPoMatch.id || otherPoMatch.type}.`);
+              }
+            }
+          }
+        }
+
+        // Duplicate Binary Content Check (within tenant scope)
+        if (checksum) {
+          const existingBinaryDoc = await BusinessDocument.findOne({
+            organisationId,
+            checksum,
+            isDeleted: false,
+          }).select('documentId entityId relatedRecordId').lean();
+
+          if (existingBinaryDoc) {
+            warnings.push(`POSSIBLE_DUPLICATE_BINARY_CONTENT: Document with identical SHA-256 hash already exists (${existingBinaryDoc.documentId}).`);
+          } else {
+            const dupBinaryResult = await DuplicateDetectionService.checkAttachmentDuplicates({
+              payload: { checksum },
+              organisationId,
+            });
+            if (dupBinaryResult.hasDuplicates) {
+              const otherDocMatch = dupBinaryResult.candidates.find((c) => c.relatedRecordId !== finalEntityId);
+              if (otherDocMatch) {
+                warnings.push(`POSSIBLE_DUPLICATE_BINARY_CONTENT: Document with identical SHA-256 hash already exists (${otherDocMatch.id}).`);
+              }
+            }
+          }
+        }
+
+        // Document Date Plausibility Checks
+        const effectiveDocDate = invoiceDate || metadata.documentDate || metadata.invoiceDate || metadata.challanDate;
+        if (effectiveDocDate) {
+          const docDateObj = new Date(effectiveDocDate);
+          const now = new Date();
+          now.setHours(now.getHours() + 24); // 24h grace for timezones
+          if (docDateObj > now) {
+            warnings.push(`FUTURE_DATED_DOCUMENT: Document date (${effectiveDocDate}) is in the future.`);
+          }
+          if (poQuery && poQuery.orderDate) {
+            const poOrderDate = new Date(poQuery.orderDate);
+            const diffDays = (poOrderDate - docDateObj) / (1000 * 60 * 60 * 24);
+            if (diffDays > 90) {
+              warnings.push(`INVOICE_PREDATES_PO: Document date (${effectiveDocDate}) predates PO date (${poQuery.orderDate}) by ${Math.round(diffDays)} days.`);
+            }
+          }
+        }
+      }
+
+      const combinedMetadata = {
+        ...metadata,
+        warnings,
+      };
+
       // 4. Generate Document ID & Canonical Key
       const documentId = await SequenceCounter.generateId({
         organisationId,
@@ -922,7 +1060,8 @@ class DocumentAttachmentService {
         entityName: entityName ? entityName.trim() : '',
         invoiceDate: invoiceDate ? new Date(invoiceDate) : null,
         amountPaisa: amountPaisa !== null ? Math.round(amountPaisa) : null,
-        gstin: gstin ? gstin.trim().toUpperCase() : '',
+        gstin: effectiveGstin,
+        metadata: combinedMetadata,
         originalFilename: normFilenameInfo.sanitizedName,
         originalFileName: normFilenameInfo.sanitizedName,
         safeDisplayFileName: normFilenameInfo.safeDisplayFileName,
@@ -1679,11 +1818,31 @@ class DocumentAttachmentService {
       ENVIRONMENT: process.env.NODE_ENV || 'development',
     };
   }
+
+  static async createDownloadGrant(params) {
+    const grant = await this.createAuthorizedDownloadGrant(params);
+    return {
+      ...grant,
+      expiresInSeconds: params.expiresInSeconds || 180,
+    };
+  }
+
+  static async archiveDocument(params) {
+    await this.deleteDocument(params);
+    const doc = await BusinessDocument.findOne({
+      documentId: params.documentId.trim().toUpperCase(),
+      organisationId: params.organisationId,
+    });
+    return doc;
+  }
 }
+
+DocumentAttachmentService.CANONICAL_PROCUREMENT_DOCUMENT_TYPES = CANONICAL_PROCUREMENT_DOCUMENT_TYPES;
 
 module.exports = {
   DocumentAttachmentService,
   DEFAULT_DOCUMENT_MAX_BYTES,
   ALLOWED_EXTENSIONS,
   ALLOWED_MIME_TYPES,
+  CANONICAL_PROCUREMENT_DOCUMENT_TYPES,
 };
