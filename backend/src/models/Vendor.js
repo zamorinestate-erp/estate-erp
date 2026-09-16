@@ -587,6 +587,25 @@ const vendorSchema = new mongoose.Schema(
       default: 30,
     },
 
+    // ── Financial Summary & Lifetime Balances ──────────────────────────────
+    financialSummary: {
+      lifetimePoOrderedValuePaisa: { type: Number, min: 0, default: 0 },
+      lifetimeAcceptedReceivedValuePaisa: { type: Number, min: 0, default: 0 },
+      lifetimeVendorInvoiceValuePaisa: { type: Number, min: 0, default: 0 },
+      lifetimeApprovedPayablePaisa: { type: Number, min: 0, default: 0 },
+      lifetimePaidPaisa: { type: Number, min: 0, default: 0 },
+      currentGrossPayablesPaisa: { type: Number, min: 0, default: 0 },
+      currentPaymentHoldsPaisa: { type: Number, min: 0, default: 0 },
+      currentApprovedPayablePaisa: { type: Number, min: 0, default: 0 },
+      currentOutstandingPayablePaisa: { type: Number, min: 0, default: 0 },
+      availableVendorAdvancePaisa: { type: Number, min: 0, default: 0 },
+      availableVendorCreditPaisa: { type: Number, min: 0, default: 0 },
+      overdueAmountPaisa: { type: Number, min: 0, default: 0 },
+      lastPaymentDate: { type: Date, default: null },
+      lastPaymentAmountPaisa: { type: Number, min: 0, default: 0 },
+      lastEvaluatedAt: { type: Date, default: Date.now },
+    },
+
     // ── Notes ────────────────────────────────────────────────────────────────
     notes: {
       type: String,

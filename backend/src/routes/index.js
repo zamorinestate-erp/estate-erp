@@ -38,6 +38,9 @@ const expenseRoutes =
 const financeRoutes =
   require('./financeRoutes');
 
+const vendorLedgerRoutes =
+  require('./vendorLedgerRoutes');
+
 const reportRoutes =
   require('./reportRoutes');
 
@@ -271,6 +274,11 @@ router.use(
 router.use(
   '/finance',
   financeRoutes
+);
+
+router.use(
+  '/vendor-ledger',
+  vendorLedgerRoutes
 );
 
 router.use(
