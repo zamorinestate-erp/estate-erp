@@ -228,6 +228,20 @@ export function isRouteAllowed(role, rawRoute, isPrimaryMaster = false) {
 
   if (route.startsWith("settings/")) {
     const sub = route.slice("settings/".length).toLowerCase();
+    if (role === ROLES.STAFF || role === 'staff') {
+      const STAFF_ALLOWED_SETTINGS = new Set([
+        'profile',
+        'security',
+        'devices',
+        'notifications',
+        'appearance',
+        'accessibility',
+        'language',
+        'help',
+        'privacy',
+      ]);
+      return STAFF_ALLOWED_SETTINGS.has(sub);
+    }
     // Organisation governance / trash subroutes are restricted to MASTER
     if (sub === "trash" || sub === "data-recovery" || sub === "admin" || sub === "system-administration") {
       return role === ROLES.MASTER;
@@ -261,6 +275,8 @@ export function isRouteAllowed(role, rawRoute, isPrimaryMaster = false) {
     'org-identity': 'admin',
     'organisation-identity': 'admin',
     'performance': 'dashboard',
+    'settings': 'staff-settings',
+    'staff-settings': 'settings',
   };
 
   // Block Primary-Master-only routes for Normal Masters

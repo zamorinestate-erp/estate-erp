@@ -252,6 +252,10 @@ const getOrderStatusByIdempotency = asyncHandler(async (request, response) => {
  * REC-04B: Lists pending and manual-review reconciliation jobs for operational visibility.
  */
 const getPendingReconciliations = asyncHandler(async (request, response) => {
+  const role = (request.auth?.role || '').toUpperCase();
+  if (role === 'STAFF') {
+    throw new ApiError(403, 'AUTHORIZATION_DENIED', 'Staff users are not authorized to view reconciliation queues.');
+  }
   const { cafeId, status } = request.query;
   const result = await PosReconciliationService.getPendingReconciliations({
     organisationId: request.auth.organisationId,
@@ -266,6 +270,10 @@ const getPendingReconciliations = asyncHandler(async (request, response) => {
  * REC-04B: Explicitly retries a reconciliation job with exactly-once safety.
  */
 const retryReconciliation = asyncHandler(async (request, response) => {
+  const role = (request.auth?.role || '').toUpperCase();
+  if (role === 'STAFF') {
+    throw new ApiError(403, 'AUTHORIZATION_DENIED', 'Staff users are not authorized to retry reconciliation jobs.');
+  }
   const jobId = normalizeId(request.params.jobId);
   const result = await PosReconciliationService.retryJob(jobId, request.auth);
   return response.status(200).json(result);

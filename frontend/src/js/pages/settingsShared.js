@@ -302,6 +302,8 @@ function renderSettingsShell(sectionId, innerContentHtml, options = {}) {
     "appearance",
     "accessibility",
     "language",
+    "privacy",
+    "help",
   ]);
 
   // Reject unauthorized section for STAFF
@@ -340,6 +342,13 @@ function renderSettingsShell(sectionId, innerContentHtml, options = {}) {
           SETTINGS_DESTINATIONS.appearance,
           SETTINGS_DESTINATIONS.accessibility,
           SETTINGS_DESTINATIONS.language,
+        ],
+      },
+      {
+        title: "PRIVACY & SUPPORT",
+        items: [
+          SETTINGS_DESTINATIONS.privacy,
+          SETTINGS_DESTINATIONS.help,
         ],
       },
     ];
@@ -496,6 +505,13 @@ function renderOverview() {
           SETTINGS_DESTINATIONS.language,
           SETTINGS_DESTINATIONS.appearance,
           SETTINGS_DESTINATIONS.accessibility,
+        ],
+      },
+      {
+        groupTitle: "PRIVACY & SUPPORT",
+        items: [
+          SETTINGS_DESTINATIONS.privacy,
+          SETTINGS_DESTINATIONS.help,
         ],
       },
     ];
