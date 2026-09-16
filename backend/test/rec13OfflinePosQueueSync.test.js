@@ -53,6 +53,8 @@ const { OperatorSession } = require('../src/models/OperatorSession');
 const { IdempotencyRecord } = require('../src/models/IdempotencyRecord');
 const { TaxInvoice } = require('../src/models/TaxInvoice');
 const { SequenceCounter } = require('../src/models/SequenceCounter');
+const { User } = require('../src/models/User');
+const { PosOfflineReviewItem } = require('../src/models/PosOfflineReviewItem');
 const { syncTaxInvoiceIndexes } = require('../src/services/gstTaxService');
 const PosOrderService = require('../src/services/posOrderService');
 const OfflineSyncService = require('../src/services/offlineSyncService');
@@ -673,13 +675,31 @@ describe('REC-13 — Offline POS Queue Synchronization & Exactly-Once Certificat
     assert.strictEqual(billExists, null, 'No bill should be committed into a suspended café');
   });
 
-  // 19. User disabled before sync
-  it('Scenario 19: Originating cashier disabled before sync finalizes under capture evidence with audit log', async () => {
+  // 19. User disabled before sync (REC-13A Governance)
+  it('Scenario 19: Originating cashier disabled before sync does NOT auto-finalize and routes to CONFLICT_REVIEW_REQUIRED', async () => {
+    // Seed disabled cashier in database
+    const disabledUserId = 'ST-9901';
+    await User.findOneAndUpdate(
+      { organisationId: orgId, userId: disabledUserId },
+      {
+        userId: disabledUserId,
+        organisationId: orgId,
+        name: 'Deactivated Cashier',
+        email: 'deactivated.cashier@zamorin.com',
+        role: 'STAFF',
+        accountStatus: 'DISABLED',
+        lifecycleStatus: 'TERMINATED',
+        employmentStatus: 'EXITED',
+        assignedCafeIds: [cafeId],
+      },
+      { upsert: true }
+    );
+
     const tx = {
       clientOfflineId: 'DISABLED-USER-TX-001',
       saleAttemptId: 'ATT-DISABLED-USER-001',
       idempotencyKey: 'IDEM-DISABLED-USER-001',
-      originatingUserId: 'DISABLED-CASHIER-01',
+      originatingUserId: disabledUserId,
       cafeId,
       lineItems: [{ menuItemId: 'MENU-01', quantity: 1, unitPricePaisa: 15000 }],
       totalPaisa: 15750,
@@ -693,10 +713,23 @@ describe('REC-13 — Offline POS Queue Synchronization & Exactly-Once Certificat
       transactions: [tx],
     });
 
-    assert.strictEqual(res.syncedCount, 1);
+    // Must NOT auto-finalize
+    assert.strictEqual(res.syncedCount, 0, 'Must NOT auto-finalize under disabled user');
+    assert.strictEqual(res.conflictCount, 1, 'Must route to conflict review');
+    assert.strictEqual(res.items[0].status, 'CONFLICT_REVIEW_REQUIRED');
+    assert.strictEqual(res.items[0].reviewStatus, 'PENDING_REVIEW');
+    assert.match(res.items[0].reason, /no longer active/i);
+
+    // Zero bill created
     const bill = await Bill.findOne({ saleAttemptId: 'ATT-DISABLED-USER-001' });
-    assert.ok(bill);
-    assert.strictEqual(bill.isOfflineReplay, true);
+    assert.strictEqual(bill, null, 'No bill should be committed autonomously under disabled user');
+
+    // Evidence preserved in PosOfflineReviewItem
+    const reviewItem = await PosOfflineReviewItem.findOne({ saleAttemptId: 'ATT-DISABLED-USER-001' });
+    assert.ok(reviewItem, 'Client evidence must be durably preserved in PosOfflineReviewItem');
+    assert.strictEqual(reviewItem.status, 'PENDING_REVIEW');
+    assert.strictEqual(reviewItem.originatingUserId, disabledUserId);
+    assert.strictEqual(reviewItem.totalPaisa, 15750);
   });
 
   // 20. Shift closed before sync
@@ -1041,4 +1074,317 @@ describe('REC-13 — Offline POS Queue Synchronization & Exactly-Once Certificat
     const ctl08Status = 'CLOSED_VERIFIED';
     assert.strictEqual(ctl08Status, 'CLOSED_VERIFIED');
   });
+
+  // =========================================================================
+  // REC-13A GOVERNANCE TESTS: Tests A through J
+  // =========================================================================
+
+  // Test A: Active Staff captures offline sale -> remains active -> sync succeeds normally
+  it('REC-13A Test A: Active Staff captures offline sale and sync succeeds normally when user remains active', async () => {
+    const activeCashierId = 'ST-8801';
+    await User.findOneAndUpdate(
+      { organisationId: orgId, userId: activeCashierId },
+      {
+        userId: activeCashierId,
+        organisationId: orgId,
+        name: 'Active Staff Cashier',
+        email: 'active.staff@zamorin.com',
+        role: 'STAFF',
+        accountStatus: 'ACTIVE',
+        lifecycleStatus: 'CONFIRMED',
+        employmentStatus: 'ACTIVE',
+        assignedCafeIds: [cafeId],
+      },
+      { upsert: true }
+    );
+
+    const tx = {
+      clientOfflineId: 'ACTIVE-USER-TX-001',
+      saleAttemptId: 'ATT-ACTIVE-USER-001',
+      idempotencyKey: 'IDEM-ACTIVE-USER-001',
+      originatingUserId: activeCashierId,
+      cafeId,
+      lineItems: [{ menuItemId: 'MENU-01', quantity: 1, unitPricePaisa: 15000 }],
+      totalPaisa: 15750,
+      paymentMethod: 'CASH',
+    };
+
+    const res = await OfflineSyncService.syncBatch({
+      organisationId: orgId,
+      cafeId,
+      userId: activeCashierId,
+      transactions: [tx],
+    });
+
+    assert.strictEqual(res.syncedCount, 1);
+    assert.strictEqual(res.conflictCount, 0);
+    const bill = await Bill.findOne({ saleAttemptId: 'ATT-ACTIVE-USER-001' });
+    assert.ok(bill);
+    assert.strictEqual(bill.status, 'COMPLETED');
+  });
+
+  // Test B: Active Staff captures offline sale -> user disabled before sync -> transaction does NOT auto-finalize
+  it('REC-13A Test B: Active Staff captures offline sale, user disabled before sync -> does NOT auto-finalize', async () => {
+    const termUserId = 'ST-8802';
+    await User.findOneAndUpdate(
+      { organisationId: orgId, userId: termUserId },
+      {
+        userId: termUserId,
+        organisationId: orgId,
+        name: 'Terminated Cashier',
+        email: 'term.staff@zamorin.com',
+        role: 'STAFF',
+        accountStatus: 'DISABLED',
+        lifecycleStatus: 'TERMINATED',
+        employmentStatus: 'EXITED',
+        assignedCafeIds: [cafeId],
+      },
+      { upsert: true }
+    );
+
+    const tx = {
+      clientOfflineId: 'TERM-USER-TX-001',
+      saleAttemptId: 'ATT-TERM-USER-001',
+      idempotencyKey: 'IDEM-TERM-USER-001',
+      originatingUserId: termUserId,
+      cafeId,
+      lineItems: [{ menuItemId: 'MENU-01', quantity: 1, unitPricePaisa: 15000 }],
+      totalPaisa: 15750,
+      paymentMethod: 'CASH',
+    };
+
+    const res = await OfflineSyncService.syncBatch({
+      organisationId: orgId,
+      cafeId,
+      userId: 'CAFE-ADMIN-IND',
+      transactions: [tx],
+    });
+
+    assert.strictEqual(res.syncedCount, 0);
+    assert.strictEqual(res.conflictCount, 1);
+    const bill = await Bill.findOne({ saleAttemptId: 'ATT-TERM-USER-001' });
+    assert.strictEqual(bill, null, 'No bill should be committed autonomously');
+  });
+
+  // Test C: Disabled-user transaction becomes CONFLICT_REVIEW_REQUIRED and preserves client evidence
+  it('REC-13A Test C: Disabled-user transaction becomes CONFLICT_REVIEW_REQUIRED and persists in PosOfflineReviewItem', async () => {
+    const reviewItem = await PosOfflineReviewItem.findOne({ saleAttemptId: 'ATT-TERM-USER-001' });
+    assert.ok(reviewItem);
+    assert.strictEqual(reviewItem.status, 'PENDING_REVIEW');
+    assert.strictEqual(reviewItem.originatingUserId, 'ST-8802');
+    assert.strictEqual(reviewItem.idempotencyKey, 'IDEM-TERM-USER-001');
+    assert.strictEqual(reviewItem.totalPaisa, 15750);
+    assert.strictEqual(reviewItem.cafeId, cafeId);
+  });
+
+  // Test D: Assigned Café Admin approves -> exactly one bill/invoice/cash/BOM effect
+  it('REC-13A Test D: Assigned Café Admin approves -> creates exactly one bill, invoice, and BOM depletion', async () => {
+    const adminAuthContext = {
+      userId: 'AD-001',
+      role: 'CAFE_ADMIN',
+      organisationId: orgId,
+      assignedCafeIds: [cafeId],
+    };
+
+    const reviewResult = await OfflineSyncService.reviewItem({
+      reviewId: 'REV-ATT-TERM-USER-001',
+      action: 'APPROVE_AND_FINALIZE',
+      reason: 'Physical cash drawer envelope verified against terminal journal',
+      authContext: adminAuthContext,
+    });
+
+    assert.strictEqual(reviewResult.success, true);
+    assert.strictEqual(reviewResult.reviewStatus, 'APPROVED_FINALIZED');
+    assert.ok(reviewResult.billId);
+    assert.ok(reviewResult.invoiceNumber);
+    assert.strictEqual(reviewResult.originatingUserId, 'ST-8802');
+    assert.strictEqual(reviewResult.reviewedByUserId, 'AD-001');
+
+    const totalBills = await Bill.countDocuments({ saleAttemptId: 'ATT-TERM-USER-001' });
+    assert.strictEqual(totalBills, 1, 'Exactly one bill must be created upon authorized approval');
+
+    const bill = await Bill.findOne({ saleAttemptId: 'ATT-TERM-USER-001' });
+    assert.strictEqual(bill.cashierUserId, 'ST-8802');
+    assert.strictEqual(bill.reviewedByUserId, 'AD-001');
+    assert.strictEqual(bill.reviewedByRole, 'CAFE_ADMIN');
+  });
+
+  // Test E: Approval retry -> zero duplicate sale
+  it('REC-13A Test E: Repeated approval of already finalized review produces zero duplicate sale', async () => {
+    const adminAuthContext = {
+      userId: 'AD-001',
+      role: 'CAFE_ADMIN',
+      organisationId: orgId,
+      assignedCafeIds: [cafeId],
+    };
+
+    const retryResult = await OfflineSyncService.reviewItem({
+      reviewId: 'REV-ATT-TERM-USER-001',
+      action: 'APPROVE_AND_FINALIZE',
+      reason: 'Accidental double click on approval',
+      authContext: adminAuthContext,
+    });
+
+    assert.strictEqual(retryResult.isIdempotentReplay, true);
+    assert.strictEqual(retryResult.reviewStatus, 'APPROVED_FINALIZED');
+
+    const totalBills = await Bill.countDocuments({ saleAttemptId: 'ATT-TERM-USER-001' });
+    assert.strictEqual(totalBills, 1, 'Retry must never create a second bill');
+  });
+
+  // Test F: Foreign Café Admin attempts approval -> 403
+  it('REC-13A Test F: Foreign Café Admin attempting approval on another cafe is denied with 403 CAFE_ACCESS_DENIED', async () => {
+    // Seed a review item for cafeId (Indiranagar)
+    const foreignTx = {
+      clientOfflineId: 'FOR-CAFE-001',
+      saleAttemptId: 'ATT-FOR-CAFE-001',
+      idempotencyKey: 'IDEM-FOR-CAFE-001',
+      originatingUserId: 'ST-9901',
+      cafeId,
+      lineItems: [{ menuItemId: 'MENU-01', quantity: 1, unitPricePaisa: 15000 }],
+      totalPaisa: 15750,
+      paymentMethod: 'CASH',
+    };
+
+    await OfflineSyncService.syncBatch({
+      organisationId: orgId,
+      cafeId,
+      userId: 'SOME-USER',
+      transactions: [foreignTx],
+    });
+
+    // Koramangala Admin (assigned ONLY to cafeIdB) attempts to approve Indiranagar transaction
+    const foreignAdminContext = {
+      userId: 'AD-KOR-01',
+      role: 'CAFE_ADMIN',
+      organisationId: orgId,
+      assignedCafeIds: [cafeIdB], // Assigned to Koramangala only
+    };
+
+    await assert.rejects(
+      async () => {
+        await OfflineSyncService.reviewItem({
+          reviewId: 'REV-ATT-FOR-CAFE-001',
+          action: 'APPROVE_AND_FINALIZE',
+          reason: 'Unauthorized cross-cafe approval attempt',
+          authContext: foreignAdminContext,
+        });
+      },
+      (err) => {
+        assert.strictEqual(err.statusCode, 403);
+        assert.strictEqual(err.errorCode, 'CAFE_ACCESS_DENIED');
+        return true;
+      }
+    );
+  });
+
+  // Test G: Ordinary Staff attempts approval -> 403
+  it('REC-13A Test G: Ordinary Staff attempting approval is strictly denied with 403 AUTHORIZATION_DENIED', async () => {
+    const staffContext = {
+      userId: 'ST-PEER-01',
+      role: 'STAFF',
+      organisationId: orgId,
+      assignedCafeIds: [cafeId],
+    };
+
+    await assert.rejects(
+      async () => {
+        await OfflineSyncService.reviewItem({
+          reviewId: 'REV-ATT-FOR-CAFE-001',
+          action: 'APPROVE_AND_FINALIZE',
+          reason: 'Peer staff cannot approve',
+          authContext: staffContext,
+        });
+      },
+      (err) => {
+        assert.strictEqual(err.statusCode, 403);
+        assert.strictEqual(err.errorCode, 'AUTHORIZATION_DENIED');
+        return true;
+      }
+    );
+  });
+
+  // Test H: Master approves according to governance -> success
+  it('REC-13A Test H: MASTER role approves across cafes according to executive governance', async () => {
+    const masterContext = {
+      userId: 'MU-PRIMARY-01',
+      role: 'MASTER',
+      organisationId: orgId,
+    };
+
+    const masterReview = await OfflineSyncService.reviewItem({
+      reviewId: 'REV-ATT-FOR-CAFE-001',
+      action: 'APPROVE_AND_FINALIZE',
+      reason: 'Executive audit confirmed valid offline cash collection',
+      authContext: masterContext,
+    });
+
+    assert.strictEqual(masterReview.success, true);
+    assert.strictEqual(masterReview.reviewStatus, 'APPROVED_FINALIZED');
+    assert.strictEqual(masterReview.reviewedByUserId, 'MU-PRIMARY-01');
+
+    const bill = await Bill.findOne({ saleAttemptId: 'ATT-FOR-CAFE-001' });
+    assert.ok(bill);
+    assert.strictEqual(bill.cashierUserId, 'ST-9901');
+    assert.strictEqual(bill.reviewedByUserId, 'MU-PRIMARY-01');
+    assert.strictEqual(bill.reviewedByRole, 'MASTER');
+  });
+
+  // Test I: Reviewer rejects -> no bill created; evidence retained
+  it('REC-13A Test I: Reviewer rejects fraudulent/unverifiable transaction -> no bill created, evidence preserved', async () => {
+    const rejectTx = {
+      clientOfflineId: 'REJECT-TX-001',
+      saleAttemptId: 'ATT-REJECT-TX-001',
+      idempotencyKey: 'IDEM-REJECT-TX-001',
+      originatingUserId: 'ST-9901', // disabled cashier
+      cafeId,
+      lineItems: [{ menuItemId: 'MENU-01', quantity: 1, unitPricePaisa: 15000 }],
+      totalPaisa: 15750,
+      paymentMethod: 'CASH',
+    };
+
+    await OfflineSyncService.syncBatch({
+      organisationId: orgId,
+      cafeId,
+      userId: 'ANY',
+      transactions: [rejectTx],
+    });
+
+    const adminContext = {
+      userId: 'AD-001',
+      role: 'CAFE_ADMIN',
+      organisationId: orgId,
+      assignedCafeIds: [cafeId],
+    };
+
+    const rejectRes = await OfflineSyncService.reviewItem({
+      reviewId: 'REV-ATT-REJECT-TX-001',
+      action: 'REJECT',
+      reason: 'No physical cash was deposited in till drawer for this sale',
+      authContext: adminContext,
+    });
+
+    assert.strictEqual(rejectRes.success, true);
+    assert.strictEqual(rejectRes.reviewStatus, 'REJECTED');
+
+    // Zero bill created
+    const bill = await Bill.findOne({ saleAttemptId: 'ATT-REJECT-TX-001' });
+    assert.strictEqual(bill, null, 'Rejected offline transaction must never create a bill');
+
+    // Evidence preserved
+    const reviewItem = await PosOfflineReviewItem.findOne({ saleAttemptId: 'ATT-REJECT-TX-001' });
+    assert.ok(reviewItem);
+    assert.strictEqual(reviewItem.status, 'REJECTED');
+    assert.strictEqual(reviewItem.reviewNotes, 'No physical cash was deposited in till drawer for this sale');
+  });
+
+  // Test J: Original cashier identity and reviewer identity remain distinct in audit
+  it('REC-13A Test J: Original cashier identity and reviewer identity remain strictly distinct in audit and bill', async () => {
+    const bill = await Bill.findOne({ saleAttemptId: 'ATT-TERM-USER-001' });
+    assert.ok(bill);
+    assert.strictEqual(bill.cashierUserId, 'ST-8802', 'Original cashier must remain ST-8802');
+    assert.strictEqual(bill.reviewedByUserId, 'AD-001', 'Reviewer must be recorded as AD-001');
+    assert.notStrictEqual(bill.cashierUserId, bill.reviewedByUserId, 'Reviewer must not impersonate cashier');
+  });
 });
+

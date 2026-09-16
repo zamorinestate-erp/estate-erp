@@ -19,7 +19,10 @@ const { Bill } = require('../models/Bill');
 const { Cafe } = require('../models/Cafe');
 const { DeviceRegistration } = require('../models/DeviceRegistration');
 const { OperatorSession } = require('../models/OperatorSession');
+const { User } = require('../models/User');
+const { PosOfflineReviewItem } = require('../models/PosOfflineReviewItem');
 const { OfflineRiskConfigService } = require('./offlineRiskConfigService');
+const auditService = require('./auditService');
 const PosOrderService = require('./posOrderService');
 
 const OFFLINE_POLICY_CLASSES = {
@@ -276,6 +279,106 @@ class OfflineSyncService {
         flagReason = `Offline bill total exceeded configured ₹${(highValueAmountPaise / 100).toLocaleString('en-IN')} ceiling.`;
       }
 
+      // 4.5. REC-13A Governance: Disabled/Terminated Operator Authorization Validation
+      const originatingUserId = (tx.originatingUserId || tx.cashierUserId || userId || '').trim().toUpperCase();
+      let isOperatorDisabled = false;
+      let disabledReason = '';
+      if (originatingUserId && originatingUserId !== 'OFFLINE_CASHIER') {
+        try {
+          const userDoc = await User.findOne({
+            organisationId: cleanOrg,
+            userId: originatingUserId,
+          }).lean();
+
+          if (userDoc) {
+            const accStatus = String(userDoc.accountStatus || '').toUpperCase();
+            const lifeStatus = String(userDoc.lifecycleStatus || '').toUpperCase();
+            const empStatus = String(userDoc.employmentStatus || '').toUpperCase();
+
+            if (['DISABLED', 'TERMINATED', 'SUSPENDED', 'DEACTIVATED', 'ARCHIVED', 'LOCKED'].includes(accStatus) ||
+                ['TERMINATED', 'SEPARATED', 'SUSPENDED', 'RETIRED'].includes(lifeStatus) ||
+                ['EXITED', 'ARCHIVED'].includes(empStatus)) {
+              isOperatorDisabled = true;
+              disabledReason = `Originating cashier ${originatingUserId} is no longer active (account: ${accStatus}, lifecycle: ${lifeStatus}, employment: ${empStatus}). Autonomous finalization prohibited; requires authorized review.`;
+            }
+          }
+        } catch (_) {}
+      }
+
+      if (isOperatorDisabled) {
+        results.conflictCount++;
+
+        // Persist or update PosOfflineReviewItem preserving complete client evidence
+        const saleAttemptId = tx.saleAttemptId || clientOfflineId;
+        const idempotencyKey = tx.idempotencyKey || `OFFLINE-IDEM-${clientOfflineId}`;
+        const capturedAtClient = tx.capturedAtClient ? new Date(tx.capturedAtClient) : (tx.offlineCreatedAt ? new Date(tx.offlineCreatedAt) : new Date());
+        const totalPaisa = Number(tx.totalPaisa) || 0;
+
+        try {
+          const reviewId = `REV-${saleAttemptId}`;
+          await PosOfflineReviewItem.findOneAndUpdate(
+            { organisationId: cleanOrg, cafeId: cleanCafe, saleAttemptId },
+            {
+              reviewId,
+              saleAttemptId,
+              idempotencyKey,
+              clientOfflineId,
+              organisationId: cleanOrg,
+              cafeId: cleanCafe,
+              originatingUserId,
+              originatingShiftId: tx.shiftId || tx.originatingShiftId || null,
+              originatingDeviceId: tx.originatingDeviceId || deviceId || '',
+              capturedAtClient,
+              serverReceivedAt: new Date(),
+              catalogVersion: tx.catalogVersion || null,
+              totalPaisa,
+              paymentMethod: tx.paymentMethod || 'CASH',
+              reviewReason: disabledReason,
+              status: 'PENDING_REVIEW',
+              payloadSnapshot: tx,
+            },
+            { upsert: true, returnDocument: 'after' }
+          );
+
+          // Emit Audit Event
+          try {
+            await auditService.recordAuditEvent({
+              organisationId: cleanOrg,
+              cafeId: cleanCafe,
+              actorUserId: originatingUserId,
+              actorRole: 'STAFF',
+              module: 'POS_OFFLINE_SYNC',
+              action: 'OFFLINE_POS_OPERATOR_DISABLED',
+              entityType: 'POS_OFFLINE_REVIEW_ITEM',
+              entityId: reviewId,
+              reason: disabledReason,
+              result: 'SUCCESS',
+              riskClassification: 'HIGH',
+              correlationId: idempotencyKey,
+              metadata: {
+                saleAttemptId,
+                clientOfflineId,
+                totalPaisa,
+                capturedAtClient,
+              },
+            });
+          } catch (_) {}
+        } catch (revErr) {
+          console.error('[OfflineSyncService] Failed to persist review item:', revErr.message);
+        }
+
+        results.items.push({
+          clientOfflineId,
+          status: 'CONFLICT_REVIEW_REQUIRED',
+          reviewStatus: 'PENDING_REVIEW',
+          reason: disabledReason,
+          saleAttemptId,
+          idempotencyKey,
+          capturedAt: capturedAtClient,
+        });
+        continue;
+      }
+
       // Format line items for PosOrderService
       const mappedLineItems = (Array.isArray(tx.lineItems) && tx.lineItems.length > 0
         ? tx.lineItems
@@ -396,6 +499,353 @@ class OfflineSyncService {
     }
 
     return results;
+  }
+
+  /**
+   * REC-13A: Retrieves pending offline review items scoped by organisation and café.
+   */
+  static async getPendingReviews({ organisationId, cafeId = null, authUser }) {
+    const cleanOrg = (organisationId || authUser?.organisationId || 'ORG-ZAMORIN').trim().toUpperCase();
+    const query = { organisationId: cleanOrg, status: 'PENDING_REVIEW' };
+
+    const role = (authUser?.role || '').toUpperCase();
+    if (role !== 'MASTER' && role !== 'OWNER') {
+      const assignedCafes = (authUser?.assignedCafeIds || []).map((c) => String(c).trim().toUpperCase());
+      if (cafeId) {
+        const cleanCafe = String(cafeId).trim().toUpperCase();
+        if (!assignedCafes.includes(cleanCafe)) {
+          const err = new Error('You do not have access to this café.');
+          err.statusCode = 403;
+          err.errorCode = 'CAFE_ACCESS_DENIED';
+          throw err;
+        }
+        query.cafeId = cleanCafe;
+      } else {
+        query.cafeId = { $in: assignedCafes };
+      }
+    } else if (cafeId) {
+      query.cafeId = String(cafeId).trim().toUpperCase();
+    }
+
+    return PosOfflineReviewItem.find(query).sort({ capturedAtClient: 1 }).lean();
+  }
+
+  /**
+   * REC-13A: Executes authorized review of an offline-captured transaction.
+   * Actions: APPROVE_AND_FINALIZE, REJECT, ESCALATE.
+   *
+   * Enforces:
+   * - Strict role authorization: Assigned CAFE_ADMIN, MASTER, OWNER (STAFF strictly denied)
+   * - Cross-café denial (Foreign Café Admin denied with 403)
+   * - Separation of originating cashier identity vs reviewer identity
+   * - Idempotent replay: approving an already finalized review returns existing bill
+   */
+  static async reviewItem({
+    reviewId,
+    action,
+    reason = '',
+    authContext,
+  }) {
+    if (!reviewId) {
+      const err = new Error('reviewId is required for review.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const normAction = String(action || '').trim().toUpperCase();
+    if (!['APPROVE_AND_FINALIZE', 'REJECT', 'ESCALATE'].includes(normAction)) {
+      const err = new Error(`Invalid review action: ${action}. Must be APPROVE_AND_FINALIZE, REJECT, or ESCALATE.`);
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const reviewerRole = (authContext?.role || '').toUpperCase();
+    const reviewerUserId = (authContext?.userId || '').trim().toUpperCase();
+    const reviewedByRole = reviewerRole;
+    const reviewedByUserId = reviewerUserId;
+    const cleanOrg = (authContext?.organisationId || 'ORG-ZAMORIN').trim().toUpperCase();
+
+    // 1. Role Governance Check
+    if (reviewerRole === 'STAFF') {
+      const err = new Error('Staff users are not authorized to perform offline queue governance review.');
+      err.statusCode = 403;
+      err.errorCode = 'AUTHORIZATION_DENIED';
+      throw err;
+    }
+
+    if (!['CAFE_ADMIN', 'MASTER', 'OWNER'].includes(reviewerRole)) {
+      const err = new Error(`Role ${reviewerRole} is not authorized for offline queue review.`);
+      err.statusCode = 403;
+      err.errorCode = 'AUTHORIZATION_DENIED';
+      throw err;
+    }
+
+    // 2. Lookup Review Item
+    const reviewItem = await PosOfflineReviewItem.findOne({
+      organisationId: cleanOrg,
+      $or: [{ reviewId }, { saleAttemptId: reviewId }],
+    });
+
+    if (!reviewItem) {
+      const err = new Error(`Offline review item ${reviewId} not found.`);
+      err.statusCode = 404;
+      err.errorCode = 'NOT_FOUND';
+      throw err;
+    }
+
+    // 3. Cross-Café Scoping Check
+    const itemCafeId = reviewItem.cafeId;
+    if (reviewerRole !== 'MASTER' && reviewerRole !== 'OWNER') {
+      const assignedCafes = (authContext?.assignedCafeIds || []).map((c) => String(c).trim().toUpperCase());
+      if (!assignedCafes.includes(itemCafeId)) {
+        const err = new Error(`Café Admin ${reviewerUserId} is not authorized for café ${itemCafeId}.`);
+        err.statusCode = 403;
+        err.errorCode = 'CAFE_ACCESS_DENIED';
+        throw err;
+      }
+    }
+
+    // 4. Idempotency Guard: if already finalized or rejected
+    if (reviewItem.status === 'APPROVED_FINALIZED') {
+      return {
+        success: true,
+        isIdempotentReplay: true,
+        reviewStatus: 'APPROVED_FINALIZED',
+        message: 'Offline transaction was already reviewed, approved, and finalized.',
+        reviewId: reviewItem.reviewId,
+        billId: reviewItem.finalizedBillId,
+        invoiceNumber: reviewItem.finalizedInvoiceNumber,
+        originatingUserId: reviewItem.originatingUserId,
+        reviewedByUserId: reviewItem.reviewedByUserId,
+      };
+    }
+
+    if (reviewItem.status === 'REJECTED') {
+      return {
+        success: true,
+        isIdempotentReplay: true,
+        reviewStatus: 'REJECTED',
+        message: 'Offline transaction was previously rejected.',
+        reviewId: reviewItem.reviewId,
+        originatingUserId: reviewItem.originatingUserId,
+        reviewedByUserId: reviewItem.reviewedByUserId,
+      };
+    }
+
+    // 5. Execute Action
+    if (normAction === 'REJECT') {
+      if (!reason || !reason.trim()) {
+        const err = new Error('A rejection reason is mandatory when rejecting an offline transaction.');
+        err.statusCode = 400;
+        throw err;
+      }
+
+      reviewItem.status = 'REJECTED';
+      reviewItem.reviewDecision = 'REJECT';
+      reviewItem.reviewedByUserId = reviewerUserId;
+      reviewItem.reviewedByRole = reviewerRole;
+      reviewItem.reviewNotes = reason.trim();
+      reviewItem.reviewedAt = new Date();
+      await reviewItem.save();
+
+      // Audit Rejection
+      try {
+        await auditService.recordAuditEvent({
+          organisationId: cleanOrg,
+          cafeId: itemCafeId,
+          actorUserId: reviewerUserId,
+          actorRole: reviewerRole,
+          module: 'POS_OFFLINE_SYNC',
+          action: 'OFFLINE_POS_REVIEW_REJECTED',
+          entityType: 'POS_OFFLINE_REVIEW_ITEM',
+          entityId: reviewItem.reviewId,
+          reason: reason.trim(),
+          result: 'SUCCESS',
+          riskClassification: 'HIGH',
+          correlationId: reviewItem.idempotencyKey,
+          metadata: {
+            saleAttemptId: reviewItem.saleAttemptId,
+            originatingUserId: reviewItem.originatingUserId,
+            totalPaisa: reviewItem.totalPaisa,
+          },
+        });
+      } catch (_) {}
+
+      return {
+        success: true,
+        reviewStatus: 'REJECTED',
+        message: 'Offline transaction was rejected. Evidence preserved for audit.',
+        reviewId: reviewItem.reviewId,
+        originatingUserId: reviewItem.originatingUserId,
+        reviewedByUserId: reviewerUserId,
+      };
+    }
+
+    if (normAction === 'ESCALATE') {
+      reviewItem.status = 'ESCALATED';
+      reviewItem.reviewDecision = 'ESCALATE';
+      reviewItem.reviewedByUserId = reviewerUserId;
+      reviewItem.reviewedByRole = reviewerRole;
+      reviewItem.reviewNotes = reason.trim() || 'Escalated to Master governance.';
+      reviewItem.reviewedAt = new Date();
+      await reviewItem.save();
+
+      try {
+        await auditService.recordAuditEvent({
+          organisationId: cleanOrg,
+          cafeId: itemCafeId,
+          actorUserId: reviewerUserId,
+          actorRole: reviewerRole,
+          module: 'POS_OFFLINE_SYNC',
+          action: 'OFFLINE_POS_REVIEW_ESCALATED',
+          entityType: 'POS_OFFLINE_REVIEW_ITEM',
+          entityId: reviewItem.reviewId,
+          reason: reason.trim() || 'Escalated to Master governance.',
+          result: 'SUCCESS',
+          riskClassification: 'MEDIUM',
+          correlationId: reviewItem.idempotencyKey,
+        });
+      } catch (_) {}
+
+      return {
+        success: true,
+        reviewStatus: 'ESCALATED',
+        message: 'Offline transaction escalated to Master oversight.',
+        reviewId: reviewItem.reviewId,
+      };
+    }
+
+    // 6. Action: APPROVE_AND_FINALIZE
+    // Run the canonical PosOrderService commit pipeline (REC-04B)
+    const tx = reviewItem.payloadSnapshot || {};
+    const totalPaisa = reviewItem.totalPaisa;
+    const mappedLineItems = (Array.isArray(tx.lineItems) && tx.lineItems.length > 0
+      ? tx.lineItems
+      : [{ menuItemId: 'ITEM-OFFLINE', itemNameSnapshot: 'Offline Sale Item', quantity: 1, unitPricePaisa: totalPaisa }]
+    ).map((item, idx) => {
+      const qty = Math.max(1, Math.floor(Number(item.quantity) || 1));
+      const price = Math.max(0, Math.round(Number(item.unitPricePaisa ?? item.pricePaisa ?? (item.price != null ? item.price * 100 : 0))));
+      return {
+        menuItemId: item.menuItemId || item.itemId || item.id || `ITEM-OFFLINE-${idx + 1}`,
+        itemNameSnapshot: item.itemNameSnapshot || item.name || 'Offline Sale Item',
+        quantity: qty,
+        unitPricePaisa: price,
+        modifiers: item.modifiers || {},
+        itemNotes: item.itemNotes || item.notes || `REVIEWED_BY_${reviewerUserId}`,
+        taxRatePercent: typeof item.taxRatePercent === 'number' ? item.taxRatePercent : 5,
+        taxClassification: item.taxClassification || 'GST_5',
+        discountPaisa: Math.max(0, Math.round(Number(item.discountPaisa || 0))),
+      };
+    });
+
+    const orderPayload = {
+      action: 'SAVE',
+      cafeId: itemCafeId,
+      orderType: tx.orderType || 'QUICK_SALE',
+      serviceMode: tx.serviceMode || tx.orderType || 'QUICK_SALE',
+      tableNumber: tx.tableNumber || '',
+      tableToken: tx.tableToken || '',
+      guestCovers: Math.max(1, Number(tx.guestCovers) || 1),
+      discountPaisa: Math.max(0, Number(tx.discountPaisa) || 0),
+      paymentMethod: tx.paymentMethod || 'CASH',
+      registerId: tx.registerId || 'REG-01',
+      registerSessionId: tx.registerSessionId || tx.shiftId || '',
+      idempotencyKey: reviewItem.idempotencyKey,
+      saleAttemptId: reviewItem.saleAttemptId,
+      clientOfflineId: reviewItem.clientOfflineId,
+      offlineCreatedAt: reviewItem.capturedAtClient,
+      catalogVersion: reviewItem.catalogVersion,
+      lineItems: mappedLineItems,
+      tenders: tx.tenders || [
+        {
+          paymentMethod: tx.paymentMethod || 'CASH',
+          amountPaisa: totalPaisa,
+          provider: 'CASH_REGISTER',
+          paymentReference: tx.paymentReference || `CASH-${reviewItem.clientOfflineId}`,
+        },
+      ],
+      isImmediateCompletion: true,
+      isOfflineReplay: true,
+      reviewedByUserId,
+      reviewedByRole,
+      reviewReason: reason || 'Authorized review approval',
+      reviewId: reviewItem.reviewId,
+    };
+
+    // Keep original cashier as the originating identity
+    const commitAuthContext = {
+      organisationId: cleanOrg,
+      cafeId: itemCafeId,
+      userId: reviewItem.originatingUserId,
+      role: 'STAFF',
+    };
+
+    const commitResult = await PosOrderService.processOrder(
+      orderPayload,
+      commitAuthContext,
+      'SAVE',
+      {
+        isOfflineReplay: true,
+        clientOfflineId: reviewItem.clientOfflineId,
+        reviewedByUserId,
+        reviewedByRole,
+        reviewReason: reason,
+        reviewId: reviewItem.reviewId,
+      }
+    );
+
+    const finalizedBill = commitResult.bill || commitResult.data;
+    const billId = finalizedBill?.billId || commitResult.billId;
+    const invoiceNumber = finalizedBill?.invoiceNumber || commitResult.invoiceNumber;
+
+    reviewItem.status = 'APPROVED_FINALIZED';
+    reviewItem.reviewDecision = 'APPROVE_AND_FINALIZE';
+    reviewItem.reviewedByUserId = reviewerUserId;
+    reviewItem.reviewedByRole = reviewerRole;
+    reviewItem.reviewNotes = reason.trim() || 'Approved by authorized reviewer';
+    reviewItem.reviewedAt = new Date();
+    reviewItem.finalizedBillId = billId;
+    reviewItem.finalizedInvoiceNumber = invoiceNumber;
+    await reviewItem.save();
+
+    // Audit Approval
+    try {
+      await auditService.recordAuditEvent({
+        organisationId: cleanOrg,
+        cafeId: itemCafeId,
+        actorUserId: reviewerUserId,
+        actorRole: reviewerRole,
+        module: 'POS_OFFLINE_SYNC',
+        action: 'OFFLINE_POS_REVIEW_APPROVED',
+        entityType: 'POS_OFFLINE_REVIEW_ITEM',
+        entityId: reviewItem.reviewId,
+        reason: reason.trim() || 'Approved by authorized reviewer',
+        result: 'SUCCESS',
+        riskClassification: 'HIGH',
+        correlationId: reviewItem.idempotencyKey,
+        metadata: {
+          saleAttemptId: reviewItem.saleAttemptId,
+          originatingUserId: reviewItem.originatingUserId,
+          reviewerUserId,
+          billId,
+          invoiceNumber,
+          totalPaisa,
+        },
+      });
+    } catch (_) {}
+
+    return {
+      success: true,
+      reviewStatus: 'APPROVED_FINALIZED',
+      message: 'Offline transaction approved and finalized under authorized review.',
+      reviewId: reviewItem.reviewId,
+      billId,
+      invoiceNumber,
+      originatingUserId: reviewItem.originatingUserId,
+      reviewedByUserId,
+      reviewedByRole,
+      bomDepletionStatus: finalizedBill?.bomDepletionStatus || 'DEPLETED',
+    };
   }
 }
 

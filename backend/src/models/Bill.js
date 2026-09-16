@@ -757,6 +757,33 @@ const billSchema = new mongoose.Schema(
       sparse: true,
       default: null,
     },
+
+    // REC-13A: Review governance tracking for offline transactions
+    reviewedByUserId: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: null,
+    },
+
+    reviewedByRole: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: null,
+    },
+
+    reviewReason: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+
+    reviewId: {
+      type: String,
+      trim: true,
+      default: null,
+    },
   },
   {
     timestamps: true,

@@ -19,6 +19,8 @@ const {
   getPendingReconciliations,
   retryReconciliation,
   syncOfflineOrders,
+  getPendingOfflineReviews,
+  reviewOfflineOrder,
 } = require('../controllers/posController');
 
 const router = express.Router();
@@ -41,6 +43,10 @@ router.get('/orders/status/:transactionId', getOrderStatusByIdempotency);
 // REC-04B: Durable side-effect reconciliation management
 router.get('/reconciliation/pending', getPendingReconciliations);
 router.post('/reconciliation/:jobId/retry', retryReconciliation);
+
+// REC-13A: Disabled operator & offline review management
+router.get('/offline-reviews/pending', getPendingOfflineReviews);
+router.post('/offline-reviews/:reviewId/review', reviewOfflineOrder);
 
 module.exports = router;
 

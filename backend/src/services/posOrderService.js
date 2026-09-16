@@ -750,6 +750,10 @@ class PosOrderService {
       isOfflineReplay: Boolean(orderPayload.isOfflineReplay || options.isOfflineReplay),
       clientOfflineId: orderPayload.clientOfflineId || null,
       offlineCreatedAt: orderPayload.offlineCreatedAt ? new Date(orderPayload.offlineCreatedAt) : null,
+      reviewedByUserId: orderPayload.reviewedByUserId || options.reviewedByUserId || null,
+      reviewedByRole: orderPayload.reviewedByRole || options.reviewedByRole || null,
+      reviewReason: orderPayload.reviewReason || options.reviewReason || null,
+      reviewId: orderPayload.reviewId || options.reviewId || null,
     });
 
     try {

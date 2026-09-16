@@ -302,6 +302,50 @@ const syncOfflineOrders = asyncHandler(async (request, response) => {
   });
 });
 
+/**
+ * GET /api/v1/pos/offline-reviews/pending
+ * REC-13A: Lists pending offline review items scoped by cafe and authorization.
+ */
+const getPendingOfflineReviews = asyncHandler(async (request, response) => {
+  const { organisationId } = request.auth;
+  const cafeId = normalizeId(request.query?.cafeId || request.params?.cafeId || '');
+
+  const OfflineSyncService = require('../services/offlineSyncService');
+  const items = await OfflineSyncService.getPendingReviews({
+    organisationId,
+    cafeId: cafeId || null,
+    authUser: request.auth,
+  });
+
+  return response.status(200).json({
+    success: true,
+    count: items.length,
+    data: items,
+  });
+});
+
+/**
+ * POST /api/v1/pos/offline-reviews/:reviewId/review
+ * REC-13A: Executes authorized review decision (APPROVE_AND_FINALIZE, REJECT, ESCALATE).
+ */
+const reviewOfflineOrder = asyncHandler(async (request, response) => {
+  const { reviewId } = request.params;
+  const { action, reason } = request.body || {};
+
+  const OfflineSyncService = require('../services/offlineSyncService');
+  const result = await OfflineSyncService.reviewItem({
+    reviewId,
+    action,
+    reason,
+    authContext: request.auth,
+  });
+
+  return response.status(200).json({
+    success: true,
+    data: result,
+  });
+});
+
 module.exports = {
   commitOrder,
   previewOrder,
@@ -313,6 +357,8 @@ module.exports = {
   getPendingReconciliations,
   retryReconciliation,
   syncOfflineOrders,
+  getPendingOfflineReviews,
+  reviewOfflineOrder,
 };
 
 
