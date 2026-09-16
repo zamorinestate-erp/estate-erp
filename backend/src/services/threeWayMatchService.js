@@ -19,6 +19,22 @@
  */
 
 const { ApiError } = require('../utils/ApiError');
+const { roundToPaisa } = require('./gstTaxService');
+
+/**
+ * Computes canonical split tax for procurement matching (REC-16 §22).
+ */
+function computeLineTaxPaisa(taxableVal, gstRatePercent, isInterState = false) {
+  const taxable = Math.max(0, Number(taxableVal || 0));
+  const rate = Math.max(0, Number(gstRatePercent || 0));
+  if (isInterState) {
+    return roundToPaisa((taxable * rate) / 100);
+  }
+  const half = rate / 2;
+  const cgst = roundToPaisa((taxable * half) / 100);
+  const sgst = roundToPaisa((taxable * half) / 100);
+  return cgst + sgst;
+}
 
 class ThreeWayMatchService {
   /**
@@ -33,6 +49,13 @@ class ThreeWayMatchService {
     if (!purchaseOrder || !supplierInvoice) {
       throw new ApiError(400, 'DOCUMENTS_REQUIRED', 'Both PurchaseOrder and SupplierInvoice are required for 3-way matching.');
     }
+
+    const isInterState = Boolean(
+      supplierInvoice.isInterState ||
+      purchaseOrder.isInterState ||
+      supplierInvoice.supplyType === 'INTER_STATE' ||
+      purchaseOrder.supplyType === 'INTER_STATE'
+    );
 
     const discrepancies = [];
     const lineComparisons = [];
@@ -64,7 +87,7 @@ class ThreeWayMatchService {
       const invGst = invLine.taxRatePercent !== undefined ? Number(invLine.taxRatePercent) : poGst;
 
       const taxableVal = Math.max(0, (qtyInvoiced * invRate) - discount);
-      const taxAmount = Math.round((taxableVal * invGst) / 100);
+      const taxAmount = computeLineTaxPaisa(taxableVal, invGst, isInterState);
       const lineTotal = taxableVal + taxAmount;
 
       computedPoTotal += Number(poLine.totalLinePaisa || (qtyOrdered * poRate));
@@ -146,7 +169,7 @@ class ThreeWayMatchService {
         if (!primaryVariance) primaryVariance = 'PRICE_VARIANCE';
       }
       if (d.poGst !== d.invGst) {
-        taxVariancePaisa += Math.abs(d.taxAmount - Math.round((d.taxableVal * d.poGst) / 100));
+        taxVariancePaisa += Math.abs(d.taxAmount - computeLineTaxPaisa(d.taxableVal, d.poGst, isInterState));
         if (!primaryVariance) primaryVariance = 'TAX_VARIANCE';
       }
     }
@@ -174,7 +197,7 @@ class ThreeWayMatchService {
         itemId: d.itemId,
         quantityVariance: Math.abs((d.qtyInvoiced || 0) - (d.qtyReceived || 0)),
         priceVariancePaisa: Math.abs((d.invRate || 0) - (d.poRate || 0)),
-        taxVariancePaisa: Math.abs((d.taxAmount || 0) - Math.round(((d.taxableVal || 0) * (d.poGst || 0)) / 100)),
+        taxVariancePaisa: Math.abs((d.taxAmount || 0) - computeLineTaxPaisa(d.taxableVal || 0, d.poGst || 0, isInterState)),
         issues: d.issues,
       })),
       lineComparisons,

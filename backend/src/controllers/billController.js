@@ -43,6 +43,13 @@ const {
 } = require('../models/SequenceCounter');
 
 const {
+  roundToPaisa,
+  calculateCustomerPayableRounding50P,
+  TAX_RULE_VERSION,
+  ROUNDING_POLICY_VERSION,
+} = require('../services/gstTaxService');
+
+const {
   asyncHandler,
 } = require('../utils/asyncHandler');
 
@@ -565,9 +572,10 @@ const createBill = asyncHandler(async (request, response) => {
     const effectiveUnitPrice = unitPrice + modifierPrice;
     const lineSubtotal = qty * effectiveUnitPrice;
     const taxRate = mItem.taxRatePercent || 5;
-    const lineTax = Math.round(lineSubtotal * (taxRate / 100));
-    const lineCgst = Math.round(lineTax / 2);
-    const lineSgst = lineTax - lineCgst;
+    const halfRate = taxRate / 2;
+    const lineCgst = roundToPaisa((lineSubtotal * halfRate) / 100);
+    const lineSgst = roundToPaisa((lineSubtotal * halfRate) / 100);
+    const lineTax = lineCgst + lineSgst;
 
     subtotalPaisa += lineSubtotal;
     taxPaisa += lineTax;
@@ -593,7 +601,10 @@ const createBill = asyncHandler(async (request, response) => {
   }
 
   const discount = Math.max(0, Number(discountPaisa) || 0);
-  const totalPaisa = Math.max(0, subtotalPaisa + taxPaisa - discount);
+  const preRoundingTotalPaisa = Math.max(0, subtotalPaisa + taxPaisa - discount);
+  const payable = calculateCustomerPayableRounding50P(preRoundingTotalPaisa);
+  const totalPaisa = payable.finalPayablePaisa;
+  const roundOffPaisa = payable.roundOffPaisa;
 
   const businessDate = getIstBusinessDate();
   const datePart = businessDate.replace(/-/g, '');
@@ -683,7 +694,11 @@ const createBill = asyncHandler(async (request, response) => {
     sgstPaisa,
     igstPaisa: 0,
     discountPaisa: discount,
+    preRoundingTotalPaisa,
+    roundOffPaisa,
     totalPaisa,
+    taxRuleVersion: TAX_RULE_VERSION,
+    roundingPolicyVersion: ROUNDING_POLICY_VERSION,
     refundedTotalPaisa: 0,
     paymentStatus: shouldComplete ? 'PAID' : 'UNPAID',
     paymentMethod: processedTenders.length > 1 ? 'SPLIT' : payMethod,

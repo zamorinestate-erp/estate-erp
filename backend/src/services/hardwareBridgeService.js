@@ -268,6 +268,15 @@ function compileThermalReceipt(orderData = {}, terminal = {}, cafeInfo = {}) {
   if (Number(sgst) > 0) {
     parts.push(Buffer.from(formatTwoColumn('SGST (2.5%):', `₹${sgst}`, width) + '\n', 'utf8'));
   }
+  if (orderData.roundOff != null && Number(orderData.roundOff) !== 0) {
+    const roVal = Number(orderData.roundOff);
+    const roStr = roVal < 0 ? `-₹${Math.abs(roVal).toFixed(2)}` : `+₹${roVal.toFixed(2)}`;
+    const preRound = orderData.preRoundingTotal != null ? Number(orderData.preRoundingTotal).toFixed(2) : null;
+    if (preRound) {
+      parts.push(Buffer.from(formatTwoColumn('Amount Before Round:', `₹${preRound}`, width) + '\n', 'utf8'));
+    }
+    parts.push(Buffer.from(formatTwoColumn('Round Off:', roStr, width) + '\n', 'utf8'));
+  }
 
   parts.push(Buffer.from(`${divider}\n`, 'utf8'));
   parts.push(ESC_POS_COMMANDS.FONT_2X_HEIGHT);
@@ -503,6 +512,15 @@ function generateFallbackHtmlReceipt(orderData = {}, cafeInfo = {}) {
     ${Number(orderData.discount || 0) > 0 ? `<div style="display:flex; justify-content:space-between;"><span>Discount:</span><span>-₹${(Number(orderData.discount)).toFixed(2)}</span></div>` : ''}
     ${Number(orderData.cgst || 0) > 0 ? `<div style="display:flex; justify-content:space-between;"><span>CGST (2.5%):</span><span>₹${(Number(orderData.cgst)).toFixed(2)}</span></div>` : ''}
     ${Number(orderData.sgst || 0) > 0 ? `<div style="display:flex; justify-content:space-between;"><span>SGST (2.5%):</span><span>₹${(Number(orderData.sgst)).toFixed(2)}</span></div>` : ''}
+    ${orderData.roundOff != null && Number(orderData.roundOff) !== 0 ? `
+    <div style="display:flex; justify-content:space-between; color:#555;">
+      <span>Amount Before Round:</span>
+      <span>₹${(Number(orderData.preRoundingTotal || (orderData.subtotal || 0) + (orderData.cgst || 0) + (orderData.sgst || 0) - (orderData.discount || 0))).toFixed(2)}</span>
+    </div>
+    <div style="display:flex; justify-content:space-between;">
+      <span>Round Off:</span>
+      <span>${Number(orderData.roundOff) < 0 ? `-₹${Math.abs(Number(orderData.roundOff)).toFixed(2)}` : `+₹${Number(orderData.roundOff).toFixed(2)}`}</span>
+    </div>` : ''}
     <div class="double-divider"></div>
     <div class="bold" style="display:flex; justify-content:space-between; font-size:15px;">
       <span>TOTAL:</span>

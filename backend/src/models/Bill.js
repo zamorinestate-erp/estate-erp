@@ -586,10 +586,33 @@ const billSchema = new mongoose.Schema(
       default: 0,
     },
 
+    preRoundingTotalPaisa: {
+      type: Number,
+      min: 0,
+      default: 0,
+    },
+
+    roundOffPaisa: {
+      type: Number,
+      default: 0,
+    },
+
     totalPaisa: {
       type: Number,
       required: true,
       min: 0,
+    },
+
+    taxRuleVersion: {
+      type: String,
+      trim: true,
+      default: 'GST_ROUNDING_V1_2026',
+    },
+
+    roundingPolicyVersion: {
+      type: String,
+      trim: true,
+      default: 'ZAMORIN_PAYABLE_ROUNDING_50P_V1',
     },
 
     refundedTotalPaisa: {

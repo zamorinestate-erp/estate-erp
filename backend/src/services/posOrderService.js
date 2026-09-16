@@ -25,8 +25,14 @@ const { CashTransaction } = require('../models/CashTransaction');
 const { SequenceCounter } = require('../models/SequenceCounter');
 const { IdempotencyRecord } = require('../models/IdempotencyRecord');
 const { PrintJob } = require('../models/PrintJob');
-const { allocateInvoiceNumber } = require('./gstTaxService');
 const { BomDepletionService } = require('./bomDepletionService');
+const {
+  allocateInvoiceNumber,
+  roundToPaisa,
+  calculateCustomerPayableRounding50P,
+  TAX_RULE_VERSION,
+  ROUNDING_POLICY_VERSION,
+} = require('./gstTaxService');
 const { PosReconciliationService } = require('./posReconciliationService');
 const crypto = require('node:crypto');
 const { ApiError } = require('../utils/ApiError');
@@ -145,10 +151,11 @@ class PosOrderService {
       let igstPaisa = 0;
 
       if (isInterState) {
-        igstPaisa = Math.round((lineTaxablePaisa * taxRatePercent) / 100);
+        igstPaisa = roundToPaisa((lineTaxablePaisa * taxRatePercent) / 100);
       } else {
-        cgstPaisa = Math.round((lineTaxablePaisa * (taxRatePercent / 2)) / 100);
-        sgstPaisa = Math.round((lineTaxablePaisa * (taxRatePercent / 2)) / 100);
+        const halfRate = taxRatePercent / 2;
+        cgstPaisa = roundToPaisa((lineTaxablePaisa * halfRate) / 100);
+        sgstPaisa = roundToPaisa((lineTaxablePaisa * halfRate) / 100);
       }
 
       calculatedCgstPaisa += cgstPaisa;
@@ -182,12 +189,13 @@ class PosOrderService {
     );
 
     const taxPaisa = calculatedCgstPaisa + calculatedSgstPaisa + calculatedIgstPaisa;
-    const grandTotalPaisa = Math.max(
-      0,
-      calculatedSubtotalPaisa - totalDiscountPaisa + taxPaisa
-    );
-
     const taxablePaisa = Math.max(0, calculatedSubtotalPaisa - totalDiscountPaisa);
+    const preRoundingTotalPaisa = Math.max(0, taxablePaisa + taxPaisa);
+
+    // REC-16 Add-On: Canonical ₹0.50 Customer-Payable Rounding
+    const payable = calculateCustomerPayableRounding50P(preRoundingTotalPaisa);
+    const grandTotalPaisa = payable.finalPayablePaisa;
+    const roundOffPaisa = payable.roundOffPaisa;
 
     return {
       subtotalPaisa: calculatedSubtotalPaisa,
@@ -197,8 +205,12 @@ class PosOrderService {
       cgstPaisa: calculatedCgstPaisa,
       sgstPaisa: calculatedSgstPaisa,
       igstPaisa: calculatedIgstPaisa,
+      preRoundingTotalPaisa,
+      roundOffPaisa,
       totalPaisa: grandTotalPaisa,
       lineItems: processedLineItems,
+      taxRuleVersion: TAX_RULE_VERSION,
+      roundingPolicyVersion: ROUNDING_POLICY_VERSION,
     };
   }
 
@@ -271,6 +283,8 @@ class PosOrderService {
       discount: totals.discountPaisa / 100,
       cgst: totals.cgstPaisa / 100,
       sgst: totals.sgstPaisa / 100,
+      preRoundingTotal: (totals.preRoundingTotalPaisa || totals.totalPaisa) / 100,
+      roundOff: (totals.roundOffPaisa || 0) / 100,
       grandTotal: totals.totalPaisa / 100,
       paymentMethod: orderPayload.paymentMethod || 'CASH',
       upiQrString: orderPayload.upiQrString || `upi://pay?pa=zamorincafe@icici&pn=Zamorin%20Cafe&am=${(totals.totalPaisa / 100).toFixed(2)}&cu=INR`,
@@ -734,7 +748,11 @@ class PosOrderService {
       cgstPaisa: totals.cgstPaisa,
       sgstPaisa: totals.sgstPaisa,
       igstPaisa: totals.igstPaisa,
+      preRoundingTotalPaisa: totals.preRoundingTotalPaisa || totals.totalPaisa,
+      roundOffPaisa: totals.roundOffPaisa || 0,
       totalPaisa: totals.totalPaisa,
+      taxRuleVersion: totals.taxRuleVersion || TAX_RULE_VERSION,
+      roundingPolicyVersion: totals.roundingPolicyVersion || ROUNDING_POLICY_VERSION,
       paymentMethod,
       paymentStatus,
       status: initialStatus,
@@ -1111,6 +1129,8 @@ class PosOrderService {
       discount: (billData.discountPaisa || 0) / 100,
       cgst: (billData.cgstPaisa || 0) / 100,
       sgst: (billData.sgstPaisa || 0) / 100,
+      preRoundingTotal: (billData.preRoundingTotalPaisa || billData.totalPaisa || 0) / 100,
+      roundOff: (billData.roundOffPaisa || 0) / 100,
       grandTotal: (billData.totalPaisa || 0) / 100,
       paymentMethod: billData.paymentMethod || 'CASH',
       isReprint: Boolean(options.isReprint),
