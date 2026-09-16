@@ -771,6 +771,31 @@ test('REC-16: GST Rounding, Component Calculation, Totals & Accounting Policy', 
       roundingPolicyVersion: 'ZAMORIN_PAYABLE_ROUNDING_50P_V1',
     });
 
+    // ₹2.00 -> ₹2.00
+    assert.deepEqual(calculateCustomerPayableRounding50P(200), {
+      preRoundingTotalPaisa: 200,
+      roundOffPaisa: 0,
+      finalPayablePaisa: 200,
+      roundingPolicyVersion: 'ZAMORIN_PAYABLE_ROUNDING_50P_V1',
+    });
+
+    // REC-16A Reconciled Exemplars:
+    // ₹47.26 -> ₹47.50 (+24 paisa)
+    assert.deepEqual(calculateCustomerPayableRounding50P(4726), {
+      preRoundingTotalPaisa: 4726,
+      roundOffPaisa: 24,
+      finalPayablePaisa: 4750,
+      roundingPolicyVersion: 'ZAMORIN_PAYABLE_ROUNDING_50P_V1',
+    });
+
+    // ₹1.05 -> ₹1.00 (-5 paisa)
+    assert.deepEqual(calculateCustomerPayableRounding50P(105), {
+      preRoundingTotalPaisa: 105,
+      roundOffPaisa: -5,
+      finalPayablePaisa: 100,
+      roundingPolicyVersion: 'ZAMORIN_PAYABLE_ROUNDING_50P_V1',
+    });
+
     // Realistic amounts
     // ₹101.25 -> ₹101.00
     assert.equal(calculateCustomerPayableRounding50P(10125).finalPayablePaisa, 10100);
@@ -793,30 +818,61 @@ test('REC-16: GST Rounding, Component Calculation, Totals & Accounting Policy', 
     assert.equal(calculateCustomerPayableRounding50P(99999).roundOffPaisa, 1);
   });
 
-  // 32. Round-off invariant ABS(roundOffPaisa) <= 25
-  await suite.test('32. Invariant: ABS(roundOffPaisa) <= 25 across all possible fractional paise values (0 to 99)', () => {
-    for (let p = 0; p < 100; p++) {
-      const testValue = 1000 + p;
+  // 32. Round-off invariant ABS(roundOffPaisa) <= 25 and finalPayable % 50 === 0
+  await suite.test('32. Invariant: ABS(roundOffPaisa) <= 25 & multiple of 50p across broad positive totals', () => {
+    // Test exhaustive 0 to 2000 paise (20 rupees range) and sampled large numbers up to 10,000,000 paise
+    const testPoints = [];
+    for (let p = 0; p <= 2000; p++) testPoints.push(p);
+    for (let p = 2001; p <= 10000; p += 7) testPoints.push(p);
+    testPoints.push(4726, 99999, 10000000);
+
+    for (const testValue of testPoints) {
       const res = calculateCustomerPayableRounding50P(testValue);
       assert.ok(
         Math.abs(res.roundOffPaisa) <= 25,
         `roundOffPaisa ${res.roundOffPaisa} for ${testValue} must be <= 25`
       );
-      assert.equal(res.preRoundingTotalPaisa + res.roundOffPaisa, res.finalPayablePaisa);
+      assert.equal(
+        res.finalPayablePaisa % 50,
+        0,
+        `finalPayablePaisa ${res.finalPayablePaisa} must be exact multiple of 50 paisa`
+      );
+      assert.equal(
+        res.preRoundingTotalPaisa + res.roundOffPaisa,
+        res.finalPayablePaisa,
+        'Identity: preRounding + roundOff === finalPayable'
+      );
     }
   });
 
   // 33. Customer-payable rounding never alters GST components
   await suite.test('33. Customer-payable rounding NEVER mutates CGST, SGST, IGST, or taxable value', () => {
-    const res = calculateCanonicalGst({
-      lines: [{ ratePaisa: 125, quantity: 1, gstRatePercent: 0 }], // Taxable 125, CGST 0, SGST 0
+    // Intra-State 5% order
+    const intra = calculateCanonicalGst({
+      lines: [{ ratePaisa: 4500, quantity: 1, gstRatePercent: 5 }], // ₹45.00 @ 5%
     });
-    assert.equal(res.taxSummary.totalTaxablePaisa, 125);
-    assert.equal(res.taxSummary.totalCgstPaisa, 0);
-    assert.equal(res.taxSummary.totalSgstPaisa, 0);
-    assert.equal(res.taxSummary.preRoundingTotalPaisa, 125);
-    assert.equal(res.taxSummary.roundOffPaisa, -25);
-    assert.equal(res.taxSummary.grandTotalPaisa, 100);
+    // Taxable: 4500, CGST: 113, SGST: 113, preRounding: 4726, roundOff: +24, grandTotal: 4750
+    assert.equal(intra.taxSummary.totalTaxablePaisa, 4500);
+    assert.equal(intra.taxSummary.totalCgstPaisa, 113);
+    assert.equal(intra.taxSummary.totalSgstPaisa, 113);
+    assert.equal(intra.taxSummary.totalIgstPaisa, 0);
+    assert.equal(intra.taxSummary.preRoundingTotalPaisa, 4726);
+    assert.equal(intra.taxSummary.roundOffPaisa, 24);
+    assert.equal(intra.taxSummary.grandTotalPaisa, 4750);
+
+    // Inter-State 5% order: ₹1.00 @ 5% IGST
+    const inter = calculateCanonicalGst({
+      supplyType: 'INTER_STATE',
+      lines: [{ ratePaisa: 100, quantity: 1, gstRatePercent: 5 }],
+    });
+    // Taxable: 100, IGST: 5, preRounding: 105, roundOff: -5, grandTotal: 100
+    assert.equal(inter.taxSummary.totalTaxablePaisa, 100);
+    assert.equal(inter.taxSummary.totalCgstPaisa, 0);
+    assert.equal(inter.taxSummary.totalSgstPaisa, 0);
+    assert.equal(inter.taxSummary.totalIgstPaisa, 5);
+    assert.equal(inter.taxSummary.preRoundingTotalPaisa, 105);
+    assert.equal(inter.taxSummary.roundOffPaisa, -5);
+    assert.equal(inter.taxSummary.grandTotalPaisa, 100);
   });
 
   // 34. Zero Kitchen Display System (KDS) files or endpoints introduced in REC-16
