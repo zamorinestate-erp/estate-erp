@@ -1,7 +1,7 @@
-# ZAMORIN CAFÉ ERP — EXT-01 TO EXT-02 MALWARE SCANNER HANDOFF
+# ZAMORIN CAFÉ ERP — EXT-01R TO EXT-02 MALWARE SCANNER HANDOFF
 
-**Handoff From:** EXT-01 (Object Storage Architecture)  
-**Handoff To:** EXT-02 (Live Production Anti-Malware / AV Integration)  
+**Handoff From:** EXT-01R (Cloudflare R2 Object Storage Architecture)  
+**Handoff To:** EXT-02 (Live Anti-Malware / AV Service Integration)  
 **Status:** ARCHITECTURE READY FOR LIVE SCANNER ATTACHMENT  
 **Audit Date:** 2026-09-17  
 
@@ -9,12 +9,12 @@
 
 ## 1. Storage Architecture Interface for EXT-02
 
-The storage architecture has been built with an isolated, asynchronous quarantine mechanism ready to connect directly to the EXT-02 live Anti-Malware scanning service.
+The Cloudflare R2 storage architecture provides a pre-scan isolation mechanism designed to connect to the EXT-02 live Anti-Malware scanning service.
 
 ### 1.1 Quarantine Prefix & Path
 - **Prefix:** `quarantine/`
 - **Format:** `quarantine/<organisationId>/<cafeId>/<documentId>-<randomHex6>.<extension>`
-- **Isolation Guarantee:** Quarantined objects reside in the quarantine prefix. They are never directly accessible to standard users and cannot be resolved by standard download routes.
+- **Isolation Guarantee:** Quarantined objects reside solely in the quarantine prefix. They are never directly accessible to standard users and cannot be resolved by standard download routes.
 
 ### 1.2 Status Fields & Finite State Machine
 In [`backend/src/models/BusinessDocument.js`](file:///d:/Zamorin_Cafe_ERP_Build/15_INTEGRATION_WORKSPACE/backend/src/models/BusinessDocument.js):
@@ -23,11 +23,11 @@ In [`backend/src/models/BusinessDocument.js`](file:///d:/Zamorin_Cafe_ERP_Build/
 - `scanStatus`: `PENDING` -> `CLEAN` (or `INFECTED`, `SCAN_ERROR`)
 
 ### 1.3 Scanner Input Mechanism
-The EXT-02 scanner service retrieves the quarantined binary via:
+The EXT-02 scanner service reads the quarantined binary stream from Cloudflare R2 via:
 ```javascript
 const stream = await documentStorageAdapter.getStream({ storageKey: doc.quarantineObjectKey });
 ```
-No temporary local disk write is required; streaming scan is supported.
+Zero temporary local container disk writes are required; streaming scan is fully supported.
 
 ### 1.4 State Transitions
 

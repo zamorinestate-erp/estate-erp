@@ -24,7 +24,7 @@ class S3CompatibleStorageAdapter extends DocumentStorageProvider {
   constructor(options = {}) {
     super('S3CompatibleStorageAdapter');
     this.bucket = options.bucket || process.env.S3_BUCKET || process.env.STORAGE_CONTAINER || null;
-    this.region = options.region || process.env.AWS_REGION || process.env.STORAGE_REGION || 'ap-south-1';
+    this.region = options.region || process.env.AWS_REGION || process.env.STORAGE_REGION || 'auto';
     this.endpoint = options.endpoint || process.env.S3_ENDPOINT || process.env.STORAGE_ENDPOINT || null;
     this.accessKeyId = options.accessKeyId || process.env.AWS_ACCESS_KEY_ID || process.env.STORAGE_ACCESS_KEY || null;
     this.secretAccessKey = options.secretAccessKey || process.env.AWS_SECRET_ACCESS_KEY || process.env.STORAGE_SECRET_KEY || null;
@@ -218,13 +218,21 @@ class S3CompatibleStorageAdapter extends DocumentStorageProvider {
   async createUploadGrant({ objectKey, mimeType, sizeBytes, expiresInSeconds = 300 }) {
     if (!objectKey) throw new ApiError(400, 'MISSING_STORAGE_KEY', 'Storage key required.');
     const expiresAt = new Date(Date.now() + expiresInSeconds * 1000);
-    const host = this.endpoint ? new URL(this.endpoint).host : `${this.bucket}.s3.${this.region}.amazonaws.com`;
     const sig = crypto.createHmac('sha256', this.secretAccessKey || 'mock-secret')
       .update(`PUT\n${objectKey}\n${expiresAt.getTime()}`)
       .digest('hex');
 
+    let base;
+    if (this.endpoint) {
+      const ep = this.endpoint.replace(/\/+$/, '');
+      base = this.bucket && !ep.includes(this.bucket) ? `${ep}/${this.bucket}/${objectKey}` : `${ep}/${objectKey}`;
+    } else {
+      const host = `${this.bucket || 'zamorin-production-documents'}.s3.${this.region}.amazonaws.com`;
+      base = `https://${host}/${objectKey}`;
+    }
+
     return {
-      uploadUrl: `https://${host}/${objectKey}?X-Amz-Expires=${expiresInSeconds}&X-Amz-Signature=${sig}`,
+      uploadUrl: `${base}?X-Amz-Expires=${expiresInSeconds}&X-Amz-Signature=${sig}`,
       method: 'PUT',
       headers: {
         'Content-Type': mimeType,
@@ -242,13 +250,21 @@ class S3CompatibleStorageAdapter extends DocumentStorageProvider {
     }
 
     const expiresAt = new Date(Date.now() + expiresInSeconds * 1000);
-    const host = this.endpoint ? new URL(this.endpoint).host : `${this.bucket}.s3.${this.region}.amazonaws.com`;
     const sig = crypto.createHmac('sha256', this.secretAccessKey || 'mock-secret')
       .update(`GET\n${objectKey}\n${expiresAt.getTime()}`)
       .digest('hex');
 
+    let base;
+    if (this.endpoint) {
+      const ep = this.endpoint.replace(/\/+$/, '');
+      base = this.bucket && !ep.includes(this.bucket) ? `${ep}/${this.bucket}/${objectKey}` : `${ep}/${objectKey}`;
+    } else {
+      const host = `${this.bucket || 'zamorin-production-documents'}.s3.${this.region}.amazonaws.com`;
+      base = `https://${host}/${objectKey}`;
+    }
+
     return {
-      downloadUrl: `https://${host}/${objectKey}?response-content-disposition=${encodeURIComponent(`attachment; filename="${safeFilename}"`)}&X-Amz-Expires=${expiresInSeconds}&X-Amz-Signature=${sig}`,
+      downloadUrl: `${base}?response-content-disposition=${encodeURIComponent(`attachment; filename="${safeFilename}"`)}&X-Amz-Expires=${expiresInSeconds}&X-Amz-Signature=${sig}`,
       expiresAt,
       grantType: 'PRESIGNED_DOWNLOAD_GET',
     };

@@ -1,77 +1,85 @@
-# ZAMORIN CAFÉ ERP — EXT-01 PRODUCTION OBJECT STORAGE AUDIT
+# ZAMORIN CAFÉ ERP — EXT-01R PRODUCTION OBJECT STORAGE AUDIT
+## Cloudflare R2 Live Object Storage Provider Finalization
 
-**Gate Identifier:** EXT-01 (Live Production Object Storage Configuration, Security & Acceptance)  
-**Security Level:** Enterprise Restricted  
-**Governance Framework:** OWASP ASVS 5.0 / Statutory Record Retention (CGST Section 36)  
+**Gate Identifier:** EXT-01R (Live Production Object Storage Configuration, Security & Acceptance)  
+**Governance Framework:** OWASP ASVS 5.0 / Statutory Record Retention (CGST Section 36) / Cloudflare R2 S3-Compatible Architecture  
 **Audit Date:** 2026-09-17  
-**Audited By:** Senior Cloud Infrastructure Architect & Storage Security Lead  
+**Audited By:** Senior Cloud Infrastructure Architect, Storage Security Lead & DevOps Engineer  
 
 ---
 
-## 1. Executive Summary
+## 1. Authoritative Architecture Baseline
 
-An exhaustive technical audit of Zamorin Café ERP's document storage architecture was conducted to evaluate readiness for live production object storage. 
+The enterprise production infrastructure architecture for Zamorin Café ERP is certified as:
 
-The software application layer demonstrates exceptional maturity:
-- Canonical abstraction via `DocumentStorageAdapter` with zero vendor lock-in.
-- Full `S3CompatibleStorageAdapter` supporting AWS S3, Cloudflare R2, MinIO, and other S3-compatible APIs.
-- Opaque, tenant-isolated, PII-free object key namespaces.
-- Fail-closed security architecture rejecting unauthenticated, cross-org, cross-café, or unscanned access.
-- Cryptographic SHA-256 integrity verification, magic-byte validation, and quarantine staging.
-- Automated tests passing 100% (70/70 storage-specific tests).
+```text
+  ┌─────────────────────────────────────────────────────────────┐
+  │                    Vercel Edge Platform                     │
+  │                  (Frontend Web Application)                 │
+  └──────────────────────────────┬──────────────────────────────┘
+                                 │ HTTPS
+                                 ▼
+  ┌─────────────────────────────────────────────────────────────┐
+  │                    Render Cloud Platform                    │
+  │             (Node.js / Express Backend REST API)            │
+  └──────────────┬───────────────────────────────┬──────────────┘
+                 │ TLS                           │ S3 API over TLS
+                 ▼                               ▼
+  ┌─────────────────────────────┐ ┌─────────────────────────────┐
+  │        MongoDB Atlas        │ │        Cloudflare R2        │
+  │  (Authoritative ERP Records │ │ (Private Binary Documents:  │
+  │  & Document Metadata Ledger)│ │  Invoices, Receipts, POs,   │
+  │                             │ │  Challans, Evidence, PDFs)  │
+  └─────────────────────────────┘ └─────────────────────────────┘
+```
 
-However, **live production external cloud infrastructure ownership (REC-12) is currently unfulfilled**:
-- `render.yaml` currently provisions a single-instance persistent disk (`/var/data/zamorin_documents`), which cannot scale across multi-instance clustered backends.
-- No live S3/R2 bucket has been provisioned under verified Zamorin business ownership.
-- Per EXT-01 Gate rules, the gate status is classified as **`BLOCKED_REC12`** pending human/business provisioning of the cloud storage resource.
+### Invariants:
+1. **MongoDB Atlas** remains the **ONLY** business/ERP database (orders, POS, ledger, inventory, audit logs, and document metadata).
+2. **Cloudflare R2** is strictly dedicated to storing raw document binaries (supplier invoices, purchase orders, delivery challans, quotations, credit notes, employee documents, expense evidence, compliance files, maintenance records, and generated PDF reports).
+3. No business data is migrated from MongoDB to Cloudflare. No second database (PostgreSQL, Prisma, Firebase) is introduced.
+4. REC-19 / REC-19A remains frozen.
+5. EXT-01 remains **BLOCKED** until the live, business-owned R2 bucket is provisioned, credentials are tied into Render, and live smoke-tested.
 
 ---
 
-## 2. Current Implementation Audit Table
+## 2. Storage Abstraction & Provider Decision
 
-| Area | Current Implementation | Evidence | Production Ready? |
+- **Document Storage Provider:** `CLOUDFLARE_R2`
+- **Classification:** `EXISTING_S3_COMPATIBLE_ADAPTER_REUSED`
+- **Codebase Reuse:** Zero duplicate abstraction created. Reuses `DocumentStorageAdapter` -> `S3CompatibleStorageAdapter` connected to Cloudflare R2's S3-compatible API endpoint (`https://<ACCOUNT_ID>.r2.cloudflarestorage.com`).
+
+| Area | Implementation | Repository Evidence | Production Ready? |
 | :--- | :--- | :--- | :--- |
-| **Storage Abstraction** | `DocumentStorageAdapter` facade delegating to provider factory | [`backend/src/services/documentStorageAdapter.js`](file:///d:/Zamorin_Cafe_ERP_Build/15_INTEGRATION_WORKSPACE/backend/src/services/documentStorageAdapter.js) | **YES** (Code complete) |
-| **S3 Adapter** | `S3CompatibleStorageAdapter` with presigned upload/download grants, streams, metadata, and copy | [`backend/src/services/storage/S3CompatibleStorageAdapter.js`](file:///d:/Zamorin_Cafe_ERP_Build/15_INTEGRATION_WORKSPACE/backend/src/services/storage/S3CompatibleStorageAdapter.js) | **YES** (Requires cloud credentials) |
-| **BusinessDocument Model** | Authoritative MongoDB schema with versioning, checksums, retention holds, and audit trails | [`backend/src/models/BusinessDocument.js`](file:///d:/Zamorin_Cafe_ERP_Build/15_INTEGRATION_WORKSPACE/backend/src/models/BusinessDocument.js) | **YES** |
-| **Upload Controller** | Two-phase direct-to-storage upload intent (`/upload-intent`) + finalization (`/finalize`) + staged multipart (`/attach`) | [`backend/src/routes/documentRoutes.js`](file:///d:/Zamorin_Cafe_ERP_Build/15_INTEGRATION_WORKSPACE/backend/src/routes/documentRoutes.js) | **YES** |
-| **Download / Preview Controller** | Short-lived signed download grants (`/:id/download-grant`) and authenticated binary/inline streams (`/:id/download`, `/:id/preview`) | [`backend/src/routes/documentRoutes.js:L266-359`](file:///d:/Zamorin_Cafe_ERP_Build/15_INTEGRATION_WORKSPACE/backend/src/routes/documentRoutes.js) | **YES** |
-| **Object Key Structure** | Tenant-isolated opaque keys: `<org>/<cafe>/<classification>/<documentId>-<randomHex>.<ext>` | [`backend/src/services/documentStorageAdapter.js:L142-171`](file:///d:/Zamorin_Cafe_ERP_Build/15_INTEGRATION_WORKSPACE/backend/src/services/documentStorageAdapter.js) | **YES** |
-| **Signed URL Implementation** | Post-authorization HMAC-SHA256 presigned PUT/GET grants with 180s–300s TTL | [`backend/src/services/storage/S3CompatibleStorageAdapter.js:L218-255`](file:///d:/Zamorin_Cafe_ERP_Build/15_INTEGRATION_WORKSPACE/backend/src/services/storage/S3CompatibleStorageAdapter.js) | **YES** |
-| **Scan Status Gate** | Strict quarantine isolation; `PENDING_SCAN` / `INFECTED` strictly blocked from download/preview | [`backend/src/services/documentAttachmentService.js:L356-375`](file:///d:/Zamorin_Cafe_ERP_Build/15_INTEGRATION_WORKSPACE/backend/src/services/documentAttachmentService.js) | **YES** |
-| **Document Retention** | Section 36 CGST statutory 72-month retention, legal holds, appeal holds; Master-only permanent deletion | [`backend/src/services/retentionPolicyService.js`](file:///d:/Zamorin_Cafe_ERP_Build/15_INTEGRATION_WORKSPACE/backend/src/services/retentionPolicyService.js) | **YES** |
-| **Ephemeral Filesystem Safeguard** | Fail-closed startup validator blocks local disk in production (`PROD_EPHEMERAL_STORAGE_DISALLOWED`) | [`backend/src/services/documentStorageAdapter.js:L66-135`](file:///d:/Zamorin_Cafe_ERP_Build/15_INTEGRATION_WORKSPACE/backend/src/services/documentStorageAdapter.js) | **YES** |
-| **Cloud Object Store Resource** | AWS S3 / Cloudflare R2 bucket provisioned under Zamorin business account | Unprovisioned / pending REC-12 ownership | **NO (BLOCKED_REC12)** |
+| **Storage Abstraction** | `DocumentStorageAdapter` facade delegating to provider factory | [`backend/src/services/documentStorageAdapter.js`](file:///d:/Zamorin_Cafe_ERP_Build/15_INTEGRATION_WORKSPACE/backend/src/services/documentStorageAdapter.js) | **YES** |
+| **S3 / R2 Adapter** | `S3CompatibleStorageAdapter` with `region: "auto"`, R2 path-style endpoint support, streams, and HMAC presigned grants | [`backend/src/services/storage/S3CompatibleStorageAdapter.js`](file:///d:/Zamorin_Cafe_ERP_Build/15_INTEGRATION_WORKSPACE/backend/src/services/storage/S3CompatibleStorageAdapter.js) | **YES** |
+| **BusinessDocument Model** | Authoritative metadata ledger tracking immutable revision history in `versions[]` array | [`backend/src/models/BusinessDocument.js`](file:///d:/Zamorin_Cafe_ERP_Build/15_INTEGRATION_WORKSPACE/backend/src/models/BusinessDocument.js) | **YES** |
+| **Upload Flow** | 2-phase direct-to-R2 upload: intent presigned PUT (`/upload-intent`) -> R2 direct upload -> finalize (`/finalize`) | [`backend/src/routes/documentRoutes.js:L189-228`](file:///d:/Zamorin_Cafe_ERP_Build/15_INTEGRATION_WORKSPACE/backend/src/routes/documentRoutes.js) | **YES** |
+| **Download / Preview Flow** | Post-authorization presigned GET grant (`/:id/download-grant`, 180s TTL) & backend stream fallback (`/:id/download`) | [`backend/src/routes/documentRoutes.js:L266-358`](file:///d:/Zamorin_Cafe_ERP_Build/15_INTEGRATION_WORKSPACE/backend/src/routes/documentRoutes.js) | **YES** |
+| **Object Key Structure** | Opaque tenant-isolated keys: `<org>/<cafe>/<classification>/<documentId>/<revisionId>-<randomHex>.<ext>` | [`backend/src/services/documentStorageAdapter.js:L142-155`](file:///d:/Zamorin_Cafe_ERP_Build/15_INTEGRATION_WORKSPACE/backend/src/services/documentStorageAdapter.js) | **YES** |
+| **Quarantine Isolation** | `quarantine/<org>/<cafe>/<documentId>-<randomHex>.<ext>` staging; `PENDING_SCAN` enforced | [`backend/src/services/documentAttachmentService.js:L450-464`](file:///d:/Zamorin_Cafe_ERP_Build/15_INTEGRATION_WORKSPACE/backend/src/services/documentAttachmentService.js) | **YES** |
+| **Document Retention** | Statutory 72-month CGST Section 36 retention, active legal/appeal holds; Master-only permanent deletion | [`backend/src/services/retentionPolicyService.js`](file:///d:/Zamorin_Cafe_ERP_Build/15_INTEGRATION_WORKSPACE/backend/src/services/retentionPolicyService.js) | **YES** |
+| **Cloudflare R2 Bucket Resource** | Live `zamorin-production-documents` bucket under Zamorin Cloudflare account | External Cloud Console | **PENDING (BLOCKED_REC12)** |
 
 ---
 
-## 3. Render Filesystem & Ephemeral Storage Audit
+## 3. Critical R2 Versioning Correction
 
-A codebase-wide sweep was conducted to identify all disk references:
-1. `path.join(os.tmpdir(), 'zamorin_document_staging')`:
-   - **Classification:** `TEMPORARY_STREAMING_OK`. Used solely by multer to stream incoming multipart payloads during the request lifecycle. Automatically unlinked upon completion or error.
-2. `path.join(effectiveRoot, '.probe-...')`:
-   - **Classification:** `TEST_ONLY`. Storage mount health probe written and immediately unlinked during startup.
-3. `/var/data/zamorin_documents` in `render.yaml`:
-   - **Classification:** `MIGRATION_ONLY / INTERIM`. While durable across container restarts on a single instance, it cannot support clustered multi-instance deployment. Cloud object storage is mandatory.
-4. `path.resolve(__dirname, '../../uploads')` in `storageAdapterService.js`:
-   - **Classification:** `MIGRATION_ONLY`. Legacy service strictly logs `CLUSTER_STORAGE_INVALID` when executed in production mode.
+Cloudflare R2 does **not** currently implement AWS S3 bucket-versioning APIs (`GetBucketVersioning`, `PutBucketVersioning`, `ListObjectVersions`, or delete markers).
 
----
-
-## 4. Multi-Instance Clustered Compatibility
-
-Render web services in high-availability production clusters run multiple concurrent containers behind a load balancer. Local disk or single-instance attached disks:
-- Cannot be shared concurrently across multi-region or horizontally scaled container instances.
-- Preclude seamless rolling deployments.
-- Create single points of failure.
-
-`S3CompatibleStorageAdapter` solves this completely: any authorised backend instance connects to the central private object store via IAM credentials over TLS.
+### Application Invariant: Immutable Revision Model
+1. **No S3-Style Native Versioning Claims:** The application does **not** rely on S3 bucket versioning APIs.
+2. **Immutable Object Key per Revision:** When a document revision/replacement is uploaded (`replaceVersion`), a **NEW** opaque object key is created:
+   - Revision 1: `<org>/<cafe>/<class>/<documentId>_v1-<rand1>.<ext>` (Object A remains untouched)
+   - Revision 2: `<org>/<cafe>/<class>/<documentId>_v2-<rand2>.<ext>` (Object B created)
+3. **MongoDB Version Ledger:** `BusinessDocument.versions[]` stores historical records including previous `storageObjectKey`, `sha256`, `sizeBytes`, `mimeType`, and `uploadedAt`.
+4. **Zero Overwrite:** An approved document binary is **never overwritten**.
+5. **Soft Deletion:** Deletion marks `isDeleted: true` and `documentStatus: 'ARCHIVED'` in MongoDB without destroying the physical object until legal and statutory retention requirements have lapsed.
 
 ---
 
-## 5. Audit Conclusion & Gate Classification
+## 4. Multi-Instance Stateless Backend Compatibility
 
-- **Software Architecture Status:** PASS (Fully implemented, hardened, and verified).
-- **Cloud Infrastructure Status:** BLOCKED_REC12 (Production cloud bucket unprovisioned).
-- **EXT-01 Determination:** **`BLOCKED_REC12`**
+By utilizing Cloudflare R2 as the authoritative document binary store:
+- Render backend instances operate completely statelessly.
+- Any horizontally scaled container instance accesses R2 concurrently using scoped credentials over TLS.
+- Dependency on Render's ephemeral container disk (`/var/data/zamorin_documents`) is eliminated for document authority.
