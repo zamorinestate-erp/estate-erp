@@ -275,6 +275,14 @@ function createApp(environment) {
     const isProd = process.env.NODE_ENV === 'production';
     const ready = isProd ? (isDbReady && isStorageReady) : isDbReady;
 
+    const { malwareScannerService } = require('./services/malwareScannerService');
+    let scannerReport = { CORE_APP_READY: true, DOCUMENT_SCANNER_READY: false };
+    try {
+      scannerReport = await malwareScannerService.getStatus();
+    } catch {
+      scannerReport = { CORE_APP_READY: true, DOCUMENT_SCANNER_READY: false, details: 'Probe failed' };
+    }
+
     return response
       .status(ready ? 200 : 503)
       .json({
@@ -283,6 +291,14 @@ function createApp(environment) {
         service: SERVICE_NAME,
         database: database.status,
         storage: storageStatus,
+        scanner: {
+          coreAppReady: scannerReport.CORE_APP_READY,
+          documentScannerReady: scannerReport.DOCUMENT_SCANNER_READY,
+          provider: scannerReport.scannerProvider,
+          engineVersion: scannerReport.engineVersion,
+          signatureVersion: scannerReport.signatureVersion,
+          isPrivateNetwork: scannerReport.isPrivateNetwork,
+        },
         timestamp: new Date().toISOString(),
         requestId: request.requestId || request.correlationId || null,
         correlationId: request.correlationId || null,

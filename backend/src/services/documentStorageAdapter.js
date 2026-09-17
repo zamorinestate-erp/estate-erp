@@ -218,12 +218,12 @@ class DocumentStorageAdapter {
     };
   }
 
-  async getStream({ storageKey }) {
-    if (!storageKey) {
-      throw new ApiError(400, 'MISSING_STORAGE_KEY', 'Storage key is required.');
+  async getStream({ storageKey, fileId = null }) {
+    if (!storageKey && !fileId) {
+      throw new ApiError(400, 'MISSING_STORAGE_KEY', 'Storage key or fileId is required.');
     }
     const provider = this.getProvider();
-    const stream = await provider.openReadStream({ objectKey: storageKey });
+    const stream = await provider.openReadStream({ objectKey: storageKey, fileId });
     this.metrics.totalStreamsServed++;
     return stream;
   }

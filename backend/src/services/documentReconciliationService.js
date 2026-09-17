@@ -446,6 +446,68 @@ class DocumentReconciliationService {
       remediationNotice: 'Orphaned binaries are preserved for operator review per non-destructive policy.',
     };
   }
+
+  /**
+   * Reconciles documents stuck in PENDING_SCAN, SCAN_FAILED, or SCANNER_UNAVAILABLE (EXT-02).
+   * Identifies unverified or failed documents older than maxAgeMs (default 15 mins) and retries scan.
+   */
+  async reconcilePendingScans({ maxAgeMs = 15 * 60 * 1000, limit = 50, autoRetry = false } = {}) {
+    const cutoff = new Date(Date.now() - maxAgeMs);
+    const filter = {
+      isDeleted: false,
+      $or: [
+        { scanStatus: 'PENDING_SCAN', createdAt: { $lte: cutoff } },
+        { scanStatus: 'SCAN_FAILED' },
+        { scanStatus: 'SCANNER_UNAVAILABLE' },
+        { uploadStatus: 'SCANNING', updatedAt: { $lte: cutoff } },
+      ],
+    };
+
+    const staleDocs = await BusinessDocument.find(filter).limit(limit);
+    const results = {
+      timestamp: new Date().toISOString(),
+      staleCount: staleDocs.length,
+      retriedCount: 0,
+      cleanCount: 0,
+      infectedCount: 0,
+      failedCount: 0,
+      items: [],
+    };
+
+    const { DocumentAttachmentService } = require('./documentAttachmentService');
+
+    for (const doc of staleDocs) {
+      const item = {
+        documentId: doc.documentId,
+        organisationId: doc.organisationId,
+        currentStatus: doc.scanStatus,
+        createdAt: doc.createdAt,
+      };
+
+      if (autoRetry) {
+        try {
+          const rescan = await DocumentAttachmentService.scanGridFsRevision({
+            documentId: doc.documentId,
+            organisationId: doc.organisationId,
+            versionNumber: doc.currentVersion,
+          });
+          item.newStatus = rescan.scanStatus;
+          item.threatName = rescan.threatName;
+          results.retriedCount++;
+          if (rescan.scanStatus === 'CLEAN') results.cleanCount++;
+          else if (rescan.scanStatus === 'INFECTED') results.infectedCount++;
+          else results.failedCount++;
+        } catch (scanErr) {
+          item.retryError = scanErr.message;
+          results.failedCount++;
+        }
+      }
+
+      results.items.push(item);
+    }
+
+    return results;
+  }
 }
 
 const documentReconciliationService = new DocumentReconciliationService();

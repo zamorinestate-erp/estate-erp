@@ -381,7 +381,9 @@ class DocumentAttachmentService {
       if (
         doc.uploadStatus === 'QUARANTINED' ||
         doc.uploadStatus === 'SCANNING' ||
+        doc.uploadStatus === 'PENDING_SCAN' ||
         doc.scanStatus === 'PENDING' ||
+        doc.scanStatus === 'PENDING_SCAN' ||
         (doc.quarantineObjectKey && !doc.storageObjectKey)
       ) {
         // Only allow if document was previously certified CLEAN
@@ -1980,6 +1982,224 @@ class DocumentAttachmentService {
     }).catch(() => {});
 
     return doc;
+  }
+
+  /**
+   * Scans a GridFS document revision directly from GridFS stream to ClamAV INSTREAM (EXT-02).
+   */
+  static async scanGridFsRevision({
+    documentId,
+    organisationId,
+    versionNumber = null,
+    gridFsFileId = null,
+    sha256 = null,
+    auth = null,
+  }) {
+    const doc = await BusinessDocument.findOne({
+      documentId: documentId.trim().toUpperCase(),
+      organisationId,
+      isDeleted: false,
+    });
+
+    if (!doc) {
+      throw new ApiError(404, 'DOCUMENT_NOT_FOUND', 'Business document not found.');
+    }
+
+    // Determine target version
+    let targetVer = null;
+    let targetFileId = doc.gridFsFileId;
+    let targetSha = doc.sha256 || doc.checksum;
+    let targetKey = doc.storageKey || doc.storageObjectKey;
+
+    const vNum = (versionNumber !== null && versionNumber !== undefined) ? parseInt(versionNumber, 10) : doc.currentVersion;
+    targetVer = (doc.versions || []).find((v) => (v.versionNumber || v.version) === vNum);
+
+    if (vNum === doc.currentVersion) {
+      targetFileId = doc.gridFsFileId || targetVer?.gridFsFileId;
+      targetSha = doc.sha256 || doc.checksum || targetVer?.sha256;
+      targetKey = doc.storageKey || doc.storageObjectKey || targetVer?.storageKey;
+    } else {
+      if (!targetVer) {
+        throw new ApiError(404, 'VERSION_NOT_FOUND', `Version ${vNum} not found.`);
+      }
+      targetFileId = targetVer.gridFsFileId;
+      targetSha = targetVer.sha256 || targetVer.checksum;
+      targetKey = targetVer.storageKey || targetVer.storageObjectKey;
+    }
+
+    if (gridFsFileId && String(gridFsFileId) !== String(targetFileId)) {
+      throw new ApiError(400, 'GRIDFS_FILE_ID_MISMATCH', 'Specified gridFsFileId does not match document version.');
+    }
+
+    if (sha256 && targetSha && sha256.toLowerCase() !== targetSha.toLowerCase()) {
+      throw new ApiError(400, 'CHECKSUM_MISMATCH', 'Supplied SHA-256 checksum does not match document record.');
+    }
+
+    // Record scan started audit
+    await auditService.recordAuditEvent({
+      organisationId,
+      cafeId: doc.cafeId || 'GLOBAL',
+      actorUserId: auth?.userId || 'SYSTEM_SCANNER',
+      actorRole: auth?.role || 'SYSTEM',
+      module: 'DOCUMENT_ATTACHMENT',
+      action: 'DOCUMENT_SCAN_STARTED',
+      entityType: 'BUSINESS_DOCUMENT',
+      entityId: doc.documentId,
+      reason: 'Malware scan started via ClamAV INSTREAM',
+      result: 'IN_PROGRESS',
+      metadata: {
+        documentId: doc.documentId,
+        gridFsFileId: targetFileId,
+        version: versionNumber || doc.currentVersion,
+      },
+    }).catch(() => {});
+
+    // Open stream directly from GridFS
+    const stream = await documentStorageAdapter.getStream({
+      storageKey: targetKey,
+      fileId: targetFileId,
+    });
+
+    const { malwareScannerService } = require('./malwareScannerService');
+    const scanResult = await malwareScannerService.scanStream(stream, {
+      documentId: doc.documentId,
+      filename: doc.originalFilename,
+      mimeType: doc.mimeType,
+    });
+
+    // Process scan verdict
+    const scannedAt = scanResult.scannedAt || new Date();
+
+    if (scanResult.status === 'CLEAN') {
+      if (targetVer) {
+        targetVer.scanStatus = 'CLEAN';
+        targetVer.securityScanStatus = 'CLEAN';
+      }
+      if (!versionNumber || parseInt(versionNumber, 10) === doc.currentVersion) {
+        doc.scanStatus = 'CLEAN';
+        doc.securityScanStatus = 'CLEAN';
+        doc.uploadStatus = 'AVAILABLE';
+      }
+      await doc.save();
+
+      await auditService.recordAuditEvent({
+        organisationId,
+        cafeId: doc.cafeId || 'GLOBAL',
+        actorUserId: auth?.userId || 'SYSTEM_SCANNER',
+        actorRole: auth?.role || 'SYSTEM',
+        module: 'DOCUMENT_ATTACHMENT',
+        action: 'DOCUMENT_SCAN_CLEAN',
+        entityType: 'BUSINESS_DOCUMENT',
+        entityId: doc.documentId,
+        reason: 'Document verified clean by ClamAV INSTREAM',
+        result: 'CLEAN',
+        metadata: {
+          documentId: doc.documentId,
+          version: versionNumber || doc.currentVersion,
+          engineVersion: scanResult.engineVersion,
+          signatureVersion: scanResult.signatureVersion,
+        },
+      }).catch(() => {});
+    } else if (scanResult.status === 'INFECTED') {
+      if (targetVer) {
+        targetVer.scanStatus = 'INFECTED';
+        targetVer.securityScanStatus = 'REJECTED';
+      }
+      if (!versionNumber || parseInt(versionNumber, 10) === doc.currentVersion) {
+        doc.scanStatus = 'INFECTED';
+        doc.securityScanStatus = 'REJECTED';
+        doc.uploadStatus = 'MALWARE_REJECTED';
+        doc.securityScanDetails = scanResult.details;
+      }
+      await doc.save();
+
+      await auditService.recordAuditEvent({
+        organisationId,
+        cafeId: doc.cafeId || 'GLOBAL',
+        actorUserId: auth?.userId || 'SYSTEM_SCANNER',
+        actorRole: auth?.role || 'SYSTEM',
+        module: 'DOCUMENT_ATTACHMENT',
+        action: 'DOCUMENT_SCAN_INFECTED',
+        entityType: 'BUSINESS_DOCUMENT',
+        entityId: doc.documentId,
+        reason: `Malware detected by ClamAV: ${scanResult.threatName || scanResult.details}`,
+        result: 'INFECTED',
+        metadata: {
+          documentId: doc.documentId,
+          threatName: scanResult.threatName,
+          version: versionNumber || doc.currentVersion,
+        },
+      }).catch(() => {});
+    } else if (scanResult.status === 'SCANNER_UNAVAILABLE' || scanResult.status === 'UNAVAILABLE') {
+      if (targetVer) {
+        targetVer.scanStatus = 'SCANNER_UNAVAILABLE';
+        targetVer.securityScanStatus = 'SCAN_FAILED';
+      }
+      if (!versionNumber || parseInt(versionNumber, 10) === doc.currentVersion) {
+        doc.scanStatus = 'SCANNER_UNAVAILABLE';
+        doc.securityScanStatus = 'SCAN_FAILED';
+        doc.uploadStatus = 'SCAN_FAILED';
+      }
+      await doc.save();
+
+      await auditService.recordAuditEvent({
+        organisationId,
+        cafeId: doc.cafeId || 'GLOBAL',
+        actorUserId: auth?.userId || 'SYSTEM_SCANNER',
+        actorRole: auth?.role || 'SYSTEM',
+        module: 'DOCUMENT_ATTACHMENT',
+        action: 'DOCUMENT_SCANNER_UNAVAILABLE',
+        entityType: 'BUSINESS_DOCUMENT',
+        entityId: doc.documentId,
+        reason: `ClamAV daemon unreachable: ${scanResult.details}`,
+        result: 'SCANNER_UNAVAILABLE',
+        metadata: {
+          documentId: doc.documentId,
+          version: versionNumber || doc.currentVersion,
+        },
+      }).catch(() => {});
+    } else {
+      // SCAN_FAILED / error
+      if (targetVer) {
+        targetVer.scanStatus = 'SCAN_FAILED';
+        targetVer.securityScanStatus = 'SCAN_FAILED';
+      }
+      if (!versionNumber || parseInt(versionNumber, 10) === doc.currentVersion) {
+        doc.scanStatus = 'SCAN_FAILED';
+        doc.securityScanStatus = 'SCAN_FAILED';
+        doc.uploadStatus = 'SCAN_FAILED';
+        doc.securityScanDetails = scanResult.details;
+      }
+      await doc.save();
+
+      await auditService.recordAuditEvent({
+        organisationId,
+        cafeId: doc.cafeId || 'GLOBAL',
+        actorUserId: auth?.userId || 'SYSTEM_SCANNER',
+        actorRole: auth?.role || 'SYSTEM',
+        module: 'DOCUMENT_ATTACHMENT',
+        action: 'DOCUMENT_SCAN_FAILED',
+        entityType: 'BUSINESS_DOCUMENT',
+        entityId: doc.documentId,
+        reason: `ClamAV scan error: ${scanResult.details}`,
+        result: 'SCAN_FAILED',
+        metadata: {
+          documentId: doc.documentId,
+          version: versionNumber || doc.currentVersion,
+        },
+      }).catch(() => {});
+    }
+
+    return {
+      documentId: doc.documentId,
+      version: versionNumber || doc.currentVersion,
+      scanStatus: doc.scanStatus,
+      securityScanStatus: doc.securityScanStatus,
+      uploadStatus: doc.uploadStatus,
+      threatName: scanResult.threatName || null,
+      details: scanResult.details,
+      scannedAt,
+    };
   }
 }
 

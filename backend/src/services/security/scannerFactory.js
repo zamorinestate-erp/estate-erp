@@ -2,6 +2,7 @@
 
 const { MockMalwareScanningProvider } = require('./MockMalwareScanningProvider');
 const { ClamAvHttpScanningProvider } = require('./ClamAvHttpScanningProvider');
+const { ClamAVScanner } = require('../scanners/ClamAVScanner');
 
 /**
  * ZAMORIN CAFÉ ERP — MALWARE SCANNER PROVIDER FACTORY
@@ -29,6 +30,14 @@ function createMalwareScanningProvider(options = {}) {
       throw err;
     }
 
+    if (providerName === 'clamav_tcp' || providerName === 'clamav_instream' || (!options.scannerUrl && !process.env.MALWARE_SCANNER_URL && (options.host || process.env.CLAMAV_HOST))) {
+      return new ClamAVScanner({
+        host: options.host || process.env.CLAMAV_HOST,
+        port: options.port || process.env.CLAMAV_PORT,
+        timeoutMs: options.timeoutMs || process.env.CLAMAV_TIMEOUT_MS,
+      });
+    }
+
     const scanner = new ClamAvHttpScanningProvider({
       scannerUrl: options.scannerUrl || process.env.MALWARE_SCANNER_URL,
       timeoutMs: options.timeoutMs || process.env.MALWARE_SCANNER_TIMEOUT_MS,
@@ -41,6 +50,10 @@ function createMalwareScanningProvider(options = {}) {
   // Development / Test environments
   if (providerName === 'mock') {
     return new MockMalwareScanningProvider(options);
+  }
+
+  if (providerName === 'clamav_tcp' || providerName === 'clamav_instream' || options.host) {
+    return new ClamAVScanner(options);
   }
 
   return new ClamAvHttpScanningProvider(options);
