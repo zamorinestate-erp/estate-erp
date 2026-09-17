@@ -27,21 +27,10 @@ import {
   setStepUpAuthenticationHandler,
   setAccessToken,
   clearAllAuthTokens,
+  addSessionExpirationListener,
 } from "./apiClient.js";
 import { registerServiceWorker } from "./updateManager.js";
 import { initLanguage } from "./i18n.js";
-import {
-  renderLogin,
-  wireLogin,
-  renderPasswordResetRequest,
-  wirePasswordResetRequest,
-  renderPasswordResetVerify,
-  wirePasswordResetVerify,
-  renderPasswordResetFinal,
-  wirePasswordResetFinal,
-  renderMfaChallenge,
-  wireMfaChallenge,
-} from "./pages/login.js?v=3.4.4";
 import {
   renderLoginPage2,
   wireLoginPage2,
@@ -330,9 +319,31 @@ export async function handlePasswordResetFinal({
   return result;
 }
 
-export function isLegacyLoginRequested() {
-  if (typeof window === "undefined") return false;
-  return new URLSearchParams(window.location.search).get("legacyLogin") === "true";
+export function getSafeInternalRedirect(target) {
+  if (!target || typeof target !== "string") return null;
+  const trimmed = target.trim();
+  // Disallow protocol-relative URLs (//example.com, \example.com)
+  if (trimmed.startsWith("//") || trimmed.startsWith("\\\\") || trimmed.startsWith("/\\")) return null;
+  // Disallow absolute URI schemes (http:, https:, javascript:, data:, etc.)
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed)) return null;
+  // Disallow control characters
+  if (/[\r\n\0]/.test(trimmed)) return null;
+
+  // Safe internal hash route: e.g. "#pos", "#settings", "#vendors", "pos", "settings"
+  if (trimmed.startsWith("#")) {
+    const rawRoute = trimmed.slice(1).replace(/^\/+/, "");
+    return rawRoute || null;
+  }
+  // Safe relative internal pathname: e.g. "/pos", "/vendors", "/settings"
+  if (trimmed.startsWith("/")) {
+    const rawRoute = trimmed.slice(1);
+    return rawRoute || null;
+  }
+  // Simple internal route key: e.g. "pos", "vendors"
+  if (/^[a-zA-Z0-9_\-\/]+$/.test(trimmed)) {
+    return trimmed;
+  }
+  return null;
 }
 
 function resolveAuthenticatedRole(user) {
@@ -411,37 +422,23 @@ export function mountAuthScreen(screen = "login", params = {}) {
   appEl.className = "auth-screen";
   delete appEl.dataset.shellRole;
 
-  const useLegacy = isLegacyLoginRequested();
-
   if (screen === "login") {
     // Non-blocking wake-up call to backend
     triggerBackendWarmup();
 
-    if (useLegacy) {
-      appEl.innerHTML = renderLogin(params);
-      wireLogin(appEl, {
-        onSubmit: async ({ organisationId, email, password, rememberDevice }) => {
-          await handleCompleteLoginFlow({ organisationId, email, password, rememberDevice });
-        },
-        onForgotPassword: ({ organisationId, email }) => {
-          mountAuthScreen("forgot", { organisationId, email });
-        }
-      });
-    } else {
-      const activeCafe = params.cafeContext || (typeof window !== "undefined" ? null : null);
-      appEl.innerHTML = renderLoginPage2({ ...params, cafeContext: activeCafe || params.cafeContext });
-      wireLoginPage2(appEl, {
-        onSubmit: async ({ organisationId, email, password, rememberDevice, targetCafeId }) => {
-          await handleCompleteLoginFlow({ organisationId, email, password, rememberDevice, targetCafeId });
-        },
-        onForgotPassword: ({ organisationId, email }) => {
-          mountAuthScreen("forgot", { organisationId, email });
-        },
-        onCafeOps: () => {
-          window.location.href = "/cafe-operations/cafe-operations.html";
-        }
-      });
-    }
+    const activeCafe = params.cafeContext || null;
+    appEl.innerHTML = renderLoginPage2({ ...params, cafeContext: activeCafe });
+    wireLoginPage2(appEl, {
+      onSubmit: async ({ organisationId, email, password, rememberDevice, targetCafeId }) => {
+        await handleCompleteLoginFlow({ organisationId, email, password, rememberDevice, targetCafeId });
+      },
+      onForgotPassword: ({ organisationId, email }) => {
+        mountAuthScreen("forgot", { organisationId, email });
+      },
+      onCafeOps: () => {
+        window.location.href = "/cafe-operations/cafe-operations.html";
+      }
+    });
   } else if (screen === "mfa") {
     const handleMfaSubmit = async ({ code }) => {
       try {
@@ -482,99 +479,48 @@ export function mountAuthScreen(screen = "login", params = {}) {
       }
     };
 
-    if (useLegacy) {
-      appEl.innerHTML = renderMfaChallenge(params);
-      wireMfaChallenge(appEl, {
-        onSubmit: handleMfaSubmit,
-        onBack: () => mountAuthScreen("login"),
-      });
-    } else {
-      appEl.innerHTML = renderMfaChallenge2(params);
-      wireMfaChallenge2(appEl, {
-        onSubmit: handleMfaSubmit,
-        onBack: () => mountAuthScreen("login"),
-      });
-    }
+    appEl.innerHTML = renderMfaChallenge2(params);
+    wireMfaChallenge2(appEl, {
+      onSubmit: handleMfaSubmit,
+      onBack: () => mountAuthScreen("login"),
+    });
   } else if (screen === "forgot") {
-    if (useLegacy) {
-      appEl.innerHTML = renderPasswordResetRequest(params);
-      wirePasswordResetRequest(appEl, {
-        onSubmit: async ({ organisationId, email }) => {
-          const res = await handlePasswordResetRequest({ organisationId, email });
-          mountAuthScreen("verify", { email, challengeId: res?.data?.challengeId });
-        },
-        onBack: () => mountAuthScreen("login")
-      });
-    } else {
-      appEl.innerHTML = renderPasswordResetRequest2(params);
-      wirePasswordResetRequest2(appEl, {
-        onSubmit: async ({ organisationId, email }) => {
-          const res = await handlePasswordResetRequest({ organisationId, email });
-          mountAuthScreen("verify", { email, challengeId: res?.data?.challengeId });
-        },
-        onBack: () => mountAuthScreen("login")
-      });
-    }
+    appEl.innerHTML = renderPasswordResetRequest2(params);
+    wirePasswordResetRequest2(appEl, {
+      onSubmit: async ({ organisationId, email }) => {
+        const res = await handlePasswordResetRequest({ organisationId, email });
+        mountAuthScreen("verify", { email, challengeId: res?.data?.challengeId });
+      },
+      onBack: () => mountAuthScreen("login")
+    });
   } else if (screen === "verify") {
-    if (useLegacy) {
-      appEl.innerHTML = renderPasswordResetVerify(params);
-      wirePasswordResetVerify(appEl, {
-        onSubmit: async ({ code }) => {
-          const res = await handlePasswordResetVerify({
-            challengeId: params.challengeId,
-            code
-          });
-          mountAuthScreen("reset", {
-            resetToken: res.resetToken,
-            challengeId: res.challengeId
-          });
-        },
-        onBack: () => mountAuthScreen("forgot")
-      });
-    } else {
-      appEl.innerHTML = renderPasswordResetVerify2(params);
-      wirePasswordResetVerify2(appEl, {
-        onSubmit: async ({ code }) => {
-          const res = await handlePasswordResetVerify({
-            challengeId: params.challengeId,
-            code
-          });
-          mountAuthScreen("reset", {
-            resetToken: res.resetToken,
-            challengeId: res.challengeId
-          });
-        },
-        onBack: () => mountAuthScreen("forgot")
-      });
-    }
+    appEl.innerHTML = renderPasswordResetVerify2(params);
+    wirePasswordResetVerify2(appEl, {
+      onSubmit: async ({ code }) => {
+        const res = await handlePasswordResetVerify({
+          challengeId: params.challengeId,
+          code
+        });
+        mountAuthScreen("reset", {
+          resetToken: res.resetToken,
+          challengeId: res.challengeId
+        });
+      },
+      onBack: () => mountAuthScreen("forgot")
+    });
   } else if (screen === "reset") {
-    if (useLegacy) {
-      appEl.innerHTML = renderPasswordResetFinal(params);
-      wirePasswordResetFinal(appEl, {
-        onSubmit: async ({ newPassword }) => {
-          await handlePasswordResetFinal({
-            challengeId: params.challengeId,
-            resetToken: params.resetToken,
-            newPassword
-          });
-          mountAuthScreen("login", { notice: "Password updated successfully. Please sign in with your new password." });
-        },
-        onCancel: () => mountAuthScreen("login")
-      });
-    } else {
-      appEl.innerHTML = renderPasswordResetFinal2(params);
-      wirePasswordResetFinal2(appEl, {
-        onSubmit: async ({ newPassword }) => {
-          await handlePasswordResetFinal({
-            challengeId: params.challengeId,
-            resetToken: params.resetToken,
-            newPassword
-          });
-          mountAuthScreen("login", { notice: "Password updated successfully. Please sign in with your new password." });
-        },
-        onCancel: () => mountAuthScreen("login")
-      });
-    }
+    appEl.innerHTML = renderPasswordResetFinal2(params);
+    wirePasswordResetFinal2(appEl, {
+      onSubmit: async ({ newPassword }) => {
+        await handlePasswordResetFinal({
+          challengeId: params.challengeId,
+          resetToken: params.resetToken,
+          newPassword
+        });
+        mountAuthScreen("login", { notice: "Password updated successfully. Please sign in with your new password." });
+      },
+      onCancel: () => mountAuthScreen("login")
+    });
   }
 }
 
@@ -672,15 +618,25 @@ function handleAuthenticatedUserSession(user) {
   const { role, isPrimaryMaster } = resolveAuthenticatedRole(user);
   const landingRoute = (role === "staff") ? "staff-home" : "dashboard";
 
+  let targetRoute = landingRoute;
+  if (typeof window !== "undefined") {
+    const searchParams = new URLSearchParams(window.location.search);
+    const candidate = searchParams.get("returnTo") || searchParams.get("redirect") || searchParams.get("next");
+    const safeTarget = getSafeInternalRedirect(candidate);
+    if (safeTarget && isRouteAllowed(role, safeTarget, isPrimaryMaster)) {
+      targetRoute = safeTarget;
+    }
+  }
+
   setState({
     auth: { authenticated: true, user, loading: false },
     user,
     role,
     isPrimaryMaster,
-    route: landingRoute,
+    route: targetRoute,
   });
 
-  window.location.hash = `#${landingRoute}`;
+  window.location.hash = `#${targetRoute}`;
   boot();
 }
 
@@ -876,7 +832,16 @@ async function boot() {
   }
 
   // Direct Auth Screen Routing (0ms instant mount)
-  if (urlHash === "login" || params?.get("auth") === "login") {
+  // Handle /login2 alias -> redirect to canonical /login
+  if (pathname === "/login2" || urlHash === "login2") {
+    if (typeof window !== "undefined" && window.history && window.history.replaceState) {
+      window.history.replaceState(null, "", "/login");
+    }
+  }
+
+  const isLoginRoute = urlHash === "login" || urlHash === "login2" || pathname === "/login" || pathname === "/login2" || params?.get("auth") === "login";
+
+  if (isLoginRoute) {
     mountAuthScreen("login");
     return;
   }
@@ -956,7 +921,10 @@ async function boot() {
 if (typeof window !== "undefined") {
   window.addEventListener("hashchange", () => {
     const rawHash = window.location.hash.replace(/^#/, "");
-    if (rawHash === "login") {
+    if (rawHash === "login" || rawHash === "login2") {
+      if (rawHash === "login2" && typeof window !== "undefined" && window.history && window.history.replaceState) {
+        window.history.replaceState(null, "", "/login");
+      }
       mountAuthScreen("login");
     } else if (rawHash === "forgot") {
       mountAuthScreen("forgot");
@@ -979,6 +947,20 @@ if (typeof window !== "undefined") {
 // APPLICATION START
 // =============================================================================
 
+// Session expiry automatic routing to canonical Login 2.0
+if (typeof window !== "undefined") {
+  addSessionExpirationListener(() => {
+    clearAllAuthTokens();
+    setState({
+      auth: { authenticated: false, loading: false, user: null, authentication: null, error: null },
+      user: null,
+      isPrimaryMaster: false,
+      route: "login",
+    });
+    mountAuthScreen("login", { notice: "Your session has expired. Please sign in again." });
+  });
+}
+
 if (typeof document !== "undefined") {
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", boot, { once: true });
@@ -986,3 +968,4 @@ if (typeof document !== "undefined") {
     boot();
   }
 }
+

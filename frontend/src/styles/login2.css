@@ -637,3 +637,31 @@ body:has(#app.auth-screen) {
 .hidden {
   display: none !important;
 }
+
+/* =============================================================================
+   Responsive Viewports (Mobile & Tablet)
+   ============================================================================= */
+@media (max-width: 640px) {
+  .light-glass-container {
+    max-width: 100%;
+    padding: 16px 18px;
+    border-radius: 10px;
+    gap: 8px;
+  }
+  .l2-brand-logo {
+    width: 76px;
+  }
+  .login-header h2 {
+    font-size: 19px;
+  }
+}
+
+@media (max-width: 380px) {
+  .light-glass-container {
+    padding: 14px;
+  }
+  .light-input-group input {
+    height: 38px;
+    font-size: 13px;
+  }
+}

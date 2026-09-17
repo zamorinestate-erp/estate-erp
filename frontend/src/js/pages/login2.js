@@ -787,18 +787,18 @@ export function renderPasswordResetFinal2({ challengeId = "", resetToken = "" } 
             <div class="light-input-icon left">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1s3.1 1.39 3.1 3.1v2z"/></svg>
             </div>
-            <input type="password" id="l2-new-password" placeholder="New Password" required autocomplete="new-password" />
+            <input type="password" id="l2-new-password" placeholder="New Password" minlength="12" maxlength="128" required autocomplete="new-password" />
           </div>
 
           <div class="light-input-group">
             <div class="light-input-icon left">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1s3.1 1.39 3.1 3.1v2z"/></svg>
             </div>
-            <input type="password" id="l2-confirm-password" placeholder="Confirm New Password" required autocomplete="new-password" />
+            <input type="password" id="l2-confirm-password" placeholder="Confirm New Password" minlength="12" maxlength="128" required autocomplete="new-password" />
           </div>
 
           <div style="font-size: 11.5px; color: var(--l2-text-muted); line-height: 1.4; margin-bottom: 12px;">
-            Password must be at least 8 characters and contain uppercase, lowercase, numbers, and special characters.
+            Password must be at least 12 characters and contain uppercase, lowercase, numbers, and special characters.
           </div>
 
           <button type="submit" id="l2-reset-final-submit" class="light-btn">Update Password</button>
@@ -836,17 +836,49 @@ export function wirePasswordResetFinal2(container, { onSubmit, onCancel } = {}) 
         return;
       }
 
-      if (newPassword !== confirmPassword) {
+      if (newPassword.length < 12 || newPassword.length > 128) {
         if (errorEl) {
-          errorEl.textContent = "Passwords do not match. Please verify.";
+          errorEl.textContent = "Password must be between 12 and 128 characters in length.";
           errorEl.style.display = "block";
         }
         return;
       }
 
-      if (newPassword.length < 8) {
+      if (!/[a-z]/.test(newPassword)) {
         if (errorEl) {
-          errorEl.textContent = "Password must be at least 8 characters long.";
+          errorEl.textContent = "Password must include at least one lowercase letter.";
+          errorEl.style.display = "block";
+        }
+        return;
+      }
+
+      if (!/[A-Z]/.test(newPassword)) {
+        if (errorEl) {
+          errorEl.textContent = "Password must include at least one uppercase letter.";
+          errorEl.style.display = "block";
+        }
+        return;
+      }
+
+      if (!/[0-9]/.test(newPassword)) {
+        if (errorEl) {
+          errorEl.textContent = "Password must include at least one numeric digit.";
+          errorEl.style.display = "block";
+        }
+        return;
+      }
+
+      if (!/[^A-Za-z0-9]/.test(newPassword)) {
+        if (errorEl) {
+          errorEl.textContent = "Password must include at least one special character.";
+          errorEl.style.display = "block";
+        }
+        return;
+      }
+
+      if (newPassword !== confirmPassword) {
+        if (errorEl) {
+          errorEl.textContent = "Passwords do not match. Please verify.";
           errorEl.style.display = "block";
         }
         return;
