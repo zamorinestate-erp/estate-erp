@@ -403,6 +403,152 @@ class BackupRestoreVerificationService {
       }
     }
   }
+
+  /**
+   * Validates that a backup destination directory is safely outside the Git repository.
+   */
+  static validateBackupPath(targetPath, repoRoot = null) {
+    if (!targetPath || typeof targetPath !== 'string') {
+      const err = new Error('Backup destination path is required.');
+      err.code = 'BACKUP_PATH_REQUIRED';
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const path = require('path');
+    const normalizedTarget = path.resolve(targetPath);
+    const resolvedRepoRoot = repoRoot ? path.resolve(repoRoot) : path.resolve(__dirname, '..', '..', '..');
+
+    const rel = path.relative(resolvedRepoRoot, normalizedTarget);
+    if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
+      const err = new Error(`Backup destination '${targetPath}' is inside the Git repository tree. Backups must be stored outside repository.`);
+      err.code = 'BACKUP_INSIDE_REPOSITORY_PROHIBITED';
+      err.statusCode = 400;
+      throw err;
+    }
+
+    return {
+      isValid: true,
+      path: normalizedTarget,
+      isOutsideRepository: true,
+    };
+  }
+
+  /**
+   * Constructs mongodump arguments with safe credential masking.
+   */
+  static buildMongoDumpCommand({
+    uri,
+    dbName,
+    outDir = null,
+    archivePath = null,
+    gzip = true,
+    repoRoot = null,
+  }) {
+    if (!uri) {
+      const err = new Error('MongoDB URI is required for mongodump.');
+      err.code = 'MONGODB_URI_REQUIRED';
+      throw err;
+    }
+
+    const dest = archivePath || outDir;
+    this.validateBackupPath(dest, repoRoot);
+
+    const args = [`--uri=${uri}`];
+    if (dbName) args.push(`--db=${dbName}`);
+    if (archivePath) {
+      args.push(`--archive=${archivePath}`);
+    } else if (outDir) {
+      args.push(`--out=${outDir}`);
+    }
+    if (gzip) args.push('--gzip');
+
+    const maskedArgs = args.map((arg) => {
+      if (arg.startsWith('--uri=')) {
+        return `--uri=${this.maskConnectionString(uri)}`;
+      }
+      return arg;
+    });
+
+    return {
+      command: 'mongodump',
+      args,
+      maskedArgs,
+      destination: dest,
+    };
+  }
+
+  /**
+   * Constructs mongorestore arguments with production target safety guard.
+   */
+  static buildMongoRestoreCommand({
+    uri,
+    targetDbName,
+    archivePath = null,
+    dumpDir = null,
+    drop = false,
+    gzip = true,
+  }) {
+    if (!uri) {
+      const err = new Error('MongoDB URI is required for mongorestore.');
+      err.code = 'MONGODB_URI_REQUIRED';
+      throw err;
+    }
+
+    const normalizedDb = (targetDbName || '').trim().toLowerCase();
+    if (KNOWN_PRODUCTION_DB_NAMES.has(normalizedDb)) {
+      const err = new Error(`Cannot restore into protected production database '${targetDbName}'.`);
+      err.code = 'PRODUCTION_TARGET_PROTECTION';
+      err.statusCode = 403;
+      throw err;
+    }
+
+    const args = [`--uri=${uri}`];
+    if (targetDbName) {
+      args.push(`--nsInclude=*.*`);
+      args.push(`--nsFrom=*.*`);
+      args.push(`--nsTo=${targetDbName}.*`);
+    }
+    if (archivePath) {
+      args.push(`--archive=${archivePath}`);
+    } else if (dumpDir) {
+      args.push(dumpDir);
+    }
+    if (gzip) args.push('--gzip');
+    if (drop) args.push('--drop');
+
+    const maskedArgs = args.map((arg) => {
+      if (arg.startsWith('--uri=')) {
+        return `--uri=${this.maskConnectionString(uri)}`;
+      }
+      return arg;
+    });
+
+    return {
+      command: 'mongorestore',
+      args,
+      maskedArgs,
+      targetDatabase: targetDbName,
+    };
+  }
+
+  /**
+   * Calculates local backup retention (e.g. keeps 7 most recent backups, flags older ones).
+   */
+  static assessLocalRetention({ backupDirs = [], retentionCount = 7 }) {
+    const sorted = [...backupDirs].sort().reverse();
+    const retained = sorted.slice(0, retentionCount);
+    const prunable = sorted.slice(retentionCount);
+
+    return {
+      totalFound: backupDirs.length,
+      retentionLimit: retentionCount,
+      retainedCount: retained.length,
+      prunableCount: prunable.length,
+      retained,
+      prunable,
+    };
+  }
 }
 
 module.exports = {
