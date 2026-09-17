@@ -128,6 +128,51 @@ const documentVersionSchema = new mongoose.Schema(
       type: Date,
       default: Date.now,
     },
+    // Restoration Provenance (EXT-04)
+    restoredFromRevision: {
+      type: Number,
+      default: null,
+    },
+    restoredFromBackup: {
+      type: Boolean,
+      default: false,
+    },
+    restoredFromGridFsFileId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+    },
+    restoredFromBackupTimestamp: {
+      type: Date,
+      default: null,
+    },
+    sourceSha256: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    sourceScanStatus: {
+      type: String,
+      default: null,
+    },
+    restoreReason: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    restoreCorrelationId: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    restoredAt: {
+      type: Date,
+      default: null,
+    },
+    restoredBy: {
+      type: String,
+      trim: true,
+      default: null,
+    },
   },
   { _id: true }
 );
