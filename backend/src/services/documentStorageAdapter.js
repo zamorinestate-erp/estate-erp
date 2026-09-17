@@ -20,7 +20,8 @@ const { ApiError } = require('../utils/ApiError');
 class DocumentStorageAdapter {
   constructor(options = {}) {
     this.options = options;
-    this.driver = options.driver || process.env.DOCUMENT_STORAGE_PROVIDER || process.env.DOCUMENT_STORAGE_DRIVER || 'RENDER_PERSISTENT_DISK';
+    const isProd = process.env.NODE_ENV === 'production';
+    this.driver = options.driver || process.env.DOCUMENT_STORAGE_PROVIDER || process.env.DOCUMENT_STORAGE_DRIVER || (isProd ? 'gridfs' : 'RENDER_PERSISTENT_DISK');
     this.storageRoot = options.storageRoot || process.env.DOCUMENT_STORAGE_ROOT || null;
     this.objectStoreClient = options.objectStoreClient || null;
     this._provider = null;
@@ -34,10 +35,12 @@ class DocumentStorageAdapter {
   getProvider() {
     if (!this._provider) {
       const isProd = process.env.NODE_ENV === 'production';
-      let mappedDriver = this.driver;
-      if (mappedDriver === 'RENDER_PERSISTENT_DISK' || mappedDriver === 'local') {
-        mappedDriver = isProd ? 's3' : 'local';
-      } else if (mappedDriver === 'PRIVATE_OBJECT_STORAGE') {
+      let mappedDriver = String(this.driver).toLowerCase();
+      if (mappedDriver === 'gridfs' || mappedDriver === 'mongodb' || mappedDriver === 'mongodb_gridfs') {
+        mappedDriver = 'gridfs';
+      } else if (mappedDriver === 'render_persistent_disk' || mappedDriver === 'local') {
+        mappedDriver = isProd ? (this.options.allowLocalInProdForTesting ? 'local' : 'gridfs') : 'local';
+      } else if (mappedDriver === 'private_object_storage' || mappedDriver === 's3' || mappedDriver === 's3_compatible') {
         mappedDriver = 's3';
       }
 
@@ -112,6 +115,18 @@ class DocumentStorageAdapter {
         throw new ApiError(500, 'DOCUMENT_STORAGE_UNAVAILABLE', `Cannot initialize durable storage directory: ${err.message}`);
       }
 
+      return true;
+    }
+
+    if (driver === 'gridfs' || driver === 'mongodb_gridfs' || driver === 'mongodb') {
+      const uri = env.MONGODB_URI;
+      if (isProd && (!uri || !String(uri).trim())) {
+        throw new ApiError(
+          500,
+          'DOCUMENT_STORAGE_NOT_CONFIGURED',
+          'Production GridFS document storage requires valid MONGODB_URI.'
+        );
+      }
       return true;
     }
 
@@ -190,10 +205,11 @@ class DocumentStorageAdapter {
     this.metrics.totalBytes += (result.sizeBytes || sizeBytes);
 
     return {
-      storageDriver: result.storageProvider === 'LOCAL_DEV' ? 'RENDER_PERSISTENT_DISK' : 'PRIVATE_OBJECT_STORAGE',
+      storageDriver: result.storageProvider === 'GRIDFS' ? 'GRIDFS' : (result.storageProvider === 'LOCAL_DEV' ? 'RENDER_PERSISTENT_DISK' : 'PRIVATE_OBJECT_STORAGE'),
       storageProvider: result.storageProvider,
       storageKey,
       storageObjectKey: storageKey,
+      gridFsFileId: result.gridFsFileId || null,
       storagePath: result.storagePath || (this.getResolvedStorageRoot() ? path.join(this.getResolvedStorageRoot(), storageKey) : null),
       sizeBytes: result.sizeBytes,
       sha256: result.sha256,
@@ -268,6 +284,7 @@ class DocumentStorageAdapter {
    */
   static getStorageRuntimeStatus() {
     const isProduction = process.env.NODE_ENV === 'production';
+    const isGridFsConfigured = Boolean(process.env.MONGODB_URI || process.env.DOCUMENT_STORAGE_PROVIDER === 'gridfs');
     const isS3Configured = Boolean(
       process.env.DOCUMENT_STORAGE_BUCKET &&
       (process.env.DOCUMENT_STORAGE_ENDPOINT || process.env.AWS_REGION) &&
@@ -277,10 +294,11 @@ class DocumentStorageAdapter {
 
     return {
       PRODUCTION_STORAGE_ADAPTER_IMPLEMENTED: true,
-      LIVE_PRODUCTION_OBJECT_STORAGE_CONFIGURED: isS3Configured ? true : 'EXTERNAL_PENDING',
+      LIVE_PRODUCTION_OBJECT_STORAGE_CONFIGURED: isGridFsConfigured || isS3Configured ? true : 'EXTERNAL_PENDING',
       LOCAL_MOCK_ADAPTERS_ALLOWED_IN_PRODUCTION: false,
       RENDER_FILESYSTEM_PRODUCTION_FALLBACK: false,
-      STORAGE_DRIVER_SELECTED: isProduction ? 'S3_COMPATIBLE_DURABLE_OBJECT_STORE' : 'LOCAL_DEV_OR_MOCK_STORE',
+      STORAGE_DRIVER_SELECTED: isProduction ? 'MONGODB_ATLAS_GRIDFS' : 'LOCAL_DEV_OR_MOCK_STORE',
+      GRIDFS_BUCKET: process.env.DOCUMENT_GRIDFS_BUCKET || 'zamorinDocuments',
     };
   }
 }

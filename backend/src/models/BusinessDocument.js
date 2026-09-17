@@ -63,13 +63,23 @@ const documentVersionSchema = new mongoose.Schema(
       trim: true,
       default: null,
     },
+    gridFsFileId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+      index: true,
+    },
+    bucketName: {
+      type: String,
+      trim: true,
+      default: 'zamorinDocuments',
+    },
     storageDriver: {
       type: String,
-      default: 'PRIVATE_OBJECT_STORAGE',
+      default: 'GRIDFS',
     },
     storageProvider: {
       type: String,
-      default: 'S3_COMPATIBLE',
+      default: 'GRIDFS',
     },
     storageContainer: {
       type: String,
@@ -326,6 +336,16 @@ const businessDocumentSchema = new mongoose.Schema(
       default: null,
       index: true,
     },
+    gridFsFileId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+      index: true,
+    },
+    bucketName: {
+      type: String,
+      trim: true,
+      default: 'zamorinDocuments',
+    },
     storageKey: {
       type: String,
       trim: true,
@@ -349,7 +369,7 @@ const businessDocumentSchema = new mongoose.Schema(
     },
     storageDriver: {
       type: String,
-      default: 'PRIVATE_OBJECT_STORAGE',
+      default: 'GRIDFS',
       index: true,
     },
     quarantineObjectKey: {

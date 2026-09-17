@@ -270,7 +270,10 @@ function createApp(environment) {
       storageStatus = 'UNAVAILABLE';
     }
 
-    const ready = database.readyState === 1;
+    const isStorageReady = storageStatus === 'OK' || storageStatus === 'HEALTHY';
+    const isDbReady = database.readyState === 1;
+    const isProd = process.env.NODE_ENV === 'production';
+    const ready = isProd ? (isDbReady && isStorageReady) : isDbReady;
 
     return response
       .status(ready ? 200 : 503)

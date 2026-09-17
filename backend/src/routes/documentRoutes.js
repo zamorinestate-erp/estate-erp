@@ -281,6 +281,49 @@ router.get(
   })
 );
 
+// ── POST /api/v1/documents/upload-stream (Direct HTTP to GridFS Stream) ──────
+router.post(
+  '/upload-stream',
+  authorize('PROCUREMENT_WRITE', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  asyncHandler(async (req, res) => {
+    const orgId = req.auth.organisationId;
+    const cafeId = req.query.cafeId || req.headers['x-cafe-id'] || req.auth.primaryCafeId || 'GLOBAL';
+    const declaredMime = req.headers['content-type'] || 'application/octet-stream';
+    const originalFilename = req.query.filename || req.headers['x-filename'] || 'document.pdf';
+    const documentId = (req.query.documentId || req.headers['x-document-id'] || '').trim().toUpperCase();
+    const key = req.query.key || (documentId ? `quarantine/${orgId}/${cafeId}/${documentId}.bin` : null);
+
+    if (!key) {
+      throw new ApiError(400, 'MISSING_STORAGE_KEY', 'key or documentId parameter is required for stream upload.');
+    }
+
+    const putResult = await documentStorageAdapter.put({
+      stream: req,
+      storageKey: key,
+      mimeType: declaredMime,
+      organisationId: orgId,
+      metadata: {
+        documentId: documentId || null,
+        originalFilename,
+        organisationId: orgId,
+        cafeId,
+      },
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: 'Binary successfully streamed to GridFS.',
+      data: {
+        storageObjectKey: putResult.storageObjectKey,
+        gridFsFileId: putResult.gridFsFileId,
+        sha256: putResult.sha256,
+        sizeBytes: putResult.sizeBytes,
+        storedAt: putResult.storedAt,
+      },
+    });
+  })
+);
+
 // ── GET /api/v1/documents/:documentId/download (Authorized Binary Stream) ─────
 router.get(
   '/:documentId/download',
@@ -311,6 +354,29 @@ router.get(
     res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(safeFilename)}"`);
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('X-File-Checksum', doc.sha256 || doc.checksum || '');
+    res.setHeader('Accept-Ranges', 'bytes');
+
+    // Byte-range handling
+    const rangeHeader = req.headers.range;
+    if (rangeHeader && doc.sizeBytes) {
+      const parts = rangeHeader.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : doc.sizeBytes - 1;
+      if (!isNaN(start) && start <= doc.sizeBytes - 1) {
+        const chunksize = (end - start) + 1;
+        res.status(206);
+        res.setHeader('Content-Range', `bytes ${start}-${end}/${doc.sizeBytes}`);
+        res.setHeader('Content-Length', chunksize);
+        const provider = documentStorageAdapter.getProvider();
+        const stream = await provider.openReadStream({
+          objectKey: key,
+          fileId: doc.gridFsFileId,
+          start,
+          end: end + 1,
+        });
+        return stream.pipe(res);
+      }
+    }
 
     const stream = await documentStorageAdapter.getStream({ storageKey: key });
     if (doc.sizeBytes) {
@@ -348,6 +414,29 @@ router.get(
     res.setHeader('Content-Type', doc.mimeType);
     res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(safeFilename)}"`);
     res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Accept-Ranges', 'bytes');
+
+    // Byte-range handling for preview (PDF/media range requests)
+    const rangeHeader = req.headers.range;
+    if (rangeHeader && doc.sizeBytes) {
+      const parts = rangeHeader.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : doc.sizeBytes - 1;
+      if (!isNaN(start) && start <= doc.sizeBytes - 1) {
+        const chunksize = (end - start) + 1;
+        res.status(206);
+        res.setHeader('Content-Range', `bytes ${start}-${end}/${doc.sizeBytes}`);
+        res.setHeader('Content-Length', chunksize);
+        const provider = documentStorageAdapter.getProvider();
+        const stream = await provider.openReadStream({
+          objectKey: key,
+          fileId: doc.gridFsFileId,
+          start,
+          end: end + 1,
+        });
+        return stream.pipe(res);
+      }
+    }
 
     const stream = await documentStorageAdapter.getStream({ storageKey: key });
     if (doc.sizeBytes) {
@@ -585,6 +674,28 @@ router.post(
     return res.status(200).json({
       success: true,
       message: 'Document successfully restored.',
+      data: doc,
+    });
+  })
+);
+
+// ── POST /api/v1/documents/:documentId/restore-version/:versionNumber ───────
+router.post(
+  '/:documentId/restore-version/:versionNumber',
+  authorize('PROCUREMENT_APPROVE', { allowedRoles: ['MASTER', 'OWNER'] }),
+  asyncHandler(async (req, res) => {
+    const { reason } = req.body || {};
+    const doc = await DocumentAttachmentService.restoreVersion({
+      documentId: req.params.documentId,
+      organisationId: req.auth.organisationId,
+      versionNumber: req.params.versionNumber,
+      reason,
+      auth: req.auth,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `Document revision successfully restored to Version ${doc.currentVersion}.`,
       data: doc,
     });
   })

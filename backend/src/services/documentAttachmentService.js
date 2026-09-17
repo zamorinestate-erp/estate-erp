@@ -705,12 +705,18 @@ class DocumentAttachmentService {
     });
 
     // Copy or Put into canonical location
-    await documentStorageAdapter.put({
+    const putResult = await documentStorageAdapter.put({
       buffer: binaryBuffer,
       storageKey: canonicalKey,
       mimeType: doc.declaredMimeType || doc.mimeType,
       sizeBytes: binaryBuffer.length,
       organisationId,
+      metadata: {
+        documentId: doc.documentId,
+        originalFilename: doc.originalFilename,
+        organisationId,
+        cafeId: doc.cafeId || 'GLOBAL',
+      },
     });
 
     // Clean up temporary quarantine object
@@ -726,6 +732,10 @@ class DocumentAttachmentService {
     doc.securityScanDetails = scanResult.details;
     doc.storageKey = canonicalKey;
     doc.storageObjectKey = canonicalKey;
+    doc.gridFsFileId = putResult?.gridFsFileId || null;
+    doc.bucketName = putResult?.storageContainer || process.env.DOCUMENT_GRIDFS_BUCKET || 'zamorinDocuments';
+    doc.storageDriver = putResult?.storageDriver || 'GRIDFS';
+    doc.storageProvider = putResult?.storageProvider || 'GRIDFS';
     doc.internalFilename = internalFilename;
     doc.sizeBytes = binaryBuffer.length;
     doc.fileSizeBytes = binaryBuffer.length;
@@ -744,8 +754,10 @@ class DocumentAttachmentService {
         sha256,
         storageKey: canonicalKey,
         storageObjectKey: canonicalKey,
-        storageDriver: 'PRIVATE_OBJECT_STORAGE',
-        storageProvider: 'S3_COMPATIBLE',
+        gridFsFileId: putResult?.gridFsFileId || null,
+        bucketName: putResult?.storageContainer || process.env.DOCUMENT_GRIDFS_BUCKET || 'zamorinDocuments',
+        storageDriver: putResult?.storageDriver || 'GRIDFS',
+        storageProvider: putResult?.storageProvider || 'GRIDFS',
         securityScanStatus: 'CLEAN',
         scanStatus: 'CLEAN',
         securityScanDetails: scanResult.details,
@@ -1101,9 +1113,11 @@ class DocumentAttachmentService {
         visibilityScope,
         storageKey: storedResult?.storageKey || canonicalKey,
         storageObjectKey: storedResult?.storageKey || canonicalKey,
+        gridFsFileId: storedResult?.gridFsFileId || null,
+        bucketName: storedResult?.storageContainer || process.env.DOCUMENT_GRIDFS_BUCKET || 'zamorinDocuments',
         storagePath: storedResult?.storagePath || null,
-        storageDriver: storedResult?.storageDriver || 'PRIVATE_OBJECT_STORAGE',
-        storageProvider: storedResult?.storageProvider || 'S3_COMPATIBLE',
+        storageDriver: storedResult?.storageDriver || 'GRIDFS',
+        storageProvider: storedResult?.storageProvider || 'GRIDFS',
         uploadStatus: 'AVAILABLE',
         scanStatus: 'CLEAN',
         securityScanStatus: 'CLEAN',
@@ -1122,9 +1136,11 @@ class DocumentAttachmentService {
             sha256: checksum,
             storageKey: storedResult?.storageKey || canonicalKey,
             storageObjectKey: storedResult?.storageKey || canonicalKey,
+            gridFsFileId: storedResult?.gridFsFileId || null,
+            bucketName: storedResult?.storageContainer || process.env.DOCUMENT_GRIDFS_BUCKET || 'zamorinDocuments',
             storagePath: storedResult?.storagePath || null,
-            storageDriver: storedResult?.storageDriver || 'PRIVATE_OBJECT_STORAGE',
-            storageProvider: storedResult?.storageProvider || 'S3_COMPATIBLE',
+            storageDriver: storedResult?.storageDriver || 'GRIDFS',
+            storageProvider: storedResult?.storageProvider || 'GRIDFS',
             securityScanStatus: 'CLEAN',
             scanStatus: 'CLEAN',
             securityScanDetails: scanResult.details,
@@ -1349,19 +1365,26 @@ class DocumentAttachmentService {
         mimeType: normMime,
       });
 
-      await documentStorageAdapter.put({
+      const putResult = await documentStorageAdapter.put({
         buffer: binaryBuffer,
         storageKey: canonicalKey,
         mimeType: normMime,
         sizeBytes: effectiveSize,
         organisationId,
+        metadata: {
+          documentId: doc.documentId,
+          version: nextVersion,
+          originalFilename: normFilenameInfo.sanitizedName,
+          organisationId,
+          cafeId: doc.cafeId || 'GLOBAL',
+        },
       });
 
       if (tempFilePath && fs.existsSync(tempFilePath)) {
         await fs.promises.unlink(tempFilePath).catch(() => {});
       }
 
-      // Preserve previous version record
+      // Preserve previous version record (immutable historical reference)
       const previousInternalFilename = doc.internalFilename || `${doc.documentId}.${doc.extension || normFilenameInfo.extension || 'bin'}`;
       const previousVersionRecord = {
         version: doc.currentVersion,
@@ -1373,6 +1396,8 @@ class DocumentAttachmentService {
         sha256: doc.sha256 || doc.checksum,
         storageKey: doc.storageKey,
         storageObjectKey: doc.storageObjectKey || doc.storageKey,
+        gridFsFileId: doc.gridFsFileId || null,
+        bucketName: doc.bucketName || 'zamorinDocuments',
         storagePath: doc.storagePath,
         storageDriver: doc.storageDriver,
         storageProvider: doc.storageProvider,
@@ -1395,6 +1420,7 @@ class DocumentAttachmentService {
       } else {
         doc.versions.push(previousVersionRecord);
       }
+
       doc.currentVersion = nextVersion;
       doc.originalFilename = normFilenameInfo.sanitizedName;
       doc.originalFileName = normFilenameInfo.sanitizedName;
@@ -1409,6 +1435,10 @@ class DocumentAttachmentService {
       doc.sha256 = sha256;
       doc.storageKey = canonicalKey;
       doc.storageObjectKey = canonicalKey;
+      doc.gridFsFileId = putResult?.gridFsFileId || null;
+      doc.bucketName = putResult?.storageContainer || 'zamorinDocuments';
+      doc.storageDriver = putResult?.storageDriver || 'GRIDFS';
+      doc.storageProvider = putResult?.storageProvider || 'GRIDFS';
       doc.uploadStatus = 'AVAILABLE';
       doc.scanStatus = 'CLEAN';
       doc.securityScanStatus = 'CLEAN';
@@ -1857,6 +1887,98 @@ class DocumentAttachmentService {
       documentId: params.documentId.trim().toUpperCase(),
       organisationId: params.organisationId,
     });
+    return doc;
+  }
+
+  /**
+   * Restores a historical document revision without mutating the historical GridFS binary.
+   */
+  static async restoreVersion({ documentId, organisationId, versionNumber, reason, auth }) {
+    if (auth.role !== 'MASTER' && auth.role !== 'OWNER') {
+      throw new ApiError(403, 'RESTORE_DENIED', 'Only Master and Owner can restore document revisions.');
+    }
+    if (!reason || reason.trim().length < 5) {
+      throw new ApiError(400, 'REASON_REQUIRED', 'A detailed reason (min 5 chars) is mandatory to restore a version.');
+    }
+
+    const doc = await BusinessDocument.findOne({
+      documentId: documentId.trim().toUpperCase(),
+      organisationId,
+    });
+
+    if (!doc) {
+      throw new ApiError(404, 'DOCUMENT_NOT_FOUND', 'Business document not found.');
+    }
+
+    const verNum = parseInt(versionNumber, 10);
+    const targetVer = (doc.versions || []).find((v) => (v.versionNumber || v.version) === verNum);
+
+    if (!targetVer) {
+      throw new ApiError(404, 'VERSION_NOT_FOUND', `Version ${verNum} not found in revision history.`);
+    }
+
+    const nextVersion = (doc.currentVersion || 1) + 1;
+    const restoredRecord = {
+      version: nextVersion,
+      originalFilename: targetVer.originalFilename || doc.originalFilename,
+      internalFilename: `${doc.documentId}_v${nextVersion}_restored_from_v${verNum}`,
+      mimeType: targetVer.mimeType || doc.mimeType,
+      sizeBytes: targetVer.sizeBytes || doc.sizeBytes,
+      checksum: targetVer.sha256 || targetVer.checksum || doc.sha256,
+      sha256: targetVer.sha256 || targetVer.checksum || doc.sha256,
+      storageKey: targetVer.storageKey,
+      storageObjectKey: targetVer.storageObjectKey || targetVer.storageKey,
+      gridFsFileId: targetVer.gridFsFileId || null,
+      bucketName: targetVer.bucketName || 'zamorinDocuments',
+      storageDriver: targetVer.storageDriver || 'GRIDFS',
+      storageProvider: targetVer.storageProvider || 'GRIDFS',
+      securityScanStatus: 'CLEAN',
+      scanStatus: 'CLEAN',
+      securityScanDetails: `Restored from historical Version ${verNum}`,
+      changeReason: `Restored from Version ${verNum}: ${reason.trim()}`,
+      uploadedBy: auth.name || auth.userId || 'Operator',
+      uploadedByUserId: auth.userId || null,
+      uploadedByRole: auth.role || null,
+      uploadedAt: new Date(),
+    };
+
+    if (!Array.isArray(doc.versions)) {
+      doc.versions = [];
+    }
+    doc.versions.push(restoredRecord);
+    doc.currentVersion = nextVersion;
+    doc.storageKey = targetVer.storageKey;
+    doc.storageObjectKey = targetVer.storageObjectKey || targetVer.storageKey;
+    doc.gridFsFileId = targetVer.gridFsFileId || null;
+    doc.bucketName = targetVer.bucketName || 'zamorinDocuments';
+    doc.sha256 = targetVer.sha256 || targetVer.checksum || doc.sha256;
+    doc.checksum = doc.sha256;
+    doc.sizeBytes = targetVer.sizeBytes || doc.sizeBytes;
+    doc.isDeleted = false;
+    doc.documentStatus = 'UPLOADED';
+    doc.status = 'UPLOADED';
+
+    await doc.save();
+
+    await auditService.recordAuditEvent({
+      organisationId,
+      cafeId: doc.cafeId || 'GLOBAL',
+      actorUserId: auth.userId,
+      actorRole: auth.role,
+      module: 'DOCUMENT_ATTACHMENT',
+      action: 'DOCUMENT_RESTORED',
+      entityType: 'BUSINESS_DOCUMENT',
+      entityId: doc.documentId,
+      reason: `Restored version ${verNum} to version ${nextVersion}: ${reason.trim()}`,
+      result: 'SUCCESS',
+      metadata: {
+        documentId: doc.documentId,
+        restoredFromVersion: verNum,
+        newVersion: nextVersion,
+        gridFsFileId: targetVer.gridFsFileId,
+      },
+    }).catch(() => {});
+
     return doc;
   }
 }
