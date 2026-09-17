@@ -445,15 +445,28 @@ export function wireLoginPage2(container, { onSubmit, onForgotPassword, onCafeOp
         try {
           credential = await navigator.credentials.get({ publicKey: publicKeyOptions });
         } catch (pkErr) {
-          // DOMException: user cancelled or no matching credential on this device
+          // Map all known WebAuthn OS/platform errors to friendly in-app messages.
+          // Prevents raw "The request could not be completed." from surfacing.
+          const msg = pkErr?.message?.toLowerCase() || "";
+          const name = pkErr?.name || "";
           const isUserCancel =
-            pkErr?.name === "NotAllowedError" ||
-            pkErr?.message?.toLowerCase().includes("cancel") ||
-            pkErr?.message?.toLowerCase().includes("not allowed");
+            name === "NotAllowedError" ||
+            msg.includes("cancel") ||
+            msg.includes("not allowed") ||
+            msg.includes("user denied");
+          const isNoDevice =
+            name === "NotSupportedError" ||
+            name === "InvalidStateError" ||
+            msg.includes("could not be completed") ||
+            msg.includes("not supported") ||
+            msg.includes("no credentials") ||
+            msg.includes("no passkey");
           throw new Error(
             isUserCancel
-              ? "Passkey verification was cancelled. Please try again or sign in with your password."
-              : "Your device could not complete the biometric check. Please sign in with your enterprise password."
+              ? "Verification cancelled. Please try again or use your password."
+              : isNoDevice
+              ? "No passkey found for this account on this device. Sign in with your password, then go to Settings → Passkeys & Biometrics to register this device."
+              : "Biometric verification failed. Please sign in with your enterprise password."
           );
         }
 
@@ -500,10 +513,15 @@ export function wireLoginPage2(container, { onSubmit, onForgotPassword, onCafeOp
           });
         }
       } catch (err) {
-        showGlassAlert(
-          err.message ||
-            "Passkey / biometric verification failed. Please sign in with your enterprise password."
-        );
+        // Map any raw OS/WebAuthn error strings to friendly messages
+        const rawMsg = err?.message || "";
+        const friendlyMsg =
+          rawMsg.toLowerCase().includes("could not be completed") ||
+          rawMsg.toLowerCase().includes("not supported") ||
+          rawMsg.toLowerCase().includes("request") && rawMsg.length < 60
+            ? "No passkey found for this account on this device. Sign in with your password, then go to Settings → Passkeys & Biometrics to register this device."
+            : rawMsg || "Passkey / biometric verification failed. Please sign in with your enterprise password.";
+        showGlassAlert(friendlyMsg);
       } finally {
         // Restore button state
         const btn = container.querySelector("#l2-passkey-btn");
