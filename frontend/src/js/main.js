@@ -489,7 +489,7 @@ export function mountAuthScreen(screen = "login", params = {}) {
     wirePasswordResetRequest2(appEl, {
       onSubmit: async ({ organisationId, email }) => {
         const res = await handlePasswordResetRequest({ organisationId, email });
-        mountAuthScreen("verify", { email, challengeId: res?.data?.challengeId });
+        mountAuthScreen("verify", { organisationId, email, challengeId: res?.data?.challengeId });
       },
       onBack: () => mountAuthScreen("login")
     });
@@ -498,10 +498,13 @@ export function mountAuthScreen(screen = "login", params = {}) {
     wirePasswordResetVerify2(appEl, {
       onSubmit: async ({ code }) => {
         const res = await handlePasswordResetVerify({
+          organisationId: params.organisationId,
+          email: params.email,
           challengeId: params.challengeId,
           code
         });
         mountAuthScreen("reset", {
+          organisationId: params.organisationId,
           resetToken: res.resetToken,
           challengeId: res.challengeId
         });
@@ -513,6 +516,7 @@ export function mountAuthScreen(screen = "login", params = {}) {
     wirePasswordResetFinal2(appEl, {
       onSubmit: async ({ newPassword }) => {
         await handlePasswordResetFinal({
+          organisationId: params.organisationId,
           challengeId: params.challengeId,
           resetToken: params.resetToken,
           newPassword

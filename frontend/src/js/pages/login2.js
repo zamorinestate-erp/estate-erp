@@ -51,6 +51,14 @@ function renderBackgroundAndModalsHtml() {
     <!-- Global Glass Alert Modal -->
     <div id="l2-glass-alert-modal" class="modal-overlay hidden">
       <div class="light-modal-content glass-alert-content">
+        <div id="l2-glass-alert-icon" class="glass-alert-icon">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+        </div>
+        <h3 id="l2-glass-alert-title" class="glass-alert-title">Notice</h3>
         <p id="l2-glass-alert-msg" class="glass-alert-text"></p>
         <button id="l2-glass-alert-ok" type="button" class="light-btn glass-alert-ok">OK</button>
       </div>
@@ -122,14 +130,18 @@ function renderBackgroundAndModalsHtml() {
   `;
 }
 
-export function showGlassAlert(message, callback) {
+export function showGlassAlert(message, callback, title = "Notice") {
   const modal = document.getElementById("l2-glass-alert-modal");
+  const titleEl = document.getElementById("l2-glass-alert-title");
   const msgEl = document.getElementById("l2-glass-alert-msg");
   const okBtn = document.getElementById("l2-glass-alert-ok");
   if (!modal || !msgEl) {
     console.warn(message);
     if (typeof callback === "function") callback();
     return;
+  }
+  if (titleEl) {
+    titleEl.textContent = title || "Notice";
   }
   msgEl.textContent = message;
   modal.classList.remove("hidden");
@@ -407,7 +419,9 @@ export function wireLoginPage2(container, { onSubmit, onForgotPassword, onCafeOp
           passkeyBtn.innerHTML = originalBtnHtml;
           passkeyBtn.disabled = false;
           showGlassAlert(
-            "No passkey is registered for this account yet.\n\nTo set one up, sign in with your password and go to Settings → Passkeys & Biometrics."
+            "No passkey has been registered for this account yet. Please sign in with your enterprise password, then configure biometric access in Settings → Passkeys & Biometrics.",
+            null,
+            "Passkey Not Configured"
           );
           return;
         }
@@ -515,13 +529,25 @@ export function wireLoginPage2(container, { onSubmit, onForgotPassword, onCafeOp
       } catch (err) {
         // Map any raw OS/WebAuthn error strings to friendly messages
         const rawMsg = err?.message || "";
-        const friendlyMsg =
+        const isDeviceMissing =
           rawMsg.toLowerCase().includes("could not be completed") ||
           rawMsg.toLowerCase().includes("not supported") ||
-          rawMsg.toLowerCase().includes("request") && rawMsg.length < 60
-            ? "No passkey found for this account on this device. Sign in with your password, then go to Settings → Passkeys & Biometrics to register this device."
-            : rawMsg || "Passkey / biometric verification failed. Please sign in with your enterprise password.";
-        showGlassAlert(friendlyMsg);
+          rawMsg.toLowerCase().includes("no passkey found") ||
+          (rawMsg.toLowerCase().includes("request") && rawMsg.length < 60);
+
+        if (isDeviceMissing) {
+          showGlassAlert(
+            "No passkey was found on this device for this account. Please sign in with your enterprise password to access the ERP, then register this device in Settings → Passkeys & Biometrics.",
+            null,
+            "Passkey Not Found On Device"
+          );
+        } else {
+          showGlassAlert(
+            rawMsg || "Passkey / biometric verification failed. Please sign in with your enterprise password.",
+            null,
+            "Authentication Notice"
+          );
+        }
       } finally {
         // Restore button state
         const btn = container.querySelector("#l2-passkey-btn");

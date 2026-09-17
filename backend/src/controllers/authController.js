@@ -618,21 +618,23 @@ const requestPasswordReset = asyncHandler(
       // In development / local testing, allow fallback logging if not explicitly disabled
       if (process.env.NODE_ENV !== 'production' && process.env.PASSWORD_RESET_DEV_LOG_CODE !== 'false') {
         process.env.PASSWORD_RESET_DEV_LOG_CODE = 'true';
-      } else {
-        try {
-          const { logSecurityEvent } = require('../services/securityLogger');
-          logSecurityEvent({
-            correlationId: request.correlationId || null,
-            organisationId,
-            action: 'PASSWORD_RESET_DELIVERY_UNCONFIGURED',
-            outcome: 'FAILURE',
-            severity: 'WARN',
-            metadata: { emailMasked: maskEmail(email), reason: 'EMAIL_DELIVERY_NOT_CONFIGURED' },
-          });
-        } catch {}
-        // Never expose raw backend configuration text to users
-        throw new ApiError(503, 'PASSWORD_RECOVERY_UNAVAILABLE', 'Password recovery is temporarily unavailable. Please try again later or contact support.');
       }
+    }
+
+    if (!passwordResetDeliveryService.isPasswordResetDeliveryAvailable()) {
+      try {
+        const { logSecurityEvent } = require('../services/securityLogger');
+        logSecurityEvent({
+          correlationId: request.correlationId || null,
+          organisationId,
+          action: 'PASSWORD_RESET_DELIVERY_UNCONFIGURED',
+          outcome: 'FAILURE',
+          severity: 'WARN',
+          metadata: { emailMasked: maskEmail(email), reason: 'EMAIL_DELIVERY_NOT_CONFIGURED' },
+        });
+      } catch {}
+      // Never expose raw backend configuration text to users
+      throw new ApiError(503, 'PASSWORD_RECOVERY_UNAVAILABLE', 'Password recovery is temporarily unavailable. Please try again later or contact support.');
     }
 
     const user = await User.findOne({ organisationId, email });
