@@ -8,26 +8,7 @@
 "use strict";
 
 export const BACKGROUND_IMAGES = [
-  "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?auto=format&fit=crop&w=3840&q=80",
-  "https://images.unsplash.com/photo-1433086966358-54859d0ed716?auto=format&fit=crop&w=3840&q=80",
-  "https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=3840&q=80",
-  "https://images.unsplash.com/photo-1472214103451-9374bd1c798e?auto=format&fit=crop&w=3840&q=80",
-  "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=3840&q=80",
-  "https://images.unsplash.com/photo-1470770841072-f978db4cd05f?auto=format&fit=crop&w=3840&q=80",
-  "https://images.unsplash.com/photo-1501785888041-af3ef285b470?auto=format&fit=crop&w=3840&q=80",
-  "https://images.unsplash.com/photo-1418065460487-3e41a6c84dc5?auto=format&fit=crop&w=3840&q=80",
-  "https://images.unsplash.com/photo-1500534314209-a25ddb2bd429?auto=format&fit=crop&w=3840&q=80",
-  "https://images.unsplash.com/photo-1518495973542-4542c06a5843?auto=format&fit=crop&w=3840&q=80",
-  "https://images.unsplash.com/photo-1443632864897-14973fa006cf?auto=format&fit=crop&w=3840&q=80",
-  "https://images.unsplash.com/photo-1624174822050-1e7a6e979f72?auto=format&fit=crop&w=3840&q=80",
-  "https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=3840&q=80",
-  "https://images.unsplash.com/photo-1475924156734-496f6cac6ec1?auto=format&fit=crop&w=3840&q=80",
-  "https://images.unsplash.com/photo-1496181133206-80ce9b88a853?auto=format&fit=crop&w=3840&q=80",
-  "https://images.unsplash.com/photo-1519681393784-d120267933ba?auto=format&fit=crop&w=3840&q=80",
-  "https://images.unsplash.com/photo-1444723121867-7a241cacace9?auto=format&fit=crop&w=3840&q=80",
-  "https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=3840&q=80",
-  "https://images.unsplash.com/photo-1426604966848-d7adac402bff?auto=format&fit=crop&w=3840&q=80",
-  "https://images.unsplash.com/photo-1397360668706-fbbc9d08efce?auto=format&fit=crop&w=3840&q=80"
+  "navy-gradient-standard"
 ];
 
 let selectedBackground = null;
@@ -42,8 +23,7 @@ export function getFixedPageBackground() {
       }
     } catch {}
 
-    const idx = Math.floor(Math.random() * BACKGROUND_IMAGES.length);
-    selectedBackground = BACKGROUND_IMAGES[idx];
+    selectedBackground = BACKGROUND_IMAGES[0];
     try {
       sessionStorage.setItem("zamorin_login_bg", selectedBackground);
     } catch {}
@@ -52,9 +32,9 @@ export function getFixedPageBackground() {
 }
 
 function renderBackgroundAndModalsHtml() {
-  const bg = getFixedPageBackground();
+  getFixedPageBackground();
   return `
-    <div class="l2-bg-layer" style="background-image: url('${bg}');"></div>
+    <div class="l2-bg-layer"></div>
     <div class="l2-bg-overlay"></div>
 
     <!-- Shield Overlay (Session Shielded on Blur if enabled) -->
@@ -499,9 +479,80 @@ export function wireLoginPage2(container, { onSubmit, onForgotPassword, onCafeOp
     });
   }
 
-  // Feature-detect WebAuthn Conditional Mediation (Autofill)
-  if (typeof window !== "undefined" && window.PublicKeyCredential && typeof PublicKeyCredential.isConditionalMediationAvailable === "function") {
-    PublicKeyCredential.isConditionalMediationAvailable().catch(() => {});
+  // Initialize WebAuthn Conditional Mediation (Discoverable Credential Autofill)
+  if (
+    typeof window !== "undefined" &&
+    window.PublicKeyCredential &&
+    typeof window.PublicKeyCredential.isConditionalMediationAvailable === "function" &&
+    typeof navigator.credentials?.get === "function"
+  ) {
+    window.PublicKeyCredential.isConditionalMediationAvailable().then(async (available) => {
+      if (available) {
+        try {
+          const { apiPost, setAccessToken } = await import("../apiClient.js");
+          const orgId = container.querySelector("#l2-org-id")?.value?.trim() || "ZAMORIN";
+          const optRes = await apiPost("/auth/passkeys/authenticate/options", {
+            organisationId: orgId,
+            email: undefined,
+          });
+          const options = optRes?.data?.options;
+          const challengeId = optRes?.data?.challengeId;
+          if (options && challengeId) {
+            const base64urlToBuffer = (str) => {
+              const padding = "=".repeat((4 - (str.length % 4)) % 4);
+              const base64 = (str + padding).replace(/-/g, "+").replace(/_/g, "/");
+              const raw = window.atob(base64);
+              const arr = new Uint8Array(raw.length);
+              for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+              return arr.buffer;
+            };
+            const bufferToBase64url = (buf) => {
+              const bytes = new Uint8Array(buf);
+              let str = "";
+              for (let i = 0; i < bytes.byteLength; i++) str += String.fromCharCode(bytes[i]);
+              return window.btoa(str).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+            };
+            const publicKeyOptions = {
+              ...options,
+              challenge: base64urlToBuffer(options.challenge),
+              allowCredentials: [],
+              userVerification: "required",
+            };
+            const credential = await navigator.credentials.get({
+              publicKey: publicKeyOptions,
+              mediation: "conditional",
+            });
+            if (credential) {
+              const verifyPayload = {
+                id: credential.id,
+                rawId: bufferToBase64url(credential.rawId),
+                type: credential.type,
+                response: {
+                  clientDataJSON: bufferToBase64url(credential.response.clientDataJSON),
+                  authenticatorData: bufferToBase64url(credential.response.authenticatorData),
+                  signature: bufferToBase64url(credential.response.signature),
+                  userHandle: credential.response.userHandle ? bufferToBase64url(credential.response.userHandle) : null,
+                },
+              };
+              const verifyRes = await apiPost("/auth/passkeys/authenticate/verify", {
+                organisationId: orgId,
+                response: verifyPayload,
+                challengeId,
+              });
+              const accessToken = verifyRes?.data?.accessToken;
+              const user = verifyRes?.data?.user;
+              if (accessToken) setAccessToken(accessToken);
+              if (user) {
+                window.location.hash = user.role === "STAFF" ? "#staff-home" : "#dashboard";
+                window.location.reload();
+              }
+            }
+          }
+        } catch (_) {
+          // Conditional mediation fallback: silently ignore cancellation or missing passkey
+        }
+      }
+    }).catch(() => {});
   }
 
   // Social Informational buttons (when present and configured)

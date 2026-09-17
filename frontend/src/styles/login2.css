@@ -23,6 +23,7 @@
   background-position: center;
   background-repeat: no-repeat;
   background-color: #0b1120;
+  background: radial-gradient(circle at 50% 20%, #1e293b 0%, #0b1120 70%);
   transition: opacity 0.4s ease-in-out;
   z-index: 0;
   pointer-events: none;

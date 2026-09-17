@@ -1168,7 +1168,7 @@ function renderSecurity() {
       </div>
     </div>
 
-    ${window.__ENABLE_PASSKEY_AUTH__ === true ? `
+    ${(typeof window !== "undefined" && window.__ENABLE_PASSKEY_AUTH__ !== false) ? `
     <!-- Biometric Passkeys & Security Keys (FIDO2 / WebAuthn) -->
     <div class="settings-section-card">
       <div class="settings-card-header">
@@ -2705,8 +2705,8 @@ function _wireSecurity(root) {
     return window.btoa(str).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
   };
 
-  // Load and render user passkeys (Dormant when ENABLE_PASSKEY_AUTH is disabled)
-  if (window.__ENABLE_PASSKEY_AUTH__ === true) {
+  // Load and render user passkeys (Enabled by default in REC-19/REC-19A)
+  if (typeof window !== "undefined" && window.__ENABLE_PASSKEY_AUTH__ !== false) {
     const loadPasskeys = async () => {
       const container = root.querySelector("#settings-passkeys-container");
       if (!container) return;
@@ -2741,6 +2741,9 @@ function _wireSecurity(root) {
               </div>
               <div style="display:flex; align-items:center; gap:8px;">
                 <span class="settings-status-chip success" style="font-size:9.5px;">Active</span>
+                <button class="btn btn-ghost btn-sm" data-rename-passkey="${escHtml(p.credentialId)}" data-current-name="${escHtml(p.deviceName || p.friendlyName || 'Passkey Device')}" type="button" style="color:var(--ink-secondary, #475569);">
+                  ✏️ Rename
+                </button>
                 <button class="btn btn-ghost btn-sm" data-revoke-passkey="${escHtml(p.credentialId)}" type="button" style="color:var(--danger, #b23b35);">
                   🗑️ Revoke
                 </button>
@@ -2748,6 +2751,26 @@ function _wireSecurity(root) {
             </div>
           `;
         }).join("");
+
+        // Wire rename buttons
+        container.querySelectorAll("[data-rename-passkey]").forEach((btn) => {
+          btn.addEventListener("click", async (e) => {
+            const credId = e.currentTarget.dataset.renamePasskey;
+            const currentName = e.currentTarget.dataset.currentName || "";
+            const newName = window.prompt("Enter a new friendly name for this biometric passkey:", currentName);
+            if (newName && newName.trim() && newName.trim() !== currentName) {
+              try {
+                await apiPatch(`/auth/passkeys/${encodeURIComponent(credId)}`, {
+                  friendlyName: newName.trim(),
+                });
+                showToast("Passkey renamed successfully.", "mint");
+                loadPasskeys();
+              } catch (err) {
+                showToast(err.message || "Failed to rename passkey.", "amber");
+              }
+            }
+          });
+        });
 
         // Wire revoke buttons
         container.querySelectorAll("[data-revoke-passkey]").forEach((btn) => {
