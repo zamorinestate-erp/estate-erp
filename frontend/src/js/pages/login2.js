@@ -263,16 +263,7 @@ export function renderLoginPage2({ organisationId = "ZAMORIN", email = "", notic
         <div class="light-divider"><span>or continue securely</span></div>
         <div class="auth-alternative-actions" style="display: flex; flex-direction: column; gap: 10px; width: 100%;">
           <button type="button" class="btn-pill-white" id="l2-passkey-btn" style="height: 46px; width: 100%; border-radius: var(--radius-control, 12px); font-size: 13.5px; font-weight: 600; display: flex; align-items: center; justify-content: center; gap: 8px;">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d4a359" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M2 12C2 6.5 6.5 2 12 2a10 10 0 0 1 8 4"/>
-              <path d="M5 19.5C5.5 18 6 15 6 12c0-.7.12-1.37.34-2"/>
-              <path d="M17.29 21.02c.12-.6.43-2.3.5-3.02 0-3.3-2.7-6-6-6s-6 2.7-6 6c0 1.02-.1 2.51-.26 4"/>
-              <path d="M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4"/>
-              <path d="M8.65 22c.21-.66.45-1.32.57-2"/>
-              <path d="M14 13.12c0 2.38 0 6.38-1 8.88"/>
-              <path d="M21.8 16c.2-2 .13-4-.03-5A10 10 0 0 0 12 2"/>
-              <path d="M9 6.8a6 6 0 0 1 9 5.2v2"/>
-            </svg>
+            <img src="/src/assets/fingerprint-icon.svg" width="24" height="24" alt="" aria-hidden="true" style="flex-shrink:0;">
             <span>Use Passkey / Biometrics</span>
           </button>
 
@@ -380,14 +371,24 @@ export function wireLoginPage2(container, { onSubmit, onForgotPassword, onCafeOp
       const orgId = container.querySelector("#l2-org-id")?.value?.trim() || "ZAMORIN";
       const email = container.querySelector("#l2-email")?.value?.trim() || "";
 
+      // Require email to be filled before attempting passkey auth
+      if (!email) {
+        showGlassAlert("Please enter your corporate email address first, then tap Use Passkey / Biometrics.");
+        container.querySelector("#l2-email")?.focus();
+        return;
+      }
+
       try {
         passkeyBtn.disabled = true;
+        const originalBtnHtml = passkeyBtn.innerHTML;
+        passkeyBtn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#d4a359" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10" opacity="0.3"/><path d="M12 2a10 10 0 0 1 0 20" stroke-dasharray="62.8" stroke-dashoffset="0"><animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="0.9s" repeatCount="indefinite"/></path></svg><span>Verifying…</span>`;
+
         const { apiPost, setAccessToken } = await import("../apiClient.js");
 
         // 1. Fetch authentication options from backend
         const optRes = await apiPost("/auth/passkeys/authenticate/options", {
           organisationId: orgId,
-          email: email || undefined,
+          email,
         });
 
         const options = optRes?.data?.options;
@@ -395,6 +396,20 @@ export function wireLoginPage2(container, { onSubmit, onForgotPassword, onCafeOp
 
         if (!options || !challengeId) {
           throw new Error("Unable to retrieve passkey challenge from authentication server.");
+        }
+
+        // Guard: if the backend found no registered passkeys for this user, tell them
+        // before calling navigator.credentials.get() to avoid the OS error dialog.
+        const hasRegisteredCredentials =
+          Array.isArray(options.allowCredentials) && options.allowCredentials.length > 0;
+
+        if (!hasRegisteredCredentials) {
+          passkeyBtn.innerHTML = originalBtnHtml;
+          passkeyBtn.disabled = false;
+          showGlassAlert(
+            "No passkey is registered for this account yet.\n\nTo set one up, sign in with your password and go to Settings → Passkeys & Biometrics."
+          );
+          return;
         }
 
         // Helper conversions for WebAuthn binary buffers
@@ -417,17 +432,30 @@ export function wireLoginPage2(container, { onSubmit, onForgotPassword, onCafeOp
         const publicKeyOptions = {
           ...options,
           challenge: base64urlToBuffer(options.challenge),
-          allowCredentials: options.allowCredentials?.map((cred) => ({
+          allowCredentials: options.allowCredentials.map((cred) => ({
             ...cred,
             id: base64urlToBuffer(cred.id),
           })),
           userVerification: "required",
         };
 
-        // 2. Request assertion from native device platform authenticator (Face ID / Touch ID / Windows Hello / Security Key)
-        const credential = await navigator.credentials.get({
-          publicKey: publicKeyOptions,
-        });
+        // 2. Request assertion from native device platform authenticator
+        //    (Face ID / Touch ID / Windows Hello / Android Fingerprint / Security Key)
+        let credential;
+        try {
+          credential = await navigator.credentials.get({ publicKey: publicKeyOptions });
+        } catch (pkErr) {
+          // DOMException: user cancelled or no matching credential on this device
+          const isUserCancel =
+            pkErr?.name === "NotAllowedError" ||
+            pkErr?.message?.toLowerCase().includes("cancel") ||
+            pkErr?.message?.toLowerCase().includes("not allowed");
+          throw new Error(
+            isUserCancel
+              ? "Passkey verification was cancelled. Please try again or sign in with your password."
+              : "Your device could not complete the biometric check. Please sign in with your enterprise password."
+          );
+        }
 
         if (!credential) {
           throw new Error("Biometric / passkey verification cancelled or unavailable.");
@@ -441,7 +469,9 @@ export function wireLoginPage2(container, { onSubmit, onForgotPassword, onCafeOp
             clientDataJSON: bufferToBase64url(credential.response.clientDataJSON),
             authenticatorData: bufferToBase64url(credential.response.authenticatorData),
             signature: bufferToBase64url(credential.response.signature),
-            userHandle: credential.response.userHandle ? bufferToBase64url(credential.response.userHandle) : null,
+            userHandle: credential.response.userHandle
+              ? bufferToBase64url(credential.response.userHandle)
+              : null,
           },
         };
 
@@ -471,10 +501,16 @@ export function wireLoginPage2(container, { onSubmit, onForgotPassword, onCafeOp
         }
       } catch (err) {
         showGlassAlert(
-          err.message || "Passkey / biometric verification failed or no passkey is registered for this account. Please sign in with your enterprise password."
+          err.message ||
+            "Passkey / biometric verification failed. Please sign in with your enterprise password."
         );
       } finally {
-        passkeyBtn.disabled = false;
+        // Restore button state
+        const btn = container.querySelector("#l2-passkey-btn");
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = `<img src="/src/assets/fingerprint-icon.svg" width="24" height="24" alt="" aria-hidden="true" style="flex-shrink:0;"><span>Use Passkey / Biometrics</span>`;
+        }
       }
     });
   }
