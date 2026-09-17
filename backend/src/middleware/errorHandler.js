@@ -47,7 +47,8 @@ function errorHandler(error, req, res, next) {
     }
   }
 
-  const isProduction = process.env.NODE_ENV === 'production';
+  const isProductionLike =
+    process.env.NODE_ENV === 'production' || process.env.NODE_ENV === 'staging';
 
   // Structured internal logging with correlationId & redacted credentials
   try {
@@ -61,13 +62,13 @@ function errorHandler(error, req, res, next) {
     error: {
       code,
       message:
-        statusCode === 500 && isProduction
+        statusCode === 500 && isProductionLike
           ? `Something went wrong. Reference: ${reqId}`
           : message,
     },
     requestId: req.requestId || req.correlationId || null,
     correlationId: req.correlationId || null,
-    ...(!isProduction && error.stack ? { stack: error.stack } : {}),
+    ...(!isProductionLike && error.stack ? { stack: error.stack } : {}),
   });
 }
 

@@ -3,6 +3,7 @@
 const VALID_NODE_ENVIRONMENTS = new Set([
   'development',
   'test',
+  'staging',
   'production',
 ]);
 
@@ -155,12 +156,14 @@ function loadEnvironment(
     )
   ) {
     throw new Error(
-      'NODE_ENV must be development, test or production.'
+      'NODE_ENV must be development, test, staging or production.'
     );
   }
 
   const production =
     nodeEnvironment === 'production';
+  const staging =
+    nodeEnvironment === 'staging';
 
   const privateStorageDriver = String(
     source.PRIVATE_STORAGE_DRIVER ||
@@ -236,6 +239,7 @@ function loadEnvironment(
   return Object.freeze({
     nodeEnvironment,
     production,
+    staging,
     host:
       String(source.HOST || '0.0.0.0')
         .trim() || '0.0.0.0',

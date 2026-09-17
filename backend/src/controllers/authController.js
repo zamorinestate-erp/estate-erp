@@ -164,6 +164,9 @@ function buildNetworkMetadata(request) {
 function getCookieOptions() {
   const isProduction =
     process.env.NODE_ENV === 'production';
+  const isStaging =
+    process.env.NODE_ENV === 'staging';
+  const isProductionLike = isProduction || isStaging;
 
   // Explicit topology-driven SameSite: 'none' for direct cross-origin browser->Render (MODE B),
   // 'lax' or 'strict' for same-origin Vercel /api proxy (MODE A) or local development.
@@ -171,11 +174,11 @@ function getCookieOptions() {
   const sameSite =
     configuredSameSite === 'lax' || configuredSameSite === 'strict' || configuredSameSite === 'none'
       ? configuredSameSite
-      : (isProduction ? 'none' : 'lax');
+      : (isProductionLike ? 'none' : 'lax');
 
   return {
     httpOnly: true,
-    secure: isProduction || sameSite === 'none',
+    secure: isProductionLike || sameSite === 'none',
     sameSite,
     path: '/',
   };

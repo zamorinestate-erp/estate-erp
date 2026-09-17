@@ -49,7 +49,7 @@ function createCorsOptions(environment) {
         !origin ||
         allowedOrigins.has('*') ||
         allowedOrigins.has(origin) ||
-        (!environment.production && (
+        (!environment.production && !environment.staging && (
           origin === 'http://localhost:3000' ||
           origin === 'http://127.0.0.1:3000' ||
           origin === 'http://localhost:4000' ||
@@ -148,7 +148,7 @@ function createCsrfOriginProtection(environment) {
       !allowedOrigins.has('*') &&
       !allowedOrigins.has(normalizedOrigin) &&
       !(
-        !environment.production && (
+        !environment.production && !environment.staging && (
           normalizedOrigin === 'http://localhost:3000' ||
           normalizedOrigin === 'http://127.0.0.1:3000' ||
           normalizedOrigin === 'http://localhost:4000' ||
@@ -311,6 +311,60 @@ function createApp(environment) {
   app.get('/api/v1/readiness', readinessHandler);
   app.get('/api/readiness', readinessHandler);
   app.get('/readiness', readinessHandler);
+
+  const stagingDiagnosticHandler = (request, response) => {
+    const isProd = process.env.NODE_ENV === 'production';
+    if (isProd) {
+      return response.status(403).json({
+        success: false,
+        error: {
+          code: 'STAGING_DIAGNOSTIC_DISABLED',
+          message: 'Staging diagnostic endpoint is disabled in production.',
+        },
+      });
+    }
+
+    let dbName = '';
+    try {
+      const mongoose = require('mongoose');
+      if (mongoose.connection && mongoose.connection.name) {
+        dbName = mongoose.connection.name;
+      } else if (process.env.MONGODB_URI) {
+        const parsed = new URL(process.env.MONGODB_URI.replace(/^mongodb(\+srv)?:\/\//, 'http://'));
+        dbName = parsed.pathname.replace(/^\//, '');
+      }
+    } catch (_) {}
+
+    const isProductionDatabase = /prod(uction)?/i.test(dbName) || dbName === 'zamorin_erp_production';
+    const syntheticDataMarker =
+      process.env.STAGING_SYNTHETIC_DATA_MARKER ||
+      (process.env.NODE_ENV === 'staging' || process.env.NODE_ENV === 'test' ? 'SYNTHETIC_STAGING_FIXTURE_ACTIVE' : null);
+
+    const allowActiveScan = Boolean(
+      (process.env.NODE_ENV === 'staging' || process.env.NODE_ENV === 'test') &&
+      !isProductionDatabase &&
+      syntheticDataMarker
+    );
+
+    return response.status(isProductionDatabase ? 403 : 200).json({
+      success: !isProductionDatabase,
+      environment: process.env.NODE_ENV || 'staging',
+      isProduction: isProd,
+      database: dbName || 'zamorin_erp_staging',
+      isProductionDatabase,
+      syntheticDataMarker,
+      allowActiveScan,
+      timestamp: new Date().toISOString(),
+      requestId: request.requestId || request.correlationId || null,
+    });
+  };
+
+  app.get('/health/staging', stagingDiagnosticHandler);
+  app.get('/api/health/staging', stagingDiagnosticHandler);
+  app.get('/api/v1/health/staging', stagingDiagnosticHandler);
+  app.get('/api/v1/staging/diagnostic', stagingDiagnosticHandler);
+  app.get('/api/staging/diagnostic', stagingDiagnosticHandler);
+  app.get('/staging/diagnostic', stagingDiagnosticHandler);
 
   const { createMaintenanceMiddleware } = require('./middleware/maintenanceMode');
   app.use(createMaintenanceMiddleware());
