@@ -23,6 +23,7 @@ const assert = require('node:assert/strict');
 const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
+const cp = require('child_process');
 const mongoose = require('mongoose');
 const { MongoMemoryServer } = require('mongodb-memory-server');
 
@@ -30,6 +31,7 @@ const { BackupRestoreVerificationService } = require('../src/services/backupRest
 const { BusinessDocument } = require('../src/models/BusinessDocument');
 const { GridFSStorageAdapter } = require('../src/services/storage/GridFSStorageAdapter');
 const { ClamAVScanner } = require('../src/services/scanners/ClamAVScanner');
+const { MaintenanceModeManager } = require('../src/middleware/maintenanceMode');
 
 describe('EXT-03F — Free-Tier MongoDB Backup & Restore Verification Suite', () => {
   let mongoServer;
@@ -143,6 +145,7 @@ describe('EXT-03F — Free-Tier MongoDB Backup & Restore Verification Suite', ()
       dbName: 'zamorin_dev',
       outDir: 'D:/Zamorin_Backups/EXT03F/20260917_120000',
       gzip: true,
+      writesQuiesced: true,
     });
 
     assert.equal(cmd.command, 'mongodump');
@@ -158,6 +161,7 @@ describe('EXT-03F — Free-Tier MongoDB Backup & Restore Verification Suite', ()
       uri: 'mongodb+srv://zamorin_operator:SecretPass999@atlas-free.mongodb.net/zamorin_dev',
       dbName: 'zamorin_dev',
       outDir: 'D:/Zamorin_Backups/EXT03F/20260917_120000',
+      writesQuiesced: true,
     });
 
     const maskedUriArg = cmd.maskedArgs.find((a) => a.startsWith('--uri='));
@@ -528,5 +532,238 @@ describe('EXT-03F — Free-Tier MongoDB Backup & Restore Verification Suite', ()
     assert.equal(freeConfig.pointInTimeRestoreSupported, false);
     assert.equal(freeConfig.status, 'BLOCKED');
     assert.equal(freeConfig.dedicatedTierRequiredForCommercialProduction, true);
+  });
+
+  // =========================================================================
+  // EXT-03F-R — Controlled Write-Quiescence & Consistency Verification (Tests 1-12)
+  // =========================================================================
+  const scriptPath = path.resolve(__dirname, '../../scripts/backupMongoFreeTier.ps1');
+
+  // Test 1: backup script refuses unconfirmed write state
+  test('EXT-03F-R Test 1: backup script refuses unconfirmed write state', () => {
+    // A. Service-level guard
+    assert.throws(
+      () =>
+        BackupRestoreVerificationService.buildMongoDumpCommand({
+          uri: 'mongodb://localhost:27017/zamorin_dev',
+          dbName: 'zamorin_dev',
+          outDir: 'D:/Zamorin_Backups/EXT03F/20260917_000000',
+          requireQuiescence: true,
+          writesQuiesced: false,
+        }),
+      (err) => err.code === 'WRITE_QUIESCENCE_REQUIRED' && err.statusCode === 412
+    );
+
+    // B. Script-level guard
+    const res = cp.spawnSync('powershell', ['-ExecutionPolicy', 'Bypass', '-File', scriptPath, '-DryRun'], {
+      env: { ...process.env, MONGODB_URI: 'mongodb://localhost:27017/zamorin_dev', ZAMORIN_BACKUP_WRITES_QUIESCED: 'false' },
+      encoding: 'utf8',
+    });
+    assert.equal(res.status, 4, 'Script must abort with exit code 4 when writes are not quiesced');
+    assert.ok(
+      (res.stdout && res.stdout.includes('Write quiescence is not confirmed')) ||
+      (res.stderr && res.stderr.includes('Write quiescence is not confirmed')),
+      'Script must output write quiescence guard error'
+    );
+  });
+
+  // Test 2: confirmed quiescence permits backup
+  test('EXT-03F-R Test 2: confirmed quiescence permits backup', () => {
+    // A. Service-level
+    const cmd = BackupRestoreVerificationService.buildMongoDumpCommand({
+      uri: 'mongodb://localhost:27017/zamorin_dev',
+      dbName: 'zamorin_dev',
+      outDir: 'D:/Zamorin_Backups/EXT03F/20260917_000000',
+      requireQuiescence: true,
+      writesQuiesced: true,
+    });
+    assert.equal(cmd.writesQuiescedConfirmed, true);
+
+    // B. Script-level
+    const res = cp.spawnSync('powershell', ['-ExecutionPolicy', 'Bypass', '-File', scriptPath, '-DryRun'], {
+      env: { ...process.env, MONGODB_URI: 'mongodb://localhost:27017/zamorin_dev', ZAMORIN_BACKUP_WRITES_QUIESCED: 'true' },
+      encoding: 'utf8',
+    });
+    assert.equal(res.status, 0, 'Script must succeed in dry-run when write quiescence is confirmed');
+    assert.ok(res.stdout.includes('VERDICT: APPLICATION_CONSISTENT'));
+    assert.ok(res.stdout.includes('Write Quiescence Confirmed: YES'));
+  });
+
+  // Test 3: active GridFS upload blocks backup
+  test('EXT-03F-R Test 3: active GridFS upload blocks backup', async () => {
+    // A. Service-level active uploads guard
+    assert.throws(
+      () =>
+        BackupRestoreVerificationService.buildMongoDumpCommand({
+          uri: 'mongodb://localhost:27017/zamorin_dev',
+          dbName: 'zamorin_dev',
+          outDir: 'D:/Zamorin_Backups/EXT03F/20260917_000000',
+          requireQuiescence: true,
+          writesQuiesced: true,
+          activeUploads: 2,
+        }),
+      (err) => err.code === 'ACTIVE_UPLOADS_IN_PROGRESS' && err.statusCode === 409
+    );
+
+    // B. waitForDrainedUploads timeout
+    await assert.rejects(
+      async () => {
+        await BackupRestoreVerificationService.waitForDrainedUploads({
+          getActiveUploadsFn: async () => 1,
+          timeoutMs: 150,
+          pollIntervalMs: 50,
+        });
+      },
+      (err) => err.code === 'ACTIVE_UPLOADS_IN_PROGRESS' && err.statusCode === 409
+    );
+
+    // C. Script-level active uploads guard
+    const res = cp.spawnSync('powershell', ['-ExecutionPolicy', 'Bypass', '-File', scriptPath, '-DryRun', '-ActiveUploads', '3'], {
+      env: { ...process.env, MONGODB_URI: 'mongodb://localhost:27017/zamorin_dev', ZAMORIN_BACKUP_WRITES_QUIESCED: 'true' },
+      encoding: 'utf8',
+    });
+    assert.equal(res.status, 5, 'Script must abort with exit code 5 when active uploads > 0');
+    assert.ok(res.stdout.includes('active GridFS document upload(s) are in progress'));
+  });
+
+  // Test 4: failed dump returns non-zero
+  test('EXT-03F-R Test 4: failed dump returns non-zero', () => {
+    const resNoUri = cp.spawnSync('powershell', ['-ExecutionPolicy', 'Bypass', '-File', scriptPath], {
+      env: { ...process.env, MONGODB_URI: '' },
+      encoding: 'utf8',
+    });
+    assert.notEqual(resNoUri.status, 0, 'Script must exit non-zero when configuration fails');
+    assert.equal(resNoUri.status, 1);
+    assert.ok(resNoUri.stdout.includes('Backup Status: FAILED'));
+  });
+
+  // Test 5: credentials remain redacted
+  test('EXT-03F-R Test 5: credentials remain redacted', () => {
+    const rawUri = 'mongodb+srv://zamorin_admin:SecretSafeKey12345@cluster0.abcde.mongodb.net/zamorin_test';
+    const masked = BackupRestoreVerificationService.maskConnectionString(rawUri);
+    assert.ok(!masked.includes('SecretSafeKey12345'), 'Masked string must not contain secret key');
+    assert.ok(masked.includes('***'));
+
+    // Script execution
+    const res = cp.spawnSync('powershell', ['-ExecutionPolicy', 'Bypass', '-File', scriptPath, '-DryRun'], {
+      env: { ...process.env, MONGODB_URI: rawUri, ZAMORIN_BACKUP_WRITES_QUIESCED: 'true' },
+      encoding: 'utf8',
+    });
+    assert.ok(!res.stdout.includes('SecretSafeKey12345'), 'Script stdout must not contain secret password');
+    assert.ok(res.stdout.includes('***:***@'), 'Script stdout must mask credentials');
+  });
+
+  // Test 6: dump destination remains outside Git
+  test('EXT-03F-R Test 6: dump destination remains outside Git', () => {
+    const workspacePath = path.resolve(__dirname, '..');
+    assert.throws(
+      () => BackupRestoreVerificationService.validateBackupPath(path.join(workspacePath, 'dump_test')),
+      (err) => err.code === 'BACKUP_INSIDE_REPOSITORY_PROHIBITED' && err.statusCode === 400
+    );
+
+    const res = cp.spawnSync('powershell', ['-ExecutionPolicy', 'Bypass', '-File', scriptPath, '-BackupRootDir', workspacePath], {
+      env: { ...process.env, MONGODB_URI: 'mongodb://localhost:27017/zamorin_dev', ZAMORIN_BACKUP_WRITES_QUIESCED: 'true' },
+      encoding: 'utf8',
+    });
+    assert.equal(res.status, 1, 'Script must reject backup destination inside repo tree');
+    assert.ok(res.stdout.includes('inside the Git repository workspace'));
+  });
+
+  // Test 7: restored BusinessDocument exists
+  test('EXT-03F-R Test 7: restored BusinessDocument exists', async () => {
+    const res = await BackupRestoreVerificationService.verifyRestoreTarget({
+      dbName: 'zamorin_restore_verification',
+      targetConfirmation: 'CONFIRM_ISOLATED_RESTORE_TARGET',
+      restoreVerificationMode: true,
+      fixtureDocumentId: FIXTURE_DOC_ID,
+      injectedClient: mongoose.connection,
+    });
+    assert.equal(res.status, 'PASS');
+    const doc = res.verifiedDocuments.find((d) => d.documentId === FIXTURE_DOC_ID);
+    assert.ok(doc, 'Restored BusinessDocument must exist in verification output');
+    assert.equal(doc.currentVersion, 2);
+  });
+
+  // Test 8: restored GridFS files exist
+  test('EXT-03F-R Test 8: restored GridFS files exist', async () => {
+    const res = await BackupRestoreVerificationService.verifyRestoreTarget({
+      dbName: 'zamorin_restore_verification',
+      targetConfirmation: 'CONFIRM_ISOLATED_RESTORE_TARGET',
+      restoreVerificationMode: true,
+      fixtureDocumentId: FIXTURE_DOC_ID,
+      injectedClient: mongoose.connection,
+    });
+    const doc = res.verifiedDocuments.find((d) => d.documentId === FIXTURE_DOC_ID);
+    assert.equal(doc.gridFsFileFound, true, 'GridFS file entry must exist');
+    assert.equal(doc.fileLength, V2_CONTENT.length);
+  });
+
+  // Test 9: restored chunks exist
+  test('EXT-03F-R Test 9: restored chunks exist', async () => {
+    const res = await BackupRestoreVerificationService.verifyRestoreTarget({
+      dbName: 'zamorin_restore_verification',
+      targetConfirmation: 'CONFIRM_ISOLATED_RESTORE_TARGET',
+      restoreVerificationMode: true,
+      fixtureDocumentId: FIXTURE_DOC_ID,
+      injectedClient: mongoose.connection,
+    });
+    const doc = res.verifiedDocuments.find((d) => d.documentId === FIXTURE_DOC_ID);
+    assert.equal(doc.chunksValid, true, 'GridFS chunks must be valid and complete');
+    assert.ok(doc.chunkCount >= 1);
+  });
+
+  // Test 10: SHA-256 matches
+  test('EXT-03F-R Test 10: SHA-256 matches', async () => {
+    const res = await BackupRestoreVerificationService.verifyRestoreTarget({
+      dbName: 'zamorin_restore_verification',
+      targetConfirmation: 'CONFIRM_ISOLATED_RESTORE_TARGET',
+      restoreVerificationMode: true,
+      fixtureDocumentId: FIXTURE_DOC_ID,
+      injectedClient: mongoose.connection,
+    });
+    const doc = res.verifiedDocuments.find((d) => d.documentId === FIXTURE_DOC_ID);
+    assert.equal(doc.sha256Match, true, 'Reconstructed SHA-256 must match document SHA-256');
+    assert.equal(doc.reconstructedSha256, V2_SHA);
+  });
+
+  // Test 11: write-quiescence state restored after failure
+  test('EXT-03F-R Test 11: write-quiescence state restored after failure', async () => {
+    const manager = new MaintenanceModeManager();
+    assert.equal(manager.getState().readOnlyActive, false);
+
+    // Simulated failing mongodump action within quiescence window
+    let capturedEnvInsideAction = null;
+    let thrownError = null;
+    try {
+      await BackupRestoreVerificationService.withQuiescedWrites({
+        maintenanceManager: manager,
+        action: async () => {
+          capturedEnvInsideAction = process.env.ZAMORIN_BACKUP_WRITES_QUIESCED;
+          assert.equal(manager.getState().readOnlyActive, true, 'Read-only mode must be active during window');
+          const simErr = new Error('Simulated mongodump socket network failure');
+          simErr.code = 'MONGODUMP_EXECUTION_FAILURE';
+          throw simErr;
+        },
+      });
+    } catch (err) {
+      thrownError = err;
+    }
+
+    assert.ok(thrownError, 'Action failure must propagate');
+    assert.equal(thrownError.code, 'MONGODUMP_EXECUTION_FAILURE');
+    assert.equal(capturedEnvInsideAction, 'true', 'Quiescence flag must be true during window');
+    assert.equal(process.env.ZAMORIN_BACKUP_WRITES_QUIESCED, undefined, 'Quiescence flag must be cleaned up after failure');
+    assert.equal(manager.getState().readOnlyActive, false, 'Read-only mode must be restored (writes resumed) after failure');
+  });
+
+  // Test 12: no Markdown files created
+  test('EXT-03F-R Test 12: no Markdown files created', () => {
+    const gitStatusOutput = cp.execSync('git status --short', {
+      cwd: path.resolve(__dirname, '..'),
+      encoding: 'utf8',
+    });
+    const lines = gitStatusOutput.split('\n').filter((l) => l.trim().length > 0);
+    const mdLines = lines.filter((l) => l.endsWith('.md') || l.includes('.md '));
+    assert.equal(mdLines.length, 0, `No Markdown files may be created or modified. Found: ${mdLines.join(', ')}`);
   });
 });

@@ -435,6 +435,77 @@ class BackupRestoreVerificationService {
   }
 
   /**
+   * Waits until active GridFS document uploads/finalizations reach 0.
+   */
+  static async waitForDrainedUploads({ getActiveUploadsFn, timeoutMs = 5000, pollIntervalMs = 50 } = {}) {
+    if (!getActiveUploadsFn || typeof getActiveUploadsFn !== 'function') return 0;
+    const startTime = Date.now();
+    while (Date.now() - startTime < timeoutMs) {
+      const active = await getActiveUploadsFn();
+      if (active === 0) return 0;
+      await new Promise((r) => setTimeout(r, pollIntervalMs));
+    }
+    const remaining = await getActiveUploadsFn();
+    if (remaining > 0) {
+      const err = new Error(`Cannot start backup while ${remaining} active GridFS document upload(s) are in progress.`);
+      err.code = 'ACTIVE_UPLOADS_IN_PROGRESS';
+      err.statusCode = 409;
+      err.activeUploads = remaining;
+      throw err;
+    }
+    return 0;
+  }
+
+  /**
+   * Coordinates a controlled write-quiescence window during which mutations are suspended.
+   * Restores original state even if backup fails.
+   */
+  static async withQuiescedWrites({
+    maintenanceManager = null,
+    action,
+    getActiveUploadsFn = null,
+    maxWaitUploadsMs = 5000,
+  }) {
+    if (typeof action !== 'function') {
+      throw new Error('An action function is required to execute within write-quiesced window.');
+    }
+
+    // 1. Drain active GridFS uploads before starting
+    if (getActiveUploadsFn) {
+      await this.waitForDrainedUploads({ getActiveUploadsFn, timeoutMs: maxWaitUploadsMs });
+    }
+
+    // 2. Capture existing maintenance/read-only state
+    const previousState = maintenanceManager && typeof maintenanceManager.getState === 'function'
+      ? maintenanceManager.getState()
+      : null;
+
+    // 3. Put ERP into verified read-only mode & set write quiescence safety flag
+    if (maintenanceManager && typeof maintenanceManager.setReadOnlyMode === 'function') {
+      maintenanceManager.setReadOnlyMode({
+        enabled: true,
+        reason: 'Zero-cost Free-tier backup window: write quiescence active',
+      });
+    }
+    process.env.ZAMORIN_BACKUP_WRITES_QUIESCED = 'true';
+
+    try {
+      // 4. Execute dump / backup action
+      return await action();
+    } finally {
+      // 5. Restores original quiescence state safely on success OR failure
+      delete process.env.ZAMORIN_BACKUP_WRITES_QUIESCED;
+      if (maintenanceManager && typeof maintenanceManager.setReadOnlyMode === 'function') {
+        if (previousState && previousState.readOnlyActive) {
+          maintenanceManager.setReadOnlyMode({ enabled: true, reason: previousState.reason });
+        } else {
+          maintenanceManager.setReadOnlyMode({ enabled: false });
+        }
+      }
+    }
+  }
+
+  /**
    * Constructs mongodump arguments with safe credential masking.
    */
   static buildMongoDumpCommand({
@@ -444,10 +515,27 @@ class BackupRestoreVerificationService {
     archivePath = null,
     gzip = true,
     repoRoot = null,
+    requireQuiescence = true,
+    writesQuiesced = (process.env.ZAMORIN_BACKUP_WRITES_QUIESCED === 'true'),
+    activeUploads = 0,
   }) {
     if (!uri) {
       const err = new Error('MongoDB URI is required for mongodump.');
       err.code = 'MONGODB_URI_REQUIRED';
+      throw err;
+    }
+
+    if (requireQuiescence && !writesQuiesced) {
+      const err = new Error('Controlled write quiescence (ZAMORIN_BACKUP_WRITES_QUIESCED=true) is required for Free-tier mongodump to guarantee application consistency without oplog.');
+      err.code = 'WRITE_QUIESCENCE_REQUIRED';
+      err.statusCode = 412;
+      throw err;
+    }
+
+    if (activeUploads > 0) {
+      const err = new Error(`Cannot start backup while ${activeUploads} active GridFS document upload(s) are in progress.`);
+      err.code = 'ACTIVE_UPLOADS_IN_PROGRESS';
+      err.statusCode = 409;
       throw err;
     }
 
@@ -475,6 +563,7 @@ class BackupRestoreVerificationService {
       args,
       maskedArgs,
       destination: dest,
+      writesQuiescedConfirmed: Boolean(writesQuiesced),
     };
   }
 
