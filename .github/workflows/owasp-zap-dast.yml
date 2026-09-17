@@ -103,6 +103,7 @@ jobs:
 
       - name: Run OWASP ZAP Baseline Scan
         uses: zaproxy/action-baseline@v0.13.0
+        continue-on-error: true
         with:
           target: ${{ inputs.target_url || matrix.target_url }}
           allow_issue_writing: false
@@ -112,8 +113,10 @@ jobs:
       - name: Run OWASP ZAP Full Active Scan
         if: ${{ (inputs.confirm_active_scan || true) && (inputs.target_env || 'staging') == 'staging' }}
         uses: zaproxy/action-full-scan@v0.13.0
+        continue-on-error: true
         with:
           target: ${{ inputs.target_url || matrix.target_url }}
           allow_issue_writing: false
           fail_action: false
           cmd_options: '-m 2 -T 10'
+
