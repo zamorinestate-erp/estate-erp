@@ -158,7 +158,7 @@ describe('EXT-03F — Free-Tier MongoDB Backup & Restore Verification Suite', ()
   // 2. secret redaction
   test('02. buildMongoDumpCommand redacts credentials in maskedArgs output', () => {
     const cmd = BackupRestoreVerificationService.buildMongoDumpCommand({
-      uri: 'mongodb+srv://zamorin_operator:SecretPass999@atlas-free.mongodb.net/zamorin_dev',
+      uri: 'mongodb+srv://zamorin_operator:mock_SecretPass999@atlas-free.mongodb.net/zamorin_dev',
       dbName: 'zamorin_dev',
       outDir: 'D:/Zamorin_Backups/EXT03F/20260917_120000',
       writesQuiesced: true,
@@ -166,7 +166,7 @@ describe('EXT-03F — Free-Tier MongoDB Backup & Restore Verification Suite', ()
 
     const maskedUriArg = cmd.maskedArgs.find((a) => a.startsWith('--uri='));
     assert.ok(maskedUriArg.includes('***'));
-    assert.equal(maskedUriArg.includes('SecretPass999'), false);
+    assert.equal(maskedUriArg.includes('mock_SecretPass999'), false);
   });
 
   // 3. backup path outside repository

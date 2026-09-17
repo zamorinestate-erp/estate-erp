@@ -613,10 +613,10 @@ describe('EXT-03 — MongoDB Atlas Backup, Snapshot Integrity & GridFS Restore S
 
   // 24 secrets not printed
   test('24. Connection strings with credentials are masked to prevent secret leakage', () => {
-    const rawUri = 'mongodb+srv://zamorin_admin:SuperSecretPassword123@zamorin-cluster.mongodb.net/zamorin_erp';
+    const rawUri = 'mongodb+srv://zamorin_admin:mock_SuperSecretPassword123@zamorin-cluster.mongodb.net/zamorin_erp';
     const masked = BackupRestoreVerificationService.maskConnectionString(rawUri);
     assert.equal(masked, 'mongodb+srv://zamorin_admin:***@zamorin-cluster.mongodb.net/zamorin_erp');
-    assert.equal(masked.includes('SuperSecretPassword123'), false);
+    assert.equal(masked.includes('mock_SuperSecretPassword123'), false);
   });
 
   // 25 local snapshot path not committed
