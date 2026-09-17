@@ -31,6 +31,7 @@ const {
 } = require('./middleware/errorHandler');
 
 const apiRouter = require('./routes');
+const { documentStorageAdapter } = require('./services/documentStorageAdapter');
 const { getTrustedClientIp, getTrustedProxies } = require('./utils/clientIp');
 
 const SERVICE_NAME =
@@ -237,8 +238,6 @@ function createApp(environment) {
   app.get('/api/v1/health', healthHandler);
   app.get('/api/health', healthHandler);
   app.get('/health', healthHandler);
-
-  const { documentStorageAdapter } = require('./services/documentStorageAdapter');
 
   const readinessHandler = async (request, response) => {
     const database = getDatabaseState();
