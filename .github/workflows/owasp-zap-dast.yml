@@ -71,7 +71,7 @@ jobs:
           )
 
           for host in "${DENIED_HOSTS[@]}"; do
-            if echo "$TARGET" | grep -qi "$host"; then
+            if echo "$TARGET" | grep -F -qi "$host"; then
               echo "::error::PRODUCTION_TARGET_REFUSED: Target matches production denylist item: $host"
               exit 2
             fi
