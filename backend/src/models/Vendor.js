@@ -604,6 +604,9 @@ const vendorSchema = new mongoose.Schema(
       lastPaymentDate: { type: Date, default: null },
       lastPaymentAmountPaisa: { type: Number, min: 0, default: 0 },
       lastEvaluatedAt: { type: Date, default: Date.now },
+      totalInvoicedPaise: { type: Number, default: 0 },
+      totalPaidPaise: { type: Number, default: 0 },
+      outstandingBalancePaise: { type: Number, default: 0 },
     },
 
     // ── Notes ────────────────────────────────────────────────────────────────

@@ -18,6 +18,7 @@ const {
   releasePaymentHold,
   getApAgingReport,
   getGstMonitoringReport,
+  rebuildVendorSummary,
 } = require('../controllers/vendorLedgerController');
 
 const router = express.Router();
@@ -41,6 +42,12 @@ router.post(
   '/vendors/:vendorId/opening-balance',
   authorize('FINANCE:ADMIN', { allowedRoles: ['MASTER'] }),
   setOpeningBalance
+);
+
+router.post(
+  '/vendors/:vendorId/rebuild-summary',
+  authorize('FINANCE:WRITE', { allowedRoles: ['MASTER'] }),
+  rebuildVendorSummary
 );
 
 // 2. AP Handoff from PO / GRN

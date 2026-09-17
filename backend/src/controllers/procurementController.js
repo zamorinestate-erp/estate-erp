@@ -4265,6 +4265,137 @@ const getVendorFulfillmentAnalytics = asyncHandler(async (request, response) => 
   });
 });
 
+/**
+ * REC-17A: Physical Receipt -> Accounts Handoff (SENT_TO_ACCOUNTS / READY_FOR_AP_REVIEW)
+ * Explicitly packages physical receiving outcome (GRN, accepted/rejected quantities, variances)
+ * and dispatches to Accounts Payable Queue.
+ */
+const sendToAccounts = asyncHandler(async (request, response) => {
+  assertProcurementMutationAccess(request);
+  const { organisationId } = request.auth;
+  const purchaseOrderId = normalizeId(request.params.purchaseOrderId);
+  const { notes = '', supplierInvoiceNumber, claimedAmountPaisa } = request.body || {};
+
+  const po = await PurchaseOrder.findOne({ organisationId, purchaseOrderId });
+  if (!po) {
+    throw new ApiError(404, 'PO_NOT_FOUND', `Purchase order ${purchaseOrderId} not found.`);
+  }
+
+  assertCafeAccess(request, po.cafeId);
+
+  const hasReceipts = (po.grnReceipts && po.grnReceipts.length > 0) ||
+    ['PARTIALLY_RECEIVED', 'RECEIVED', 'RECEIVED_PENDING_FINAL_POSTING', 'POSTED_TO_INVENTORY'].includes(po.receivingStatus);
+
+  if (!hasReceipts) {
+    throw new ApiError(
+      400,
+      'RECEIVING_REQUIRED_FOR_ACCOUNTS_HANDOFF',
+      `PO ${purchaseOrderId} has zero physical receipts recorded. Physical inspection and GRN receipt are required before sending to Accounts.`
+    );
+  }
+
+  const itemsPacket = (po.lineItems || []).map((li) => ({
+    itemId: li.itemId,
+    itemName: li.description || li.itemId,
+    orderedQty: Number(li.orderedQuantityBase || 0),
+    deliveredQty: Number(li.receivedQuantityBase || 0) + Number(li.rejectedQty || 0),
+    acceptedQty: Number(li.acceptedReceivedQty || li.receivedQuantityBase || 0),
+    rejectedQty: Number(li.rejectedQty || 0),
+    missingQty: Math.max(0, Number(li.orderedQuantityBase || 0) - Number(li.receivedQuantityBase || 0) - Number(li.rejectedQty || 0)),
+    backorderedQty: Number(li.backorderedQty || 0),
+    closedShortQty: Number(li.closedShortQty || 0),
+    unitPricePaisa: Number(li.unitPricePaisa || 0),
+    acceptedPayableBasisPaisa: Number(li.acceptedReceivedQty || li.receivedQuantityBase || 0) * Number(li.unitPricePaisa || 0),
+  }));
+
+  const totalAcceptedPayablePaisa = itemsPacket.reduce((s, it) => s + it.acceptedPayableBasisPaisa, 0);
+  const rawClaimPaisa = claimedAmountPaisa !== undefined ? Number(claimedAmountPaisa) : (po.totalPaisa || totalAcceptedPayablePaisa);
+  const heldVariancePaisa = Math.max(0, rawClaimPaisa - totalAcceptedPayablePaisa);
+
+  const packet = {
+    purchaseOrderId: po.purchaseOrderId,
+    vendorId: po.vendorId,
+    vendorName: po.vendorNameSnapshot || po.vendorId,
+    cafeId: po.cafeId,
+    orderDate: po.orderDate,
+    expectedDeliveryDate: po.expectedDeliveryDate,
+    receivingStatus: po.receivingStatus,
+    fulfillmentStatus: po.fulfillmentStatus,
+    grnReceipts: (po.grnReceipts || []).map((g) => ({
+      grnId: g.grnId,
+      receiptDate: g.receiptDate,
+      receivedByUserId: g.receivedByUserId,
+      totalAcceptedQty: g.totalAcceptedQty,
+      totalRejectedQty: g.totalRejectedQty,
+    })),
+    grnReceiptsCount: (po.grnReceipts || []).length,
+    matchStatus: po.threeWayMatch?.matchStatus || 'MATCHED',
+    deliveryChallanIds: po.deliveryChallanIds || [],
+    supplierInvoiceNumber: supplierInvoiceNumber || po.invoices?.[0]?.invoiceNumber || 'INV-PENDING',
+    items: itemsPacket,
+    supplierClaimedAmountPaisa: rawClaimPaisa,
+    approvedPayableAmountPaisa: totalAcceptedPayablePaisa,
+    heldDisputedAmountPaisa: heldVariancePaisa,
+    notes: notes.trim(),
+  };
+
+  po.accountsHandoff = {
+    status: 'SENT_TO_ACCOUNTS',
+    sentAt: new Date(),
+    sentByUserId: request.auth.userId,
+    packet,
+  };
+
+  await po.save();
+
+  let apInvoice = null;
+  try {
+    const vendorLedgerService = require('../services/vendorLedgerService');
+    const invRes = await vendorLedgerService.postVendorBillFromReceipt({
+      organisationId,
+      purchaseOrderId: po.purchaseOrderId,
+      supplierInvoiceNumber: packet.supplierInvoiceNumber,
+      claimedAmountPaisa: rawClaimPaisa,
+      notes: `Handoff from Dock Receiving for PO ${po.purchaseOrderId}. ${notes}`.trim(),
+      auth: request.auth,
+    });
+    apInvoice = invRes.apInvoice;
+  } catch (err) {
+    const { APInvoice } = require('../models/APInvoice');
+    apInvoice = await APInvoice.findOne({ organisationId, poReferenceId: po.purchaseOrderId });
+  }
+
+  await recordRequestAudit({
+    request,
+    module: 'PROCUREMENT',
+    action: 'SEND_TO_ACCOUNTS',
+    entityType: 'PURCHASE_ORDER',
+    entityId: po.purchaseOrderId,
+    cafeId: po.cafeId,
+    afterState: {
+      accountsHandoffStatus: 'SENT_TO_ACCOUNTS',
+      approvedPayableAmountPaisa: totalAcceptedPayablePaisa,
+      heldDisputedAmountPaisa: heldVariancePaisa,
+      apInvoiceId: apInvoice?.invoiceId || null,
+    },
+  });
+
+  return response.status(200).json({
+    success: true,
+    data: {
+      purchaseOrderId: po.purchaseOrderId,
+      accountsHandoff: po.accountsHandoff,
+      accountsHandoffStatus: 'SENT_TO_ACCOUNTS',
+      sentAt: po.accountsHandoff.sentAt,
+      approvedPayableAmountPaisa: totalAcceptedPayablePaisa,
+      heldDisputedAmountPaisa: heldVariancePaisa,
+      packet,
+      apInvoice,
+    },
+    correlationId: request.correlationId || null,
+  });
+});
+
 module.exports = {
   getOrderDocuments,
   attachOrderDocument,
@@ -4307,6 +4438,7 @@ module.exports = {
   decideSubstitution,
   sourceElsewhere,
   getVendorFulfillmentAnalytics,
+  sendToAccounts,
   _setPoLocksDisabled,
   commitWithRetry,
   executeTransactionWithRetry,

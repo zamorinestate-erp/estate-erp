@@ -18,6 +18,7 @@ const { APInvoice } = require('../models/APInvoice');
 const { Vendor } = require('../models/Vendor');
 const { PurchaseOrder } = require('../models/PurchaseOrder');
 const { SequenceCounter } = require('../models/SequenceCounter');
+const { CashTransaction } = require('../models/CashTransaction');
 const { ApiError } = require('../utils/ApiError');
 const { recordRequestAudit } = require('./auditService');
 
@@ -139,6 +140,9 @@ async function syncVendorFinancialSummary(organisationId, vendorId) {
     lastPaymentDate,
     lastPaymentAmountPaisa,
     lastEvaluatedAt: new Date(),
+    totalInvoicedPaise: lifetimeApprovedPayablePaisa,
+    totalPaidPaise: lifetimePaidPaisa,
+    outstandingBalancePaise: currentOutstandingPayablePaisa,
   };
 
   await Vendor.findOneAndUpdate(
@@ -330,31 +334,41 @@ async function recordVendorPayment({
   organisationId,
   vendorId,
   paymentAmountPaisa,
+  amountPaise,
   allocations = [],
   paymentMethod = 'BANK_TRANSFER',
   reference = '',
+  referenceNumber = '',
   bankAccountId = 'DEFAULT_BANK',
   notes = '',
   idempotencyKey = null,
+  userId = null,
   auth,
 }) {
   const normVendorId = normalizeId(vendorId);
-  const payAmount = Number(paymentAmountPaisa);
+  const payAmount = Number(paymentAmountPaisa !== undefined ? paymentAmountPaisa : amountPaise);
+  const effectiveRef = referenceNumber || reference || '';
+  const effectiveAuth = auth || { organisationId, userId: userId || 'MASTER_USER', role: 'MASTER' };
+  const effectiveIdem = idempotencyKey || effectiveRef || null;
 
   if (!Number.isFinite(payAmount) || payAmount <= 0) {
     throw new ApiError(400, 'INVALID_AMOUNT', 'Payment amount must be greater than zero.');
   }
 
   // Idempotency check
-  if (idempotencyKey) {
+  if (effectiveIdem) {
     const existing = await VendorLedgerEntry.findOne({
       organisationId,
-      'metadata.idempotencyKey': idempotencyKey,
+      $or: [
+        { 'metadata.idempotencyKey': effectiveIdem },
+        { referenceNumber: effectiveIdem },
+        { referenceId: effectiveIdem },
+      ],
     }).lean();
 
     if (existing) {
       return {
-        paymentId: existing.paymentId,
+        paymentId: existing.paymentId || existing.referenceId,
         isIdempotentReplay: true,
         ledgerEntry: existing,
       };
@@ -400,7 +414,8 @@ async function recordVendorPayment({
     let allocPaisa = 0;
 
     if (allocSpec) {
-      allocPaisa = Math.min(Number(allocSpec.amountPaisa), inv.outstandingPayableAmountPaisa, remainingToDistribute);
+      const specifiedAmt = Number(allocSpec.amountPaisa !== undefined ? allocSpec.amountPaisa : allocSpec.amountPaise);
+      allocPaisa = Math.min(specifiedAmt, inv.outstandingPayableAmountPaisa, remainingToDistribute);
     } else if (allocations.length === 0) {
       // Automatic allocation: oldest due first
       allocPaisa = Math.min(inv.outstandingPayableAmountPaisa, remainingToDistribute);
@@ -408,8 +423,10 @@ async function recordVendorPayment({
 
     if (allocPaisa > 0) {
       inv.paidPaisa = (inv.paidPaisa || 0) + allocPaisa;
+      inv.amountPaidPaisa = inv.paidPaisa;
       inv.outstandingPayableAmountPaisa = Math.max(0, inv.outstandingPayableAmountPaisa - allocPaisa);
       inv.outstandingPaisa = inv.outstandingPayableAmountPaisa;
+      inv.outstandingBalancePaisa = inv.outstandingPayableAmountPaisa;
 
       if (inv.outstandingPayableAmountPaisa === 0) {
         inv.paymentStatus = 'PAID';
@@ -422,7 +439,7 @@ async function recordVendorPayment({
         paymentId: paymentSeq,
         paidPaisa: allocPaisa,
         paidAt: new Date(),
-        paidByUserId: auth.userId,
+        paidByUserId: effectiveAuth.userId,
         paymentMethod,
         reference: reference || '',
       });
@@ -464,26 +481,80 @@ async function recordVendorPayment({
     entryType,
     referenceType: 'PAYMENT',
     referenceId: paymentSeq,
+    referenceNumber: effectiveRef || paymentSeq,
     paymentId: paymentSeq,
     supplierInvoiceNumber: updatedInvoices[0]?.invoiceId || null,
     debitPaisa: payAmount, // Payment reduces liability
     creditPaisa: 0,
     paidPaisa: payAmount,
     runningBalancePaisa: newBal,
-    notes: `Vendor payment via ${paymentMethod}. Ref: ${reference}. ${notes}`.trim(),
-    createdByUserId: auth.userId,
+    notes: `Vendor payment via ${paymentMethod}. Ref: ${effectiveRef}. ${notes}`.trim(),
+    createdByUserId: effectiveAuth.userId,
     metadata: {
-      idempotencyKey,
+      idempotencyKey: effectiveIdem,
       bankAccountId,
       allocations: updatedInvoices,
     },
   });
 
   await ledgerEntry.save();
+
+  // Canonical financial cash/bank transaction (Exactly-once posting)
+  const existingCt = await CashTransaction.findOne({
+    organisationId,
+    referenceType: 'VENDOR_PAYMENT',
+    referenceId: paymentSeq,
+  });
+
+  let cashTx = null;
+  if (!existingCt) {
+    const cashTransactionId = await SequenceCounter.generateId({
+      organisationId,
+      sequenceKey: `CASH_TRANSACTION_${datePart}`,
+      prefix: `CT-${datePart}`,
+      minimumDigits: 4,
+    });
+
+    const validPaymentMethods = ['CASH', 'CARD', 'UPI', 'BANK_TRANSFER', 'WALLET', 'CREDIT'];
+    const pMethod = validPaymentMethods.includes(paymentMethod) ? paymentMethod : 'BANK_TRANSFER';
+
+    cashTx = await CashTransaction.create({
+      cashTransactionId,
+      organisationId,
+      cafeId: openInvoices[0]?.cafeId || effectiveAuth.cafeId || 'CAFE-001',
+      businessDate,
+      transactionType: 'PAID_OUT',
+      direction: 'OUT',
+      category: 'VENDOR_PAYMENT',
+      amount: Number((payAmount / 100).toFixed(2)),
+      amountPaisa: payAmount,
+      currency: 'INR',
+      paymentMethod: pMethod,
+      referenceType: 'VENDOR_PAYMENT',
+      referenceId: paymentSeq,
+      referenceNumber: effectiveRef || paymentSeq,
+      description: `Payment to vendor ${normVendorId} (${vendor ? vendor.name : normVendorId}) for invoices: ${updatedInvoices.map((i) => i.invoiceId).join(', ')}`,
+      status: 'POSTED',
+      recordedBy: effectiveAuth.userId,
+      createdBy: effectiveAuth.userId,
+    });
+  } else {
+    cashTx = existingCt;
+  }
+
+  // Update ledgerEntry with canonical cashTransactionId
+  if (cashTx) {
+    await VendorLedgerEntry.collection.updateOne(
+      { _id: ledgerEntry._id },
+      { $set: { cashTransactionId: cashTx.cashTransactionId } }
+    );
+    ledgerEntry.cashTransactionId = cashTx.cashTransactionId;
+  }
+
   await syncVendorFinancialSummary(organisationId, normVendorId);
 
   await recordRequestAudit({
-    request: { auth, correlationId: ledgerSeq },
+    request: { auth: effectiveAuth, correlationId: ledgerSeq },
     module: 'FINANCE',
     action: 'RECORD_VENDOR_PAYMENT',
     entityType: 'VENDOR_PAYMENT',
@@ -500,7 +571,17 @@ async function recordVendorPayment({
 
   return {
     paymentId: paymentSeq,
+    cashTransactionId: cashTx?.cashTransactionId || null,
+    isIdempotentReplay: false,
     ledgerEntry,
+    allocations: updatedInvoices.map((i) => ({
+      invoiceId: i.invoiceId,
+      amountPaise: i.allocatedPaisa,
+      allocatedPaisa: i.allocatedPaisa,
+      remainingInvoiceBalancePaise: i.newOutstandingPaisa,
+      remainingInvoiceBalancePaisa: i.newOutstandingPaisa,
+      status: i.status,
+    })),
     updatedInvoices,
     newRunningBalancePaisa: newBal,
   };
@@ -513,15 +594,20 @@ async function recordVendorAdvance({
   organisationId,
   vendorId,
   amountPaisa,
+  amountPaise,
   cafeId = 'ORGANISATION_WIDE',
   paymentMethod = 'BANK_TRANSFER',
   reference = '',
+  referenceNumber = '',
   notes = '',
   idempotencyKey = null,
+  userId = null,
   auth,
 }) {
   const normVendorId = normalizeId(vendorId);
-  const advAmount = Number(amountPaisa);
+  const advAmount = Number(amountPaisa !== undefined ? amountPaisa : amountPaise);
+  const effectiveRef = referenceNumber || reference || '';
+  const effectiveAuth = auth || { organisationId, userId: userId || 'MASTER_USER', role: 'MASTER' };
 
   if (!Number.isFinite(advAmount) || advAmount <= 0) {
     throw new ApiError(400, 'INVALID_AMOUNT', 'Advance amount must be greater than zero.');
@@ -560,21 +646,75 @@ async function recordVendorAdvance({
     entryType: 'ADVANCE_PAYMENT',
     referenceType: 'ADVANCE',
     referenceId: advanceSeq,
+    referenceNumber: effectiveRef || advanceSeq,
     paymentId: advanceSeq,
     debitPaisa: advAmount, // Advance reduces net liability / creates debit balance
     creditPaisa: 0,
     paidPaisa: advAmount,
     runningBalancePaisa: newBal,
-    notes: `Vendor advance payment via ${paymentMethod}. Ref: ${reference}. ${notes}`.trim(),
-    createdByUserId: auth.userId,
+    notes: `Vendor advance payment via ${paymentMethod}. Ref: ${effectiveRef}. ${notes}`.trim(),
+    createdByUserId: effectiveAuth.userId,
     metadata: { idempotencyKey },
   });
 
   await ledgerEntry.save();
+
+  // Canonical financial cash/bank transaction for Advance (Exactly-once posting)
+  const existingAdvCt = await CashTransaction.findOne({
+    organisationId,
+    referenceType: 'VENDOR_ADVANCE',
+    referenceId: advanceSeq,
+  });
+
+  let cashTx = null;
+  if (!existingAdvCt) {
+    const cashTransactionId = await SequenceCounter.generateId({
+      organisationId,
+      sequenceKey: `CASH_TRANSACTION_${datePart}`,
+      prefix: `CT-${datePart}`,
+      minimumDigits: 4,
+    });
+
+    const validPaymentMethods = ['CASH', 'CARD', 'UPI', 'BANK_TRANSFER', 'WALLET', 'CREDIT'];
+    const pMethod = validPaymentMethods.includes(paymentMethod) ? paymentMethod : 'BANK_TRANSFER';
+
+    cashTx = await CashTransaction.create({
+      cashTransactionId,
+      organisationId,
+      cafeId: cafeId || effectiveAuth.cafeId || 'CAFE-001',
+      businessDate,
+      transactionType: 'PAID_OUT',
+      direction: 'OUT',
+      category: 'VENDOR_ADVANCE',
+      amount: Number((advAmount / 100).toFixed(2)),
+      amountPaisa: advAmount,
+      currency: 'INR',
+      paymentMethod: pMethod,
+      referenceType: 'VENDOR_ADVANCE',
+      referenceId: advanceSeq,
+      referenceNumber: effectiveRef || advanceSeq,
+      description: `Advance to vendor ${normVendorId} (${vendor ? vendor.name : normVendorId}). Ref: ${effectiveRef}`,
+      status: 'POSTED',
+      recordedBy: effectiveAuth.userId,
+      createdBy: effectiveAuth.userId,
+    });
+  } else {
+    cashTx = existingAdvCt;
+  }
+
+  if (cashTx) {
+    await VendorLedgerEntry.collection.updateOne(
+      { _id: ledgerEntry._id },
+      { $set: { cashTransactionId: cashTx.cashTransactionId } }
+    );
+    ledgerEntry.cashTransactionId = cashTx.cashTransactionId;
+  }
+
   await syncVendorFinancialSummary(organisationId, normVendorId);
 
   return {
     advanceId: advanceSeq,
+    cashTransactionId: cashTx?.cashTransactionId || null,
     ledgerEntry,
     newRunningBalancePaisa: newBal,
   };
@@ -588,11 +728,14 @@ async function applyVendorAdvance({
   vendorId,
   invoiceId,
   amountToApplyPaisa,
+  amountPaise,
   notes = '',
+  userId = null,
   auth,
 }) {
   const normVendorId = normalizeId(vendorId);
-  const applyAmount = Number(amountToApplyPaisa);
+  const applyAmount = Number(amountToApplyPaisa !== undefined ? amountToApplyPaisa : amountPaise);
+  const effectiveAuth = auth || { organisationId, userId: userId || 'MASTER_USER', role: 'MASTER' };
 
   const invoice = await APInvoice.findOne({
     organisationId,
@@ -664,7 +807,7 @@ async function applyVendorAdvance({
     paidPaisa: applyAmount,
     runningBalancePaisa: currentBal,
     notes: `Applied ₹${(applyAmount / 100).toFixed(2)} advance to invoice ${invoice.invoiceId}. ${notes}`.trim(),
-    createdByUserId: auth.userId,
+    createdByUserId: effectiveAuth.userId,
     metadata: { appliedPaisa: applyAmount },
   });
 
@@ -674,7 +817,12 @@ async function applyVendorAdvance({
   return {
     invoice,
     ledgerEntry,
+    appliedAmountPaise: applyAmount,
+    appliedAmountPaisa: applyAmount,
+    remainingAdvancePaise: availableAdvance - applyAmount,
     remainingAdvancePaisa: availableAdvance - applyAmount,
+    remainingInvoiceBalancePaise: invoice.outstandingPayableAmountPaisa,
+    remainingInvoiceBalancePaisa: invoice.outstandingPayableAmountPaisa,
   };
 }
 
@@ -775,9 +923,11 @@ async function reversePayment({
   organisationId,
   paymentId,
   reason = 'Payment reversed by authorised financial officer',
+  userId = null,
   auth,
 }) {
   const normPaymentId = normalizeId(paymentId);
+  const effectiveAuth = auth || { organisationId, userId: userId || 'MASTER_USER', role: 'MASTER' };
 
   const originalEntry = await VendorLedgerEntry.findOne({
     organisationId,
@@ -799,7 +949,9 @@ async function reversePayment({
     const inv = await APInvoice.findOne({ organisationId, invoiceId: alloc.invoiceId });
     if (inv) {
       inv.paidPaisa = Math.max(0, (inv.paidPaisa || 0) - alloc.allocatedPaisa);
+      inv.amountPaidPaisa = inv.paidPaisa;
       inv.recalculateOutstanding();
+      inv.outstandingBalancePaisa = inv.outstandingPayableAmountPaisa;
       await inv.save();
     }
   }
@@ -835,13 +987,14 @@ async function reversePayment({
     entryType: 'PAYMENT_REVERSAL',
     referenceType: 'PAYMENT',
     referenceId: originalEntry.paymentId,
+    referenceNumber: originalEntry.referenceNumber || reversalSeq,
     paymentId: reversalSeq,
     debitPaisa: 0,
     creditPaisa: payAmount, // Liability restored
     paidPaisa: 0,
     runningBalancePaisa: newBal,
     notes: `Reversal of payment ${originalEntry.paymentId}. Reason: ${reason}`.trim(),
-    createdByUserId: auth.userId,
+    createdByUserId: effectiveAuth.userId,
     reversalEntryId: originalEntry.ledgerEntryId,
   });
 
@@ -852,10 +1005,56 @@ async function reversePayment({
   );
 
   await reversalEntry.save();
+
+  // Reverse original CashTransaction and create offsetting PAID_IN
+  const originalCt = await CashTransaction.findOne({
+    organisationId,
+    referenceType: 'VENDOR_PAYMENT',
+    referenceId: originalEntry.paymentId,
+  });
+
+  if (originalCt) {
+    originalCt.status = 'REVERSED';
+    originalCt.reversedAt = new Date();
+    originalCt.reversedBy = effectiveAuth.userId;
+    originalCt.reversalReason = reason;
+    originalCt.reversalTransactionId = reversalSeq;
+    await originalCt.save();
+
+    const cashTransactionId = await SequenceCounter.generateId({
+      organisationId,
+      sequenceKey: `CASH_TRANSACTION_${datePart}`,
+      prefix: `CT-${datePart}`,
+      minimumDigits: 4,
+    });
+
+    await CashTransaction.create({
+      cashTransactionId,
+      organisationId,
+      cafeId: originalEntry.cafeId || 'CAFE-001',
+      businessDate,
+      transactionType: 'PAID_IN',
+      direction: 'IN',
+      category: 'PAYMENT_REVERSAL',
+      amount: Number((payAmount / 100).toFixed(2)),
+      amountPaisa: payAmount,
+      currency: 'INR',
+      paymentMethod: 'BANK_TRANSFER',
+      referenceType: 'PAYMENT_REVERSAL',
+      referenceId: reversalSeq,
+      referenceNumber: originalEntry.referenceNumber || reversalSeq,
+      description: `Payment reversal for ${originalEntry.paymentId}: ${reason}`,
+      status: 'POSTED',
+      recordedBy: effectiveAuth.userId,
+      createdBy: effectiveAuth.userId,
+    });
+  }
+
   await syncVendorFinancialSummary(organisationId, vendorId);
 
   return {
     reversalEntry,
+    reversedAmountPaise: payAmount,
     restoredAmountPaisa: payAmount,
     newRunningBalancePaisa: newBal,
   };
@@ -1198,10 +1397,75 @@ async function releasePaymentHold({
   };
 }
 
+/**
+ * Deterministic Rebuild / Reconciliation of Vendor Financial Summary from canonical accounting records.
+ * Recalculates all lifetime and current metrics from PurchaseOrder, APInvoice, VendorLedgerEntry, and CashTransaction.
+ */
+async function rebuildVendorFinancialSummary({ organisationId, vendorId }) {
+  const normVendorId = normalizeId(vendorId);
+  const vendor = await Vendor.findOne({ organisationId, vendorId: normVendorId });
+  if (!vendor) {
+    throw new ApiError(404, 'VENDOR_NOT_FOUND', `Vendor ${normVendorId} not found.`);
+  }
+
+  // Re-sync from canonical database state
+  const summary = await syncVendorFinancialSummary(organisationId, normVendorId);
+  return {
+    vendorId: normVendorId,
+    vendorName: vendor.name,
+    summary,
+    financialSummary: summary,
+    reconciledAt: new Date(),
+  };
+}
+
+/**
+ * Compatibility wrapper for posting bill directly from Purchase Order with GRN inspection
+ */
+async function postBillFromPurchaseOrder(args) {
+  const {
+    organisationId,
+    purchaseOrderId,
+    supplierInvoiceNumber,
+    invoiceDate,
+    dueDate,
+    claimedTotalPaisa,
+    claimedAmountPaisa,
+    userId,
+    grnReceiptNumber,
+    auth = { organisationId, userId: userId || 'MASTER_USER', role: 'MASTER' },
+  } = args;
+
+  const result = await postVendorBillFromReceipt({
+    organisationId,
+    purchaseOrderId,
+    supplierInvoiceNumber,
+    invoiceDate,
+    dueDate,
+    claimedAmountPaisa: claimedTotalPaisa !== undefined ? claimedTotalPaisa : claimedAmountPaisa,
+    notes: grnReceiptNumber ? `GRN Receipt: ${grnReceiptNumber}` : '',
+    auth,
+  });
+
+  return {
+    invoice: {
+      ...result.apInvoice.toObject(),
+      approvedPayablePaisa: result.apInvoice.approvedPayableAmountPaisa,
+      claimedInvoiceTotalPaisa: result.apInvoice.supplierClaimedAmountPaisa,
+      variancePaisa: result.apInvoice.heldDisputedAmountPaisa,
+      holdStatus: result.apInvoice.holds?.length > 0 ? 'ON_HOLD' : result.apInvoice.paymentStatus,
+      holdReasonCode: result.apInvoice.holds?.[0]?.holdCode,
+    },
+    ledgerEntry: result.ledgerEntry,
+  };
+}
+
 module.exports = {
   getVendorRunningBalance,
   syncVendorFinancialSummary,
+  rebuildVendorFinancialSummary,
   postVendorBillFromReceipt,
+  postBillFromPurchaseOrder,
   recordVendorPayment,
   recordVendorAdvance,
   applyVendorAdvance,

@@ -120,6 +120,23 @@ const vendorLedgerEntrySchema = new mongoose.Schema(
       default: null,
       index: true,
     },
+    referenceNumber: {
+      type: String,
+      trim: true,
+      default: null,
+      index: true,
+    },
+    cashTransactionId: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: null,
+      index: true,
+    },
+    entryNumber: {
+      type: Number,
+      default: null,
+    },
     // Standard accounting direction:
     // Debit = reduces vendor payable (Payment, Advance, Credit Note)
     // Credit = increases vendor payable (Vendor Bill / Liability)

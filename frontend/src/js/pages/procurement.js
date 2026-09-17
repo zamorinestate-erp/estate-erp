@@ -1709,7 +1709,41 @@ async function loadPoMatching(po) {
           ✓ All quantities, rates, and GST taxes match within authorized tolerances.
         </div>
       `}
+
+      <div style="margin-top:14px;padding-top:10px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+        <div>
+          <strong style="font-size:11.5px;color:var(--ink);">Accounts Department AP Handoff:</strong>
+          <span class="badge ${po.accountsHandoff?.status === 'SENT_TO_ACCOUNTS' ? 'badge-success' : 'badge-neutral'}" style="margin-left:6px;font-size:10px;">
+            ${po.accountsHandoff?.status || 'PENDING'}
+          </span>
+        </div>
+        ${po.accountsHandoff?.status === 'SENT_TO_ACCOUNTS' ? `
+          <span style="font-size:11px;color:var(--mint, #10b981);font-weight:700;">✓ Packet In Accounts AP Queue</span>
+        ` : `
+          <button class="btn btn-sm btn-primary" id="btn-proc-send-accounts" style="font-size:11px;font-weight:700;" type="button">
+            📤 Send Packet to Accounts AP
+          </button>
+        `}
+      </div>
     `;
+
+    wrapper.querySelector('#btn-proc-send-accounts')?.addEventListener('click', async () => {
+      try {
+        showToast('Transmitting matched physical packet to Accounts AP...', 'info');
+        const res = await apiPost(`/api/v1/procurement/orders/${po.purchaseOrderId}/send-to-accounts`, {
+          notes: 'Transmitted from Procurement 3-Way Match Inspector',
+        });
+        if (res?.success) {
+          showToast(`Purchase order ${po.purchaseOrderId} sent to Accounts AP!`, 'mint');
+          po.accountsHandoff = res.data?.accountsHandoff || { status: 'SENT_TO_ACCOUNTS' };
+          loadPoMatching(po);
+        } else {
+          showToast(res?.message || 'Failed to send to accounts.', 'coral');
+        }
+      } catch (err) {
+        showToast(err.message || 'Failed to send packet to Accounts AP.', 'coral');
+      }
+    });
   } catch (err) {
     wrapper.innerHTML = `<div style="padding:12px;color:var(--muted);font-size:11px;">Reconciliation summary unavailable: ${err.message}</div>`;
   }

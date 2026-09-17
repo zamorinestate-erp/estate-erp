@@ -1,14 +1,14 @@
 {
   "metadata": {
-    "auditTimestamp": "2026-09-16T18:14:01.199Z",
+    "auditTimestamp": "2026-09-17T00:32:01.501Z",
     "runner": "scripts/audit_all_interactive_controls_runtime.mjs",
-    "totalContractsTested": 1575,
+    "totalContractsTested": 1595,
     "failures": 0,
     "untested": 0
   },
   "executionModes": {
-    "REAL_POINTER_CLICKS": 1448,
-    "KEYBOARD_ACTIVATIONS": 1676,
+    "REAL_POINTER_CLICKS": 1468,
+    "KEYBOARD_ACTIVATIONS": 1696,
     "NON_CLICK_INTERACTION": 637,
     "GOVERNED_NON_EXECUTABLE": 2
   },

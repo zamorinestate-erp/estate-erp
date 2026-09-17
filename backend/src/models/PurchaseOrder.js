@@ -596,6 +596,21 @@ const purchaseOrderSchema = new mongoose.Schema(
       default: () => ({}),
     },
 
+    accountsHandoff: {
+      status: {
+        type: String,
+        enum: ['PENDING', 'SENT_TO_ACCOUNTS', 'READY_FOR_AP_REVIEW', 'ACCOUNTS_ACCEPTED'],
+        default: 'PENDING',
+        index: true,
+      },
+      sentAt: { type: Date, default: null },
+      sentByUserId: { type: String, trim: true, default: null },
+      packet: {
+        type: mongoose.Schema.Types.Mixed,
+        default: null,
+      },
+    },
+
     // ── Milestones Timeline ───────────────────────────────────────────────────
     milestones: [milestoneSchema],
 

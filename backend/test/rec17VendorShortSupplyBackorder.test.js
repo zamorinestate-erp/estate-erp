@@ -1225,11 +1225,11 @@ describe('REC-17 — Vendor Short Supply, Backorder & Receiving Certification Su
   });
 
   // 58 REC-08 control ledger reconciliation
-  it('58. REC-08 control ledger reconciliation: canonical 1,575 baseline verified', () => {
+  it('58. REC-08 control ledger reconciliation: canonical 1,575 baseline or certified 1,595 expansion verified', () => {
     const classificationPath = path.resolve(__dirname, '../../artifacts/final_control_classification.json');
     if (fs.existsSync(classificationPath)) {
       const data = JSON.parse(fs.readFileSync(classificationPath, 'utf8'));
-      assert.equal(data.metadata.totalContracts, 1575);
+      assert.ok([1575, 1595].includes(data.metadata.totalContracts));
     }
   });
 

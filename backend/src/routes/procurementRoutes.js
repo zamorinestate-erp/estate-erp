@@ -57,6 +57,7 @@ const {
   decideSubstitution,
   sourceElsewhere,
   getVendorFulfillmentAnalytics,
+  sendToAccounts,
 } = require('../controllers/procurementController');
 
 const UPLOAD_STAGING_DIR = path.join(os.tmpdir(), 'zamorin_procurement_staging');
@@ -349,5 +350,10 @@ router.get(
   getVendorFulfillmentAnalytics
 );
 
+router.post(
+  '/orders/:purchaseOrderId/send-to-accounts',
+  authorize('PROCUREMENT_WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
+  sendToAccounts
+);
 
 module.exports = router;

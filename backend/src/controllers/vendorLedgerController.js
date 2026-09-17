@@ -27,7 +27,12 @@ function assertFinanceRoleAccess(request, requiredLevel = 'READ') {
   if (!role) {
     throw new ApiError(401, 'UNAUTHORIZED', 'Authentication required.');
   }
-  if (role === 'STAFF') {
+
+  const capabilities = request.auth?.capabilities || [];
+  const hasAccountsRead = capabilities.includes('VENDOR_AP_VIEW') || capabilities.includes('VENDOR_LEDGER_VIEW') || capabilities.includes('VENDOR_AP_AGING_VIEW');
+  const hasAccountsWrite = capabilities.includes('VENDOR_AP_MATCH') || capabilities.includes('VENDOR_AP_PREPARE_PAYMENT');
+
+  if (role === 'STAFF' && !hasAccountsRead && !hasAccountsWrite) {
     throw new ApiError(403, 'FORBIDDEN_ROLE', 'Staff is strictly denied financial and vendor ledger access.');
   }
 
@@ -455,6 +460,26 @@ const getGstMonitoringReport = asyncHandler(async (request, response) => {
   });
 });
 
+/**
+ * POST /api/v1/finance/vendor-ledger/vendors/:vendorId/rebuild-summary
+ */
+const rebuildVendorSummary = asyncHandler(async (request, response) => {
+  assertFinanceRoleAccess(request, 'WRITE');
+  const { organisationId } = request.auth;
+  const vendorId = normalizeId(request.params.vendorId);
+
+  const result = await vendorLedgerService.rebuildVendorFinancialSummary({
+    organisationId,
+    vendorId,
+  });
+
+  return response.status(200).json({
+    success: true,
+    data: result,
+    correlationId: request.correlationId || null,
+  });
+});
+
 module.exports = {
   getVendorLedger,
   getVendorStatement,
@@ -469,4 +494,5 @@ module.exports = {
   releasePaymentHold,
   getApAgingReport,
   getGstMonitoringReport,
+  rebuildVendorSummary,
 };

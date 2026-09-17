@@ -101,6 +101,13 @@ const apInvoiceSchema = new mongoose.Schema(
       min: 0,
       default: 0,
     },
+    amountPaidPaisa: {
+      type: Number,
+      min: 0,
+      default: function () {
+        return this.paidPaisa || 0;
+      },
+    },
     appliedAdvancePaisa: {
       type: Number,
       min: 0,
@@ -121,6 +128,13 @@ const apInvoiceSchema = new mongoose.Schema(
       min: 0,
       default: function () {
         return this.outstandingPaisa !== undefined ? this.outstandingPaisa : (this.totalPaisa || 0);
+      },
+    },
+    outstandingBalancePaisa: {
+      type: Number,
+      min: 0,
+      default: function () {
+        return this.outstandingPayableAmountPaisa !== undefined ? this.outstandingPayableAmountPaisa : (this.totalPaisa || 0);
       },
     },
     cafeId: {
@@ -247,6 +261,8 @@ apInvoiceSchema.methods.recalculateOutstanding = function () {
 
   this.outstandingPayableAmountPaisa = netOutstanding;
   this.outstandingPaisa = netOutstanding;
+  this.outstandingBalancePaisa = netOutstanding;
+  this.amountPaidPaisa = paid;
 
   const activeHolds = (this.holds || []).filter(h => !h.releasedAt);
   if (activeHolds.length > 0) {
