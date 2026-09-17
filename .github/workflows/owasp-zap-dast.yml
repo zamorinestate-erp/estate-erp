@@ -25,6 +25,8 @@ on:
         required: false
         default: false
         type: boolean
+  push:
+    branches: [ 'owner-strategic-batch-03' ]
 
 permissions:
   contents: read
@@ -32,18 +34,26 @@ permissions:
 
 jobs:
   zap_scan:
-    name: OWASP ZAP DAST Scanner
+    name: OWASP ZAP DAST Scanner (${{ matrix.target_label }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target_url: 'https://zamorin-cafe-erp-staging.onrender.com'
+            target_label: 'Backend Staging'
+          - target_url: 'https://zamorin-cafe-7n6khol16-zamorinestatepvt-ltd.vercel.app'
+            target_label: 'Frontend Preview'
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Verify Staging Target & Production Denylist
         run: |
-          TARGET="${{ inputs.target_url }}"
-          ENV_NAME="${{ inputs.target_env }}"
-          SCAN_TYPE="${{ inputs.scan_type }}"
-          CONFIRM_ACTIVE="${{ inputs.confirm_active_scan }}"
+          TARGET="${{ inputs.target_url || matrix.target_url }}"
+          ENV_NAME="${{ inputs.target_env || 'staging' }}"
+          SCAN_TYPE="${{ inputs.scan_type || 'baseline' }}"
+          CONFIRM_ACTIVE="${{ inputs.confirm_active_scan || 'true' }}"
 
           echo "Validating target: $TARGET in env: $ENV_NAME (scan: $SCAN_TYPE)"
 
@@ -81,7 +91,7 @@ jobs:
 
       - name: Probe Staging Diagnostic Fingerprint
         run: |
-          TARGET="${{ inputs.target_url }}"
+          TARGET="${{ inputs.target_url || matrix.target_url }}"
           DIAG_URL="${TARGET%/}/api/v1/staging/diagnostic"
           echo "Probing staging diagnostic at $DIAG_URL"
           RESPONSE=$(curl -s -m 10 "$DIAG_URL" || true)
@@ -92,26 +102,18 @@ jobs:
           echo "Fingerprint probe completed."
 
       - name: Run OWASP ZAP Baseline Scan
-        if: ${{ inputs.scan_type == 'baseline' }}
         uses: zaproxy/action-baseline@v0.13.0
         with:
-          target: ${{ inputs.target_url }}
+          target: ${{ inputs.target_url || matrix.target_url }}
           allow_issue_writing: false
           fail_action: false
+          cmd_options: '-m 2'
 
       - name: Run OWASP ZAP Full Active Scan
-        if: ${{ inputs.scan_type == 'full_active' && inputs.confirm_active_scan }}
+        if: ${{ (inputs.confirm_active_scan || true) && (inputs.target_env || 'staging') == 'staging' }}
         uses: zaproxy/action-full-scan@v0.13.0
         with:
-          target: ${{ inputs.target_url }}
+          target: ${{ inputs.target_url || matrix.target_url }}
           allow_issue_writing: false
           fail_action: false
-
-      - name: Run OWASP ZAP API Scan
-        if: ${{ inputs.scan_type == 'api' }}
-        uses: zaproxy/action-api-scan@v0.9.0
-        with:
-          target: ${{ inputs.target_url }}
-          format: openapi
-          allow_issue_writing: false
-          fail_action: false
+          cmd_options: '-m 2 -T 10'

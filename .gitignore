@@ -43,3 +43,5 @@ windows/**/obj/
 *.xcworkspace/*
 !*.xcworkspace/contents.xcworkspacedata
 DerivedData/
+
+.vercel
