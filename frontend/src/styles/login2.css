@@ -121,25 +121,26 @@ body:has(#app.auth-screen) {
   overflow: hidden;
 }
 
-/* Glass Card */
-.light-glass-container {
+/* Glass Card & Unified Canonical Auth Shell */
+.light-glass-container,
+.auth-shell-container {
   background: var(--l2-glass-bg);
   -webkit-backdrop-filter: blur(25px);
   backdrop-filter: blur(25px);
   border: 1px solid var(--l2-glass-border);
-  border-radius: 12px;
+  border-radius: var(--radius-card, 18px);
   box-shadow: var(--l2-glass-shadow);
-  padding: 20px 22px;
-  width: 100%;
-  max-width: 380px;
+  padding: 32px;
+  width: min(calc(100vw - 32px), var(--auth-shell-max-width, 448px));
+  max-width: var(--auth-shell-max-width, 448px);
   display: flex;
   flex-direction: column;
-  gap: 9px;
+  gap: 16px;
   box-sizing: border-box;
   color: var(--l2-text-main);
   animation: l2FadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  max-height: 96vh;
-  max-height: 96dvh;
+  /* Content-driven height — ZERO fixed height */
+  height: auto;
 }
 
 @keyframes l2FadeUp {
@@ -159,48 +160,51 @@ body:has(#app.auth-screen) {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
+  gap: 8px;
+  margin-bottom: 4px;
 }
 
 .l2-brand-logo {
-  width: 90px;
+  width: 96px;
+  max-width: 96px;
   height: auto;
   filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.4));
 }
 
 .login-header h2 {
-  font-size: 21px;
+  font-size: 22px;
   font-weight: 700;
   color: #fff;
   text-align: center;
   margin: 0;
-  line-height: 1.15;
+  line-height: 1.2;
 }
 
 .login-subtitle {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--l2-text-muted);
   text-align: center;
-  margin: 2px 0 0 0;
-  line-height: 1.35;
+  margin: 4px 0 0 0;
+  line-height: 1.4;
 }
 
-/* Inputs */
+/* Inputs & Form Controls — Touch Target Height: 52px */
 .light-input-group {
   position: relative;
   width: 100%;
-  margin-bottom: 8px;
+  margin-bottom: 12px;
 }
 
 .light-input-group input {
   width: 100%;
-  height: 42px;
-  padding: 0 40px;
+  height: var(--auth-control-height, 52px);
+  min-height: var(--auth-control-height, 52px);
+  padding: 0 44px;
   background: var(--l2-input-bg);
   border: 1px solid var(--l2-glass-border);
-  border-radius: 9px;
+  border-radius: var(--radius-control, 12px);
   color: #fff;
-  font-size: 14px;
+  font-size: 14.5px;
   font-family: inherit;
   outline: none;
   transition: var(--l2-transition);
@@ -230,20 +234,36 @@ body:has(#app.auth-screen) {
 }
 
 .light-input-icon.left {
-  left: 12px;
+  left: 14px;
 }
 
 .light-input-icon.right {
-  right: 12px;
+  right: 14px;
   pointer-events: auto;
   background: none;
   border: none;
   cursor: pointer;
-  padding: 4px;
+  padding: 6px;
+  border-radius: 6px;
 }
 
 .light-input-icon.right:hover {
   color: #fff;
+}
+
+/* Caps Lock Indicator */
+.l2-caps-lock-warning {
+  font-size: 11.5px;
+  color: #fbbf24;
+  margin-top: 4px;
+  margin-left: 2px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.l2-caps-lock-warning.hidden {
+  display: none !important;
 }
 
 /* Options Row */
@@ -375,23 +395,24 @@ body:has(#app.auth-screen) {
   border-radius: 12px;
 }
 
-/* Main Action Button */
+/* Main Action Button — Touch Target Height: 52px */
 .light-btn {
   width: 100%;
-  height: 42px;
-  padding: 0 14px;
+  height: var(--auth-control-height, 52px);
+  min-height: var(--auth-control-height, 52px);
+  padding: 0 16px;
   background: linear-gradient(135deg, #d4a359 0%, #b8860b 100%);
   border: 1px solid rgba(255, 255, 255, 0.4);
-  border-radius: 9px;
+  border-radius: var(--radius-control, 12px);
   color: #0b0f19;
-  font-size: 14.5px;
+  font-size: 15px;
   font-weight: 700;
   letter-spacing: 0.3px;
   cursor: pointer;
   transition: var(--l2-transition);
   box-shadow: 0 4px 15px rgba(212, 163, 89, 0.35);
   font-family: inherit;
-  margin-top: 2px;
+  margin-top: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -642,26 +663,43 @@ body:has(#app.auth-screen) {
    Responsive Viewports (Mobile & Tablet)
    ============================================================================= */
 @media (max-width: 640px) {
-  .light-glass-container {
-    max-width: 100%;
-    padding: 16px 18px;
-    border-radius: 10px;
-    gap: 8px;
+  .light-glass-container,
+  .auth-shell-container {
+    padding: 24px 20px;
+    border-radius: var(--radius-card, 16px);
+    gap: 14px;
+    width: min(calc(100vw - 24px), var(--auth-shell-max-width, 448px));
   }
   .l2-brand-logo {
-    width: 76px;
+    width: 82px;
   }
   .login-header h2 {
-    font-size: 19px;
+    font-size: 20px;
+  }
+  .options-row {
+    flex-wrap: wrap;
+    gap: 8px;
   }
 }
 
 @media (max-width: 380px) {
-  .light-glass-container {
-    padding: 14px;
+  .light-glass-container,
+  .auth-shell-container {
+    padding: 20px 16px;
+    gap: 12px;
+    width: calc(100vw - 16px);
   }
   .light-input-group input {
-    height: 38px;
-    font-size: 13px;
+    height: 48px;
+    min-height: 48px;
+    font-size: 13.5px;
+  }
+  .light-btn {
+    height: 48px;
+    min-height: 48px;
+    font-size: 14px;
+  }
+  .l2-brand-logo {
+    width: 72px;
   }
 }

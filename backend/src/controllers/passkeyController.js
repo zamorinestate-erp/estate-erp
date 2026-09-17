@@ -150,6 +150,36 @@ const revokeUserPasskey = asyncHandler(async (req, res) => {
   });
 });
 
+/**
+ * PATCH /api/v1/auth/passkeys/:credentialId
+ * Renames a passkey credential for authenticated user.
+ */
+const renameUserPasskey = asyncHandler(async (req, res) => {
+  if (!req.user || !req.user.userId) {
+    throw ApiError.unauthorized('Authentication required to rename a passkey.');
+  }
+
+  const { credentialId } = req.params;
+  const { friendlyName } = req.body || {};
+
+  if (!credentialId) {
+    throw ApiError.badRequest('credentialId is required.');
+  }
+
+  const result = await passkeyService.renameUserPasskey({
+    organisationId: req.user.organisationId,
+    userId: req.user.userId,
+    credentialId,
+    friendlyName,
+  });
+
+  return res.status(200).json({
+    success: true,
+    message: 'Passkey renamed successfully.',
+    data: result,
+  });
+});
+
 module.exports = {
   getRegistrationOptions,
   verifyRegistration,
@@ -157,4 +187,5 @@ module.exports = {
   verifyAuthentication,
   listUserPasskeys,
   revokeUserPasskey,
+  renameUserPasskey,
 };

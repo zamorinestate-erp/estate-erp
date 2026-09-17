@@ -224,8 +224,8 @@ router.post('/password/reset/verify', passwordResetIpRateLimiter, passwordResetA
 router.post('/password/reset', passwordResetIpRateLimiter, passwordResetAccountRateLimiter, resetPassword);
 router.post('/refresh', refreshSession);
 
-// Feature Gate: Passkeys / WebAuthn are deferred in current release (ENABLE_PASSKEY_AUTH=false by default)
-const isPasskeyEnabled = () => process.env.ENABLE_PASSKEY_AUTH === 'true';
+// Feature Gate: Passkeys / WebAuthn are enabled by default unless explicitly disabled
+const isPasskeyEnabled = () => process.env.ENABLE_PASSKEY_AUTH !== 'false';
 
 const passkeyFeatureGate = (req, res, next) => {
   if (!isPasskeyEnabled()) {
@@ -238,12 +238,13 @@ const passkeyFeatureGate = (req, res, next) => {
   next();
 };
 
-// Passkeys / WebAuthn Endpoints (Dormant by default: ENABLE_PASSKEY_AUTH=false)
+// Passkeys / WebAuthn Endpoints
 router.post('/passkeys/register/options', passkeyFeatureGate, authenticate, passkeyIpRateLimiter, passkeyController.getRegistrationOptions);
 router.post('/passkeys/register/verify', passkeyFeatureGate, authenticate, passkeyIpRateLimiter, passkeyController.verifyRegistration);
 router.post('/passkeys/authenticate/options', passkeyFeatureGate, passkeyIpRateLimiter, passkeyAccountRateLimiter, passkeyController.getAuthenticationOptions);
 router.post('/passkeys/authenticate/verify', passkeyFeatureGate, passkeyIpRateLimiter, passkeyAccountRateLimiter, passkeyController.verifyAuthentication);
 router.get('/passkeys', passkeyFeatureGate, authenticate, passkeyController.listUserPasskeys);
+router.patch('/passkeys/:credentialId', passkeyFeatureGate, authenticate, passkeyController.renameUserPasskey);
 router.delete('/passkeys/:credentialId', passkeyFeatureGate, authenticate, passkeyController.revokeUserPasskey);
 
 // Trusted Device Management Endpoints

@@ -452,6 +452,41 @@ async function listUserPasskeys({ organisationId, userId }) {
 }
 
 /**
+ * Rename a passkey for an authenticated user.
+ */
+async function renameUserPasskey({ organisationId, userId, credentialId, friendlyName }) {
+  const credential = await PasskeyCredential.findOne({
+    organisationId,
+    userId,
+    credentialId,
+    status: 'ACTIVE',
+  });
+
+  if (!credential) {
+    throw ApiError.notFound('Passkey credential not found or already revoked.');
+  }
+
+  const cleanName = String(friendlyName || '').trim().slice(0, 120);
+  if (!cleanName) {
+    throw ApiError.badRequest('A valid passkey name is required.');
+  }
+
+  credential.friendlyName = cleanName;
+  await credential.save();
+
+  await recordPasskeyAudit({
+    organisationId,
+    actorUserId: userId,
+    action: 'PASSKEY_RENAMED',
+    credentialId,
+    result: 'SUCCESS',
+    details: { friendlyName: cleanName },
+  });
+
+  return { success: true, credential: credential.toJSON() };
+}
+
+/**
  * Revoke a passkey for an authenticated user.
  */
 async function revokeUserPasskey({ organisationId, userId, credentialId, revokedBy }) {
@@ -490,4 +525,5 @@ module.exports = {
   verifyPasskeyAuthentication,
   listUserPasskeys,
   revokeUserPasskey,
+  renameUserPasskey,
 };

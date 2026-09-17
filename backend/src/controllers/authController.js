@@ -611,20 +611,66 @@ const requestPasswordReset = asyncHandler(
     const organisationId = typeof request.body?.organisationId === 'string' ? request.body.organisationId.trim().toUpperCase() : '';
     const email = typeof request.body?.email === 'string' ? request.body.email.trim().toLowerCase() : '';
     if (!organisationId || !email) throw new ApiError(400, 'PASSWORD_RESET_FIELDS_REQUIRED', 'Organisation ID and email are required.');
-    if (!passwordResetDeliveryService.isPasswordResetDeliveryAvailable()) throw new ApiError(503, 'PASSWORD_RESET_DELIVERY_UNAVAILABLE', 'Password reset delivery is not configured.');
-    const message = 'If the account is eligible, a password reset code has been sent.';
+
+    const message = 'If an eligible account exists, a password reset message has been sent.';
+
+    if (!passwordResetDeliveryService.isPasswordResetDeliveryAvailable()) {
+      // In development / local testing, allow fallback logging if not explicitly disabled
+      if (process.env.NODE_ENV !== 'production' && process.env.PASSWORD_RESET_DEV_LOG_CODE !== 'false') {
+        process.env.PASSWORD_RESET_DEV_LOG_CODE = 'true';
+      } else {
+        try {
+          const { logSecurityEvent } = require('../services/securityLogger');
+          logSecurityEvent({
+            correlationId: request.correlationId || null,
+            organisationId,
+            action: 'PASSWORD_RESET_DELIVERY_UNCONFIGURED',
+            outcome: 'FAILURE',
+            severity: 'WARN',
+            metadata: { emailMasked: maskEmail(email), reason: 'EMAIL_DELIVERY_NOT_CONFIGURED' },
+          });
+        } catch {}
+        // Never expose raw backend configuration text to users
+        throw new ApiError(503, 'PASSWORD_RECOVERY_UNAVAILABLE', 'Password recovery is temporarily unavailable. Please try again later or contact support.');
+      }
+    }
+
     const user = await User.findOne({ organisationId, email });
-    if (!passwordResetService.isResetEligibleUser(user)) return response.status(202).json({ success: true, message, correlationId: request.correlationId || null });
+    if (!passwordResetService.isResetEligibleUser(user)) {
+      return response.status(202).json({ success: true, message, correlationId: request.correlationId || null });
+    }
     const reset = await passwordResetService.createPasswordResetChallenge(user);
-    if (!reset) return response.status(202).json({ success: true, message, correlationId: request.correlationId || null });
-    const delivery = await passwordResetDeliveryService.deliverPasswordResetCode({ recipientEmail: user.email, code: reset.code, challengeId: reset.challenge.challengeId });
+    if (!reset) {
+      return response.status(202).json({ success: true, message, correlationId: request.correlationId || null });
+    }
+    const delivery = await passwordResetDeliveryService.deliverPasswordResetCode({
+      recipientEmail: user.email,
+      code: reset.code,
+      challengeId: reset.challenge.challengeId,
+    });
     if (!delivery.delivered) {
       reset.challenge.status = 'EXPIRED';
       reset.challenge.invalidatedAt = new Date();
       await reset.challenge.save();
-      throw new ApiError(503, 'PASSWORD_RESET_DELIVERY_UNAVAILABLE', 'Password reset delivery is unavailable.');
+      try {
+        const { logSecurityEvent } = require('../services/securityLogger');
+        logSecurityEvent({
+          correlationId: request.correlationId || null,
+          organisationId,
+          action: 'PASSWORD_RESET_DELIVERY_FAILED',
+          outcome: 'FAILURE',
+          severity: 'ERROR',
+          metadata: { emailMasked: maskEmail(email), reason: delivery.reason || 'DELIVERY_REJECTED' },
+        });
+      } catch {}
+      throw new ApiError(503, 'PASSWORD_RECOVERY_UNAVAILABLE', 'Password recovery is temporarily unavailable. Please try again later or contact support.');
     }
-    return response.status(202).json({ success: true, message, correlationId: request.correlationId || null });
+    return response.status(202).json({
+      success: true,
+      message,
+      data: { challengeId: reset.challenge.challengeId },
+      correlationId: request.correlationId || null,
+    });
   }
 );
 

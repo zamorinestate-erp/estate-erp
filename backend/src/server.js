@@ -183,8 +183,29 @@ function createApp(environment) {
   app.use(
     helmet({
       referrerPolicy: { policy: 'same-origin' },
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          frameAncestors: ["'none'"],
+          formAction: ["'self'"],
+          scriptSrc: ["'self'", "'unsafe-inline'"],
+          styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+          fontSrc: ["'self'", "https://fonts.gstatic.com"],
+          imgSrc: ["'self'", "data:", "https://images.unsplash.com"],
+          connectSrc: ["'self'", "https://zamorin-cafe-erp.vercel.app", "http://localhost:3000", "http://localhost:4000", "http://localhost:5173", "http://127.0.0.1:5173", "http://127.0.0.1:3000"],
+        },
+      },
+      frameguard: { action: 'deny' },
     })
   );
+
+  // Deny unused browser capabilities on auth/ERP pages
+  app.use((req, res, next) => {
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    res.setHeader('X-Frame-Options', 'DENY');
+    next();
+  });
+
   app.use(
     express.json({
       limit: '1mb',

@@ -16,6 +16,17 @@ function getGmailProvider() {
   return new GmailEmailProvider();
 }
 
+function getDeliveryProviderStatus() {
+  const provider = getGmailProvider();
+  if (provider.isConfigured()) {
+    return 'HEALTHY';
+  }
+  if (isDevelopmentCodeLoggingEnabled() || process.env.NODE_ENV !== 'production') {
+    return 'EXTERNAL_CONFIGURATION_REQUIRED';
+  }
+  return 'MISCONFIGURED';
+}
+
 function isPasswordResetDeliveryAvailable() {
   if (isDevelopmentCodeLoggingEnabled()) {
     return true;
@@ -194,6 +205,7 @@ function buildTrustedPasswordResetUrl(challengeId, resetToken) {
 module.exports = {
   isDevelopmentCodeLoggingEnabled,
   isPasswordResetDeliveryAvailable,
+  getDeliveryProviderStatus,
   deliverPasswordResetCode,
   getTrustedApplicationOrigin,
   buildTrustedPasswordResetUrl,
