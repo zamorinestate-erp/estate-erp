@@ -273,7 +273,7 @@ router.post(
 
 router.post(
   '/orders/:purchaseOrderId/approve',
-  authorize('PROCUREMENT_APPROVE', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  authorize('PROCUREMENT_APPROVE', { allowedRoles: ['MASTER'] }),
   approveOrder
 );
 

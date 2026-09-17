@@ -624,6 +624,10 @@ const submitOrder = asyncHandler(async (request, response) => {
  * Move SUBMITTED → APPROVED.
  */
 const approveOrder = asyncHandler(async (request, response) => {
+  if (request.auth?.role !== 'MASTER') {
+    throw new ApiError(403, 'FORBIDDEN_ROLE', 'Only Master has authority to approve purchase orders.');
+  }
+
   const purchaseOrderId = normalizeId(request.params.purchaseOrderId);
   const { notes } = request.body;
 
@@ -860,13 +864,31 @@ const receiveOrder = asyncHandler(async (request, response) => {
     const remainingOpen = Math.max(0, orderedQty - previouslyAccepted - closedShort - buyerCancelled);
 
     const acceptedQty = Number(
-      del.acceptedQuantity !== undefined ? del.acceptedQuantity : (del.acceptedQty !== undefined ? del.acceptedQty : (del.quantityReceived !== undefined ? del.quantityReceived : 0))
+      del.acceptedQuantity !== undefined
+        ? del.acceptedQuantity
+        : del.acceptedQty !== undefined
+        ? del.acceptedQty
+        : del.quantityAccepted !== undefined
+        ? del.quantityAccepted
+        : del.quantityReceived !== undefined
+        ? del.quantityReceived
+        : 0
     );
     const rejectedQty = Number(
-      del.rejectedQuantity !== undefined ? del.rejectedQuantity : (del.rejectedQty || 0)
+      del.rejectedQuantity !== undefined
+        ? del.rejectedQuantity
+        : del.rejectedQty !== undefined
+        ? del.rejectedQty
+        : del.quantityRejected !== undefined
+        ? del.quantityRejected
+        : 0
     );
     const deliveredQty = Number(
-      del.deliveredQty !== undefined ? del.deliveredQty : (acceptedQty + rejectedQty)
+      del.deliveredQty !== undefined
+        ? del.deliveredQty
+        : del.quantityDelivered !== undefined
+        ? del.quantityDelivered
+        : acceptedQty + rejectedQty
     );
 
     if (!Number.isFinite(acceptedQty) || acceptedQty < 0 || !Number.isFinite(rejectedQty) || rejectedQty < 0) {

@@ -367,6 +367,7 @@ function authorize(
   permissionCode,
   {
     allowedRoles = null,
+    allowedCapabilities = null,
     absoluteRestriction = null,
     requirePrimaryMaster: requiresPrimary = false,
     cafeIdResolver = null,
@@ -422,10 +423,15 @@ function authorize(
       }
 
       const auth = request.auth;
+      const userCaps = Array.isArray(auth.capabilities) ? auth.capabilities : [];
+      const hasMatchingCapability =
+        Array.isArray(allowedCapabilities) &&
+        allowedCapabilities.some((cap) => userCaps.includes(String(cap).trim().toUpperCase()));
 
       if (
         Array.isArray(allowedRoles) &&
-        !allowedRoles.includes(auth.role)
+        !allowedRoles.includes(auth.role) &&
+        !hasMatchingCapability
       ) {
         return sendAuthorizationError(
           response,

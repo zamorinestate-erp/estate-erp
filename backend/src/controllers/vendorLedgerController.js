@@ -29,11 +29,23 @@ function assertFinanceRoleAccess(request, requiredLevel = 'READ') {
   }
 
   const capabilities = request.auth?.capabilities || [];
-  const hasAccountsRead = capabilities.includes('VENDOR_AP_VIEW') || capabilities.includes('VENDOR_LEDGER_VIEW') || capabilities.includes('VENDOR_AP_AGING_VIEW');
-  const hasAccountsWrite = capabilities.includes('VENDOR_AP_MATCH') || capabilities.includes('VENDOR_AP_PREPARE_PAYMENT');
+  const hasAccountsRead =
+    capabilities.includes('VENDOR_AP_VIEW') ||
+    capabilities.includes('VENDOR_LEDGER_VIEW') ||
+    capabilities.includes('VENDOR_AP_AGING_VIEW') ||
+    capabilities.includes('FINANCE:READ');
+  const hasAccountsWrite =
+    capabilities.includes('VENDOR_AP_MATCH') ||
+    capabilities.includes('VENDOR_AP_PREPARE_PAYMENT') ||
+    capabilities.includes('FINANCE:WRITE');
 
-  if (role === 'STAFF' && !hasAccountsRead && !hasAccountsWrite) {
-    throw new ApiError(403, 'FORBIDDEN_ROLE', 'Staff is strictly denied financial and vendor ledger access.');
+  if (role === 'STAFF') {
+    if (requiredLevel === 'READ' && !hasAccountsRead && !hasAccountsWrite) {
+      throw new ApiError(403, 'FORBIDDEN_ROLE', 'Staff is strictly denied financial and vendor ledger access without explicit Accounts capability.');
+    }
+    if (requiredLevel === 'WRITE' && !hasAccountsWrite) {
+      throw new ApiError(403, 'FORBIDDEN_ROLE', 'Staff requires explicit Accounts write capability (e.g. VENDOR_AP_MATCH) to perform this action.');
+    }
   }
 
   if (requiredLevel === 'WRITE' || requiredLevel === 'PAYMENT' || requiredLevel === 'REVERSAL') {
@@ -206,9 +218,19 @@ const postBillFromPo = asyncHandler(async (request, response) => {
     auth: request.auth,
   });
 
+  const billObj = result.apInvoice?.toObject ? result.apInvoice.toObject() : result.apInvoice;
+  const acceptedQty = (billObj?.lineItems || []).reduce((s, li) => s + (Number(li.acceptedQuantity) || 0), 0);
+
   return response.status(201).json({
     success: true,
-    data: result,
+    data: {
+      ...result,
+      bill: {
+        ...billObj,
+        acceptedQty,
+      },
+      invoice: result.apInvoice,
+    },
     correlationId: request.correlationId || null,
   });
 });
@@ -249,6 +271,7 @@ const getApQueue = asyncHandler(async (request, response) => {
     data: {
       summary: queueSummary,
       invoices,
+      queue: invoices,
     },
     correlationId: request.correlationId || null,
   });

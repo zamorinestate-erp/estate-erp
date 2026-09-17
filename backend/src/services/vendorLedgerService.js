@@ -1255,9 +1255,34 @@ async function getAccountsPayableAging({ organisationId, cafeId = null, asOfDate
     }
   }
 
+  const agingResult = {
+    current: agingBuckets.current,
+    days1_30: agingBuckets.days1_30,
+    days31_60: agingBuckets.days31_60,
+    days61_90: agingBuckets.days61_90,
+    days91_180: agingBuckets.days91_180,
+    days180_plus: agingBuckets.days180_plus,
+    totalOutstandingPaisa: agingBuckets.totalOutstandingPaisa,
+    // Aliases for compatibility
+    currentPaisa: agingBuckets.current,
+    currentPaise: agingBuckets.current,
+    days1_30Paisa: agingBuckets.days1_30,
+    days1_30Paise: agingBuckets.days1_30,
+    days31_60Paisa: agingBuckets.days31_60,
+    days31_60Paise: agingBuckets.days31_60,
+    days61_90Paisa: agingBuckets.days61_90,
+    days61_90Paise: agingBuckets.days61_90,
+    days91_180Paisa: agingBuckets.days91_180,
+    days91_180Paise: agingBuckets.days91_180,
+    days180_plusPaisa: agingBuckets.days180_plus,
+    days180_plusPaise: agingBuckets.days180_plus,
+    totalOutstandingPaise: agingBuckets.totalOutstandingPaisa,
+  };
+
   return {
     asOfDate: today,
-    summary: agingBuckets,
+    summary: agingResult,
+    buckets: agingResult,
     vendors: Object.values(vendorBreakdown),
   };
 }

@@ -28,13 +28,19 @@ router.use(authenticate);
 // 1. Vendor Ledger Queries & Statements
 router.get(
   '/vendors/:vendorId',
-  authorize('FINANCE:READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  authorize('FINANCE:READ', {
+    allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'],
+    allowedCapabilities: ['VENDOR_LEDGER_VIEW', 'VENDOR_AP_VIEW', 'FINANCE:READ'],
+  }),
   getVendorLedger
 );
 
 router.get(
   '/vendors/:vendorId/statement',
-  authorize('FINANCE:READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  authorize('FINANCE:READ', {
+    allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'],
+    allowedCapabilities: ['VENDOR_LEDGER_VIEW', 'VENDOR_AP_VIEW', 'FINANCE:READ'],
+  }),
   getVendorStatement
 );
 
@@ -53,14 +59,20 @@ router.post(
 // 2. AP Handoff from PO / GRN
 router.post(
   '/bills/from-po/:purchaseOrderId',
-  authorize('FINANCE:WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
+  authorize('FINANCE:WRITE', {
+    allowedRoles: ['MASTER', 'CAFE_ADMIN'],
+    allowedCapabilities: ['VENDOR_AP_MATCH', 'FINANCE:WRITE'],
+  }),
   postBillFromPo
 );
 
 // 3. AP Work Queue
 router.get(
   '/ap/queue',
-  authorize('FINANCE:READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  authorize('FINANCE:READ', {
+    allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'],
+    allowedCapabilities: ['VENDOR_AP_VIEW', 'VENDOR_AP_MATCH', 'VENDOR_AP_PREPARE_PAYMENT', 'FINANCE:READ'],
+  }),
   getApQueue
 );
 
@@ -92,7 +104,10 @@ router.post(
 
 router.post(
   '/credits/apply',
-  authorize('FINANCE:WRITE', { allowedRoles: ['MASTER', 'CAFE_ADMIN'] }),
+  authorize('FINANCE:WRITE', {
+    allowedRoles: ['MASTER', 'CAFE_ADMIN'],
+    allowedCapabilities: ['VENDOR_AP_MATCH', 'FINANCE:WRITE'],
+  }),
   applyCreditNote
 );
 
@@ -106,7 +121,10 @@ router.post(
 // 7. AP Aging & GST 180-Day Monitoring
 router.get(
   '/reports/aging',
-  authorize('FINANCE:READ', { allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'] }),
+  authorize('FINANCE:READ', {
+    allowedRoles: ['MASTER', 'OWNER', 'CAFE_ADMIN'],
+    allowedCapabilities: ['VENDOR_AP_AGING_VIEW', 'VENDOR_AP_VIEW', 'VENDOR_LEDGER_VIEW', 'FINANCE:READ'],
+  }),
   getApAgingReport
 );
 

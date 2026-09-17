@@ -159,7 +159,7 @@ function renderActiveTabContent(vendors, orders, isMaster) {
     CONTINUITY_RISK: { title: "Supply Continuity & Risk Mitigation", icon: "🛡️", desc: "Dual-sourcing coverage, sole-supplier risk analysis and emergency buffer plans." },
     AP_QUEUE: { title: "Accounts Payable Queue & Payment Processing", icon: "📑", desc: "Review matched invoices, process partial & full disbursements, manage holds, and apply advances/credits." },
     VENDOR_LEDGER: { title: "Authoritative Vendor AP Subledger & Audit Trail", icon: "🏛️", desc: "Chronological transaction history, dual-entry posting proof, statement generator, and summary cache rebuild." },
-    AP_AGING: { title: "AP Aging Analysis & GST 180-Day Advisory Monitor", icon: "⏳", desc: "Aging bucket distribution (Current, 1-30, 31-60, 61-90, 90+) and Section 16(2) GST 180-day ITC reversal risk monitoring." },
+    AP_AGING: { title: "AP Aging Analysis & GST 180-Day Advisory Monitor", icon: "⏳", desc: "Aging bucket distribution (Current / Not Due, 1-30d, 31-60d, 61-90d, 91-180d, 180d+ overdue) and Section 16(2) GST 180-day ITC compliance advisory monitoring." },
   };
 
   const cur = submodules[currentActiveTab] || { title: "Submodule", icon: "📁", desc: "" };
@@ -1262,12 +1262,20 @@ function renderVendorLedgerTab(vendors, isMaster) {
 
 function renderApAgingTab(vendors, isMaster) {
   const agingBuckets = liveAgingReport?.buckets || {
+    current: 25000000,
+    days1_30: 15000000,
+    days31_60: 8000000,
+    days61_90: 3000000,
+    days91_180: 1000000,
+    days180_plus: 0,
+    totalOutstandingPaisa: 52000000,
+    // Paired paise aliases
     currentPaise: 25000000,
-    bucket1To30Paise: 15000000,
-    bucket31To60Paise: 8000000,
-    bucket61To90Paise: 3000000,
-    bucket91To120Paise: 1000000,
-    bucketOver120Paise: 0,
+    days1_30Paise: 15000000,
+    days31_60Paise: 8000000,
+    days61_90Paise: 3000000,
+    days91_180Paise: 1000000,
+    days180_plusPaise: 0,
     totalOutstandingPaise: 52000000,
   };
 
@@ -1283,13 +1291,21 @@ function renderApAgingTab(vendors, isMaster) {
     }
   ];
 
+  const currentAmt = agingBuckets.current !== undefined ? agingBuckets.current : (agingBuckets.currentPaise || 0);
+  const d1_30Amt = agingBuckets.days1_30 !== undefined ? agingBuckets.days1_30 : (agingBuckets.days1_30Paise || agingBuckets.bucket1To30Paise || 0);
+  const d31_60Amt = agingBuckets.days31_60 !== undefined ? agingBuckets.days31_60 : (agingBuckets.days31_60Paise || agingBuckets.bucket31To60Paise || 0);
+  const d61_90Amt = agingBuckets.days61_90 !== undefined ? agingBuckets.days61_90 : (agingBuckets.days61_90Paise || agingBuckets.bucket61To90Paise || 0);
+  const d91_180Amt = agingBuckets.days91_180 !== undefined ? agingBuckets.days91_180 : (agingBuckets.days91_180Paise || agingBuckets.bucket91To120Paise || 0);
+  const d180PlusAmt = agingBuckets.days180_plus !== undefined ? agingBuckets.days180_plus : (agingBuckets.days180_plusPaise || agingBuckets.bucketOver120Paise || 0);
+  const totalAmt = agingBuckets.totalOutstandingPaisa !== undefined ? agingBuckets.totalOutstandingPaisa : (agingBuckets.totalOutstandingPaise || 0);
+
   return `
     <div style="display:flex; flex-direction:column; gap:20px;">
       <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px;">
         <div>
           <h3 style="font-size:18px; font-weight:800; color:var(--ink); margin:0;">Accounts Payable Aging &amp; Statutory Risk Monitor</h3>
           <p style="font-size:13px; color:var(--muted); margin:4px 0 0;">
-            Chronological aging buckets across credit intervals and statutory Section 16(2) GST 180-day ITC compliance warning monitor.
+            Canonical due-date based aging buckets across overdue intervals and statutory Section 16(2) GST 180-day ITC compliance advisory monitor.
           </p>
         </div>
         <button class="btn btn-secondary" id="vnd-refresh-aging-btn" type="button" style="font-weight:600;">↻ Refresh Aging Report</button>
@@ -1297,38 +1313,44 @@ function renderApAgingTab(vendors, isMaster) {
 
       <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:12px;">
         <div class="card" style="padding:14px; border-left:4px solid #10b981;">
-          <div style="font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase;">Current (0-30 Days)</div>
-          <div style="font-size:20px; font-weight:800; color:var(--ink); margin:4px 0;">₹${((agingBuckets.currentPaise || 0) / 100).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</div>
-          <div style="font-size:10.5px; color:#10b981; font-weight:600;">● Within Normal Terms</div>
+          <div style="font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase;">Current / Not Yet Due</div>
+          <div style="font-size:20px; font-weight:800; color:var(--ink); margin:4px 0;">₹${((currentAmt) / 100).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</div>
+          <div style="font-size:10.5px; color:#10b981; font-weight:600;">● Within Due Date</div>
         </div>
 
         <div class="card" style="padding:14px; border-left:4px solid #2563eb;">
-          <div style="font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase;">31 - 60 Days</div>
-          <div style="font-size:20px; font-weight:800; color:var(--ink); margin:4px 0;">₹${((agingBuckets.bucket31To60Paise || 0) / 100).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</div>
-          <div style="font-size:10.5px; color:var(--muted);">Standard Credit</div>
+          <div style="font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase;">1 - 30 Days Overdue</div>
+          <div style="font-size:20px; font-weight:800; color:var(--ink); margin:4px 0;">₹${((d1_30Amt) / 100).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</div>
+          <div style="font-size:10.5px; color:var(--muted);">Standard Overdue</div>
         </div>
 
         <div class="card" style="padding:14px; border-left:4px solid #f59e0b;">
-          <div style="font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase;">61 - 90 Days</div>
-          <div style="font-size:20px; font-weight:800; color:#b45309; margin:4px 0;">₹${((agingBuckets.bucket61To90Paise || 0) / 100).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</div>
+          <div style="font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase;">31 - 60 Days Overdue</div>
+          <div style="font-size:20px; font-weight:800; color:#b45309; margin:4px 0;">₹${((d31_60Amt) / 100).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</div>
           <div style="font-size:10.5px; color:#b45309; font-weight:600;">Attention Required</div>
         </div>
 
         <div class="card" style="padding:14px; border-left:4px solid #ea580c;">
-          <div style="font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase;">91 - 120 Days</div>
-          <div style="font-size:20px; font-weight:800; color:#ea580c; margin:4px 0;">₹${((agingBuckets.bucket91To120Paise || 0) / 100).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</div>
-          <div style="font-size:10.5px; color:#ea580c; font-weight:600;">High Overdue</div>
+          <div style="font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase;">61 - 90 Days Overdue</div>
+          <div style="font-size:20px; font-weight:800; color:#ea580c; margin:4px 0;">₹${((d61_90Amt) / 100).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</div>
+          <div style="font-size:10.5px; color:#ea580c; font-weight:600;">Significant Overdue</div>
+        </div>
+
+        <div class="card" style="padding:14px; border-left:4px solid #b91c1c;">
+          <div style="font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase;">91 - 180 Days Overdue</div>
+          <div style="font-size:20px; font-weight:800; color:#b91c1c; margin:4px 0;">₹${((d91_180Amt) / 100).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</div>
+          <div style="font-size:10.5px; color:#b91c1c; font-weight:700;">Critical Overdue</div>
         </div>
 
         <div class="card" style="padding:14px; border-left:4px solid #dc2626;">
-          <div style="font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase;">120+ Days (Critical)</div>
-          <div style="font-size:20px; font-weight:800; color:#dc2626; margin:4px 0;">₹${((agingBuckets.bucketOver120Paise || 0) / 100).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</div>
-          <div style="font-size:10.5px; color:#dc2626; font-weight:700;">⚠ High ITC Reversal Risk</div>
+          <div style="font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase;">180+ Days Overdue</div>
+          <div style="font-size:20px; font-weight:800; color:#dc2626; margin:4px 0;">₹${((d180PlusAmt) / 100).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</div>
+          <div style="font-size:10.5px; color:#dc2626; font-weight:700;">⚠ High Overdue</div>
         </div>
 
         <div class="card" style="padding:14px; border-left:4px solid #1e293b;">
           <div style="font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase;">Total AP Outstanding</div>
-          <div style="font-size:20px; font-weight:800; color:var(--ink); margin:4px 0;">₹${((agingBuckets.totalOutstandingPaise || 0) / 100).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</div>
+          <div style="font-size:20px; font-weight:800; color:var(--ink); margin:4px 0;">₹${((totalAmt) / 100).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</div>
           <div style="font-size:10.5px; color:var(--muted);">All active payables</div>
         </div>
       </div>
@@ -1404,11 +1426,12 @@ function renderApAgingTab(vendors, isMaster) {
             <thead>
               <tr style="border-bottom:2px solid var(--line);">
                 <th>Supplier Name</th>
-                <th style="text-align:right;">Current (0-30d)</th>
+                <th style="text-align:right;">Current</th>
+                <th style="text-align:right;">1 - 30d</th>
                 <th style="text-align:right;">31 - 60d</th>
                 <th style="text-align:right;">61 - 90d</th>
-                <th style="text-align:right;">91 - 120d</th>
-                <th style="text-align:right;">120d+</th>
+                <th style="text-align:right;">91 - 180d</th>
+                <th style="text-align:right;">180d+</th>
                 <th style="text-align:right;">Total Balance</th>
                 <th style="text-align:center;">Action</th>
               </tr>
@@ -1423,8 +1446,9 @@ function renderApAgingTab(vendors, isMaster) {
                       <strong style="color:var(--ink);">${v.name}</strong>
                       <div style="font-size:11px; color:var(--muted);">${v.vendorId}</div>
                     </td>
-                    <td style="text-align:right;">₹${((out * 0.6) / 100).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
-                    <td style="text-align:right;">₹${((out * 0.25) / 100).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
+                    <td style="text-align:right;">₹${((out * 0.5) / 100).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
+                    <td style="text-align:right;">₹${((out * 0.2) / 100).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
+                    <td style="text-align:right;">₹${((out * 0.15) / 100).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
                     <td style="text-align:right;">₹${((out * 0.1) / 100).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
                     <td style="text-align:right;">₹${((out * 0.05) / 100).toLocaleString('en-IN', { maximumFractionDigits: 0 })}</td>
                     <td style="text-align:right; font-weight:700; color:${out > 500000 ? '#dc2626' : 'inherit'};">₹0</td>

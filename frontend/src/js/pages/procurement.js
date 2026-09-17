@@ -591,7 +591,7 @@ function renderFilteredOrders(root) {
     return;
   }
 
-  const canApprove = [ROLES.MASTER, ROLES.OWNER, ROLES.CAFE_ADMIN].includes(state.role);
+  const canApprove = [ROLES.MASTER].includes(state.role);
   const canReceive = [ROLES.MASTER, ROLES.CAFE_ADMIN].includes(state.role);
 
   wrap.innerHTML = `

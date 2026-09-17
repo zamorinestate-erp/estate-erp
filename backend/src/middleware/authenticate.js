@@ -129,6 +129,9 @@ async function authenticate(
       primaryCafeId:
         user.primaryCafeId || null,
       sessionId: session.sessionId,
+      capabilities: Array.isArray(user.capabilities)
+        ? user.capabilities.map((c) => String(c).trim().toUpperCase()).filter(Boolean)
+        : [],
       mfaVerified:
         Boolean(session.mfaVerified),
       mfaVerifiedAt:

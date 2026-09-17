@@ -588,6 +588,14 @@ const userSchema = new mongoose.Schema(
       index: true,
     },
 
+    capabilities: [
+      {
+        type: String,
+        trim: true,
+        uppercase: true,
+      },
+    ],
+
     accountStatus: {
       type: String,
       required: true,
